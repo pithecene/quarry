@@ -68,8 +68,13 @@ WORKDIR /opt/quarry
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Pin exact versions matching pnpm-lock.yaml for reproducible builds.
-RUN npm install --omit=dev \
-  puppeteer@24.37.2 \
+# npm resolves this tree independently of pnpm-lock.yaml, so the security
+# override for basic-ftp (transitive via @puppeteer/browsers → proxy-agent)
+# must be restated here as an npm root override.
+RUN npm init -y >/dev/null \
+  && npm pkg set 'overrides.basic-ftp=6.2.3' \
+  && npm install --omit=dev \
+  puppeteer@24.43.1 \
   puppeteer-extra@3.3.6 \
   puppeteer-extra-plugin-stealth@2.11.2 \
   puppeteer-extra-plugin-adblocker@2.13.6
@@ -114,9 +119,9 @@ RUN if [ "$TARGETARCH" != "amd64" ]; then \
       exit 1; \
     fi
 
-# Pin Chrome for Testing version matching puppeteer@24.37.2 (see deps stage).
+# Pin Chrome for Testing version matching puppeteer@24.43.1 (see deps stage).
 # Look up the mapping at: https://pptr.dev/supported-browsers
-ARG CHROME_VERSION=145.0.7632.46
+ARG CHROME_VERSION=148.0.7778.97
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
