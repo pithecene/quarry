@@ -57,7 +57,7 @@ func TestCollector_IncrementMethods(t *testing.T) {
 		t.Errorf("LodeWriteFailure = %d, want 1", s.LodeWriteFailure)
 	}
 	if s.LodeWriteRetry != 0 {
-		t.Errorf("LodeWriteRetry = %d, want 0 (reserved)", s.LodeWriteRetry)
+		t.Errorf("LodeWriteRetry = %d, want 0", s.LodeWriteRetry)
 	}
 }
 
@@ -296,5 +296,19 @@ func TestCollector_ZeroValueSnapshot(t *testing.T) {
 	}
 	if len(s.DroppedByType) != 0 {
 		t.Errorf("fresh collector DroppedByType should be empty, got %v", s.DroppedByType)
+	}
+}
+
+func TestCollector_IncLodeWriteRetry(t *testing.T) {
+	c := NewCollector("strict", "test", "fs", "run-1", "")
+	c.IncLodeWriteRetry()
+	c.IncLodeWriteRetry()
+
+	s := c.Snapshot()
+	if s.LodeWriteRetry != 2 {
+		t.Errorf("LodeWriteRetry = %d, want 2", s.LodeWriteRetry)
+	}
+	if s.LodeWriteSuccess != 0 || s.LodeWriteFailure != 0 {
+		t.Errorf("retry must not touch success/failure: success=%d failure=%d", s.LodeWriteSuccess, s.LodeWriteFailure)
 	}
 }

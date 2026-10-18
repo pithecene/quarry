@@ -90,16 +90,11 @@ func NewLodeS3Client(cfg Config, s3cfg S3Config) (*LodeClient, error) {
 	}
 
 	// Create dataset with Hive layout
-	ds, err := lode.NewDataset(
-		lode.DatasetID(cfg.Dataset),
-		s3Factory,
-		lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"),
-		lode.WithCodec(lode.NewJSONLCodec()),
-		lode.WithRetryCount(3),
-	)
+	gate := &retryGate{}
+	ds, err := lode.NewDataset(lode.DatasetID(cfg.Dataset), s3Factory, writeDatasetOptions(cfg, gate)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Lode dataset: %w", err)
 	}
 
-	return newClient(ds, cfg, s3Factory), nil
+	return newClient(ds, cfg, s3Factory, gate), nil
 }

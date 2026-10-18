@@ -72,8 +72,14 @@ times with jittered exponential backoff (10ms base, 2s max).
 - Data files are written once; only the manifest re-parent and pointer CAS
   are retried.
 - Non-conflict errors are fatal (no retry).
-- The `lode_write_retry_total` metric is reserved for future use and
-  remains 0 until Lode exposes a retry callback.
+- Each retry increments `lode_write_retry_total` via Lode's
+  `WithRetryObserver` callback. The counter records retries, not write
+  calls: an uncontended write contributes 0; a write that conflicts once
+  and then succeeds contributes 1.
+- Retries incurred by the metrics write itself (`WriteMetrics`) are NOT
+  counted. The persisted metrics record is a snapshot taken before that
+  write begins and cannot contain the count of its own retries; excluding
+  them keeps the persisted record identical to the collector's final value.
 
 ---
 
@@ -172,7 +178,7 @@ Field names use the `_total` suffix to match CONTRACT_METRICS.md naming.
 | `ipc_decode_errors_total`       | int64             | yes      | Executor counter                         |
 | `lode_write_success_total`      | int64             | yes      | Storage counter                          |
 | `lode_write_failure_total`      | int64             | yes      | Storage counter                          |
-| `lode_write_retry_total`        | int64             | yes      | Storage counter (reserved; always 0 until Lode exposes retry observability) |
+| `lode_write_retry_total`        | int64             | yes      | Storage counter (CAS retries, see Write Retry) |
 | `policy`                        | string            | yes      | Dimension: policy name                   |
 | `executor`                      | string            | yes      | Dimension: executor identity             |
 | `storage_backend`               | string            | yes      | Dimension: storage backend               |

@@ -37,6 +37,9 @@ type Config struct {
 	RunID string
 	// Policy is the ingestion policy name (e.g. "strict", "buffered").
 	Policy string
+	// RetryObserver, if set, is invoked once per Lode CAS retry with the
+	// 1-indexed attempt number (see lode.WithRetryObserver). Optional.
+	RetryObserver func(attempt int)
 }
 
 // Sink is a Lode-backed implementation of policy.Sink.

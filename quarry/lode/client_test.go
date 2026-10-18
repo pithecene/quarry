@@ -673,7 +673,7 @@ func TestNewClient_InitializesMaps(t *testing.T) {
 		RunID:    "run-1",
 	}
 
-	client := newClient(ds, cfg, lode.NewMemoryFactory())
+	client := newClient(ds, cfg, lode.NewMemoryFactory(), &retryGate{})
 
 	if client.offsets == nil {
 		t.Fatal("offsets map is nil, must be initialized")
@@ -733,5 +733,153 @@ func TestToArtifactCommitRecord(t *testing.T) {
 	}
 	if record.SizeBytes != 2048 {
 		t.Errorf("SizeBytes = %d, want %d", record.SizeBytes, 2048)
+	}
+}
+
+// TestLodeClient_RetryObserver_CountsCASRetries proves the end-to-end path
+// from a Lode snapshot conflict to lode_write_retry_total: a competing
+// writer advances the dataset pointer, the client's next write conflicts
+// once and retries, and the collector observes exactly one retry.
+func TestLodeClient_RetryObserver_CountsCASRetries(t *testing.T) {
+	mem := lode.NewMemory()
+	factory := func() (lode.Store, error) { return mem, nil }
+
+	collector := metrics.NewCollector("strict", "test", "memory", "run-123", "")
+	cfg := Config{
+		Dataset:       "quarry",
+		Source:        "test-source",
+		Category:      "test-category",
+		Day:           "2026-02-03",
+		RunID:         "run-123",
+		Policy:        "strict",
+		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
+	}
+
+	client, err := NewLodeClientWithFactory(cfg, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+	}
+
+	// Competing writer on the same store, same dataset, no retries.
+	competitor, err := NewLodeClientWithFactory(Config{
+		Dataset:  cfg.Dataset,
+		Source:   cfg.Source,
+		Category: cfg.Category,
+		Day:      cfg.Day,
+		RunID:    "run-other",
+		Policy:   cfg.Policy,
+	}, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory (competitor) failed: %v", err)
+	}
+
+	event := func(runID, id string, seq int64) []*types.EventEnvelope {
+		return []*types.EventEnvelope{{
+			ContractVersion: "1.0.0",
+			EventID:         id,
+			RunID:           runID,
+			Seq:             seq,
+			Type:            types.EventTypeItem,
+			Ts:              "2026-02-03T12:00:00Z",
+			Payload:         map[string]any{"key": "value"},
+			Attempt:         1,
+		}}
+	}
+
+	// Uncontended write: no retry.
+	if err := client.WriteEvents(t.Context(), "run-123", "", event("run-123", "evt-1", 1)); err != nil {
+		t.Fatalf("first WriteEvents failed: %v", err)
+	}
+	if got := collector.Snapshot().LodeWriteRetry; got != 0 {
+		t.Fatalf("LodeWriteRetry after uncontended write = %d, want 0", got)
+	}
+
+	// Competitor advances the pointer; the client's cached snapshot is now stale.
+	if err := competitor.WriteEvents(t.Context(), "run-other", "", event("run-other", "evt-2", 1)); err != nil {
+		t.Fatalf("competitor WriteEvents failed: %v", err)
+	}
+	if err := client.WriteEvents(t.Context(), "run-123", "", event("run-123", "evt-3", 2)); err != nil {
+		t.Fatalf("contended WriteEvents failed: %v", err)
+	}
+	if got := collector.Snapshot().LodeWriteRetry; got != 1 {
+		t.Fatalf("LodeWriteRetry after one conflict = %d, want 1", got)
+	}
+}
+
+// TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics proves the
+// contract rule that retries incurred persisting the metrics record are not
+// observed: a competing writer makes the client's cached snapshot stale, the
+// metrics write still succeeds (only possible via CAS retry), and the
+// collector's retry counter is unchanged.
+func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
+	mem := lode.NewMemory()
+	factory := func() (lode.Store, error) { return mem, nil }
+
+	collector := metrics.NewCollector("strict", "test", "memory", "run-123", "")
+	cfg := Config{
+		Dataset:       "quarry",
+		Source:        "test-source",
+		Category:      "test-category",
+		Day:           "2026-02-03",
+		RunID:         "run-123",
+		Policy:        "strict",
+		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
+	}
+
+	client, err := NewLodeClientWithFactory(cfg, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+	}
+	competitor, err := NewLodeClientWithFactory(Config{
+		Dataset:  cfg.Dataset,
+		Source:   cfg.Source,
+		Category: cfg.Category,
+		Day:      cfg.Day,
+		RunID:    "run-other",
+		Policy:   cfg.Policy,
+	}, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory (competitor) failed: %v", err)
+	}
+
+	event := func(runID, id string) []*types.EventEnvelope {
+		return []*types.EventEnvelope{{
+			ContractVersion: "1.0.0",
+			EventID:         id,
+			RunID:           runID,
+			Seq:             1,
+			Type:            types.EventTypeItem,
+			Ts:              "2026-02-03T12:00:00Z",
+			Payload:         map[string]any{"key": "value"},
+			Attempt:         1,
+		}}
+	}
+
+	// Seed the client's cached snapshot, then let the competitor advance the pointer.
+	if err := client.WriteEvents(t.Context(), "run-123", "", event("run-123", "evt-1")); err != nil {
+		t.Fatalf("client WriteEvents failed: %v", err)
+	}
+	if err := competitor.WriteEvents(t.Context(), "run-other", "", event("run-other", "evt-2")); err != nil {
+		t.Fatalf("competitor WriteEvents failed: %v", err)
+	}
+
+	before := collector.Snapshot().LodeWriteRetry
+	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
+	if err := client.WriteMetrics(t.Context(), collector.Snapshot(), completedAt); err != nil {
+		t.Fatalf("contended WriteMetrics failed: %v", err)
+	}
+	if got := collector.Snapshot().LodeWriteRetry; got != before {
+		t.Fatalf("LodeWriteRetry changed during WriteMetrics: %d -> %d, want unchanged", before, got)
+	}
+
+	// Observation resumes for subsequent event writes.
+	if err := competitor.WriteEvents(t.Context(), "run-other", "", event("run-other", "evt-3")); err != nil {
+		t.Fatalf("competitor WriteEvents failed: %v", err)
+	}
+	if err := client.WriteEvents(t.Context(), "run-123", "", event("run-123", "evt-4")); err != nil {
+		t.Fatalf("client WriteEvents after metrics failed: %v", err)
+	}
+	if got := collector.Snapshot().LodeWriteRetry; got != before+1 {
+		t.Fatalf("LodeWriteRetry after post-metrics conflict = %d, want %d", got, before+1)
 	}
 }
