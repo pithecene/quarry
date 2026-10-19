@@ -19,7 +19,8 @@ Non-goals:
 - Does not define executor behavior.
 - Does not define user script behavior.
 - Does not define provider-specific configuration details.
-- Does not define Temporal workflow semantics (see `guides/temporal.md`).
+- Does not define orchestrator-specific workflow semantics (for Temporal,
+  see `guides/temporal.md`).
 
 ---
 
@@ -31,7 +32,7 @@ Quarry supports three distinct integration paradigms:
 |----------|------------------------|--------|-----------|----------|
 | Event Sink | Receives events **during** a run | In-run | Runtime → External | Redis Streams, Lode |
 | Notification Adapter | Invoked **by** runtime after a run | Post-run | Runtime → External | Webhook, Redis Pub/Sub, NATS, SNS |
-| Orchestration Integration | **Wraps** the runtime as embedded activity | External | External → Runtime | Temporal |
+| Orchestration Integration | **Wraps** the runtime as embedded activity | External | External → Runtime | First-party host (`quarry serve`, planned), Temporal (deferred) |
 
 **Event sinks** receive events in real time as the executor produces them.
 They implement the `EventSink` interface, are selected via `--event-sink`
@@ -45,10 +46,11 @@ completes. They implement the `Adapter` interface, are selected via
 owns their lifecycle.
 
 **Orchestration integrations** embed the runtime as a unit of work within
-an external orchestrator. The orchestrator owns scheduling, retries, and
-delivery guarantees. Orchestration integrations do NOT implement the
-`Adapter` interface and are NOT selected via `--adapter` flags — they
-are separate binaries that depend on the runtime as a library.
+a host. The host owns scheduling, retries, and delivery guarantees. A host
+may be first-party (a long-lived `quarry` process) or an external
+orchestrator; the runtime must not depend on which. Orchestration
+integrations do NOT implement the `Adapter` interface and are NOT selected
+via `--adapter` flags — they depend on the runtime as a library.
 
 ---
 
