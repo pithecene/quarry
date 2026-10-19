@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images; the `v0.13.5` tag was re-pointed at the commit carrying the rename and the release re-run (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR — update imports from `@pithecene-io/quarry-sdk` — and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
+- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the v0.13.5 release run could not publish the npm package or the container images and v0.13.5 has no artifacts on those channels; v0.13.6 is the first release published under the new owner (#246, #247). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR — update imports from `@pithecene-io/quarry-sdk` — and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
 
 ### Added
 
