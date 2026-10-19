@@ -1,0 +1,43 @@
+# Lockstep version targets — the single list of every place the product
+# version is written down. One target per line:
+#   <files><TAB><ERE pattern>[<TAB><allowed suffixes>]
+# <files> is a space-separated list of paths or globs; the pattern uses
+# __V__ where the version appears; the optional third column lists literal
+# suffixes that may follow the version in that slot (space-separated).
+# version-bump.sh rewrites the version inside each pattern; version-check.sh
+# fails if any occurrence is not exactly the version (plus an allowed
+# suffix) from quarry/types/version.go, or if a target matches nothing.
+#
+# Anything that prints the version and is not listed here is drift waiting
+# to happen: add it here, never hand-edit it.
+
+# Canonical sources
+quarry/types/version.go	const Version = "__V__"
+sdk/package.json	"version": "__V__"
+sdk/src/types/events.ts	export const CONTRACT_VERSION = '__V__'
+
+# Embedded executor bundle (rebuilt by `task executor:bundle`; checked so a
+# stale checked-in bundle cannot ship inside the Go binary)
+quarry/executor/bundle/executor.mjs	// Quarry Executor Bundle v__V__
+quarry/executor/bundle/executor.mjs	CONTRACT_VERSION = "__V__"
+
+# Fixtures that embed the contract version
+sdk/test/emit/06-golden/*.json	"contract_version": "__V__"
+quarry/adapter/redisstream/*_test.go	ContractVersion: "__V__"
+docs/CLI_PARITY.json	"version": "__V__"
+
+# Install commands and image tags
+README.md PUBLIC_API.md docs/guides/container.md	ghcr\.io/pithecene/quarry:__V__	-slim
+README.md PUBLIC_API.md	github:pithecene/quarry@__V__
+PUBLIC_API.md	"github:pithecene/quarry" = "__V__"
+
+# Version-stamped prose
+PUBLIC_API.md	## Known Limitations \(v__V__\)
+PUBLIC_API.md SUPPORT.md	# __V__ \(commit: \.\.\.\)
+SUPPORT.md	Support Posture — Quarry v__V__
+SUPPORT.md	support expectations for Quarry v__V__\.
+SUPPORT.md	Quarry v__V__ is provided
+SUPPORT.md	\*\*v__V__ is an early release\.\*\*
+SUPPORT.md	_No known functional issues in v__V__\._
+docs/IMPLEMENTATION_PLAN.md	## Current Status \(as of v__V__\)
+docs/IMPLEMENTATION_PLAN.md	- Latest release: v__V__

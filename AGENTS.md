@@ -178,8 +178,12 @@ When releasing:
 
 **Do not skip steps. Do not split across commits.**
 
-The `version:bump` task runs `scripts/version-bump.sh` (see that file for the
-full target list), then rebuilds the SDK and executor bundle.
+Every place the version is written down is listed once, in
+`scripts/version-targets.txt`. `task version:bump` rewrites each target by
+pattern, rebuilds the SDK and executor bundle, then runs
+`task version:check`, which CI also runs: a target that matches nothing or
+carries another version fails the build. Never hand-edit a version string;
+if a new file must print the version, add it to the targets list.
 
 ---
 

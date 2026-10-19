@@ -66,19 +66,15 @@ tasks:
     aliases: [fmt]
     deps: [go:format, ts:format]
 
-  version:lockstep:
-    desc: Verify version lockstep (Go == SDK)
+  version:check:
+    desc: Verify every lockstep version target matches quarry/types/version.go
     cmds:
-      - |
-        GO_VERSION=$(sed -n 's/^const Version = "\([^"]*\)".*/\1/p' quarry/types/version.go)
-        SDK_VERSION=$(jq -r '.version' sdk/package.json)
-        echo "Go version:  $GO_VERSION"
-        echo "SDK version: $SDK_VERSION"
-        if [ "$GO_VERSION" != "$SDK_VERSION" ]; then
-          echo "❌ Version mismatch!"
-          exit 1
-        fi
-        echo "✅ Versions match"
+      - scripts/version-check.sh
+
+  version:lockstep:
+    desc: Alias of version:check
+    cmds:
+      - task: version:check
 
   version:bump:
     desc: Bump lockstep version across all components
@@ -88,7 +84,7 @@ tasks:
       - scripts/version-bump.sh {{.V}}
       - task: ts:build
       - task: executor:bundle
-      - task: version:lockstep
+      - task: version:check
       - echo "✅ All lockstep targets updated to {{.V}}"
 
   # ==========

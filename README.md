@@ -22,17 +22,11 @@ mise install github:pithecene/quarry@0.13.5
 
 ```bash
 # Full image (includes Chromium + fonts)
-docker pull ghcr.io/pithecene/quarry:0.13.4
+docker pull ghcr.io/pithecene/quarry:0.13.5
 
 # Slim image (no browser — BYO Chromium via --browser-ws-endpoint)
-docker pull ghcr.io/pithecene/quarry:0.13.4-slim
+docker pull ghcr.io/pithecene/quarry:0.13.5-slim
 ```
-
-> **Note:** image tags are published by the release workflow per tagged
-> release; the pinned tags above are the newest published images, which
-> may trail the CLI version when a release's container publish failed
-> (see `CHANGELOG.md`). `:latest` and `:slim` always resolve to the newest
-> published images.
 
 See [docs/guides/container.md](docs/guides/container.md) for Docker Compose examples.
 

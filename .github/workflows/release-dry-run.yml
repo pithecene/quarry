@@ -40,6 +40,9 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      - name: 🔒 Check All Version Targets
+        run: scripts/version-check.sh
+
       - name: 🔒 Check Version Matches Input
         run: |
           INPUT_VERSION="${{ inputs.version }}"

@@ -31,6 +31,9 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      - name: 🔒 Check All Version Targets
+        run: scripts/version-check.sh
+
       - name: 🔒 Check Version Matches Tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
