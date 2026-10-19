@@ -841,8 +841,12 @@ D3 — deletion writes a tombstone first and clears it last, so a crashed
 
 **E. `CONTRACT_CLI.md`'s read side is rewritten from this data model**, as
 a versioned breaking change: partition selectors become required,
-`started_at` nullable, `running` is defined as "no terminal evidence",
-pagination and error semantics are specified, and the stub-backed views
+`started_at` nullable, the `running` state is retired in favour of
+`unterminated` ("no terminal evidence" — a live run, a killed process, a
+host crash, and a legacy run without a terminal event are all this state,
+and nothing in storage distinguishes them until an enforceable deadline
+or a liveness signal exists, so no listing or statistic may present it as
+running), pagination and error semantics are specified, and the stub-backed views
 with no data model (jobs, tasks, executors) are removed rather than
 reconciled.
 
@@ -853,11 +857,24 @@ Command and flag names used above (`quarry index rebuild`,
 provisional labels for the decisions, not API; the contract PRs fix the
 names and shapes.
 
-**Compression** ships behind `--storage-compression`, default off: Lode
+**Compression** is a property of the dataset, not of an invocation. Lode
 reads with the dataset's configured compressor and cannot yet dispatch on
 `manifest.Compressor`, so a mixed dataset is unreadable until that Lode
-change lands; recompressing old snapshots waits on a Lode rewrite
-primitive. No lockstep or contract-version impact.
+change lands — which means one writer omitting a per-run flag would make
+every earlier snapshot inaccessible. The compressor is therefore chosen
+once per dataset and persisted as Quarry dataset configuration in the
+namespace (`datasets/<dataset>/quarry.json`); `run` reads it and refuses
+to write with any other compressor. "New" means Lode's own snapshot
+listing finds no manifests — not a missing `latest` pointer (a legacy
+dataset or an interrupted pointer write can hold committed snapshots
+without one, and Lode itself falls back to scanning manifests), and
+never merely no `quarry.json`: every
+dataset written before this file existed holds uncompressed snapshots,
+so on first contact `run` bootstraps a missing `quarry.json` as `none`
+and refuses any other value for that dataset. An explicit compressor is
+accepted only for a snapshot-less dataset or when it matches the pinned
+one, and the pin is immutable until Lode dispatches per manifest. Recompressing old snapshots waits on a Lode
+rewrite primitive. No lockstep or contract-version impact.
 
 **Known constraints, recorded not hidden:** a Lode dataset is one linear
 history with one `latest` pointer (commit rate is bounded per dataset;
@@ -914,8 +931,9 @@ Each decision is judged by a number in its PR, not by argument:
 - [ ] `sdk/` reader module over CLI JSON, exported from the public entrypoint
 - [ ] `quarry gc --dry-run`; `quarry gc` deletion with tombstones once
       prerequisites land (D)
-- [ ] `--storage-compression` with the benchmark; `--recompress` once the
-      Lode primitive exists
+- [ ] Dataset-pinned compression (`quarry.json` in the namespace; writers
+      refuse a mismatch) with the benchmark; `--recompress` once the Lode
+      primitive exists
 - [ ] `PUBLIC_API.md` Known Limitation 7 updated; minimum-reader-version
       note for switched datasets
 - [ ] Benchmarks above published with the PRs that make the claims

@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Breaking Changes
-
-- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, which is why the v0.13.5 npm and container publishes failed. The SDK is now `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR — update imports from `@pithecene-io/quarry-sdk` — and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
-
 ### Changed
 
 - **Docs**: Roadmap added to `IMPLEMENTATION_PLAN.md` — v0.13.6 (Lode v0.10.0), v0.14.0 (read side #240, retention #239, compression) as six decided architecture points (runtime-owned run lifecycle, one key builder and a `runs/` namespace for Quarry-written objects, run records as the run index with an operator-run backfill, record-driven retention, a rewritten CLI read contract, design record on #245), v1.0 (contract freeze), v1.x (first-party `quarry serve` host). Temporal section demoted to a deferred host; `CONTRACT_INTEGRATION.md` orchestration paradigm generalized so the runtime stays host-agnostic; `PUBLIC_API.md` Known Limitation 7 states what reads exist today and points at the planned reader
