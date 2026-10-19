@@ -8,7 +8,7 @@
  * - stdout contains exactly 2 clean IPC frames (no stray text)
  * - stderr contains the stray text + guard warning
  */
-import type { EventEnvelope, EventId, RunId } from '@pithecene-io/quarry-sdk'
+import type { EventEnvelope, EventId, RunId } from '@pithecene/quarry-sdk'
 import { StdioSink } from '../../../src/ipc/sink.js'
 import { installStdoutGuard } from '../../../src/ipc/stdout-guard.js'
 

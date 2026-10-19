@@ -16,7 +16,7 @@
  * @module
  */
 import type { Writable } from 'node:stream'
-import type { ArtifactId, EmitSink, EventEnvelope } from '@pithecene-io/quarry-sdk'
+import type { ArtifactId, EmitSink, EventEnvelope } from '@pithecene/quarry-sdk'
 import type { AckReader } from './ack-reader.js'
 import {
   encodeArtifactChunks,

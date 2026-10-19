@@ -56,10 +56,13 @@ done
 sedi "s/\"version\": \"${OLD}\"/\"version\": \"${NEW}\"/" docs/CLI_PARITY.json
 echo "  ✅ docs/CLI_PARITY.json"
 
-# Container guide image tags
-sedi "s/quarry:${OLD}/quarry:${NEW}/g" docs/guides/container.md
-sedi "s/quarry:${OLD}-slim/quarry:${NEW}-slim/g" docs/guides/container.md
-echo "  ✅ docs/guides/container.md"
+# Container image tags. Matched by pattern rather than by ${OLD}: docs may
+# pin an older image when a release's container publish failed (v0.13.5),
+# and every pinned tag must still move to ${NEW} on the next release.
+for f in docs/guides/container.md README.md PUBLIC_API.md; do
+  sedi -E "s#(ghcr\.io/pithecene/quarry):[0-9]+\.[0-9]+\.[0-9]+(-slim)?#\1:${NEW}\2#g" "$f"
+  echo "  ✅ $f (image tags)"
+done
 
 # Public-facing docs (install commands, image tags, version refs)
 for f in README.md PUBLIC_API.md SUPPORT.md docs/IMPLEMENTATION_PLAN.md; do

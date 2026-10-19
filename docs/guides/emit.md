@@ -78,7 +78,7 @@ per item creates an equal number of child runs. `createBatcher` groups items
 into fewer, larger enqueue events:
 
 ```typescript
-import { createBatcher } from "@pithecene-io/quarry-sdk";
+import { createBatcher } from "@pithecene/quarry-sdk";
 
 const batcher = createBatcher(ctx.emit, {
   size: 50,

@@ -295,7 +295,7 @@ jobs:
         with:
           node-version: 24.13.0
           registry-url: https://npm.pkg.github.com
-          scope: "@pithecene-io"
+          scope: "@pithecene"
 
       - name: 📦 Setup pnpm via Corepack
         run: |
@@ -330,7 +330,7 @@ jobs:
           echo "📦 Package: $(jq -r '.name' package.json)"
           echo "📦 Version: $(jq -r '.version' package.json)"
           echo "📦 Registry: $(npm config get registry)"
-          echo "📦 Scope registry: $(npm config get @pithecene-io:registry || echo 'not set')"
+          echo "📦 Scope registry: $(npm config get @pithecene:registry || echo 'not set')"
 
       - name: 📦 Publish
         working-directory: sdk
@@ -412,8 +412,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
-            ghcr.io/pithecene-io/quarry:${{ steps.meta.outputs.version }}-slim
-            ghcr.io/pithecene-io/quarry:slim
+            ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}-slim
+            ghcr.io/pithecene/quarry:slim
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -426,7 +426,7 @@ jobs:
           platforms: linux/amd64
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
-            ghcr.io/pithecene-io/quarry:${{ steps.meta.outputs.version }}
-            ghcr.io/pithecene-io/quarry:latest
+            ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}
+            ghcr.io/pithecene/quarry:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

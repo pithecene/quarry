@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, which is why the v0.13.5 npm and container publishes failed. The SDK is now `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR — update imports from `@pithecene-io/quarry-sdk` — and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
+
 ---
 
 ## [0.13.5] - 2026-10-18

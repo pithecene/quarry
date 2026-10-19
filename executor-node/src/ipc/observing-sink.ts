@@ -12,7 +12,7 @@
  *
  * @module
  */
-import type { ArtifactId, EmitSink, EventEnvelope } from '@pithecene-io/quarry-sdk'
+import type { ArtifactId, EmitSink, EventEnvelope } from '@pithecene/quarry-sdk'
 
 /**
  * Terminal event types.

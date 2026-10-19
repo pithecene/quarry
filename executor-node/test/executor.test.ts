@@ -8,7 +8,7 @@ import type {
   JobId,
   ProxyEndpoint,
   RunId
-} from '@pithecene-io/quarry-sdk'
+} from '@pithecene/quarry-sdk'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import {
   _resetPuppeteerForTesting,

@@ -32,7 +32,7 @@ import {
   type StoragePartitionMeta,
   TerminalEventError,
   type TerminalSignal
-} from '@pithecene-io/quarry-sdk'
+} from '@pithecene/quarry-sdk'
 import type { Browser, BrowserContext, LaunchOptions, Page } from 'puppeteer'
 import type { AckReader } from './ipc/ack-reader.js'
 import type { ProxyEndpointRedactedFrame, RunResultOutcome } from './ipc/frame.js'

@@ -24,7 +24,7 @@
  * @module
  */
 import { unlinkSync } from 'node:fs'
-import type { ProxyEndpoint } from '@pithecene-io/quarry-sdk'
+import type { ProxyEndpoint } from '@pithecene/quarry-sdk'
 import { chromiumArgs } from '../browser-args.js'
 import { evaluateIdlePoll, type IdlePollState } from '../browser-idle.js'
 import { errorMessage, execute, parseRunMeta } from '../executor.js'

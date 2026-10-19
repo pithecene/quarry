@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
  *
  * This bundles:
  * - Executor code
- * - SDK (@pithecene-io/quarry-sdk)
+ * - SDK (@pithecene/quarry-sdk)
  * - msgpack (@msgpack/msgpack)
  *
  * External (not bundled):

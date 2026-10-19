@@ -1,5 +1,5 @@
 {
-  "name": "@pithecene-io/quarry-sdk",
+  "name": "@pithecene/quarry-sdk",
   "license": "Apache-2.0",
   "exports": "./src/index.ts",
   "publish": {
