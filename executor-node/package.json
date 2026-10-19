@@ -17,8 +17,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pithecene-io/quarry-sdk": "workspace:*",
-    "@msgpack/msgpack": "^3.1.3"
+    "@msgpack/msgpack": "^3.1.3",
+    "@pithecene-io/quarry-sdk": "workspace:*"
   },
   "peerDependencies": {
     "puppeteer": "^24",
@@ -32,8 +32,8 @@
     }
   },
   "devDependencies": {
-    "esbuild": "^0.27.3",
-    "puppeteer": "^24.37.2",
+    "esbuild": "^0.28.2",
+    "puppeteer": "^24.43.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-adblocker": "^2.13.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"

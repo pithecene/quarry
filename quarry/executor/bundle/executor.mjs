@@ -9,11 +9,20 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
 };
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -390,6 +399,7 @@ var init_observing_sink = __esm({
       constructor(inner) {
         this.inner = inner;
       }
+      inner;
       terminalState = null;
       sinkFailure = null;
       /**
@@ -2304,6 +2314,8 @@ var init_frame = __esm({
         this.maxPayloadSize = maxPayloadSize;
         this.name = "FrameSizeError";
       }
+      payloadSize;
+      maxPayloadSize;
     };
     ChunkValidationError = class extends Error {
       constructor(message) {
@@ -2407,6 +2419,7 @@ var init_sink = __esm({
         this.writeFn = writeFn ?? ((data) => output.write(data));
         this.ackReader = ackReader;
       }
+      output;
       writeFn;
       ackReader;
       writeIdCounter = 0;
@@ -2542,6 +2555,8 @@ var init_loader = __esm({
         this.reason = reason;
         this.name = "ScriptLoadError";
       }
+      scriptPath;
+      reason;
     };
   }
 });
