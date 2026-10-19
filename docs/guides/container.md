@@ -13,13 +13,6 @@ Quarry ships two container images via GHCR:
 |-------|-----|------|----------|
 | Full | `ghcr.io/pithecene/quarry:0.13.5` | amd64 | Quarry CLI, Node.js, Puppeteer, Chrome for Testing, fonts |
 | Slim | `ghcr.io/pithecene/quarry:0.13.5-slim` | amd64, arm64 | Quarry CLI, Node.js, Puppeteer (no browser) |
-
-> **Note:** image tags are published by the release workflow per tagged
-> release; the pinned tags in this guide are the newest published images,
-> which may trail the CLI version when a release's container publish
-> failed (see `CHANGELOG.md`). `:latest` and `:slim` always resolve to the
-> newest published images.
-
 The **full** image is recommended for standalone usage. The **slim** image is
 for environments where Chromium is provided externally (e.g., via
 `--browser-ws-endpoint` pointing at a sidecar or shared browser service).
