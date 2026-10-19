@@ -206,13 +206,13 @@ import type {
   ProxyPool,
   ProxyStrategy,
   ProxySticky
-} from '@pithecene-io/quarry-sdk'
+} from '@pithecene/quarry-sdk'
 
 import {
   validateProxyEndpoint,
   validateProxyPool,
   redactProxyEndpoint
-} from '@pithecene-io/quarry-sdk'
+} from '@pithecene/quarry-sdk'
 ```
 
 ---

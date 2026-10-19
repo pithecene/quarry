@@ -6,7 +6,7 @@
  *
  * @module
  */
-import type { StoragePartitionMeta } from '@pithecene-io/quarry-sdk'
+import type { StoragePartitionMeta } from '@pithecene/quarry-sdk'
 
 /**
  * Parse optional storage partition metadata from input.

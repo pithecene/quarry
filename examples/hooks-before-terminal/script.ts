@@ -4,7 +4,7 @@
  * Emits a summary item after all script work completes but before
  * the terminal event closes the emit channel.
  */
-import type { QuarryContext, TerminalSignal } from '@pithecene-io/quarry-sdk'
+import type { QuarryContext, TerminalSignal } from '@pithecene/quarry-sdk'
 
 let itemCount = 0
 

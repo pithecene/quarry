@@ -1,4 +1,4 @@
-# @pithecene-io/quarry-sdk
+# @pithecene/quarry-sdk
 
 TypeScript SDK for writing Quarry extraction scripts.
 
@@ -6,16 +6,16 @@ TypeScript SDK for writing Quarry extraction scripts.
 
 ```bash
 # via JSR (recommended)
-npx jsr add @pithecene-io/quarry-sdk
+npx jsr add @pithecene/quarry-sdk
 
 # via GitHub Packages
-pnpm add @pithecene-io/quarry-sdk
+pnpm add @pithecene/quarry-sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import type { QuarryScript } from '@pithecene-io/quarry-sdk'
+import type { QuarryScript } from '@pithecene/quarry-sdk'
 
 interface MyJob {
   url: string
@@ -111,7 +111,7 @@ Accumulates items and emits batched enqueue events, reducing child run count
 for high fan-out workloads.
 
 ```typescript
-import { createBatcher } from '@pithecene-io/quarry-sdk'
+import { createBatcher } from '@pithecene/quarry-sdk'
 
 const batcher = createBatcher<{ url: string }>(ctx.emit, {
   size: 50,
@@ -136,7 +136,7 @@ Dispatches multiple `storage.put()` calls with bounded concurrency — eliminati
 user-code latency between puts without creating unbounded promise counts.
 
 ```typescript
-import { createStorageBatcher } from '@pithecene-io/quarry-sdk'
+import { createStorageBatcher } from '@pithecene/quarry-sdk'
 
 const batch = createStorageBatcher(ctx.storage, { concurrency: 16 })
 
@@ -186,7 +186,7 @@ Pass `{ browser: false }` to `snapshot()` to skip the CDP call.
 Export these from your script module for lifecycle control:
 
 ```typescript
-import type { QuarryScriptModule } from '@pithecene-io/quarry-sdk'
+import type { QuarryScriptModule } from '@pithecene/quarry-sdk'
 
 const module: QuarryScriptModule<MyJob> = {
   async default(ctx) {

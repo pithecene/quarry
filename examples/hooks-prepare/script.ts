@@ -5,7 +5,7 @@
  * Pass `--job '{"url":"https://example.com","stale":true}'` to trigger skip.
  * Pass `--job '{"url":"https://example.com"}'` for normal execution.
  */
-import type { PrepareResult, QuarryContext, RunMeta } from '@pithecene-io/quarry-sdk'
+import type { PrepareResult, QuarryContext, RunMeta } from '@pithecene/quarry-sdk'
 
 type Job = { url: string; stale?: boolean }
 

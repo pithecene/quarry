@@ -1,5 +1,5 @@
 {
-  "name": "@pithecene-io/quarry-sdk",
+  "name": "@pithecene/quarry-sdk",
   "version": "0.13.5",
   "type": "module",
   "publishConfig": {

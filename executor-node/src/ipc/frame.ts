@@ -22,7 +22,7 @@
  */
 
 import { decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack'
-import type { ArtifactId, EventEnvelope } from '@pithecene-io/quarry-sdk'
+import type { ArtifactId, EventEnvelope } from '@pithecene/quarry-sdk'
 
 /**
  * Maximum frame size in bytes (16 MiB), including length prefix.

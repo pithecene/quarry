@@ -5,7 +5,7 @@
  * to stdout via StdioSink, calls drainStdout(), then exits immediately.
  * The parent test verifies all frames are readable from the pipe before EOF.
  */
-import type { EventEnvelope, EventId, RunId } from '@pithecene-io/quarry-sdk'
+import type { EventEnvelope, EventId, RunId } from '@pithecene/quarry-sdk'
 import { drainStdout, StdioSink } from '../../../src/ipc/sink.js'
 
 const sink = new StdioSink(process.stdout)

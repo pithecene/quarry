@@ -1,6 +1,6 @@
 import { PassThrough, Writable } from 'node:stream'
 import { decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack'
-import type { ArtifactId, EventEnvelope, EventId, RunId } from '@pithecene-io/quarry-sdk'
+import type { ArtifactId, EventEnvelope, EventId, RunId } from '@pithecene/quarry-sdk'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { AckReader } from '../../src/ipc/ack-reader.js'
 import {

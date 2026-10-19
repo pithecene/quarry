@@ -26,24 +26,24 @@ Quarry is **TypeScript-first** and **ESM-only**.
 ### Via mise (recommended)
 
 ```bash
-mise install github:pithecene-io/quarry@0.13.5
+mise install github:pithecene/quarry@0.13.5
 ```
 
 Or pin in your `mise.toml`:
 
 ```toml
 [tools]
-"github:pithecene-io/quarry" = "0.13.5"
+"github:pithecene/quarry" = "0.13.5"
 ```
 
 ### Via Docker
 
 ```bash
 # Full image — includes Chrome for Testing + fonts (amd64 only, recommended)
-docker pull ghcr.io/pithecene-io/quarry:0.13.5
+docker pull ghcr.io/pithecene/quarry:0.13.5
 
 # Slim image — no browser, multi-arch (BYO Chromium via --browser-ws-endpoint)
-docker pull ghcr.io/pithecene-io/quarry:0.13.5-slim
+docker pull ghcr.io/pithecene/quarry:0.13.5-slim
 ```
 
 See [docs/guides/container.md](docs/guides/container.md) for `docker run` and Docker Compose examples.
@@ -53,13 +53,13 @@ See [docs/guides/container.md](docs/guides/container.md) for `docker run` and Do
 Install the SDK in your script project:
 
 ```bash
-npx jsr add @pithecene-io/quarry-sdk
+npx jsr add @pithecene/quarry-sdk
 ```
 
 Or via pnpm with GitHub Packages:
 
 ```bash
-pnpm add @pithecene-io/quarry-sdk
+pnpm add @pithecene/quarry-sdk
 ```
 
 ### From source
@@ -111,7 +111,7 @@ run_id=my-first-run, attempt=1, outcome=success, duration=...
 Scripts **must** export a default async function:
 
 ```typescript
-import type { QuarryContext } from "@pithecene-io/quarry-sdk";
+import type { QuarryContext } from "@pithecene/quarry-sdk";
 
 export default async function run(ctx: QuarryContext): Promise<void> {
   // Your extraction logic here
@@ -126,7 +126,7 @@ Scripts may export **optional lifecycle hooks** alongside the default function.
 All hooks are optional — scripts that export none behave identically to today.
 
 ```typescript
-import type { QuarryContext, PrepareResult, TerminalSignal, RunMeta } from "@pithecene-io/quarry-sdk";
+import type { QuarryContext, PrepareResult, TerminalSignal, RunMeta } from "@pithecene/quarry-sdk";
 
 // Runs before browser launch. Can skip or transform the job.
 export function prepare(job: unknown, run: RunMeta): PrepareResult {
@@ -286,7 +286,7 @@ For high fan-out workloads that discover hundreds or thousands of items,
 child run count and scheduling overhead.
 
 ```typescript
-import { createBatcher } from "@pithecene-io/quarry-sdk";
+import { createBatcher } from "@pithecene/quarry-sdk";
 
 export default async function run(ctx: QuarryContext): Promise<void> {
   const batcher = createBatcher(ctx.emit, {
@@ -365,7 +365,7 @@ multiple `storage.put()` calls with bounded concurrency — eliminating
 user-code latency between puts without creating unbounded promise counts.
 
 ```typescript
-import { createStorageBatcher } from "@pithecene-io/quarry-sdk";
+import { createStorageBatcher } from "@pithecene/quarry-sdk";
 
 export default async function run(ctx: QuarryContext): Promise<void> {
   const batch = createStorageBatcher(ctx.storage, { concurrency: 16 });
@@ -614,7 +614,7 @@ See `examples/integration-patterns/` for downstream ETL trigger examples:
 
 ```typescript
 // examples/demo.ts
-import type { QuarryContext } from "@pithecene-io/quarry-sdk";
+import type { QuarryContext } from "@pithecene/quarry-sdk";
 
 export default async function run(ctx: QuarryContext): Promise<void> {
   await ctx.emit.item({
@@ -628,7 +628,7 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 
 ```typescript
 // examples/artifact-snapshot/script.ts
-import type { QuarryContext } from "@pithecene-io/quarry-sdk";
+import type { QuarryContext } from "@pithecene/quarry-sdk";
 
 export default async function run(ctx: QuarryContext): Promise<void> {
   await ctx.page.setContent("<h1>Hello</h1>");
@@ -645,7 +645,7 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 
 ```typescript
 // examples/hooks-prepare/script.ts
-import type { PrepareResult, QuarryContext, RunMeta } from "@pithecene-io/quarry-sdk";
+import type { PrepareResult, QuarryContext, RunMeta } from "@pithecene/quarry-sdk";
 
 type Job = { url: string; fetched_at?: string };
 
@@ -670,7 +670,7 @@ export default async function run(ctx: QuarryContext<Job>): Promise<void> {
 
 ```typescript
 // examples/hooks-before-terminal/script.ts
-import type { QuarryContext, TerminalSignal } from "@pithecene-io/quarry-sdk";
+import type { QuarryContext, TerminalSignal } from "@pithecene/quarry-sdk";
 
 let itemCount = 0;
 
@@ -762,8 +762,8 @@ executor runs under Node ESM.
 
 Quarry ships container images via GHCR:
 
-- **Full** (amd64 only): `ghcr.io/pithecene-io/quarry:0.13.5` — includes Chrome for Testing + fonts
-- **Slim** (amd64 + arm64): `ghcr.io/pithecene-io/quarry:0.13.5-slim` — no browser (BYO via `--browser-ws-endpoint`)
+- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.13.5` — includes Chrome for Testing + fonts
+- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.13.5-slim` — no browser (BYO via `--browser-ws-endpoint`)
 
 For `docker run`, Docker Compose, and sidecar patterns, see [docs/guides/container.md](docs/guides/container.md).
 
@@ -867,8 +867,8 @@ SDK and runtime versions must match (lockstep versioning).
 
 | Component | Channel | Install |
 |-----------|---------|---------|
-| CLI binary | GitHub Releases | `mise install github:pithecene-io/quarry@0.13.5` |
-| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene-io/quarry:0.13.5` |
-| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene-io/quarry:0.13.5-slim` |
-| SDK | JSR | `npx jsr add @pithecene-io/quarry-sdk` |
-| SDK | GitHub Packages | `pnpm add @pithecene-io/quarry-sdk` |
+| CLI binary | GitHub Releases | `mise install github:pithecene/quarry@0.13.5` |
+| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.13.5` |
+| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.13.5-slim` |
+| SDK | JSR | `npx jsr add @pithecene/quarry-sdk` |
+| SDK | GitHub Packages | `pnpm add @pithecene/quarry-sdk` |

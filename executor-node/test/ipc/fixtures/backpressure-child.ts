@@ -19,7 +19,7 @@
  * If the drain event is not delivered (the bug this test pins), the child
  * will hang indefinitely and the parent test's timeout will catch it.
  */
-import type { EventEnvelope, EventId, RunId } from '@pithecene-io/quarry-sdk'
+import type { EventEnvelope, EventId, RunId } from '@pithecene/quarry-sdk'
 import { drainStdout, StdioSink } from '../../../src/ipc/sink.js'
 import { installStdoutGuard } from '../../../src/ipc/stdout-guard.js'
 
