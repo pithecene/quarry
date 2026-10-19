@@ -1,19 +1,30 @@
-# Support Posture — Quarry v0.13.4
+# Support Posture — Quarry v0.13.5
 
-This document defines support expectations for Quarry v0.13.4.
+This document defines support expectations for Quarry v0.13.5.
 
 ---
 
 ## Maturity Level
 
-**v0.13.4 is an early release.** APIs and behaviors may change in subsequent
+**v0.13.5 is an early release.** APIs and behaviors may change in subsequent
 minor versions. Breaking changes will be documented in release notes.
 
 ---
 
 ## Known Issues
 
-_No known issues in v0.13.4._
+_No known functional issues in v0.13.5._
+
+### Open Security Advisories
+
+| Advisory | Component | Status |
+|----------|-----------|--------|
+| `extract-zip` symlink path traversal / arbitrary file write (GHSA, Dependabot #47, #53) | `@puppeteer/browsers` → `extract-zip`, pulled in by `puppeteer@24.x` | Open — no patched `extract-zip` release exists for the puppeteer 24 line; the only fix is puppeteer 25 (semver-major, breaks the `^24` peer range in `sdk/` and `executor-node/`). Tracked for a separate major upgrade. |
+
+Exposure: `extract-zip` runs only when Puppeteer downloads a browser
+archive. Quarry's container images set `PUPPETEER_SKIP_DOWNLOAD=true` and
+the full image ships a pinned Chrome for Testing; the code path is reached
+only by self-managed installs that let Puppeteer fetch its own browser.
 
 ---
 
@@ -134,12 +145,12 @@ Quarry uses lockstep versioning:
 Check versions:
 ```bash
 quarry version
-# 0.13.4 (commit: ...)
+# 0.13.5 (commit: ...)
 ```
 
 ---
 
 ## No Warranty
 
-Quarry v0.13.4 is provided "as is" without warranty of any kind.
+Quarry v0.13.5 is provided "as is" without warranty of any kind.
 See LICENSE for details.
