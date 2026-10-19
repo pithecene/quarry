@@ -40,11 +40,17 @@ Or pin in your `mise.toml`:
 
 ```bash
 # Full image — includes Chrome for Testing + fonts (amd64 only, recommended)
-docker pull ghcr.io/pithecene/quarry:0.13.5
+docker pull ghcr.io/pithecene/quarry:0.13.4
 
 # Slim image — no browser, multi-arch (BYO Chromium via --browser-ws-endpoint)
-docker pull ghcr.io/pithecene/quarry:0.13.5-slim
+docker pull ghcr.io/pithecene/quarry:0.13.4-slim
 ```
+
+> **Note:** image tags are published by the release workflow per tagged
+> release; the pinned tags above are the newest published images, which
+> may trail the CLI version when a release's container publish failed
+> (see `CHANGELOG.md`). `:latest` and `:slim` always resolve to the newest
+> published images.
 
 See [docs/guides/container.md](docs/guides/container.md) for `docker run` and Docker Compose examples.
 
@@ -762,8 +768,8 @@ executor runs under Node ESM.
 
 Quarry ships container images via GHCR:
 
-- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.13.5` — includes Chrome for Testing + fonts
-- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.13.5-slim` — no browser (BYO via `--browser-ws-endpoint`)
+- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.13.4` — includes Chrome for Testing + fonts
+- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.13.4-slim` — no browser (BYO via `--browser-ws-endpoint`)
 
 For `docker run`, Docker Compose, and sidecar patterns, see [docs/guides/container.md](docs/guides/container.md).
 
@@ -868,7 +874,7 @@ SDK and runtime versions must match (lockstep versioning).
 | Component | Channel | Install |
 |-----------|---------|---------|
 | CLI binary | GitHub Releases | `mise install github:pithecene/quarry@0.13.5` |
-| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.13.5` |
-| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.13.5-slim` |
+| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.13.4` |
+| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.13.4-slim` |
 | SDK | JSR | `npx jsr add @pithecene/quarry-sdk` |
 | SDK | GitHub Packages | `pnpm add @pithecene/quarry-sdk` |
