@@ -17,6 +17,9 @@ Scripts and executors remain **policy-agnostic**.
 - Latest release: v0.13.5 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/RELEASE_READINESS_v1.0.md).
+- Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side & retention) →
+  v1.0 (contract freeze) → v1.x (first-party host). See the roadmap
+  sections below; #245 is the umbrella issue, #239 and #240 the drivers.
 
 ---
 
@@ -713,20 +716,352 @@ Phase 2 is deferred until Phase 1 is validated in production.
 
 ---
 
+## v0.13.6 Roadmap — Lode v0.10.0
+
+### Goal
+
+Take Lode v0.10.0 as a dependency-only patch release. v0.10.0 adds the
+listing primitives the v0.14.0 read side is built on; nothing in Quarry's
+public surface changes.
+
+### Deliverables
+
+- `github.com/pithecene-io/lode` → v0.10.0 in `quarry/go.mod`.
+- Record the additive listing API in `CONTRACT_LODE.md` as Quarry-visible
+  behavior: `PartitionListOptions.Prefix`, `StartAfter` cursors, sorted
+  `ListManifests`, `Store.List` string-prefix semantics, and the
+  `ErrPartitionPrefixNotSupported` sentinel.
+- Note any Lode retry-schedule fixes from its hardening pass in the
+  changelog. `WithRetryObserver` semantics are contractual on the Lode side
+  and do not move, so `lode_write_retry_total` counts are unaffected.
+
+### Mini-milestones
+
+- [ ] Lode v0.10.0 tagged upstream
+- [ ] `go.mod` bump, tests green
+- [ ] `CONTRACT_LODE.md` listing notes
+- [ ] Lockstep release: `task version:bump V=0.13.6`, `CHANGELOG.md`
+      promoted, single version-bump commit (AGENTS.md § Version Policy)
+
+---
+
+## v0.14.0 Roadmap — Read Side & Retention
+
+### Goal
+
+Give Quarry's own storage layout a reader that Quarry maintains, and a
+retention command that expresses run outcomes in Quarry's terms. Both are
+prerequisites for the v1.x host and stand on their own for batch
+consumers (#240) and long-lived datasets (#239).
+
+Quarry owns the Hive layout, the event envelope, and the meaning of a run's
+terminal event. Today a downstream consumer must reimplement all three to
+enumerate runs, which couples it to layout details Quarry may change.
+
+### Decisions
+
+Decided with the operator; the reasoning, the code facts behind each, and
+the measurements they are judged by are recorded on #245. Normative text
+lands in the contract PRs under Mini-milestones; the API is specified and
+reviewed there, against code, not here.
+
+**A. The runtime owns a run's whole lifecycle.** `Execute` writes a start
+record before any other write, runs, performs finalization (metrics
+persistence and the end record) and returns only after it. Today metrics
+are persisted by the CLI after `Execute` returns, so any host other than
+the CLI gets no finalization at all; `CONTRACT_INTEGRATION.md`'s "atomic
+unit of work" becomes true for every host, and the end record is a real
+quiescence barrier because nothing writes after it.
+
+**B. Quarry-written objects have one builder and one home.**
+B1 — the runtime alone computes storage keys, using Lode's Hive encoding.
+Today `file_write_ack` carries only `type`, `write_id`, `ok`, `error`, and
+the SDK fills `StoragePutResult.key` from its own `buildStorageKey`; so
+B1 is a `CONTRACT_IPC.md` change first — the ack gains the resolved key —
+and only then is the SDK predictor removed, deleting the raw-vs-encoded
+path divergence in both writers rather than fixing it twice. B2 — run
+records live in a Quarry-owned namespace inside the dataset,
+`datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/`
+(`start.json`, `end.json`), outside Lode's partition tree and scoped by
+`--storage-dataset` like everything else; Lode's sweep is contractually
+blind to it. Every component is produced by the same B1 builder with
+Lode's Hive value encoding — never raw concatenation — so a value such as
+`a/b` is stored escaped, exactly as the partition tree stores it; `run`
+rejects only what encoding cannot make safe (empty values and the
+literal `.` / `..`), so a record can neither escape the namespace nor
+create an ambiguous prefix. B3 — sidecars stay at
+`…/run_id=<r>/files/`, where consumers already read them; `gc` knows the
+legacy raw-interpolated prefix for runs that predate B1.
+
+**C. Runs are found from run records, never from partitions.** Listing
+enumerates the namespace prefix and keeps only `start.json` keys — exactly
+one per run, so a page cut on that key list is a run boundary by
+construction — and reads `end.json` per returned run, where a missing
+`end.json` is a normal state (a live run before finalization, or a legacy
+run with no terminal event) reported as "no terminal evidence", never a
+read error; that is two objects
+per run against the ~5 partitions per run the Hive tree holds, and
+cross-source queries are a shorter prefix. Event reads address Lode
+partitions by the ref stored in the record. `Store.List` guarantees
+neither order nor continuation today, so the reader sorts the filtered
+keys lexicographically before cutting a page — the cursor is the last
+`start.json` key returned, and the same prefix always yields the same
+order on every backend — until Lode adds storage-native continuation
+(a Lode ask, not a prerequisite); the measurement below is what the
+change is judged by. C1 — index order is `source/category/day/run_id`,
+matching the layout and #240's query; a time-first secondary index is
+added only when the v1.x host has evidence it needs one. C2 — the ~11k
+runs that predate records are backfilled by an explicit, operator-run,
+idempotent upgrade step (`quarry index rebuild`, dry-run first) that
+writes records carrying only what storage proves, all marked
+`backfilled: true`: a start record for every legacy run (`day`, the run's
+partition prefix `source=…/category=…/day=…/run_id=…/` under which every
+`event_type` partition sits, null `started_at`), and an end record for
+every legacy run
+that has a terminal event (`ended_at` from that event's `ts`, terminal
+type, null `outcome` — storage cannot prove the runtime's classification).
+A backfilled end record is a valid retention barrier under D: its run is
+provably over. A legacy run with no terminal event gets no end record and
+no deadline, so it is reclaimable only through the operator's
+`--presume-dead-after` assertion, measured from the end of its `day`.
+The reader never falls back to partition enumeration.
+
+**D. Retention selects from run records.** The end record is the
+deletion barrier; Lode expires the snapshots (refusing when the run owns
+the dataset head — `gc` resolves the pointer, excludes that run, reports
+it skipped); Quarry deletes its own namespace and sidecar objects; every
+failure is reported, nothing partial is silent. D1 — a run may declare a
+maximum duration, enforced by the runtime (kill, `run_error`, end record);
+there is no default, and an unterminated run without one is never
+presumed dead unless the operator asserts a bound explicitly with
+`gc --presume-dead-after <duration>`. D2 — the "ingested" acknowledgement
+is a consumer-supplied list (`--runs-from`); Quarry holds no ack state.
+D3 — deletion writes a tombstone first and clears it last, so a crashed
+`gc` leaves a state the next run resumes from and `list runs` can flag.
+
+**E. `CONTRACT_CLI.md`'s read side is rewritten from this data model**, as
+a versioned breaking change: partition selectors become required,
+`started_at` nullable, `running` is defined as "no terminal evidence",
+pagination and error semantics are specified, and the stub-backed views
+with no data model (jobs, tasks, executors) are removed rather than
+reconciled.
+
+**F. This roadmap carries decisions; the design lives elsewhere.** The
+design record is #245 until the v0.14.0 contract PRs supersede it.
+Command and flag names used above (`quarry index rebuild`,
+`--presume-dead-after`, `--runs-from`, `--storage-compression`) are
+provisional labels for the decisions, not API; the contract PRs fix the
+names and shapes.
+
+**Compression** ships behind `--storage-compression`, default off: Lode
+reads with the dataset's configured compressor and cannot yet dispatch on
+`manifest.Compressor`, so a mixed dataset is unreadable until that Lode
+change lands; recompressing old snapshots waits on a Lode rewrite
+primitive. No lockstep or contract-version impact.
+
+**Known constraints, recorded not hidden:** a Lode dataset is one linear
+history with one `latest` pointer (commit rate is bounded per dataset;
+relief is dataset partitioning and burst smoothing in the host); Lode
+v0.10.0 listing applies its cursor after enumerating the prefix, and
+`Store.List` has no continuation, so all paging is client-side until Lode
+adds storage-native continuation; the sidecar writers' raw interpolation
+(fixed by B1).
+
+### Measurements
+
+Each decision is judged by a number in its PR, not by argument:
+
+- B1: key builders 2 → 1; the `--source 'a/b'` reproduction (events and
+  sidecars under different prefixes) goes from failing to passing.
+- B2/C: store calls per `list runs` page on the dogfood dataset
+  (~11k runs): partition enumeration vs. record listing, in
+  `docs/guides/benchmarks.md`.
+- A/D: zero runs without an end record among runs that completed
+  finalization; `gc --dry-run` candidate counts by outcome on the dogfood
+  dataset before any deletion ships.
+- Compression: write throughput, per-event latency under `strict`, and
+  bytes stored for none/gzip/zstd, same benchmark harness.
+
+### Prerequisites
+
+- [ ] Lode v0.10.0 (listing) — v0.13.6
+- [ ] pithecene/lode#174 (deletion primitive) and Lode's retention
+      contract out of Draft — block `gc` deletion, not the reader,
+      `--dry-run`, or the backfill
+- [ ] Lode: decompressor dispatch on `manifest.Compressor` — blocks
+      compression on existing datasets, not on new ones
+- [ ] Lode: snapshot rewrite primitive — blocks `--recompress` only
+
+### Mini-milestones
+
+- [ ] `CONTRACT_RUN.md` / `CONTRACT_INTEGRATION.md`: runtime-owned
+      finalization; start/end records; run deadline (A, D1)
+- [ ] `CONTRACT_LODE.md`: the `runs/` namespace; one key builder with
+      Hive encoding; sidecar inventory unchanged; append-only exception
+      for whole-run deletion; Quarry-side deletion of its own objects;
+      head-owner exclusion (B, D)
+- [ ] `CONTRACT_CLI.md`: read side rewritten from the data model (E);
+      `CONTRACT_METRICS.md` § Data Source Progression aligned
+- [ ] `CONTRACT_IPC.md`: `file_write_ack` carries the resolved storage
+      key (B1 prerequisite)
+- [ ] Runtime: finalization moved into `Execute`; start/end records;
+      deadline enforcement; SDK `buildStorageKey` removed once the ack
+      carries the key (A, B1)
+- [ ] `quarry/reader` over run records; `cli/reader` as a thin adapter;
+      `ARCH_INDEX.md` boundary entry; `quarry-core/` placement in the
+      module split (C)
+- [ ] `quarry index rebuild` — the operator-run backfill, dry-run first (C2)
+- [ ] `sdk/` reader module over CLI JSON, exported from the public entrypoint
+- [ ] `quarry gc --dry-run`; `quarry gc` deletion with tombstones once
+      prerequisites land (D)
+- [ ] `--storage-compression` with the benchmark; `--recompress` once the
+      Lode primitive exists
+- [ ] `PUBLIC_API.md` Known Limitation 7 updated; minimum-reader-version
+      note for switched datasets
+- [ ] Benchmarks above published with the PRs that make the claims
+
+### Open Questions
+
+- Whether the `sdk/` reader locates the `quarry` binary by `PATH` only or
+  also accepts an explicit path.
+- Whether the event reader exposes artifact bytes in this milestone or
+  events only (Known Limitation 3).
+
+---
+
+## v1.0 — Contract Freeze
+
+### Goal
+
+Freeze the run contracts (`CONTRACT_RUN`, `CONTRACT_EMIT`, `CONTRACT_IPC`,
+`CONTRACT_LODE`, `CONTRACT_POLICY`) and the SDK surface. v1.0 adds nothing;
+it is the point after which the v1.x host is built *on* the contracts
+rather than *in* them.
+
+### Deliverables
+
+- `docs/RELEASE_READINESS_v1.0.md` taken from Draft to signed off: the
+  v1.0 blockers (§1–§5) are resolved; the Release Gates checklist and the
+  Sign-Off table are still open and are completed as part of this
+  milestone, not assumed.
+- `PUBLIC_API.md` Known Limitations rewritten as decisions: the read side
+  limitation is retired by the v0.14.0 reader (shipped before v1.0); the
+  scheduling limitation stays in force, restated as "planned: the v1.x
+  first-party host", and is retired only when `quarry serve` ships.
+- `.grove.yaml` intent revised deliberately if the host changes the
+  project's stated shape; not by drift.
+
+### Mini-milestones
+
+- [ ] v0.14.0 shipped
+- [ ] Readiness sign-off
+- [ ] Known Limitations and `.grove.yaml` revised
+- [ ] v1.0.0 tagged
+
+---
+
+## v1.x Roadmap — First-Party Host (`quarry serve`)
+
+### Goal
+
+Provide the machinery users expect around a crawler — job definitions,
+cadence, visibility, retry, retention — as a first-party host of the
+existing runtime, without changing what a run is.
+
+Ingestion cadence ranges from sparse, to always-on, to multi-hour bursts
+followed by idleness. The host is a scheduler and bounded executor pool
+that is allowed to idle, not a service that must be up.
+
+### Position
+
+- The runtime is already an embeddable library: the seam is
+  `runtime.NewRunOrchestrator(config)`, which returns
+  `(*RunOrchestrator, error)`, followed by `Execute(ctx)` on the result,
+  and `CONTRACT_INTEGRATION.md` § Orchestration Integration Semantics
+  already defines its boundary. `quarry serve` is one host of that seam; a
+  Temporal worker is another. Quarry must not become specific to either.
+- Lode remains the data plane and the system of record for everything a
+  run produces. The host never duplicates it.
+- Known scale constraint: a Lode dataset is one linear history with a
+  single `latest` pointer, so every snapshot commit in a dataset
+  serialises on one CAS round trip (~50–100 ms on S3/R2, i.e. on the
+  order of 10–20 commits/s per dataset before `WithRetryCount` exhausts).
+  Lode will not shard the pointer — per-partition histories are
+  per-partition datasets by design — so the relief is Quarry's: the host
+  partitions writers across dataset IDs (per crawl family or shard),
+  smooths scheduled bursts instead of firing N runs at :00, and sizes its
+  pool against the per-dataset ceiling. Quarry will ask Lode to document
+  the contention bound in its write-API contract.
+- Single-operator trust model, same as the CLI. Multi-user, tenancy, and
+  auth are out of scope; the HTTP surface binds to localhost or sits behind
+  the operator's own proxy.
+- The CLI remains the full surface; `serve` composes it.
+
+### Control-Plane State
+
+Lode is append-only and immutable — the right home for runs, the wrong
+home for mutable job state (paused, next fire, concurrency leases).
+
+1. Declarative first: jobs and schedules are a file alongside the existing
+   config YAML; all run state is derived from Lode through the v0.14.0
+   reader. No new persistence. Pause/resume is an edit.
+2. Embedded store (single file, e.g. SQLite or bbolt) only when leases or
+   acknowledgements are needed, holding only what Lode cannot, and
+   rebuildable from Lode plus the job file.
+
+The store must never hold anything Lode already has.
+
+### Deliverables
+
+- `quarry serve`: job file, scheduler, bounded pool, HTTP read API over the
+  v0.14.0 reader, scheduled `gc`.
+- `CONTRACT_JOBS.md` (job definition and lifecycle) and `CONTRACT_SERVE.md`
+  (HTTP read surface, process lifecycle).
+- Run actions with lineage: re-run / retry a run as a new attempt per
+  `CONTRACT_INTEGRATION.md` § Lineage Preservation.
+- Proxy pool health over time. `inspect proxy` exposes selection state
+  only (round-robin index, sticky entries, recency, last-used) and
+  `CONTRACT_PROXY.md` excludes health checking, so this needs new
+  per-endpoint success/failure instrumentation and persistence — a
+  `CONTRACT_PROXY.md` change, scoped when the host exists.
+- A GUI, if built, is a consumer of the HTTP read API in its own package
+  or repository — never a second reader.
+
+### Mini-milestones
+
+- [ ] Job definition format decided (extend config YAML vs. separate file)
+- [ ] `CONTRACT_CLI.md` revised: `serve` leaves the forbidden list and is
+      defined as the one long-lived, work-executing command besides `run`
+- [ ] `CONTRACT_JOBS.md` / `CONTRACT_SERVE.md` drafted
+- [ ] `quarry serve` with scheduler and pool (declarative state only)
+- [ ] HTTP read API
+- [ ] Run retry action with lineage
+- [ ] Embedded store, if and when leases/acks are needed
+- [ ] GUI as a separate consumer
+
+### Open Questions
+
+- Job definition: extend the config YAML schema, or a separate jobs file.
+- HTTP surface in the first cut: read-only, or also job control
+  (pause/trigger).
+- Whether the module split is a prerequisite for the host or follows it.
+
+---
+
 ## Module Split — Multi-Module Restructure
 
 ### Goal
 
-Split the `quarry/` Go module into independent modules so that
-`quarry-temporal/` (and future integrations) can depend on core runtime
-types without pulling in CLI, TUI, or unrelated dependencies.
+Split the `quarry/` Go module into independent modules so that hosts
+(`quarry serve`, `quarry-temporal/`, future integrations) can depend on
+core runtime types without pulling in CLI, TUI, or unrelated dependencies.
 
 ### Agreed Layout
 
 | Module | Go Module Path | Contains |
 |--------|---------------|----------|
-| `quarry-core/` | `github.com/pithecene-io/quarry-core` | types, runtime, policy, lode, adapter, proxy, metrics, log |
-| `quarry-cli/` | `github.com/pithecene-io/quarry-cli` | CLI commands, TUI, config, reader |
+| `quarry-core/` | `github.com/pithecene-io/quarry-core` | types, runtime, policy, lode, reader (v0.14.0 layout owner), adapter, proxy, metrics, log |
+| `quarry-cli/` | `github.com/pithecene-io/quarry-cli` | CLI commands, TUI, config, `cli/reader` (response-shaping adapter over core `reader`) |
 | `quarry-temporal/` | `github.com/pithecene-io/quarry-temporal` | activity, workflow, worker binary |
 | `quarry-sdk/` | (npm: `@aspect/quarry-sdk`) | TypeScript SDK (rename from `sdk/`) |
 | `quarry-executor/` | (npm: `@aspect/quarry-executor`) | Node executor (rename from `executor-node/`) |
@@ -746,10 +1081,10 @@ quarry-core/      (no quarry-* dependencies)
 
 ### Sequencing
 
-1. Extract `quarry-core/` — move types, runtime, policy, lode, adapter,
-   proxy, metrics, log into standalone module.
-2. Extract `quarry-cli/` — CLI, TUI, config, reader depend on
-   `quarry-core/`.
+1. Extract `quarry-core/` — move types, runtime, policy, lode, reader,
+   adapter, proxy, metrics, log into standalone module.
+2. Extract `quarry-cli/` — CLI, TUI, config, and the `cli/reader`
+   adapter depend on `quarry-core/` (which owns the layout `reader`).
 3. Create `quarry-temporal/` — new module depending on `quarry-core/`
    and `go.temporal.io/sdk`.
 4. Rename `sdk/` → `quarry-sdk/`, `executor-node/` → `quarry-executor/`
@@ -767,7 +1102,13 @@ quarry-core/      (no quarry-* dependencies)
 
 ---
 
-## Temporal Orchestration Integration
+## Temporal Orchestration Integration (Deferred Host)
+
+> Temporal is not being dogfooded. It is one host of the runtime seam
+> defined in `CONTRACT_INTEGRATION.md`, alongside the first-party
+> `quarry serve` host in the v1.x roadmap. Nothing in Quarry may become
+> Temporal-specific; this section is built when a Temporal deployment
+> exists to validate it against.
 
 ### Goal
 
@@ -776,6 +1117,7 @@ lineage tracking, and durable execution guarantees.
 
 ### Prerequisites
 
+- [ ] A Temporal deployment to dogfood against
 - [ ] Module split complete (`quarry-core/` extracted)
 - [ ] `quarry-temporal/` module created
 
@@ -813,7 +1155,7 @@ Order of support:
 - SNS/SQS
 
 > Temporal is an orchestration integration, not a notification adapter.
-> See [Temporal Orchestration Integration](#temporal-orchestration-integration)
+> See [Temporal Orchestration Integration (Deferred Host)](#temporal-orchestration-integration-deferred-host)
 > and `docs/guides/temporal.md`.
 
 Principles:
