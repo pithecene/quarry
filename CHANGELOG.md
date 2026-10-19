@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Metrics**: `lode_write_retry_total` is now populated. Quarry registers Lode's `WithRetryObserver` on the write path, so each CAS retry increments the counter; the CLI no longer prints it as "(not implemented)" and `CONTRACT_LODE.md` no longer marks it reserved
+
 ### Security
 
 - **Deps**: Resolve open Dependabot alerts in the JS toolchain — refresh dev dependencies within range (vitest 4.1.12, puppeteer 24.43.1), add explicit `vite@^7.3.7` dev dependency (auto-installed vitest peer ignored overrides), bump executor `esbuild` to `^0.28.2`, and override `esbuild` → 0.28.2 and `basic-ftp` → 6.2.3. Patches source-map-js, brace-expansion, ip-address, js-yaml, nanoid, fflate, postcss, ws, vite, vitest, esbuild, and basic-ftp advisories. `extract-zip` (via `@puppeteer/browsers`) has no upstream fix and remains open
 - **Container**: The image's `deps` stage installs its own npm tree, independent of `pnpm-lock.yaml`; it now pins `puppeteer@24.43.1` with a matching Chrome for Testing 148.0.7778.97 and restates the `basic-ftp` → 6.2.3 override as an npm root override so the shipped runtime carries the same patched dependencies
+- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.9.1, which bumps `aws-sdk-go-v2/service/s3` and `eventstream` to resolve the EventStream denial-of-service advisory
 
 ---
 

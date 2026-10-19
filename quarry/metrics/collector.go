@@ -32,7 +32,7 @@ type Snapshot struct {
 	// Lode / Storage
 	LodeWriteSuccess int64
 	LodeWriteFailure int64
-	LodeWriteRetry   int64 // reserved for future use, always 0 in v0.3.0
+	LodeWriteRetry   int64 // CAS retries observed via lode.WithRetryObserver
 
 	// Dimensions (informational, set at construction)
 	Policy         string
@@ -62,6 +62,7 @@ type Collector struct {
 	// Lode / Storage
 	lodeWriteSuccess int64
 	lodeWriteFailure int64
+	lodeWriteRetry   int64
 
 	// Ingestion (set once via AbsorbPolicyStats)
 	eventsReceived  int64
@@ -201,6 +202,18 @@ func (c *Collector) IncLodeWriteFailure() {
 	c.mu.Unlock()
 }
 
+// IncLodeWriteRetry records one Lode CAS retry attempt. Lode invokes the
+// retry observer once per retry (never for the initial attempt), so this
+// counts retries, not write calls.
+func (c *Collector) IncLodeWriteRetry() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.lodeWriteRetry++
+	c.mu.Unlock()
+}
+
 // --- Ingestion (absorbed from policy.Stats) ---
 
 // AbsorbPolicyStats copies ingestion counters from policy.Stats into the collector.
@@ -275,7 +288,7 @@ func (c *Collector) Snapshot() Snapshot {
 
 		LodeWriteSuccess: c.lodeWriteSuccess,
 		LodeWriteFailure: c.lodeWriteFailure,
-		LodeWriteRetry:   0, // reserved for future use
+		LodeWriteRetry:   c.lodeWriteRetry,
 
 		Policy:         c.policy,
 		Executor:       c.executor,

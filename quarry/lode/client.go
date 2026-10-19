@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pithecene-io/lode/lode"
@@ -42,17 +43,39 @@ type LodeClient struct { //nolint:revive // intentional naming for clarity
 	storeOnce sync.Once  // lazy store initialization for FileWriter
 	store     lode.Store // lazily created from storeFactory
 	storeErr  error      // error from lazy store creation
+
+	retryGate *retryGate // suppresses the retry observer during WriteMetrics
 }
 
-// newClient creates a LodeClient from a dataset, config, and store factory.
+// retryGate suppresses Config.RetryObserver while the metrics record itself
+// is being persisted. A retry incurred writing the snapshot cannot be
+// reflected in that snapshot, and counting it would make the persisted
+// record disagree with the in-memory collector the CLI prints.
+// Lode invokes the observer synchronously on the committing goroutine, so
+// the flag is read on the same goroutine that set it.
+type retryGate struct {
+	suppressed atomic.Bool
+}
+
+func (g *retryGate) wrap(fn func(attempt int)) func(attempt int) {
+	return func(attempt int) {
+		if !g.suppressed.Load() {
+			fn(attempt)
+		}
+	}
+}
+
+// newClient creates a LodeClient from a dataset, config, store factory, and
+// the retry gate that was installed on the dataset's observer.
 // All constructors must use this to ensure consistent initialization.
-func newClient(ds lode.Dataset, cfg Config, factory lode.StoreFactory) *LodeClient {
+func newClient(ds lode.Dataset, cfg Config, factory lode.StoreFactory, gate *retryGate) *LodeClient {
 	return &LodeClient{
 		dataset:      ds,
 		config:       cfg,
 		storeFactory: factory,
 		offsets:      make(map[string]int64),
 		chunksSeen:   make(map[string]struct{}),
+		retryGate:    gate,
 	}
 }
 
@@ -65,18 +88,28 @@ func NewLodeClient(cfg Config, root string) (*LodeClient, error) {
 // NewLodeClientWithFactory creates a new Lode client with a custom store factory.
 // Use lode.NewMemoryFactory() for testing.
 func NewLodeClientWithFactory(cfg Config, factory lode.StoreFactory) (*LodeClient, error) {
-	ds, err := lode.NewDataset(
-		lode.DatasetID(cfg.Dataset),
-		factory,
-		lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"),
-		lode.WithCodec(lode.NewJSONLCodec()),
-		lode.WithRetryCount(3),
-	)
+	gate := &retryGate{}
+	ds, err := lode.NewDataset(lode.DatasetID(cfg.Dataset), factory, writeDatasetOptions(cfg, gate)...)
 	if err != nil {
 		return nil, WrapInitError(err, cfg.Dataset)
 	}
 
-	return newClient(ds, cfg, factory), nil
+	return newClient(ds, cfg, factory, gate), nil
+}
+
+// writeDatasetOptions returns the Dataset options shared by every write-path
+// constructor: Hive layout, JSONL codec, bounded CAS retry per
+// CONTRACT_LODE.md, and the gated retry observer when one is configured.
+func writeDatasetOptions(cfg Config, gate *retryGate) []lode.Option {
+	opts := []lode.Option{
+		lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"),
+		lode.WithCodec(lode.NewJSONLCodec()),
+		lode.WithRetryCount(3),
+	}
+	if cfg.RetryObserver != nil {
+		opts = append(opts, lode.WithRetryObserver(gate.wrap(cfg.RetryObserver)))
+	}
+	return opts
 }
 
 // WriteEvents writes a batch of events to Lode.
@@ -189,9 +222,15 @@ func (c *LodeClient) WriteChunks(ctx context.Context, _, _ string, chunks []*typ
 // WriteMetrics writes a metrics snapshot to Lode.
 // Written to event_type=metrics partition with record_kind=metrics.
 // This is a standalone write (not part of the event/chunk pipeline).
+// Retries incurred by this write are not observed: the snapshot being
+// persisted was taken before the write began, so counting them would make
+// the persisted record and the live collector disagree (CONTRACT_LODE.md).
 func (c *LodeClient) WriteMetrics(ctx context.Context, snap metrics.Snapshot, completedAt time.Time) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	c.retryGate.suppressed.Store(true)
+	defer c.retryGate.suppressed.Store(false)
 
 	record := toMetricsRecordMap(snap, c.config, completedAt)
 	_, err := c.dataset.Write(ctx, []any{record}, c.snapshotMetadata())
