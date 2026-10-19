@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.6] - 2026-10-19
+
+### Changed
+
+- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.10.0. Additive listing API — sorted listings on every store, `PartitionListOptions.Prefix`, `StartAfter` cursors for dataset/partition/manifest listings, `ErrPartitionPrefixNotSupported`, `ErrInvalidArgument` for refused option values — recorded in `CONTRACT_LODE.md` § Listing Order and Cursors as the basis for the v0.14 read side. Error message text for invalid arguments/paths and nested manifest read failures changed upstream; Quarry matches on sentinels, so no behavior change. Upstream fixes carried: all-or-nothing filesystem `Put`, stream writes no longer hang when `Put` fails fast, filesystem `ReadRange` no longer allocates the full requested length, filesystem `List` matches string prefixes like memory/S3
+
+---
+
 ## [0.13.5] - 2026-10-18
 
 ### Breaking Changes
@@ -614,7 +622,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene-io/quarry/compare/v0.13.5...HEAD
+[Unreleased]: https://github.com/pithecene-io/quarry/compare/v0.13.6...HEAD
+[0.13.6]: https://github.com/pithecene-io/quarry/compare/v0.13.5...v0.13.6
 [0.13.5]: https://github.com/pithecene-io/quarry/compare/v0.13.4...v0.13.5
 [0.13.4]: https://github.com/pithecene-io/quarry/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/pithecene-io/quarry/compare/v0.13.2...v0.13.3

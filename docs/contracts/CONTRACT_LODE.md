@@ -236,6 +236,39 @@ These are runtime configuration options passed via CLI flags (`--storage-endpoin
 
 ---
 
+## Listing Order and Cursors (Lode v0.10.0+)
+
+Quarry's read side relies on the following Lode listing guarantees, which
+Lode's `CONTRACT_READ_API.md` makes normative from v0.10.0:
+
+- Listings are sorted on every store: datasets by ID, partitions by path,
+  manifests by (partition, ID). A reader must not assume store order and
+  must not re-sort.
+- `PartitionListOptions.Prefix` narrows a partition listing to a string
+  prefix of the Hive path. A layout that cannot honour a prefix returns
+  `ErrPartitionPrefixNotSupported`; Quarry's Hive layout supports it.
+- `DatasetListOptions.StartAfter`, `PartitionListOptions.StartAfter`, and
+  `ManifestListOptions.StartAfter` are exclusive cursors over the full
+  sorted key (dataset ID, partition path, or `(partition, ID)`). `Limit`
+  bounds the returned set, not the number of store calls: sorting and the
+  cursor are applied after the matching prefix is enumerated, so paging a
+  wide prefix re-enumerates it on every page. Narrow the prefix before
+  paging.
+- `Store.List` matches a string prefix on every backend (filesystem,
+  memory, S3); keys, prefixes, and S3 prefixes containing a backslash are
+  `ErrInvalidPath` on every platform.
+- Refused caller values — nil store factory, out-of-range `WithRetry*`
+  options — are classified `ErrInvalidArgument` and reported before the
+  store factory is called. Quarry's `WithRetryCount(3)` and
+  `WithRetryObserver` registration are valid values and unaffected.
+
+Error text changed in v0.10.0 (`lode: invalid argument: <value>`,
+`invalid path`, one extra nesting level on manifest read failures);
+`errors.Is` classification is unchanged and Quarry matches on sentinels,
+never on message text.
+
+---
+
 ## Sidecar File Inventory
 
 Sidecar files written via `storage.put()` land at Hive-partitioned paths

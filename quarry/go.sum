@@ -121,8 +121,8 @@ github.com/parquet-go/parquet-go v0.27.0 h1:vHWK2xaHbj+v1DYps03yDRpEsdtOeKbhiXUa
 github.com/parquet-go/parquet-go v0.27.0/go.mod h1:navtkAYr2LGoJVp141oXPlO/sxLvaOe3la2JEoD8+rg=
 github.com/pierrec/lz4/v4 v4.1.25 h1:kocOqRffaIbU5djlIBr7Wh+cx82C0vtFb0fOurZHqD0=
 github.com/pierrec/lz4/v4 v4.1.25/go.mod h1:EoQMVJgeeEOMsCqCzqFm2O0cJvljX2nGZjcRIPL34O4=
-github.com/pithecene-io/lode v0.9.1 h1:eGKD8+lzBx8iExALPtrYjPBO3Jur35D62HR6bgT+Zhs=
-github.com/pithecene-io/lode v0.9.1/go.mod h1:rCxPc0U5A2nuQ2bCIG6qMwKil9qNEcS9znQ7tJPNSh8=
+github.com/pithecene-io/lode v0.10.0 h1:RcjfDh9XRXIOCaM3CI1+tL/Fqf5nP+7aYNbHngEAZvs=
+github.com/pithecene-io/lode v0.10.0/go.mod h1:rCxPc0U5A2nuQ2bCIG6qMwKil9qNEcS9znQ7tJPNSh8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/redis/go-redis/v9 v9.17.3 h1:fN29NdNrE17KttK5Ndf20buqfDZwGNgoUr9qjl1DQx4=
