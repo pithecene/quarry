@@ -22,10 +22,10 @@ mise install github:pithecene/quarry@0.13.5
 
 ```bash
 # Full image (includes Chromium + fonts)
-docker pull ghcr.io/pithecene/quarry:0.13.4
+docker pull ghcr.io/pithecene/quarry:0.13.5
 
 # Slim image (no browser — BYO Chromium via --browser-ws-endpoint)
-docker pull ghcr.io/pithecene/quarry:0.13.4-slim
+docker pull ghcr.io/pithecene/quarry:0.13.5-slim
 ```
 
 > **Note:** image tags are published by the release workflow per tagged
