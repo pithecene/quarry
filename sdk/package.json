@@ -32,12 +32,12 @@
     "test:types": "vitest run --typecheck.only"
   },
   "peerDependencies": {
-    "puppeteer": "^24",
+    "puppeteer": "^24 || ^25",
     "puppeteer-extra": "^3"
   },
   "devDependencies": {
     "fast-check": "^4.10.2",
-    "puppeteer": "^24.43.1",
+    "puppeteer": "^25.14.0",
     "puppeteer-extra": "^3.3.6",
     "tsdown": "^0.20.3"
   }

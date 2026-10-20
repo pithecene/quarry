@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Security
 
-- **Docs**: Roadmap added to `IMPLEMENTATION_PLAN.md` — v0.13.6 (Lode v0.10.0), v0.14.0 (read side #240, retention #239, compression) as six decided architecture points (runtime-owned run lifecycle, one key builder and a `runs/` namespace for Quarry-written objects, run records as the run index with an operator-run backfill, record-driven retention, a rewritten CLI read contract, design record on #245), v1.0 (contract freeze), v1.x (first-party `quarry serve` host). Temporal section demoted to a deferred host; `CONTRACT_INTEGRATION.md` orchestration paradigm generalized so the runtime stays host-agnostic; `PUBLIC_API.md` Known Limitation 7 states what reads exist today and points at the planned reader
+- **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing; the SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
+- **Deps**: Upgrade puppeteer to 25.14.0 in development dependencies and the container image (Chrome for Testing 155.0.8059.79), resolving the `extract-zip` symlink advisories (Dependabot #47, #53): `@puppeteer/browsers` 3.x no longer depends on `extract-zip`. The SDK and executor peer range widens to `puppeteer ^24 || ^25`, so existing puppeteer 24 installs keep working; puppeteer 25 requires Node 22.12+
 
 ---
 
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docs**: Roadmap added to `IMPLEMENTATION_PLAN.md` — v0.13.6 (Lode v0.10.0), v0.14.0 (read side #240, retention #239, compression) as six decided architecture points (runtime-owned run lifecycle, one key builder and a `runs/` namespace for Quarry-written objects, run records as the run index with an operator-run backfill, record-driven retention, a rewritten CLI read contract, design record on #245), v1.0 (contract freeze), v1.x (first-party `quarry serve` host). Temporal section demoted to a deferred host; `CONTRACT_INTEGRATION.md` orchestration paradigm generalized so the runtime stays host-agnostic; `PUBLIC_API.md` Known Limitation 7 states what reads exist today and points at the planned reader
 - **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.10.0. Additive listing API — sorted listings on every store, `PartitionListOptions.Prefix`, `StartAfter` cursors for dataset/partition/manifest listings, `ErrPartitionPrefixNotSupported`, `ErrInvalidArgument` for refused option values — recorded in `CONTRACT_LODE.md` § Listing Order and Cursors as the basis for the v0.14 read side. Error message text for invalid arguments/paths and nested manifest read failures changed upstream; Quarry matches on sentinels, so no behavior change. Upstream fixes carried: all-or-nothing filesystem `Put`, stream writes no longer hang when `Put` fails fast, filesystem `ReadRange` no longer allocates the full requested length, filesystem `List` matches string prefixes like memory/S3
 
 ---

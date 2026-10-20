@@ -74,7 +74,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN npm init -y >/dev/null \
   && npm pkg set 'overrides.basic-ftp=6.2.3' \
   && npm install --omit=dev \
-  puppeteer@24.43.1 \
+  puppeteer@25.14.0 \
   puppeteer-extra@3.3.6 \
   puppeteer-extra-plugin-stealth@2.11.2 \
   puppeteer-extra-plugin-adblocker@2.13.6
@@ -119,9 +119,9 @@ RUN if [ "$TARGETARCH" != "amd64" ]; then \
       exit 1; \
     fi
 
-# Pin Chrome for Testing version matching puppeteer@24.43.1 (see deps stage).
+# Pin Chrome for Testing version matching puppeteer@25.14.0 (see deps stage).
 # Look up the mapping at: https://pptr.dev/supported-browsers
-ARG CHROME_VERSION=148.0.7778.97
+ARG CHROME_VERSION=155.0.8059.79
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
