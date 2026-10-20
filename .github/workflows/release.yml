@@ -335,16 +335,39 @@ jobs:
           echo "📦 Registry: $(npm config get registry)"
           echo "📦 Scope registry: $(npm config get @pithecene:registry || echo 'not set')"
 
+      - name: 🏷️ Release channel
+        id: channel
+        run: scripts/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
       - name: 📦 Publish
         working-directory: sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm publish --access restricted --no-git-checks
+          VERSION: ${{ steps.channel.outputs.version }}
+          NPM_TAG: ${{ steps.channel.outputs.npm_tag }}
+        run: |
+          NAME=$(jq -r '.name' package.json)
+          # Idempotent: a re-run of an already-published version is a success.
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "✅ ${NAME}@${VERSION} already published; ensuring dist-tag ${NPM_TAG}"
+            npm dist-tag add "${NAME}@${VERSION}" "${NPM_TAG}"
+            exit 0
+          fi
+          # Only the highest release claims `latest`; older re-releases
+          # publish under `previous` instead of failing.
+          pnpm publish --access restricted --no-git-checks --tag "${NPM_TAG}"
 
   publish_jsr:
     name: 📦 Publish SDK (JSR)
     runs-on: ubuntu-latest
     needs: [hold]
+    timeout-minutes: 30
+    # Publishes to one JSR package are serialized across release runs:
+    # overlapping publishes (out-of-order re-releases) stall JSR's
+    # publish-status polling.
+    concurrency:
+      group: jsr-publish
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -362,12 +385,28 @@ jobs:
         working-directory: sdk
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          NAME=$(jq -r '.name' jsr.json)
+          SCOPE=$(echo "${NAME#@}" | cut -d/ -f1)
+          PKG=$(echo "$NAME" | cut -d/ -f2)
+          URL="https://api.jsr.io/scopes/${SCOPE}/packages/${PKG}/versions/${VERSION}"
+          published() { [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL")" = "200" ]; }
+          # Idempotent: a re-run of an already-published version is a success.
+          if published; then
+            echo "✅ ${NAME}@${VERSION} already on JSR"
+            exit 0
+          fi
           MAX_ATTEMPTS=3
           DELAY=10
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "🔄 Attempt $attempt/$MAX_ATTEMPTS"
-            if npx jsr publish --set-version "$VERSION"; then
+            if timeout 600 npx jsr publish --set-version "$VERSION"; then
               echo "✅ Published successfully"
+              exit 0
+            fi
+            # The upload can succeed while status polling fails (connection
+            # reset); trust JSR's own record over the client's exit code.
+            if published; then
+              echo "✅ ${NAME}@${VERSION} is on JSR despite the client error"
               exit 0
             fi
             if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
@@ -403,9 +442,11 @@ jobs:
       - name: 🏷️ Extract metadata
         id: meta
         run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          scripts/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
+      # :latest and :slim move only for the highest release, so an older
+      # re-release publishes its versioned tags without regressing them.
       - name: 🐳 Build & push (slim)
         uses: docker/build-push-action@v6
         with:
@@ -416,7 +457,7 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}-slim
-            ghcr.io/pithecene/quarry:slim
+            ${{ steps.meta.outputs.latest == 'true' && 'ghcr.io/pithecene/quarry:slim' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -430,6 +471,6 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}
-            ghcr.io/pithecene/quarry:latest
+            ${{ steps.meta.outputs.latest == 'true' && 'ghcr.io/pithecene/quarry:latest' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
