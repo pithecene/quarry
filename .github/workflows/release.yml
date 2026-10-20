@@ -432,6 +432,10 @@ jobs:
     name: 🏷️ Release Pointers
     runs-on: ubuntu-latest
     needs: [publish_ghpr, container]
+    # Run if either registry published, so one registry's failure does not
+    # leave the other's pointers stale (the script converges each one only
+    # to releases actually published there).
+    if: ${{ !cancelled() && (needs.publish_ghpr.result == 'success' || needs.container.result == 'success') }}
     concurrency:
       group: release-pointers
       cancel-in-progress: false

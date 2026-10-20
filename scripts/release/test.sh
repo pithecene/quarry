@@ -26,7 +26,7 @@ cat >"$STUBS/npm" <<'EOF'
 echo "npm $*" >>"$STATE/calls"
 case "$1" in
   view) grep -qx "${2##*@}" "$STATE/npm_versions" 2>/dev/null ;;
-  dist-tag) exit 0 ;;
+  dist-tag) [[ ! -f "$STATE/npm_dist_tag_fails" ]] ;;
   *) exit 2 ;;
 esac
 EOF
@@ -236,6 +236,14 @@ tags v1.2.3
 expect "converge: nothing published leaves pointers unchanged" ok "$C" "$PKG" ghcr.io/x/y
 check "converge: no npm write" [ "$(grep -c 'dist-tag' "$STATE/calls")" -eq 0 ]
 check "converge: no image write" [ "$(grep -c ' create ' "$STATE/calls")" -eq 0 ]
+
+new_case
+tags v1.2.3
+echo 1.2.3 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
+touch "$STATE/npm_dist_tag_fails"
+expect "converge: an npm pointer failure fails the job" fail "$C" "$PKG" ghcr.io/x/y
+check "converge: images still converge when npm fails" [ "$(last_alias latest)" = "ghcr.io/x/y:1.2.3" ]
 
 new_case
 expect "converge: unreadable tag list fails" fail env RELEASE_TAGS_FILE="$WORK/missing" "$C" "$PKG" ghcr.io/x/y

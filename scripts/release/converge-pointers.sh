@@ -44,17 +44,30 @@ first_where() {
   return 1
 }
 
-if NPM_TARGET=$(first_where npm_published); then
-  npm dist-tag add "${NAME}@${NPM_TARGET}" latest
-  info "npm ${NAME} latest -> ${NPM_TARGET}"
-else
-  info "no release of ${NAME} is published; npm latest unchanged"
-fi
+converge_npm() {
+  local target
+  if ! target=$(first_where npm_published); then
+    info "no release of ${NAME} is published; npm latest unchanged"
+    return 0
+  fi
+  npm dist-tag add "${NAME}@${target}" latest || return 1
+  info "npm ${NAME} latest -> ${target}"
+}
 
-if IMAGE_TARGET=$(first_where images_pushed); then
-  docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${IMAGE_TARGET}"
-  docker buildx imagetools create -t "${IMAGE}:slim" "${IMAGE}:${IMAGE_TARGET}-slim"
-  info "${IMAGE}:latest -> ${IMAGE_TARGET}, :slim -> ${IMAGE_TARGET}-slim"
-else
-  info "no release images are pushed; ${IMAGE}:latest and :slim unchanged"
-fi
+converge_images() {
+  local target
+  if ! target=$(first_where images_pushed); then
+    info "no release images are pushed; ${IMAGE}:latest and :slim unchanged"
+    return 0
+  fi
+  docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${target}" || return 1
+  docker buildx imagetools create -t "${IMAGE}:slim" "${IMAGE}:${target}-slim" || return 1
+  info "${IMAGE}:latest -> ${target}, :slim -> ${target}-slim"
+}
+
+# Each registry is attempted even if the other fails; the job still fails
+# so the stale pointer is visible and a re-run repairs it.
+FAILED=()
+converge_npm || FAILED+=("npm latest")
+converge_images || FAILED+=("GHCR :latest/:slim")
+((${#FAILED[@]} == 0)) || die "failed to converge: ${FAILED[*]}"
