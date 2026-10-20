@@ -4,9 +4,12 @@
 #
 # The registry and auth come from the caller's npm config (actions/setup-node
 # in CI). A version that is already published — a re-run, or a concurrent
-# run that won the race — is a success, not a failure. Requires the release
-# tag to have passed assert-highest-tag.sh, so publishing under the default
-# `latest` dist-tag is always correct.
+# run that won the race — is a success, not a failure.
+#
+# The `latest` dist-tag is decided at publish time: only a version that is
+# still the highest release when it is published takes `latest`; one that a
+# newer release overtook mid-run publishes under `previous`, so `latest`
+# never moves backwards.
 
 set -euo pipefail
 # shellcheck source=scripts/release/lib.sh
@@ -27,8 +30,13 @@ if published; then
   exit 0
 fi
 
-if pnpm publish --access restricted --no-git-checks; then
-  info "Published ${NAME}@${VERSION}"
+DIST_TAG=previous
+if tag_is_highest "v${VERSION}"; then
+  DIST_TAG=latest
+fi
+
+if pnpm publish --access restricted --no-git-checks --tag "$DIST_TAG"; then
+  info "Published ${NAME}@${VERSION} (dist-tag ${DIST_TAG})"
   exit 0
 fi
 

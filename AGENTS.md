@@ -186,9 +186,11 @@ carries another version fails the build. Never hand-edit a version string;
 if a new file must print the version, add it to the targets list.
 
 Releases are monotonic: the release workflow rejects a tag lower than any
-released tag before publishing anything, so npm `latest` and GHCR `:latest`
-/ `:slim` only move forward. Re-running a release is safe (publishing skips
-versions that already exist). Republishing an older version is a deliberate
+released tag before publishing anything, and npm `latest` and GHCR `:latest`
+/ `:slim` are written only by a release that is still the highest at the
+moment of writing, so they only move forward even when a newer release is
+tagged mid-run. Re-running a release is safe (publishing skips versions that
+already exist). Republishing an older version is a deliberate
 manual operation, never a tag push. Release-workflow logic lives in
 `scripts/release/` with tests, not inline in workflow YAML.
 

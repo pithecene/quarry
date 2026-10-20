@@ -341,9 +341,6 @@ jobs:
           echo "📦 Registry: $(npm config get registry)"
           echo "📦 Scope registry: $(npm config get @pithecene:registry || echo 'not set')"
 
-      - name: 🔎 Releases Are Monotonic
-        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
-
       - name: 📦 Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -382,11 +379,6 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      # :latest and :slim may only move forward; re-checked here so a re-run
-      # of an older release's job cannot regress them.
-      - name: 🔎 Releases Are Monotonic
-        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
-
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -413,7 +405,6 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}-slim
-            ghcr.io/pithecene/quarry:slim
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -427,6 +418,10 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}
-            ghcr.io/pithecene/quarry:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Moving tags are decided after the builds, at the moment of writing,
+      # so a release overtaken mid-build cannot move them backwards.
+      - name: 🏷️ Move :latest and :slim
+        run: scripts/release/move-image-aliases.sh ghcr.io/pithecene/quarry "${{ steps.meta.outputs.version }}"

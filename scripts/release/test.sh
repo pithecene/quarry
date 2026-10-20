@@ -50,6 +50,12 @@ case "$(cat "$STATE/npx_mode" 2>/dev/null || echo ok)" in
 esac
 EOF
 
+# docker buildx imagetools create -t <alias> <source>: records the retag.
+cat >"$STUBS/docker" <<'EOF2'
+#!/usr/bin/env bash
+echo "docker $*" >>"$STATE/calls"
+EOF2
+
 # curl -w '%{http_code}' <url>: 200 iff the version is on JSR.
 cat >"$STUBS/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -92,24 +98,28 @@ check() {
   if "$@"; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); echo "FAIL: $desc"; fi
 }
 
+# tags <tag>...: the released tags the scripts see (via RELEASE_TAGS_FILE).
 tags() { printf '%s\n' "$@" >"$WORK/tags"; }
+export RELEASE_TAGS_FILE="$WORK/tags"
 
 # --- assert-highest-tag.sh ---------------------------------------------------
 
 A="$HERE/assert-highest-tag.sh"
 tags v0.13.4 v0.13.5 v0.13.6
-expect "higher tag passes" ok "$A" v0.13.7 --tags-file "$WORK/tags"
-expect "re-run of the highest tag passes" ok "$A" v0.13.6 --tags-file "$WORK/tags"
-expect "older tag is rejected" fail "$A" v0.13.5 --tags-file "$WORK/tags"
+expect "higher tag passes" ok "$A" v0.13.7
+expect "re-run of the highest tag passes" ok "$A" v0.13.6
+expect "older tag is rejected" fail "$A" v0.13.5
 tags v0.9.0 v0.10.0
-expect "versions compare numerically, not lexically" fail "$A" v0.9.1 --tags-file "$WORK/tags"
-expect "minor bump above a two-digit minor passes" ok "$A" v0.11.0 --tags-file "$WORK/tags"
+expect "versions compare numerically, not lexically" fail "$A" v0.9.1
+expect "minor bump above a two-digit minor passes" ok "$A" v0.11.0
 tags v1.0.0-rc.1 latest v0.13.6
-expect "non-release tags are ignored" ok "$A" v0.13.6 --tags-file "$WORK/tags"
+expect "non-release tags are ignored" ok "$A" v0.13.6
 tags
-expect "first release passes" ok "$A" v0.1.0 --tags-file "$WORK/tags"
-expect "malformed tag is rejected" fail "$A" 0.13.6 --tags-file "$WORK/tags"
+expect "first release passes" ok "$A" v0.1.0
+expect "malformed tag is rejected" fail "$A" 0.13.6
 expect "missing tag is rejected" fail "$A"
+tags v0.13.6
+expect "unreadable tag list fails instead of passing" fail env RELEASE_TAGS_FILE="$WORK/missing" "$A" v0.13.7
 
 # --- publish-npm.sh ----------------------------------------------------------
 
@@ -121,8 +131,15 @@ expect "npm: already published succeeds" ok "$N" "$PKG"
 check "npm: already published does not republish" [ "$(calls pnpm)" -eq 0 ]
 
 new_case
+tags v1.2.2
 expect "npm: unpublished version publishes" ok "$N" "$PKG"
 check "npm: publishes exactly once" [ "$(calls pnpm)" -eq 1 ]
+check "npm: the highest release takes latest" grep -q -- "--tag latest" "$STATE/calls"
+
+new_case
+tags v1.2.3 v1.3.0
+expect "npm: a release overtaken mid-run still publishes" ok "$N" "$PKG"
+check "npm: an overtaken release publishes under previous" grep -q -- "--tag previous" "$STATE/calls"
 
 new_case
 echo race >"$STATE/pnpm_mode"
@@ -161,6 +178,25 @@ echo hang >"$STATE/npx_mode"
 expect "jsr: a stalled attempt is cut off and the job fails" fail \
   env JSR_ATTEMPTS=2 JSR_ATTEMPT_TIMEOUT=1 "$J" "$PKG" 1.2.3
 check "jsr: each stalled attempt is retried" [ "$(calls npx)" -eq 2 ]
+
+# --- move-image-aliases.sh ----------------------------------------------------
+
+M="$HERE/move-image-aliases.sh"
+
+new_case
+tags v1.2.2 v1.2.3
+expect "aliases: the highest release moves them" ok "$M" ghcr.io/x/y 1.2.3
+check "aliases: moves :latest to the release" grep -q -- "-t ghcr.io/x/y:latest ghcr.io/x/y:1.2.3" "$STATE/calls"
+check "aliases: moves :slim to the slim release" grep -q -- "-t ghcr.io/x/y:slim ghcr.io/x/y:1.2.3-slim" "$STATE/calls"
+
+new_case
+tags v1.2.3 v1.3.0
+expect "aliases: an overtaken release succeeds" ok "$M" ghcr.io/x/y 1.2.3
+check "aliases: an overtaken release leaves them unchanged" [ "$(calls docker)" -eq 0 ]
+
+new_case
+expect "aliases: unreadable tag list fails" fail env RELEASE_TAGS_FILE="$WORK/missing" "$M" ghcr.io/x/y 1.2.3
+check "aliases: unreadable tag list moves nothing" [ "$(calls docker)" -eq 0 ]
 
 # --- result ------------------------------------------------------------------
 

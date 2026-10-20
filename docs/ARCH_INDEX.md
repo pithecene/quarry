@@ -203,7 +203,7 @@ Developer tooling and test harnesses.
 - `run-examples.ts` — manifest-driven example runner
 - `version-targets.txt` — single list of every place the product version is written
 - `version-bump.sh`, `version-check.sh`, `version-targets.sh` — lockstep bump and drift check over that list
-- `release/` — release-workflow steps (monotonic tag check, idempotent npm and JSR publishing) with stubbed-registry tests in `release/test.sh`
+- `release/` — release-workflow steps (monotonic tag check, idempotent npm and JSR publishing, forward-only image aliases) with stubbed-registry tests in `release/test.sh`
 
 ---
 
