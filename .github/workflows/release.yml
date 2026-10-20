@@ -22,6 +22,12 @@ jobs:
           text: ${{ github.ref_name }}
           regex: ^v[0-9]+\.[0-9]+\.[0-9]+$
 
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔎 Releases Are Monotonic
+        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
+
   version_lockstep:
     name: 🔒 Version Lockstep
     runs-on: ubuntu-latest
@@ -335,58 +341,19 @@ jobs:
           echo "📦 Registry: $(npm config get registry)"
           echo "📦 Scope registry: $(npm config get @pithecene:registry || echo 'not set')"
 
-      - name: 🏷️ Release channel
-        id: channel
-        run: scripts/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+      - name: 🔎 Releases Are Monotonic
+        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
 
       - name: 📦 Publish
-        working-directory: sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.channel.outputs.version }}
-        run: |
-          NAME=$(jq -r '.name' package.json)
-          exists() { npm view "${NAME}@$1" version >/dev/null 2>&1; }
-          # Idempotent: a re-run of an already-published version is a success.
-          # Publish under `previous`; `latest` is converged below, never claimed.
-          if ! exists "$VERSION"; then
-            if ! pnpm publish --access restricted --no-git-checks --tag previous; then
-              # A concurrent run for the same tag may have published first.
-              exists "$VERSION" || exit 1
-              echo "✅ ${NAME}@${VERSION} was published concurrently"
-            fi
-          else
-            echo "✅ ${NAME}@${VERSION} already published"
-          fi
-          # Converge `latest` onto the highest published release, whichever
-          # run this is, re-reading until the highest tag is stable across a
-          # write (same argument as the container step).
-          written=""
-          for _ in 1 2 3 4 5; do
-            CHANNEL=$(cd .. && scripts/release-channel.sh "$GITHUB_REF_NAME")
-            eval "$CHANNEL"
-            [ "$highest" = "$written" ] && { echo "✅ latest -> ${highest}"; exit 0; }
-            if ! exists "$highest"; then
-              echo "ℹ️ ${NAME}@${highest} not published yet; its release run will converge latest"
-              exit 0
-            fi
-            npm dist-tag add "${NAME}@${highest}" latest
-            written="$highest"
-          done
-          echo "::error::highest release kept changing; latest not confirmed"
-          exit 1
+        run: scripts/release/publish-npm.sh sdk
 
   publish_jsr:
     name: 📦 Publish SDK (JSR)
     runs-on: ubuntu-latest
     needs: [hold]
-    # 3 attempts x 8 min + backoff + setup. No concurrency group: GitHub
-    # keeps only one pending job per group and would silently drop a queued
-    # release; re-runs are safe because publishing is idempotent below.
-    # Overlap is not the cause of JSR stalls: the v0.13.6 publish stalled in
-    # "waiting for publishing" with no other publish running (JSR server-side
-    # processing, jsr-io/jsr#1238), so the guard is the per-attempt timeout
-    # plus the check against JSR's own record.
+    # Sized for publish-jsr.sh's three 8-minute attempts plus backoff.
     timeout-minutes: 35
     permissions:
       contents: read
@@ -402,41 +369,7 @@ jobs:
         run: pnpm install
 
       - name: 📦 Publish
-        working-directory: sdk
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          NAME=$(jq -r '.name' jsr.json)
-          SCOPE=$(echo "${NAME#@}" | cut -d/ -f1)
-          PKG=$(echo "$NAME" | cut -d/ -f2)
-          URL="https://api.jsr.io/scopes/${SCOPE}/packages/${PKG}/versions/${VERSION}"
-          published() { [ "$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "$URL")" = "200" ]; }
-          # Idempotent: a re-run of an already-published version is a success.
-          if published; then
-            echo "✅ ${NAME}@${VERSION} already on JSR"
-            exit 0
-          fi
-          MAX_ATTEMPTS=3
-          DELAY=10
-          for attempt in $(seq 1 $MAX_ATTEMPTS); do
-            echo "🔄 Attempt $attempt/$MAX_ATTEMPTS"
-            if timeout 480 npx jsr publish --set-version "$VERSION"; then
-              echo "✅ Published successfully"
-              exit 0
-            fi
-            # The upload can succeed while status polling fails (connection
-            # reset); trust JSR's own record over the client's exit code.
-            if published; then
-              echo "✅ ${NAME}@${VERSION} is on JSR despite the client error"
-              exit 0
-            fi
-            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-              echo "⏳ Retrying in ${DELAY}s..."
-              sleep "$DELAY"
-              DELAY=$((DELAY * 2))
-            fi
-          done
-          echo "❌ Failed after $MAX_ATTEMPTS attempts"
-          exit 1
+        run: scripts/release/publish-jsr.sh sdk "${GITHUB_REF_NAME#v}"
 
   container:
     name: 🐳 Container Images
@@ -448,6 +381,11 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
+
+      # :latest and :slim may only move forward; re-checked here so a re-run
+      # of an older release's job cannot regress them.
+      - name: 🔎 Releases Are Monotonic
+        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -462,11 +400,9 @@ jobs:
       - name: 🏷️ Extract metadata
         id: meta
         run: |
-          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      # Builds push only the versioned tags; :latest and :slim are moved in a
-      # separate final step (below) so the decision is made after the builds.
       - name: 🐳 Build & push (slim)
         uses: docker/build-push-action@v6
         with:
@@ -477,6 +413,7 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}-slim
+            ghcr.io/pithecene/quarry:slim
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -490,36 +427,6 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}
+            ghcr.io/pithecene/quarry:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      # Moving tags follow only the highest release. The channel is computed
-      # here, after the builds, from the tags on origin at this moment, so a
-      # newer release tagged mid-build is not regressed; the retag itself is
-      # a manifest copy that takes seconds.
-      - name: 🏷️ Point :latest and :slim at the highest release
-        run: |
-          IMG=ghcr.io/pithecene/quarry
-          # Converge, don't claim: point the moving tags at the highest
-          # release, whichever run this is, then re-read and repeat until the
-          # highest tag is stable across a write. A newer release's tag exists
-          # before its run starts, so any stale write landing after the newer
-          # run's write is followed by a re-read that sees it and corrects.
-          # If the highest release's images are not pushed yet, its own run
-          # converges the tags when it finishes.
-          written=""
-          for _ in 1 2 3 4 5; do
-            CHANNEL=$(scripts/release-channel.sh "$GITHUB_REF_NAME")
-            eval "$CHANNEL"
-            [ "$highest" = "$written" ] && { echo "✅ :latest/:slim -> ${highest}"; exit 0; }
-            if ! docker buildx imagetools inspect "${IMG}:${highest}" >/dev/null 2>&1 \
-              || ! docker buildx imagetools inspect "${IMG}:${highest}-slim" >/dev/null 2>&1; then
-              echo "ℹ️ ${IMG}:${highest} not published yet; its release run will converge :latest and :slim"
-              exit 0
-            fi
-            docker buildx imagetools create -t "${IMG}:latest" "${IMG}:${highest}"
-            docker buildx imagetools create -t "${IMG}:slim" "${IMG}:${highest}-slim"
-            written="$highest"
-          done
-          echo "::error::highest release kept changing; :latest/:slim not confirmed"
-          exit 1

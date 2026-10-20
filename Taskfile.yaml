@@ -16,14 +16,14 @@ tasks:
     deps: [go:build]
 
   lint:
-    desc: Lint all packages (Go + TS + YAML)
-    deps: [go:lint, ts:lint]
+    desc: Lint all packages (Go + TS + shell + YAML)
+    deps: [go:lint, ts:lint, scripts:lint]
     cmds:
       - yamllint .
 
   test:
-    desc: Run all tests (Go + TS)
-    deps: [go:test, ts:test]
+    desc: Run all tests (Go + TS + release scripts)
+    deps: [go:test, ts:test, scripts:test]
 
   test:race:
     desc: Run all tests with race detector
@@ -151,6 +151,20 @@ tasks:
     dir: quarry
     cmds:
       - golangci-lint run --fix ./...
+
+  # ==================
+  # Script tasks
+  # ==================
+
+  scripts:lint:
+    desc: Lint shell scripts (shellcheck)
+    cmds:
+      - shellcheck -x scripts/*.sh scripts/release/*.sh
+
+  scripts:test:
+    desc: Test release scripts against stubbed registries
+    cmds:
+      - scripts/release/test.sh
 
   # ==================
   # Docker tasks
