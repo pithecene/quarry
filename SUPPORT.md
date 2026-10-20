@@ -124,6 +124,7 @@ When reporting issues, include:
 ## Security
 
 Report security vulnerabilities privately:
+- GitHub: [report a vulnerability](https://github.com/pithecene/quarry/security/advisories/new) (private advisory)
 - Email: contact@pithecene.sh
 - Do **not** file security issues publicly
 
