@@ -7,10 +7,10 @@
 # current release passes. Republishing an older version is a deliberate
 # manual operation, not a workflow path.
 #
-# This is the gate on new tags. The moving pointers (npm `latest`, GHCR
-# :latest and :slim) are additionally decided at the moment they are
-# written (publish-npm.sh, move-image-aliases.sh), because a newer release
-# can be tagged while an older release's run is still building.
+# This is a policy gate on new tags. The moving pointers (npm `latest`,
+# GHCR :latest and :slim) do not depend on it for correctness: they are
+# owned by converge-pointers.sh, which points them at the highest published
+# release regardless of which run invokes it.
 
 set -euo pipefail
 # shellcheck source=scripts/release/lib.sh

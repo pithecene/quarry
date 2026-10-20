@@ -32,14 +32,6 @@ released_tags() {
   git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/||'
 }
 
-# highest_released_version: the highest release tag on origin without the
-# leading v, or nothing if there is none. Fails if tags can't be read.
-highest_released_version() {
-  local tags
-  tags=$(released_tags) || die "could not list release tags on origin"
-  printf '%s\n' "$tags" | highest_tag | sed 's/^v//'
-}
-
 # tag_is_highest <tag>: true if <tag> is at least as high as every released
 # tag (equal counts, so a re-run of the current release qualifies). Fails
 # the caller (non-zero, distinct from "not highest") if tags can't be read.

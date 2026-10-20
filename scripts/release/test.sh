@@ -32,8 +32,6 @@ esac
 EOF
 
 # pnpm publish: behaviour from $STATE/pnpm_mode; publishes 1.2.3.
-# "overtaken" simulates a newer release (v1.3.0) being tagged and published
-# while this publish is in flight.
 cat >"$STUBS/pnpm" <<'EOF'
 #!/usr/bin/env bash
 echo "pnpm $*" >>"$STATE/calls"
@@ -41,7 +39,6 @@ case "$(cat "$STATE/pnpm_mode" 2>/dev/null || echo ok)" in
   ok) echo 1.2.3 >>"$STATE/npm_versions" ;;
   fail) exit 1 ;;
   race) echo 1.2.3 >>"$STATE/npm_versions"; exit 1 ;;
-  overtaken) echo 1.2.3 >>"$STATE/npm_versions"; echo 1.3.0 >>"$STATE/npm_versions"; echo v1.3.0 >>"$RELEASE_TAGS_FILE" ;;
 esac
 EOF
 
@@ -58,20 +55,13 @@ esac
 EOF
 
 # docker buildx imagetools inspect <ref>: succeeds iff <ref> is listed in
-# images. create -t <alias> <src>: recorded; with docker_mode "overtaken",
-# the first create also tags and pushes a newer release (v1.3.0), simulating
-# a newer run finishing during this write.
+# images. create -t <alias> <src>: recorded.
 cat >"$STUBS/docker" <<'EOF'
 #!/usr/bin/env bash
 echo "docker $*" >>"$STATE/calls"
 case "$3" in
   inspect) grep -qx "$4" "$STATE/images" 2>/dev/null ;;
-  create)
-    if [[ "$(cat "$STATE/docker_mode" 2>/dev/null)" == overtaken ]]; then
-      rm "$STATE/docker_mode"
-      echo v1.3.0 >>"$RELEASE_TAGS_FILE"
-      printf '%s\n' ghcr.io/x/y:1.3.0 ghcr.io/x/y:1.3.0-slim >>"$STATE/images"
-    fi ;;
+  create) exit 0 ;;
 esac
 EOF
 
@@ -145,48 +135,23 @@ expect "unreadable tag list fails instead of passing" fail env RELEASE_TAGS_FILE
 N="$HERE/publish-npm.sh"
 
 new_case
-tags v1.2.3
 echo 1.2.3 >"$STATE/npm_versions"
 expect "npm: already published succeeds" ok "$N" "$PKG"
 check "npm: already published does not republish" [ "$(calls pnpm)" -eq 0 ]
 
 new_case
-tags v1.2.2 v1.2.3
 expect "npm: unpublished version publishes" ok "$N" "$PKG"
 check "npm: publishes exactly once" [ "$(calls pnpm)" -eq 1 ]
-check "npm: the highest release takes latest" grep -q -- "--tag latest" "$STATE/calls"
-check "npm: no dist-tag correction needed" [ "$(grep -c 'dist-tag' "$STATE/calls")" -eq 0 ]
+check "npm: publishes under the release dist-tag, never latest" grep -q -- "--tag release" "$STATE/calls"
+check "npm: publishing never touches latest" [ "$(grep -c 'latest' "$STATE/calls")" -eq 0 ]
 
 new_case
-tags v1.2.3 v1.3.0
-echo 1.3.0 >"$STATE/npm_versions"
-expect "npm: a release already overtaken still publishes" ok "$N" "$PKG"
-check "npm: an overtaken release publishes under previous" grep -q -- "--tag previous" "$STATE/calls"
-check "npm: latest is kept on the newer published release" grep -q "dist-tag add @scope/pkg@1.3.0 latest" "$STATE/calls"
-
-new_case
-tags v1.2.3 v1.3.0
-expect "npm: overtaken by a release not yet published" ok "$N" "$PKG"
-check "npm: latest is left for the newer release's own run" [ "$(grep -c 'dist-tag' "$STATE/calls")" -eq 0 ]
-
-new_case
-tags v1.2.3
-echo overtaken >"$STATE/pnpm_mode"
-expect "npm: newer release tagged and published during our publish" ok "$N" "$PKG"
-check "npm: the re-check restores latest to the newer release" grep -q "dist-tag add @scope/pkg@1.3.0 latest" "$STATE/calls"
-
-new_case
-tags v1.2.3
 echo race >"$STATE/pnpm_mode"
 expect "npm: concurrent publish counts as success" ok "$N" "$PKG"
 
 new_case
-tags v1.2.3
 echo fail >"$STATE/pnpm_mode"
 expect "npm: real publish failure fails" fail "$N" "$PKG"
-
-new_case
-expect "npm: unreadable tag list fails" fail env RELEASE_TAGS_FILE="$WORK/missing" "$N" "$PKG"
 
 # --- publish-jsr.sh ----------------------------------------------------------
 
@@ -218,45 +183,63 @@ expect "jsr: a stalled attempt is cut off and the job fails" fail \
   env JSR_ATTEMPTS=2 JSR_ATTEMPT_TIMEOUT=1 "$J" "$PKG" 1.2.3
 check "jsr: each stalled attempt is retried" [ "$(calls npx)" -eq 2 ]
 
-# --- move-image-aliases.sh ----------------------------------------------------
+# --- converge-pointers.sh -----------------------------------------------------
 
-M="$HERE/move-image-aliases.sh"
+C="$HERE/converge-pointers.sh"
 img() { printf '%s\n' "$@" >"$STATE/images"; }
+last_alias() { grep -- " create -t ghcr.io/x/y:$1 " "$STATE/calls" | tail -n 1 | awk '{print $NF}'; }
 
 new_case
-tags v1.2.2 v1.2.3
-img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
-expect "aliases: the highest release moves them" ok "$M" ghcr.io/x/y 1.2.3
-check "aliases: :latest -> the release" grep -q -- "-t ghcr.io/x/y:latest ghcr.io/x/y:1.2.3" "$STATE/calls"
-check "aliases: :slim -> the slim release" grep -q -- "-t ghcr.io/x/y:slim ghcr.io/x/y:1.2.3-slim" "$STATE/calls"
-check "aliases: written once" [ "$(grep -c ' create ' "$STATE/calls")" -eq 2 ]
+tags v1.2.2 v1.2.3 junk v1.3.0-rc.1
+printf '%s\n' 1.2.2 1.2.3 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.2 ghcr.io/x/y:1.2.2-slim ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
+expect "converge: succeeds" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: npm latest -> highest published" grep -q "dist-tag add @scope/pkg@1.2.3 latest" "$STATE/calls"
+check "converge: :latest -> highest pushed" [ "$(last_alias latest)" = "ghcr.io/x/y:1.2.3" ]
+check "converge: :slim -> highest pushed slim" [ "$(last_alias slim)" = "ghcr.io/x/y:1.2.3-slim" ]
+
+new_case
+tags v0.9.0 v0.10.0
+printf '%s\n' 0.9.0 0.10.0 >"$STATE/npm_versions"
+img ghcr.io/x/y:0.9.0 ghcr.io/x/y:0.9.0-slim ghcr.io/x/y:0.10.0 ghcr.io/x/y:0.10.0-slim
+expect "converge: numeric version order" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: 0.10.0 beats 0.9.0 on npm" grep -q "dist-tag add @scope/pkg@0.10.0 latest" "$STATE/calls"
+check "converge: 0.10.0 beats 0.9.0 on GHCR" [ "$(last_alias latest)" = "ghcr.io/x/y:0.10.0" ]
 
 new_case
 tags v1.2.3 v1.3.0
+echo 1.2.3 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
+expect "converge: newer release tagged but not yet published" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: npm latest stays on the highest published" grep -q "dist-tag add @scope/pkg@1.2.3 latest" "$STATE/calls"
+check "converge: :latest stays on the highest pushed" [ "$(last_alias latest)" = "ghcr.io/x/y:1.2.3" ]
+
+new_case
+tags v1.2.3 v1.3.0
+printf '%s\n' 1.2.3 1.3.0 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim ghcr.io/x/y:1.3.0
+expect "converge: registries are converged independently" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: npm moves to the newer published release" grep -q "dist-tag add @scope/pkg@1.3.0 latest" "$STATE/calls"
+check "converge: images wait for both newer images to be pushed" [ "$(last_alias latest)" = "ghcr.io/x/y:1.2.3" ]
+
+new_case
+tags v1.2.3 v1.3.0
+printf '%s\n' 1.2.3 1.3.0 >"$STATE/npm_versions"
 img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim ghcr.io/x/y:1.3.0 ghcr.io/x/y:1.3.0-slim
-expect "aliases: an overtaken release succeeds" ok "$M" ghcr.io/x/y 1.2.3
-check "aliases: never pointed at the overtaken release" [ "$(grep -c 'ghcr.io/x/y:1.2.3' "$STATE/calls")" -eq 0 ]
-check "aliases: kept on the newer pushed release" grep -q -- "-t ghcr.io/x/y:latest ghcr.io/x/y:1.3.0" "$STATE/calls"
-
-new_case
-tags v1.2.3 v1.3.0
-img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
-expect "aliases: overtaken by a release not yet pushed" ok "$M" ghcr.io/x/y 1.2.3
-check "aliases: left for the newer release's own run" [ "$(grep -c ' create ' "$STATE/calls")" -eq 0 ]
+"$C" "$PKG" ghcr.io/x/y >/dev/null 2>&1
+"$C" "$PKG" ghcr.io/x/y >/dev/null 2>&1
+check "converge: idempotent, invoking run does not matter" [ "$(grep -c 'dist-tag add @scope/pkg@1.3.0 latest' "$STATE/calls")" -eq 2 ]
+check "converge: never points at an older release" [ "$(grep -c 'dist-tag add @scope/pkg@1.2.3' "$STATE/calls")" -eq 0 ]
 
 new_case
 tags v1.2.3
-img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
-echo overtaken >"$STATE/docker_mode"
-expect "aliases: newer release finishes during our write" ok "$M" ghcr.io/x/y 1.2.3
-check "aliases: the re-check restores :latest to the newer release" \
-  [ "$(grep -- ' create -t ghcr.io/x/y:latest' "$STATE/calls" | tail -n 1)" = "docker buildx imagetools create -t ghcr.io/x/y:latest ghcr.io/x/y:1.3.0" ]
-check "aliases: the re-check restores :slim to the newer release" \
-  [ "$(grep -- ' create -t ghcr.io/x/y:slim' "$STATE/calls" | tail -n 1)" = "docker buildx imagetools create -t ghcr.io/x/y:slim ghcr.io/x/y:1.3.0-slim" ]
+expect "converge: nothing published leaves pointers unchanged" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: no npm write" [ "$(grep -c 'dist-tag' "$STATE/calls")" -eq 0 ]
+check "converge: no image write" [ "$(grep -c ' create ' "$STATE/calls")" -eq 0 ]
 
 new_case
-expect "aliases: unreadable tag list fails" fail env RELEASE_TAGS_FILE="$WORK/missing" "$M" ghcr.io/x/y 1.2.3
-check "aliases: unreadable tag list moves nothing" [ "$(grep -c ' create ' "$STATE/calls")" -eq 0 ]
+expect "converge: unreadable tag list fails" fail env RELEASE_TAGS_FILE="$WORK/missing" "$C" "$PKG" ghcr.io/x/y
+check "converge: unreadable tag list writes nothing" [ "$(grep -c 'dist-tag\| create ' "$STATE/calls")" -eq 0 ]
 
 # --- result ------------------------------------------------------------------
 
