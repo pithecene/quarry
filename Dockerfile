@@ -84,6 +84,16 @@ RUN npm init -y >/dev/null \
 # =============================================================================
 FROM node:24.13.0-bookworm-slim AS slim
 
+# Inherited by the full stage. The source label links the GHCR package to
+# this repository.
+LABEL org.opencontainers.image.title="quarry" \
+      org.opencontainers.image.description="Web extraction runtime for browser-driven crawling and durable ingestion" \
+      org.opencontainers.image.source="https://github.com/pithecene/quarry" \
+      org.opencontainers.image.url="https://github.com/pithecene/quarry" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="Pithecene" \
+      org.opencontainers.image.authors="contact@pithecene.sh"
+
 RUN groupadd -r quarry && useradd -r -g quarry -m quarry
 
 COPY --from=build /usr/local/bin/quarry /usr/local/bin/quarry

@@ -1,6 +1,17 @@
 {
   "name": "@pithecene/quarry-sdk",
   "version": "0.13.7",
+  "license": "Apache-2.0",
+  "author": "Pithecene <contact@pithecene.sh>",
+  "homepage": "https://github.com/pithecene/quarry#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pithecene/quarry.git",
+    "directory": "sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/pithecene/quarry/issues"
+  },
   "type": "module",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
