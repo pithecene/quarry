@@ -15,15 +15,17 @@ minor versions. Breaking changes will be documented in release notes.
 
 _No known functional issues in v0.13.6._
 
-### Security Advisories
+### Open Security Advisories
 
-No open advisories. The `extract-zip` symlink advisories (Dependabot #47,
-#53), which reach puppeteer 24 through `@puppeteer/browsers` 2.x, do not
-apply to puppeteer 25, whose `@puppeteer/browsers` 3.x no longer depends on
-`extract-zip`. Quarry's container images and development dependencies use
-puppeteer 25. Self-managed installs that stay on puppeteer 24 (still within
-the supported `^24 || ^25` peer range) keep that exposure whenever Puppeteer
-downloads its own browser archive.
+| Advisory | Affected configuration | Status |
+|----------|------------------------|--------|
+| `extract-zip` symlink path traversal / arbitrary file write (Dependabot #47, #53) | Self-managed installs on puppeteer 24 (supported by the `^24 \|\| ^25` peer range, and required on Node 22.6–22.11) | Open for puppeteer 24 — `@puppeteer/browsers` 2.x depends on `extract-zip` and no patched release exists. Resolved on puppeteer 25, whose `@puppeteer/browsers` 3.x no longer uses it. |
+
+Quarry's container images and development dependencies use puppeteer 25
+and are not affected. On puppeteer 24 the code path runs only when
+Puppeteer downloads its own browser archive; upgrade to puppeteer 25
+(Node 22.12+) or set `PUPPETEER_SKIP_DOWNLOAD=true` with a pinned browser
+to avoid it.
 
 ---
 
