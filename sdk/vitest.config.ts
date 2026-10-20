@@ -5,12 +5,13 @@ export default defineConfig({
     // Include all test files
     include: ['test/**/*.test.ts'],
 
-    // Exclude type-only tests (run separately via tsd)
+    // Exclude type-only tests (run separately via `vitest run --typecheck.only`)
     exclude: ['test/**/*.test-d.ts', 'node_modules'],
 
-    // Use the project's tsconfig
+    // Type-level contract tests: compile-time expectTypeOf assertions
     typecheck: {
-      tsconfig: './tsconfig.test.json'
+      tsconfig: './tsconfig.typecheck.json',
+      include: ['test/**/*.test-d.ts']
     },
 
     // Test isolation

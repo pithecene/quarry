@@ -17,14 +17,15 @@ _No known functional issues in v0.13.6._
 
 ### Open Security Advisories
 
-| Advisory | Component | Status |
-|----------|-----------|--------|
-| `extract-zip` symlink path traversal / arbitrary file write (GHSA, Dependabot #47, #53) | `@puppeteer/browsers` → `extract-zip`, pulled in by `puppeteer@24.x` | Open — no patched `extract-zip` release exists for the puppeteer 24 line; the only fix is puppeteer 25 (semver-major, breaks the `^24` peer range in `sdk/` and `executor-node/`). Tracked for a separate major upgrade. |
+| Advisory | Affected configuration | Status |
+|----------|------------------------|--------|
+| `extract-zip` symlink path traversal / arbitrary file write (Dependabot #47, #53) | Self-managed installs on puppeteer 24 (supported by the `^24 \|\| ^25` peer range, and required on Node 22.6–22.11) | Open for puppeteer 24 — `@puppeteer/browsers` 2.x depends on `extract-zip` and no patched release exists. Resolved on puppeteer 25, whose `@puppeteer/browsers` 3.x no longer uses it. |
 
-Exposure: `extract-zip` runs only when Puppeteer downloads a browser
-archive. Quarry's container images set `PUPPETEER_SKIP_DOWNLOAD=true` and
-the full image ships a pinned Chrome for Testing; the code path is reached
-only by self-managed installs that let Puppeteer fetch its own browser.
+Quarry's container images and development dependencies use puppeteer 25
+and are not affected. On puppeteer 24 the code path runs only when
+Puppeteer downloads its own browser archive; upgrade to puppeteer 25
+(Node 22.12+) or set `PUPPETEER_SKIP_DOWNLOAD=true` with a pinned browser
+to avoid it.
 
 ---
 
@@ -63,7 +64,7 @@ only by self-managed installs that let Puppeteer fetch its own browser.
 |---------|---------|-------|
 | Go | 1.25.6 | Exact version |
 | Node.js | 23+ | Native TS support |
-| Node.js | 22.6+ | Requires `--experimental-strip-types` |
+| Node.js | 22.6+ | Requires `--experimental-strip-types`; puppeteer 25 requires 22.12+ (stay on puppeteer 24 below that) |
 
 ### Required Tooling
 

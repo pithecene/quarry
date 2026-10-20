@@ -2,8 +2,10 @@
  * Type-level contract tests for EventEnvelope types.
  *
  * Goal: Ensure envelope types enforce correct structure.
+ *
+ * Checked at compile time by `vitest --typecheck` (expectTypeOf).
  */
-import { expectAssignable, expectType } from 'tsd'
+import { expectTypeOf, test } from 'vitest'
 import type {
   ArtifactId,
   ArtifactPayload,
@@ -22,48 +24,57 @@ import type {
   RunId
 } from '../../../src/types/events'
 
-expectAssignable<EventType>('item')
-expectAssignable<EventType>('artifact')
-expectAssignable<EventType>('checkpoint')
-expectAssignable<EventType>('enqueue')
-expectAssignable<EventType>('rotate_proxy')
-expectAssignable<EventType>('log')
-expectAssignable<EventType>('run_error')
-expectAssignable<EventType>('run_complete')
+test('EventType accepts every event type', () => {
+  expectTypeOf<'item'>().toExtend<EventType>()
+  expectTypeOf<'artifact'>().toExtend<EventType>()
+  expectTypeOf<'checkpoint'>().toExtend<EventType>()
+  expectTypeOf<'enqueue'>().toExtend<EventType>()
+  expectTypeOf<'rotate_proxy'>().toExtend<EventType>()
+  expectTypeOf<'log'>().toExtend<EventType>()
+  expectTypeOf<'run_error'>().toExtend<EventType>()
+  expectTypeOf<'run_complete'>().toExtend<EventType>()
+})
 
-expectType<ItemPayload>({} as PayloadMap['item'])
-expectType<ArtifactPayload>({} as PayloadMap['artifact'])
-expectType<LogPayload>({} as PayloadMap['log'])
-expectType<RunErrorPayload>({} as PayloadMap['run_error'])
-expectType<RunCompletePayload>({} as PayloadMap['run_complete'])
+test('PayloadMap maps event types to payloads', () => {
+  expectTypeOf<PayloadMap['item']>().toEqualTypeOf<ItemPayload>()
+  expectTypeOf<PayloadMap['artifact']>().toEqualTypeOf<ArtifactPayload>()
+  expectTypeOf<PayloadMap['log']>().toEqualTypeOf<LogPayload>()
+  expectTypeOf<PayloadMap['run_error']>().toEqualTypeOf<RunErrorPayload>()
+  expectTypeOf<PayloadMap['run_complete']>().toEqualTypeOf<RunCompletePayload>()
+})
 
-declare const itemEnvelope: EventEnvelope<'item'>
-expectType<'item'>(itemEnvelope.type)
-expectType<ItemPayload>(itemEnvelope.payload)
+test('EventEnvelope narrows type and payload by event type', () => {
+  expectTypeOf<EventEnvelope<'item'>['type']>().toEqualTypeOf<'item'>()
+  expectTypeOf<EventEnvelope<'item'>['payload']>().toEqualTypeOf<ItemPayload>()
+  expectTypeOf<EventEnvelope<'log'>['type']>().toEqualTypeOf<'log'>()
+  expectTypeOf<EventEnvelope<'log'>['payload']>().toEqualTypeOf<LogPayload>()
+})
 
-declare const logEnvelope: EventEnvelope<'log'>
-expectType<'log'>(logEnvelope.type)
-expectType<LogPayload>(logEnvelope.payload)
+test('EventEnvelope carries the envelope fields', () => {
+  expectTypeOf<EventEnvelope['contract_version']>().toEqualTypeOf<ContractVersion>()
+  expectTypeOf<EventEnvelope['event_id']>().toEqualTypeOf<EventId>()
+  expectTypeOf<EventEnvelope['run_id']>().toEqualTypeOf<RunId>()
+  expectTypeOf<EventEnvelope['seq']>().toEqualTypeOf<number>()
+  expectTypeOf<EventEnvelope['ts']>().toEqualTypeOf<string>()
+  expectTypeOf<EventEnvelope['attempt']>().toEqualTypeOf<number>()
+})
 
-declare const anyEnvelope: EventEnvelope
-expectType<ContractVersion>(anyEnvelope.contract_version)
-expectType<EventId>(anyEnvelope.event_id)
-expectType<RunId>(anyEnvelope.run_id)
-expectType<number>(anyEnvelope.seq)
-expectType<string>(anyEnvelope.ts)
-expectType<number>(anyEnvelope.attempt)
+test('EventEnvelope optional fields', () => {
+  expectTypeOf<EventEnvelope['job_id']>().toEqualTypeOf<JobId | undefined>()
+  expectTypeOf<EventEnvelope['parent_run_id']>().toEqualTypeOf<RunId | undefined>()
+})
 
-// Optional fields
-expectType<JobId | undefined>(anyEnvelope.job_id)
-expectType<RunId | undefined>(anyEnvelope.parent_run_id)
+test('branded IDs are assignable to string', () => {
+  expectTypeOf<RunId>().toExtend<string>()
+  expectTypeOf<EventId>().toExtend<string>()
+  expectTypeOf<JobId>().toExtend<string>()
+  expectTypeOf<ArtifactId>().toExtend<string>()
+  expectTypeOf<CheckpointId>().toExtend<string>()
+})
 
-expectAssignable<string>({} as RunId)
-expectAssignable<string>({} as EventId)
-expectAssignable<string>({} as JobId)
-expectAssignable<string>({} as ArtifactId)
-expectAssignable<string>({} as CheckpointId)
-
-expectAssignable<LogLevel>('debug')
-expectAssignable<LogLevel>('info')
-expectAssignable<LogLevel>('warn')
-expectAssignable<LogLevel>('error')
+test('LogLevel accepts every level', () => {
+  expectTypeOf<'debug'>().toExtend<LogLevel>()
+  expectTypeOf<'info'>().toExtend<LogLevel>()
+  expectTypeOf<'warn'>().toExtend<LogLevel>()
+  expectTypeOf<'error'>().toExtend<LogLevel>()
+})
