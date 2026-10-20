@@ -22,6 +22,16 @@ jobs:
           text: ${{ github.ref_name }}
           regex: ^v[0-9]+\.[0-9]+\.[0-9]+$
 
+      - name: 📥 Checkout
+        if: ${{ steps.regex-match.outputs.match != '' }}
+        uses: actions/checkout@v4
+
+      # Non-release v* tags (e.g. v1.2.3-rc.1) are no-ops for the whole
+      # workflow, so they are not subject to the monotonic gate either.
+      - name: 🔎 Releases Are Monotonic
+        if: ${{ steps.regex-match.outputs.match != '' }}
+        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
+
   version_lockstep:
     name: 🔒 Version Lockstep
     runs-on: ubuntu-latest
@@ -336,15 +346,16 @@ jobs:
           echo "📦 Scope registry: $(npm config get @pithecene:registry || echo 'not set')"
 
       - name: 📦 Publish
-        working-directory: sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm publish --access restricted --no-git-checks
+        run: scripts/release/publish-npm.sh sdk
 
   publish_jsr:
     name: 📦 Publish SDK (JSR)
     runs-on: ubuntu-latest
     needs: [hold]
+    # Sized for publish-jsr.sh's three 8-minute attempts plus backoff.
+    timeout-minutes: 35
     permissions:
       contents: read
       id-token: write
@@ -359,25 +370,7 @@ jobs:
         run: pnpm install
 
       - name: 📦 Publish
-        working-directory: sdk
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          MAX_ATTEMPTS=3
-          DELAY=10
-          for attempt in $(seq 1 $MAX_ATTEMPTS); do
-            echo "🔄 Attempt $attempt/$MAX_ATTEMPTS"
-            if npx jsr publish --set-version "$VERSION"; then
-              echo "✅ Published successfully"
-              exit 0
-            fi
-            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-              echo "⏳ Retrying in ${DELAY}s..."
-              sleep "$DELAY"
-              DELAY=$((DELAY * 2))
-            fi
-          done
-          echo "❌ Failed after $MAX_ATTEMPTS attempts"
-          exit 1
+        run: scripts/release/publish-jsr.sh sdk "${GITHUB_REF_NAME#v}"
 
   container:
     name: 🐳 Container Images
@@ -416,7 +409,6 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}-slim
-            ghcr.io/pithecene/quarry:slim
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -430,6 +422,52 @@ jobs:
           build-args: COMMIT=${{ steps.meta.outputs.commit }}
           tags: |
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}
-            ghcr.io/pithecene/quarry:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+
+  # Publishing jobs publish versioned artifacts only. This job owns the moving
+  # pointers (npm `latest`, GHCR :latest/:slim) and points them at the highest
+  # published release. Registries offer no compare-and-swap on these
+  # pointers, so the job is serialized across release runs; a pending run
+  # dropped by the concurrency group is harmless because the run that
+  # replaces it converges to the newer registry state.
+  pointers:
+    name: 🏷️ Release Pointers
+    runs-on: ubuntu-latest
+    needs: [publish_ghpr, container]
+    # Run if either registry published, so one registry's failure does not
+    # leave the other's pointers stale (the script converges each one only
+    # to releases actually published there).
+    if: ${{ !cancelled() && (needs.publish_ghpr.result == 'success' || needs.container.result == 'success') }}
+    concurrency:
+      group: release-pointers
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup Node for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+          registry-url: https://npm.pkg.github.com
+          scope: "@pithecene"
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔑 Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Converge release pointers
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/release/converge-pointers.sh sdk ghcr.io/pithecene/quarry

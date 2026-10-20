@@ -32,6 +32,14 @@ jobs:
           echo "Version must match semver format: vX.Y.Z (e.g., v0.1.0)"
           exit 1
 
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔎 Releases Are Monotonic
+        env:
+          VERSION: ${{ inputs.version }}
+        run: scripts/release/assert-highest-tag.sh "$VERSION"
+
   version_lockstep:
     name: 🔒 Version Lockstep
     runs-on: ubuntu-latest

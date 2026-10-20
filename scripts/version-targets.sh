@@ -2,6 +2,7 @@
 # Shared helpers for the lockstep version targets in version-targets.txt.
 # Sourced by version-bump.sh and version-check.sh; not run directly.
 
+# shellcheck disable=SC2034 # used by version-bump.sh and version-check.sh
 SEMVER='[0-9]+\.[0-9]+\.[0-9]+'
 TARGETS_FILE="$(dirname "${BASH_SOURCE[0]}")/version-targets.txt"
 

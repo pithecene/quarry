@@ -185,6 +185,15 @@ pattern, rebuilds the SDK and executor bundle, then runs
 carries another version fails the build. Never hand-edit a version string;
 if a new file must print the version, add it to the targets list.
 
+Releases are monotonic: the release workflow rejects a tag lower than any
+released tag before publishing anything. Publishing jobs publish versioned
+artifacts only; npm `latest` and GHCR `:latest` / `:slim` are owned by a
+single serialized job that points them at the highest published release, so
+they are correct whichever run finishes last. Re-running a release is safe (publishing skips versions that
+already exist). Republishing an older version is a deliberate
+manual operation, never a tag push. Release-workflow logic lives in
+`scripts/release/` with tests, not inline in workflow YAML.
+
 ---
 
 ## Litmus Test
