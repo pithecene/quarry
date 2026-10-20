@@ -1,33 +1,32 @@
 #!/usr/bin/env bash
-# Decide which moving channels a release tag may claim.
-# Usage: scripts/release-channel.sh <tag>   (e.g. v0.13.6)
+# Resolve the release version and the highest released version.
+# Usage: scripts/release-channel.sh <tag>   (e.g. v0.13.5)
 #
 # Prints GITHUB_OUTPUT-style lines:
-#   version=0.13.6
-#   latest=true|false     true only if <tag> is the highest vX.Y.Z tag on origin
-#   npm_tag=latest|previous
+#   version=0.13.5        this release, without the v
+#   highest=0.13.6        highest vX.Y.Z tag on origin, without the v
 #
 # Releases can be published out of order (a re-released older tag after a
 # newer one). Moving pointers — npm's `latest` dist-tag, GHCR's :latest and
-# :slim — must only ever move to the highest released version, so an older
-# release publishes its versioned artifacts without claiming them.
+# :slim — are never pointed at "this release"; every release run points them
+# at `highest` (when its artifacts exist), so whichever run writes last
+# writes the right value and no lock is needed.
+#
+# Exits non-zero if the tag is malformed or origin's tags cannot be read;
+# callers must not fall back silently.
 
 set -euo pipefail
 
 TAG="${1:?Usage: release-channel.sh <tag>}"
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 2; }
 
-HIGHEST=$(git ls-remote --tags --refs origin 'v*' \
+TAGS=$(git ls-remote --tags --refs origin 'v*')
+HIGHEST=$(printf '%s\n' "$TAGS" \
   | sed 's|.*refs/tags/||' \
   | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-  | sort -V | tail -1)
+  | sort -V | tail -1 || true)
+[[ -n "$HIGHEST" ]] || { echo "no release tags found on origin" >&2; exit 3; }
 
 echo "version=${TAG#v}"
-if [[ "$TAG" == "$HIGHEST" ]]; then
-  echo "latest=true"
-  echo "npm_tag=latest"
-else
-  echo "latest=false"
-  echo "npm_tag=previous"
-fi
-echo "Release channel for $TAG (highest $HIGHEST)" >&2
+echo "highest=${HIGHEST#v}"
+echo "Release $TAG; highest released ${HIGHEST}" >&2

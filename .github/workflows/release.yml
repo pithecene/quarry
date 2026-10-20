@@ -344,28 +344,30 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.channel.outputs.version }}
-          NPM_TAG: ${{ steps.channel.outputs.npm_tag }}
         run: |
           NAME=$(jq -r '.name' package.json)
+          exists() { npm view "${NAME}@$1" version >/dev/null 2>&1; }
           # Idempotent: a re-run of an already-published version is a success.
-          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-            echo "✅ ${NAME}@${VERSION} already published; ensuring dist-tag ${NPM_TAG}"
-            npm dist-tag add "${NAME}@${VERSION}" "${NPM_TAG}"
-            exit 0
+          # Publish under `previous`; `latest` is converged below, never claimed.
+          if ! exists "$VERSION"; then
+            if ! pnpm publish --access restricted --no-git-checks --tag previous; then
+              # A concurrent run for the same tag may have published first.
+              exists "$VERSION" || exit 1
+              echo "✅ ${NAME}@${VERSION} was published concurrently"
+            fi
+          else
+            echo "✅ ${NAME}@${VERSION} already published"
           fi
-          # Only the highest release claims `latest`; older re-releases
-          # publish under `previous` instead of failing.
-          if pnpm publish --access restricted --no-git-checks --tag "${NPM_TAG}"; then
-            exit 0
+          # Converge `latest` onto the highest release that is published,
+          # whichever run this is; the last writer always writes the right value.
+          CHANNEL=$(cd .. && scripts/release-channel.sh "$GITHUB_REF_NAME")
+          eval "$CHANNEL"
+          if exists "$highest"; then
+            npm dist-tag add "${NAME}@${highest}" latest
+            echo "✅ latest -> ${highest}"
+          else
+            echo "ℹ️ ${NAME}@${highest} not published yet; its release run will move latest"
           fi
-          # A concurrent run for the same tag may have published first; the
-          # registry rejects the duplicate, so re-check before failing.
-          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-            echo "✅ ${NAME}@${VERSION} was published concurrently; ensuring dist-tag ${NPM_TAG}"
-            npm dist-tag add "${NAME}@${VERSION}" "${NPM_TAG}"
-            exit 0
-          fi
-          exit 1
 
   publish_jsr:
     name: 📦 Publish SDK (JSR)
@@ -374,6 +376,10 @@ jobs:
     # 3 attempts x 8 min + backoff + setup. No concurrency group: GitHub
     # keeps only one pending job per group and would silently drop a queued
     # release; re-runs are safe because publishing is idempotent below.
+    # Overlap is not the cause of JSR stalls: the v0.13.6 publish stalled in
+    # "waiting for publishing" with no other publish running (JSR server-side
+    # processing, jsr-io/jsr#1238), so the guard is the per-attempt timeout
+    # plus the check against JSR's own record.
     timeout-minutes: 35
     permissions:
       contents: read
@@ -484,13 +490,19 @@ jobs:
       # here, after the builds, from the tags on origin at this moment, so a
       # newer release tagged mid-build is not regressed; the retag itself is
       # a manifest copy that takes seconds.
-      - name: 🏷️ Move :latest and :slim (highest release only)
+      - name: 🏷️ Point :latest and :slim at the highest release
         run: |
-          eval "$(scripts/release-channel.sh "$GITHUB_REF_NAME")"
-          if [ "$latest" != "true" ]; then
-            echo "ℹ️ ${GITHUB_REF_NAME} is not the highest release; leaving :latest and :slim unchanged"
+          CHANNEL=$(scripts/release-channel.sh "$GITHUB_REF_NAME")
+          eval "$CHANNEL"
+          IMG=ghcr.io/pithecene/quarry
+          # Converge, don't claim: point the moving tags at the highest
+          # release, whichever run this is. If that release's images are not
+          # pushed yet, its own run will set them when it finishes.
+          if ! docker buildx imagetools inspect "${IMG}:${highest}" >/dev/null 2>&1 \
+            || ! docker buildx imagetools inspect "${IMG}:${highest}-slim" >/dev/null 2>&1; then
+            echo "ℹ️ ${IMG}:${highest} not published yet; its release run will move :latest and :slim"
             exit 0
           fi
-          docker buildx imagetools create -t ghcr.io/pithecene/quarry:latest "ghcr.io/pithecene/quarry:${version}"
-          docker buildx imagetools create -t ghcr.io/pithecene/quarry:slim "ghcr.io/pithecene/quarry:${version}-slim"
-          echo "✅ :latest -> ${version}, :slim -> ${version}-slim"
+          docker buildx imagetools create -t "${IMG}:latest" "${IMG}:${highest}"
+          docker buildx imagetools create -t "${IMG}:slim" "${IMG}:${highest}-slim"
+          echo "✅ :latest -> ${highest}, :slim -> ${highest}-slim"
