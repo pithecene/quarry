@@ -124,7 +124,7 @@ When reporting issues, include:
 ## Security
 
 Report security vulnerabilities privately:
-- Email: security@pithecene-io.com (if applicable)
+- Email: contact@pithecene.sh
 - Do **not** file security issues publicly
 
 ---
