@@ -1,7 +1,7 @@
 # Quarry Public API
 
 User-facing guide for Quarry.
-Normative behavior is defined by contracts under `docs/contracts/`.
+Normative behavior is defined by contracts under [`docs/contracts/`](docs/contracts/).
 
 ---
 
@@ -9,7 +9,7 @@ Normative behavior is defined by contracts under `docs/contracts/`.
 
 | Tool | Version | Source |
 |------|---------|--------|
-| Go | 1.25.6 | `quarry/go.mod` |
+| Go | 1.25.6 | [`quarry/go.mod`](quarry/go.mod) |
 | Node.js | 23+ or 22.6+ | Native TS support (see note) |
 | pnpm | 10.28.2 | `package.json#packageManager` |
 
@@ -358,7 +358,7 @@ are flushed into the snapshot on event and metrics writes only (not chunk
 writes). To reconstruct the full file inventory for a run, union
 `sidecar_files` from all snapshots for that `run_id`.
 
-See `docs/contracts/CONTRACT_LODE.md` § Sidecar File Inventory for the
+See [`docs/contracts/CONTRACT_LODE.md`](docs/contracts/CONTRACT_LODE.md) § Sidecar File Inventory for the
 normative specification.
 
 ### Batching File Uploads
@@ -436,7 +436,7 @@ quarry run [options]
 
 | Flag | Description |
 |------|-------------|
-| `--config <path>` | Path to YAML config file with project-level defaults (see `docs/guides/configuration.md`) |
+| `--config <path>` | Path to YAML config file with project-level defaults (see [`docs/guides/configuration.md`](docs/guides/configuration.md)) |
 
 CLI flags always override config file values.
 
@@ -473,7 +473,7 @@ CLI flags always override config file values.
 
 > **Streaming policy:** At least one of `--flush-count` or `--flush-interval` must be specified
 > when `--policy=streaming`. Both may be specified; the first trigger to fire wins.
-> See `docs/guides/policy.md` for details.
+> See [`docs/guides/policy.md`](docs/guides/policy.md) for details.
 
 **Adapter flags (event-bus notification):**
 
@@ -503,7 +503,7 @@ CLI flags always override config file values.
 > **Event sinks vs adapters:** Event sinks deliver events in real time during a
 > run. Adapters fire once after a run completes. Both can be used together.
 > When no `--event-sink` flags are set, events go to Lode only (default).
-> See `docs/contracts/CONTRACT_INTEGRATION.md` and `docs/guides/integration.md`.
+> See [`docs/contracts/CONTRACT_INTEGRATION.md`](docs/contracts/CONTRACT_INTEGRATION.md) and [`docs/guides/integration.md`](docs/guides/integration.md).
 
 **Fan-out flags (derived work execution):**
 
@@ -517,7 +517,7 @@ CLI flags always override config file values.
 
 | Flag | Env Var | Description |
 |------|---------|-------------|
-| `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips per-run Chromium launch; see `docs/guides/cli.md`) |
+| `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips per-run Chromium launch; see [`docs/guides/cli.md`](docs/guides/cli.md)) |
 | `--no-browser-reuse` | — | Disable transparent browser reuse across runs (forces per-run Chromium launch) |
 
 By default, Quarry transparently reuses a persistent Chromium process across sequential runs.
@@ -534,7 +534,7 @@ See [Container Usage](docs/guides/container.md) for multi-crawler deployment pat
 
 When scripts import workspace packages that are not resolvable from the
 script's directory, `--resolve-from` registers an ESM resolve hook to fall
-back to the specified `node_modules`. See `docs/contracts/CONTRACT_CLI.md`.
+back to the specified `node_modules`. See [`docs/contracts/CONTRACT_CLI.md`](docs/contracts/CONTRACT_CLI.md).
 
 **Validation:**
 
@@ -594,13 +594,13 @@ All examples use local fixtures (no external network calls).
 
 | Example | Description | Events |
 |---------|-------------|--------|
-| `examples/demo.ts` | Minimal item emission | 1 item |
-| `examples/static-html-list/` | Parse HTML fixture | 3 items |
-| `examples/toy-pagination/` | Multi-page pagination | 6 items |
-| `examples/artifact-snapshot/` | Screenshot artifact | 1 artifact |
-| `examples/intentional-failure/` | Error handling test | 1 item + error |
-| `examples/hooks-prepare/` | Job filtering with `prepare` | skipped or 1 item |
-| `examples/hooks-before-terminal/` | Summary emission via `beforeTerminal` | items + summary |
+| [`examples/demo.ts`](examples/demo.ts) | Minimal item emission | 1 item |
+| [`examples/static-html-list/`](examples/static-html-list/) | Parse HTML fixture | 3 items |
+| [`examples/toy-pagination/`](examples/toy-pagination/) | Multi-page pagination | 6 items |
+| [`examples/artifact-snapshot/`](examples/artifact-snapshot/) | Screenshot artifact | 1 artifact |
+| [`examples/intentional-failure/`](examples/intentional-failure/) | Error handling test | 1 item + error |
+| [`examples/hooks-prepare/`](examples/hooks-prepare/) | Job filtering with `prepare` | skipped or 1 item |
+| [`examples/hooks-before-terminal/`](examples/hooks-before-terminal/) | Summary emission via `beforeTerminal` | items + summary |
 
 Run all examples:
 ```bash
@@ -609,7 +609,7 @@ task examples
 
 ### Integration Pattern Examples
 
-See `examples/integration-patterns/` for downstream ETL trigger examples:
+See [`examples/integration-patterns/`](examples/integration-patterns/) for downstream ETL trigger examples:
 - Event-bus pattern (SNS/SQS, handler)
 - Polling pattern (filesystem, S3)
 
@@ -780,7 +780,7 @@ For `docker run`, Docker Compose, and sidecar patterns, see [docs/guides/contain
 4. **No transactional storage writes**: S3 and S3-compatible providers (R2, MinIO) do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler; external orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
-7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. There is no general run/event reader over Quarry's storage layout yet — only `quarry stats metrics` reads persisted data (the latest metrics record), and only when both `--storage-backend` and `--storage-path` are given; with neither it returns shape-correct stub values (as do all other `list`/`inspect`/`stats` commands), and with only one of the pair it errors. It reads the filesystem backend or AWS S3 only — it does not accept `--storage-endpoint`/`--storage-s3-path-style`, so R2/MinIO datasets cannot be read yet. A Quarry-maintained reader is planned for v0.14.0 (see `docs/IMPLEMENTATION_PLAN.md` § v0.14.0 Roadmap, #240). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See `docs/guides/integration.md`.
+7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. There is no general run/event reader over Quarry's storage layout yet — only `quarry stats metrics` reads persisted data (the latest metrics record), and only when both `--storage-backend` and `--storage-path` are given; with neither it returns shape-correct stub values (as do all other `list`/`inspect`/`stats` commands), and with only one of the pair it errors. It reads the filesystem backend or AWS S3 only — it does not accept `--storage-endpoint`/`--storage-s3-path-style`, so R2/MinIO datasets cannot be read yet. A Quarry-maintained reader is planned for v0.14.0 (see [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) § v0.14.0 Roadmap, #240). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See [`docs/guides/integration.md`](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release; config-based logical names are under consideration.
 

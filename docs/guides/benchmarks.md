@@ -1,7 +1,7 @@
 # Benchmarks
 
 Quarry includes a Go benchmark suite covering all three ingestion policy
-implementations. Benchmarks live in `quarry/policy/benchmark_test.go` and
+implementations. Benchmarks live in [`quarry/policy/benchmark_test.go`](../../quarry/policy/benchmark_test.go) and
 exercise the hot path: event/chunk ingestion, flush cycles, concurrent
 access, and slow-sink behavior.
 

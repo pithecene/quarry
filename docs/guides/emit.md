@@ -1,7 +1,7 @@
 # Emitting Data
 
 This document explains how scripts emit data and metadata in Quarry.
-It is user-facing; the authoritative contract is `docs/contracts/CONTRACT_EMIT.md`.
+It is user-facing; the authoritative contract is [`docs/contracts/CONTRACT_EMIT.md`](../contracts/CONTRACT_EMIT.md).
 
 ---
 
@@ -31,7 +31,7 @@ Some advisory types exist (`enqueue`, `rotate_proxy`), but they are optional.
 
 > **Tip:** The `beforeTerminal` lifecycle hook fires after script execution
 > but before the terminal event, with emit still open. This is useful for
-> emitting summary items or final metadata. See `PUBLIC_API.md` (Lifecycle
+> emitting summary items or final metadata. See [`PUBLIC_API.md`](../../PUBLIC_API.md) (Lifecycle
 > Hooks section) for details.
 
 ---

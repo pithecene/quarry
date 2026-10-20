@@ -57,7 +57,7 @@ Decoding discrimination uses the `type` field:
 The runtime and executor may exchange **run control payloads** outside the
 event stream (e.g., initial run request and final run result).
 These payloads must:
-- Use the ProxyEndpoint schema defined in `CONTRACT_PROXY.md` when a proxy is supplied.
+- Use the ProxyEndpoint schema defined in [`CONTRACT_PROXY.md`](CONTRACT_PROXY.md) when a proxy is supplied.
 - Never include proxy passwords in any result/summary payload.
 
 ### Run Request (Runtime → Executor)

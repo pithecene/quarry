@@ -16,13 +16,13 @@ need to detect when runs complete and process the emitted data.
 
 ### Event-Bus Pattern
 
-- `event-bus-sns.sh` — AWS SNS/SQS example (publish after run)
-- `event-bus-handler.ts` — TypeScript handler for processing run events
+- [`event-bus-sns.sh`](event-bus-sns.sh) — AWS SNS/SQS example (publish after run)
+- [`event-bus-handler.ts`](event-bus-handler.ts) — TypeScript handler for processing run events
 
 ### Polling Pattern
 
-- `polling-fs.sh` — Filesystem polling with checkpoint
-- `polling-s3.py` — S3 polling with timestamp filtering
+- [`polling-fs.sh`](polling-fs.sh) — Filesystem polling with checkpoint
+- [`polling-s3.py`](polling-s3.py) — S3 polling with timestamp filtering
 
 ## Usage Notes
 

@@ -29,14 +29,14 @@ At a high level:
 
 ## Where To Start
 
-- Authoring scripts: `docs/guides/emit.md`
-- Lifecycle hooks: `PUBLIC_API.md` (Lifecycle Hooks section)
-- Running jobs: `docs/guides/cli.md`
-- Configuration reference: `docs/guides/configuration.md`
-- Proxies: `docs/guides/proxy.md`
-- Run lifecycle: `docs/guides/run.md`
-- Storage: `docs/guides/lode.md`
-- Integration: `docs/guides/integration.md`
+- Authoring scripts: [`docs/guides/emit.md`](emit.md)
+- Lifecycle hooks: [`PUBLIC_API.md`](../../PUBLIC_API.md) (Lifecycle Hooks section)
+- Running jobs: [`docs/guides/cli.md`](cli.md)
+- Configuration reference: [`docs/guides/configuration.md`](configuration.md)
+- Proxies: [`docs/guides/proxy.md`](proxy.md)
+- Run lifecycle: [`docs/guides/run.md`](run.md)
+- Storage: [`docs/guides/lode.md`](lode.md)
+- Integration: [`docs/guides/integration.md`](integration.md)
 
 ---
 
