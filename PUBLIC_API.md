@@ -17,7 +17,9 @@ Normative behavior is defined by contracts under `docs/contracts/`.
 type-stripping. Node 23+ enables this by default. Node 22.6–22.x requires
 `--experimental-strip-types` flag (set via `NODE_OPTIONS`). The SDK and
 executor accept puppeteer `^24 || ^25`; puppeteer 25 requires Node 22.12+,
-so on Node 22.6–22.11 stay on puppeteer 24.
+so on Node 22.6–22.11 stay on puppeteer 24. With puppeteer 25, browser
+downloads honour `HTTP_PROXY`/`HTTPS_PROXY` only if `proxy-agent` is
+installed alongside it (it became an optional peer dependency).
 
 Quarry is **TypeScript-first** and **ESM-only**.
 
