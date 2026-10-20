@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Deps**: Upgrade `github.com/klauspost/compress` to v1.18.7 (transitive via Lode), resolving the `s2` integer-overflow / out-of-bounds write advisory (Dependabot #60, GHSA-259r-337f-4rfw)
 - **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing; the SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
 - **Deps**: Upgrade puppeteer to 25.14.0 in development dependencies and the container image (Chrome for Testing 155.0.8059.79), resolving the `extract-zip` symlink advisories (Dependabot #47, #53) for the images and the default toolchain: `@puppeteer/browsers` 3.x no longer depends on `extract-zip`. Self-managed installs that stay on puppeteer 24 remain exposed (see `SUPPORT.md` § Open Security Advisories). The SDK and executor peer range widens to `puppeteer ^24 || ^25`, so existing puppeteer 24 installs keep working; puppeteer 25 requires Node 22.12+, and needs `proxy-agent` installed alongside it for proxied browser downloads (now an optional peer; added to the workspace dev dependencies)
 
