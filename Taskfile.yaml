@@ -195,7 +195,7 @@ tasks:
         cmd: pnpm -C {{.ITEM}} run typecheck
 
   ts:types:
-    desc: Validate public TS API contracts (tsd)
+    desc: Validate public TS API contracts (vitest typecheck)
     aliases: [ts:d]
     cmds:
       - pnpm -C sdk run test:types

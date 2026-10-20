@@ -29,7 +29,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:types": "tsd"
+    "test:types": "vitest run --typecheck.only"
   },
   "peerDependencies": {
     "puppeteer": "^24",
@@ -39,11 +39,6 @@
     "fast-check": "^4.10.2",
     "puppeteer": "^24.43.1",
     "puppeteer-extra": "^3.3.6",
-    "tsd": "^0.32.0",
     "tsdown": "^0.20.3"
-  },
-  "tsd": {
-    "directory": "test/emit/00-types",
-    "typingsFile": "src/index.ts"
   }
 }
