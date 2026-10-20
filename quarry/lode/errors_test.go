@@ -2,6 +2,9 @@ package lode
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
+	"syscall"
 	"testing"
 )
 
@@ -193,6 +196,44 @@ func TestClassifyError(t *testing.T) {
 				} else if got.Error() != "storage error" {
 					t.Errorf("classifyError(%q) = %q, want %q", tt.errMsg, got.Error(), "storage error")
 				}
+			}
+		})
+	}
+}
+
+// statusError mimics an AWS SDK response error: an HTTP status exposed via
+// HTTPStatusCode, with a message that need not agree with it.
+type statusError struct {
+	status int
+	msg    string
+}
+
+func (e statusError) Error() string       { return e.msg }
+func (e statusError) HTTPStatusCode() int { return e.status }
+
+// Typed errors decide the kind even when the message (which embeds paths and
+// keys) matches a different pattern.
+func TestClassifyError_TypedBeforeMessage(t *testing.T) {
+	pathErr := func(op, path string, errno syscall.Errno) error {
+		return fmt.Errorf("lode: fs put: %w", &fs.PathError{Op: op, Path: path, Err: errno})
+	}
+	tests := []struct {
+		name     string
+		err      error
+		wantKind error
+	}{
+		{"EACCES under a path containing 403", pathErr("mkdir", "/tmp/TestX1403/001/readonly/data", syscall.EACCES), ErrPermissionDenied},
+		{"ENOENT under a path containing 429", pathErr("open", "/tmp/run-4291/events", syscall.ENOENT), ErrNotFound},
+		{"EEXIST under a path containing 404", pathErr("link", "/data/run-404/file", syscall.EEXIST), ErrPathExists},
+		{"ENOSPC under a path containing 401", pathErr("write", "/data/run-401/file", syscall.ENOSPC), ErrDiskFull},
+		{"HTTP 403 whose message says not found", statusError{403, "get runs/404/x: not found"}, ErrAccessDenied},
+		{"HTTP 404 whose key contains 403", statusError{404, "get runs/403/x: api error"}, ErrNotFound},
+		{"unmapped HTTP status falls back to the message", statusError{503, "SlowDown: please reduce request rate"}, ErrThrottled},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifyError(tt.err); !errors.Is(got, tt.wantKind) {
+				t.Errorf("classifyError(%v) = %v, want %v", tt.err, got, tt.wantKind)
 			}
 		})
 	}
