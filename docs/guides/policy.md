@@ -1,7 +1,7 @@
 # Ingestion Policies
 
 This document describes ingestion policy behavior at a user level.
-The authoritative contract is `docs/contracts/CONTRACT_POLICY.md`.
+The authoritative contract is [`docs/contracts/CONTRACT_POLICY.md`](../contracts/CONTRACT_POLICY.md).
 
 ---
 
