@@ -46,26 +46,36 @@ func ParseS3Path(path string) (bucket, prefix string) {
 	return bucket, prefix
 }
 
-// NewLodeS3Client creates a new Lode client with S3 storage backend.
+// newS3StoreFactory builds the Lode S3 store factory used by both the write
+// and read paths, so they reach the same endpoint with the same addressing.
 // Uses AWS SDK default credential chain (env vars, shared config, IAM role).
-func NewLodeS3Client(cfg Config, s3cfg S3Config) (*LodeClient, error) {
+func newS3StoreFactory(s3cfg S3Config) (lode.StoreFactory, error) {
 	if err := s3cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	// Load AWS config with optional region
-	ctx := context.Background()
 	var opts []func(*config.LoadOptions) error
 	if s3cfg.Region != "" {
 		opts = append(opts, config.WithRegion(s3cfg.Region))
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(ctx, opts...)
+	awsConfig, err := config.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// Create S3 client with optional endpoint and path-style overrides
+	s3Client := s3.NewFromConfig(awsConfig, s3ClientOptions(s3cfg)...)
+	return func() (lode.Store, error) {
+		return lodes3.New(s3Client, lodes3.Config{
+			Bucket: s3cfg.Bucket,
+			Prefix: s3cfg.Prefix,
+		})
+	}, nil
+}
+
+// s3ClientOptions applies the endpoint and path-style overrides for
+// S3-compatible providers.
+func s3ClientOptions(s3cfg S3Config) []func(*s3.Options) {
 	var s3Opts []func(*s3.Options)
 	if s3cfg.Endpoint != "" {
 		endpoint := s3cfg.Endpoint
@@ -78,15 +88,15 @@ func NewLodeS3Client(cfg Config, s3cfg S3Config) (*LodeClient, error) {
 			o.UsePathStyle = true
 		})
 	}
-	s3Client := s3.NewFromConfig(awsConfig, s3Opts...)
+	return s3Opts
+}
 
-	// Create Lode S3 store factory
-	// StoreFactory is func() (Store, error)
-	s3Factory := func() (lode.Store, error) {
-		return lodes3.New(s3Client, lodes3.Config{
-			Bucket: s3cfg.Bucket,
-			Prefix: s3cfg.Prefix,
-		})
+// NewLodeS3Client creates a new Lode client with S3 storage backend.
+// Uses AWS SDK default credential chain (env vars, shared config, IAM role).
+func NewLodeS3Client(cfg Config, s3cfg S3Config) (*LodeClient, error) {
+	s3Factory, err := newS3StoreFactory(s3cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create dataset with Hive layout

@@ -333,7 +333,13 @@ quarry stats proxies --format json
 quarry stats runs --tui
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data --run-id run-001
+quarry stats metrics --storage-backend s3 --storage-path my-bucket/quarry \
+  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style
 ```
+
+`stats metrics` accepts the same S3 flags as `run` (`--storage-region`,
+`--storage-endpoint`, `--storage-s3-path-style`), so data written to an
+S3-compatible provider is read back from the same provider.
 
 ### `list`
 
