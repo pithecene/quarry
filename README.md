@@ -1,6 +1,6 @@
 # Quarry
 
-[![CI](https://github.com/pithecene-io/quarry/actions/workflows/ci.yml/badge.svg)](https://github.com/pithecene-io/quarry/actions/workflows/ci.yml)
+[![CI](https://github.com/pithecene/quarry/actions/workflows/ci.yml/badge.svg)](https://github.com/pithecene/quarry/actions/workflows/ci.yml)
 
 **A CLI-first web extraction runtime for browser-driven crawling and durable ingestion**
 

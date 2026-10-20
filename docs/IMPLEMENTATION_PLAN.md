@@ -1078,9 +1078,9 @@ core runtime types without pulling in CLI, TUI, or unrelated dependencies.
 
 | Module | Go Module Path | Contains |
 |--------|---------------|----------|
-| `quarry-core/` | `github.com/pithecene-io/quarry-core` | types, runtime, policy, lode, reader (v0.14.0 layout owner), adapter, proxy, metrics, log |
-| `quarry-cli/` | `github.com/pithecene-io/quarry-cli` | CLI commands, TUI, config, `cli/reader` (response-shaping adapter over core `reader`) |
-| `quarry-temporal/` | `github.com/pithecene-io/quarry-temporal` | activity, workflow, worker binary |
+| `quarry-core/` | `github.com/pithecene/quarry-core` | types, runtime, policy, lode, reader (v0.14.0 layout owner), adapter, proxy, metrics, log |
+| `quarry-cli/` | `github.com/pithecene/quarry-cli` | CLI commands, TUI, config, `cli/reader` (response-shaping adapter over core `reader`) |
+| `quarry-temporal/` | `github.com/pithecene/quarry-temporal` | activity, workflow, worker binary |
 | `quarry-sdk/` | (npm: `@aspect/quarry-sdk`) | TypeScript SDK (rename from `sdk/`) |
 | `quarry-executor/` | (npm: `@aspect/quarry-executor`) | Node executor (rename from `executor-node/`) |
 

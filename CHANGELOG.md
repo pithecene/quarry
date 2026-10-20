@@ -321,7 +321,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Runtime**: SDK/CLI version mismatches are now classified as `version_mismatch` instead of `executor_crash`, with an actionable error message directing users to align their SDK and CLI versions (#132)
-- **Lode**: Upgraded to Lode v0.7.1 — fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene-io/lode#108)
+- **Lode**: Upgraded to Lode v0.7.1 — fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene/lode#108)
 
 ### Changed
 
@@ -548,7 +548,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **IPC**: Fixed race condition where fast-completing scripts intermittently reported `executor_crash` outcome despite successful completion ([#56](https://github.com/pithecene-io/quarry/issues/56)). Root cause was Go's `exec.Cmd.Wait()` closing stdout pipe before ingestion completed reading all data.
+- **IPC**: Fixed race condition where fast-completing scripts intermittently reported `executor_crash` outcome despite successful completion ([#56](https://github.com/pithecene/quarry/issues/56)). Root cause was Go's `exec.Cmd.Wait()` closing stdout pipe before ingestion completed reading all data.
 
 ---
 
@@ -571,7 +571,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known Issues
 
-- **IPC race condition** ([#56](https://github.com/pithecene-io/quarry/issues/56)): Fast-completing scripts may intermittently report `executor_crash` outcome despite successful completion. **Fixed in v0.2.1.**
+- **IPC race condition** ([#56](https://github.com/pithecene/quarry/issues/56)): Fast-completing scripts may intermittently report `executor_crash` outcome despite successful completion. **Fixed in v0.2.1.**
 
 ---
 
@@ -639,40 +639,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene-io/quarry/compare/v0.13.7...HEAD
-[0.13.7]: https://github.com/pithecene-io/quarry/compare/v0.13.6...v0.13.7
-[0.13.6]: https://github.com/pithecene-io/quarry/compare/v0.13.5...v0.13.6
-[0.13.5]: https://github.com/pithecene-io/quarry/compare/v0.13.4...v0.13.5
-[0.13.4]: https://github.com/pithecene-io/quarry/compare/v0.13.3...v0.13.4
-[0.13.3]: https://github.com/pithecene-io/quarry/compare/v0.13.2...v0.13.3
-[0.13.2]: https://github.com/pithecene-io/quarry/compare/v0.13.1...v0.13.2
-[0.13.1]: https://github.com/pithecene-io/quarry/compare/v0.13.0...v0.13.1
-[0.13.0]: https://github.com/pithecene-io/quarry/compare/v0.12.2...v0.13.0
-[0.12.2]: https://github.com/pithecene-io/quarry/releases/tag/v0.12.2
-[0.12.1]: https://github.com/pithecene-io/quarry/releases/tag/v0.12.1
-[0.12.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.12.0
-[0.11.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.11.0
-[0.10.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.10.0
-[0.9.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.9.0
-[0.8.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.8.0
-[0.7.3]: https://github.com/pithecene-io/quarry/releases/tag/v0.7.3
-[0.7.2]: https://github.com/pithecene-io/quarry/releases/tag/v0.7.2
-[0.7.1]: https://github.com/pithecene-io/quarry/releases/tag/v0.7.1
-[0.7.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.7.0
-[0.6.3]: https://github.com/pithecene-io/quarry/releases/tag/v0.6.3
-[0.6.2]: https://github.com/pithecene-io/quarry/releases/tag/v0.6.2
-[0.6.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.6.0
-[0.5.1]: https://github.com/pithecene-io/quarry/releases/tag/v0.5.1
-[0.5.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.5.0
-[0.4.1]: https://github.com/pithecene-io/quarry/releases/tag/v0.4.1
-[0.4.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.4.0
-[0.3.5]: https://github.com/pithecene-io/quarry/releases/tag/v0.3.5
-[0.3.4]: https://github.com/pithecene-io/quarry/releases/tag/v0.3.4
-[0.3.3]: https://github.com/pithecene-io/quarry/releases/tag/v0.3.3
-[0.3.2]: https://github.com/pithecene-io/quarry/releases/tag/v0.3.2
-[0.3.1]: https://github.com/pithecene-io/quarry/releases/tag/v0.3.1
-[0.3.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.3.0
-[0.2.2]: https://github.com/pithecene-io/quarry/releases/tag/v0.2.2
-[0.2.1]: https://github.com/pithecene-io/quarry/releases/tag/v0.2.1
-[0.2.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.2.0
-[0.1.0]: https://github.com/pithecene-io/quarry/releases/tag/v0.1.0
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.13.7...HEAD
+[0.13.7]: https://github.com/pithecene/quarry/compare/v0.13.6...v0.13.7
+[0.13.6]: https://github.com/pithecene/quarry/compare/v0.13.5...v0.13.6
+[0.13.5]: https://github.com/pithecene/quarry/compare/v0.13.4...v0.13.5
+[0.13.4]: https://github.com/pithecene/quarry/compare/v0.13.3...v0.13.4
+[0.13.3]: https://github.com/pithecene/quarry/compare/v0.13.2...v0.13.3
+[0.13.2]: https://github.com/pithecene/quarry/compare/v0.13.1...v0.13.2
+[0.13.1]: https://github.com/pithecene/quarry/compare/v0.13.0...v0.13.1
+[0.13.0]: https://github.com/pithecene/quarry/compare/v0.12.2...v0.13.0
+[0.12.2]: https://github.com/pithecene/quarry/releases/tag/v0.12.2
+[0.12.1]: https://github.com/pithecene/quarry/releases/tag/v0.12.1
+[0.12.0]: https://github.com/pithecene/quarry/releases/tag/v0.12.0
+[0.11.0]: https://github.com/pithecene/quarry/releases/tag/v0.11.0
+[0.10.0]: https://github.com/pithecene/quarry/releases/tag/v0.10.0
+[0.9.0]: https://github.com/pithecene/quarry/releases/tag/v0.9.0
+[0.8.0]: https://github.com/pithecene/quarry/releases/tag/v0.8.0
+[0.7.3]: https://github.com/pithecene/quarry/releases/tag/v0.7.3
+[0.7.2]: https://github.com/pithecene/quarry/releases/tag/v0.7.2
+[0.7.1]: https://github.com/pithecene/quarry/releases/tag/v0.7.1
+[0.7.0]: https://github.com/pithecene/quarry/releases/tag/v0.7.0
+[0.6.3]: https://github.com/pithecene/quarry/releases/tag/v0.6.3
+[0.6.2]: https://github.com/pithecene/quarry/releases/tag/v0.6.2
+[0.6.0]: https://github.com/pithecene/quarry/releases/tag/v0.6.0
+[0.5.1]: https://github.com/pithecene/quarry/releases/tag/v0.5.1
+[0.5.0]: https://github.com/pithecene/quarry/releases/tag/v0.5.0
+[0.4.1]: https://github.com/pithecene/quarry/releases/tag/v0.4.1
+[0.4.0]: https://github.com/pithecene/quarry/releases/tag/v0.4.0
+[0.3.5]: https://github.com/pithecene/quarry/releases/tag/v0.3.5
+[0.3.4]: https://github.com/pithecene/quarry/releases/tag/v0.3.4
+[0.3.3]: https://github.com/pithecene/quarry/releases/tag/v0.3.3
+[0.3.2]: https://github.com/pithecene/quarry/releases/tag/v0.3.2
+[0.3.1]: https://github.com/pithecene/quarry/releases/tag/v0.3.1
+[0.3.0]: https://github.com/pithecene/quarry/releases/tag/v0.3.0
+[0.2.2]: https://github.com/pithecene/quarry/releases/tag/v0.2.2
+[0.2.1]: https://github.com/pithecene/quarry/releases/tag/v0.2.1
+[0.2.0]: https://github.com/pithecene/quarry/releases/tag/v0.2.0
+[0.1.0]: https://github.com/pithecene/quarry/releases/tag/v0.1.0

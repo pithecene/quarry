@@ -95,7 +95,7 @@ The following are available but not production-hardened:
 ## Bug Reports
 
 Report bugs via GitHub Issues:
-- https://github.com/pithecene-io/quarry/issues
+- https://github.com/pithecene/quarry/issues
 
 ### Issue Template
 

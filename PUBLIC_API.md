@@ -68,7 +68,7 @@ pnpm add @pithecene/quarry-sdk
 ### From source
 
 ```bash
-git clone https://github.com/pithecene-io/quarry.git
+git clone https://github.com/pithecene/quarry.git
 cd quarry
 pnpm install
 task build
@@ -81,7 +81,7 @@ task build
 ### 1. Clone and Build
 
 ```bash
-git clone https://github.com/pithecene-io/quarry.git
+git clone https://github.com/pithecene/quarry.git
 cd quarry
 pnpm install
 task build
