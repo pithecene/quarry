@@ -19,13 +19,32 @@ FAIL=0
 STUBS="$WORK/bin"
 mkdir -p "$STUBS"
 
-# npm view <pkg>@<v> version: succeeds iff <v> is listed in npm_versions.
+# fail_lookup <counter>: consumes one from $STATE/<counter> (if set) and
+# succeeds, simulating an unreachable registry for that many lookups.
+export FAIL_LOOKUP="$WORK/fail-lookup.sh"
+cat >"$FAIL_LOOKUP" <<'EOF'
+fail_lookup() {
+  local n
+  n=$(cat "$STATE/$1" 2>/dev/null || echo 0)
+  ((n > 0)) || return 1
+  echo $((n - 1)) >"$STATE/$1"
+}
+EOF
+
+# npm view <pkg>@<v> version: prints <v> iff it is listed in npm_versions,
+# otherwise fails with E404 (or ECONNREFUSED while npm_lookup_errors lasts).
 # npm dist-tag add <pkg>@<v> latest: recorded.
 cat >"$STUBS/npm" <<'EOF'
 #!/usr/bin/env bash
+source "$FAIL_LOOKUP"
 echo "npm $*" >>"$STATE/calls"
 case "$1" in
-  view) grep -qx "${2##*@}" "$STATE/npm_versions" 2>/dev/null ;;
+  view)
+    fail_lookup npm_lookup_errors && { echo "npm error code ECONNREFUSED" >&2; exit 1; }
+    grep -qx "${2##*@}" "$STATE/npm_versions" 2>/dev/null && { echo "${2##*@}"; exit 0; }
+    echo "npm error code E404" >&2
+    exit 1
+    ;;
   dist-tag) [[ ! -f "$STATE/npm_dist_tag_fails" ]] ;;
   *) exit 2 ;;
 esac
@@ -55,12 +74,19 @@ esac
 EOF
 
 # docker buildx imagetools inspect <ref>: succeeds iff <ref> is listed in
-# images. create -t <alias> <src>: recorded.
+# images, otherwise fails with "not found" (or a connection error while
+# image_lookup_errors lasts). create -t <alias> <src>: recorded.
 cat >"$STUBS/docker" <<'EOF'
 #!/usr/bin/env bash
+source "$FAIL_LOOKUP"
 echo "docker $*" >>"$STATE/calls"
 case "$3" in
-  inspect) grep -qx "$4" "$STATE/images" 2>/dev/null ;;
+  inspect)
+    fail_lookup image_lookup_errors && { echo "ERROR: failed to do request: connection refused" >&2; exit 1; }
+    grep -qx "$4" "$STATE/images" 2>/dev/null && exit 0
+    echo "ERROR: $4: not found" >&2
+    exit 1
+    ;;
   create) exit 0 ;;
 esac
 EOF
@@ -186,6 +212,7 @@ check "jsr: each stalled attempt is retried" [ "$(calls npx)" -eq 2 ]
 # --- converge-pointers.sh -----------------------------------------------------
 
 C="$HERE/converge-pointers.sh"
+export PROBE_RETRY_DELAY=0
 img() { printf '%s\n' "$@" >"$STATE/images"; }
 last_alias() { grep -- " create -t ghcr.io/x/y:$1 " "$STATE/calls" | tail -n 1 | awk '{print $NF}'; }
 
@@ -213,6 +240,7 @@ img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim
 expect "converge: newer release tagged but not yet published" ok "$C" "$PKG" ghcr.io/x/y
 check "converge: npm latest stays on the highest published" grep -q "dist-tag add @scope/pkg@1.2.3 latest" "$STATE/calls"
 check "converge: :latest stays on the highest pushed" [ "$(last_alias latest)" = "ghcr.io/x/y:1.2.3" ]
+check "converge: a not-found answer is not retried" [ "$(grep -c '^npm view' "$STATE/calls")" -eq 2 ]
 
 new_case
 tags v1.2.3 v1.3.0
@@ -248,6 +276,44 @@ check "converge: images still converge when npm fails" [ "$(last_alias latest)" 
 new_case
 expect "converge: unreadable tag list fails" fail env RELEASE_TAGS_FILE="$WORK/missing" "$C" "$PKG" ghcr.io/x/y
 check "converge: unreadable tag list writes nothing" [ "$(grep -c 'dist-tag\| create ' "$STATE/calls")" -eq 0 ]
+
+# Registry lookup failures (default PROBE_ATTEMPTS=3).
+
+new_case
+tags v1.2.3 v1.3.0
+printf '%s\n' 1.2.3 1.3.0 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim ghcr.io/x/y:1.3.0 ghcr.io/x/y:1.3.0-slim
+echo 2 >"$STATE/npm_lookup_errors"
+expect "converge: transient npm lookup failure is retried" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: npm latest -> highest after recovery" grep -q "dist-tag add @scope/pkg@1.3.0 latest" "$STATE/calls"
+
+new_case
+tags v1.2.3 v1.3.0
+printf '%s\n' 1.2.3 1.3.0 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim ghcr.io/x/y:1.3.0 ghcr.io/x/y:1.3.0-slim
+echo 3 >"$STATE/npm_lookup_errors"
+expect "converge: persistent npm lookup failure fails the job" fail "$C" "$PKG" ghcr.io/x/y
+check "converge: unreadable npm registry writes no npm pointer" [ "$(grep -c 'dist-tag' "$STATE/calls")" -eq 0 ]
+check "converge: unreadable npm registry does not fall back to an older version" [ "$(grep -c '^npm view @scope/pkg@1.2.3' "$STATE/calls")" -eq 0 ]
+check "converge: images still converge when npm is unreadable" [ "$(last_alias latest)" = "ghcr.io/x/y:1.3.0" ]
+
+new_case
+tags v1.2.3 v1.3.0
+printf '%s\n' 1.2.3 1.3.0 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim ghcr.io/x/y:1.3.0 ghcr.io/x/y:1.3.0-slim
+echo 2 >"$STATE/image_lookup_errors"
+expect "converge: transient image lookup failure is retried" ok "$C" "$PKG" ghcr.io/x/y
+check "converge: :latest -> highest after recovery" [ "$(last_alias latest)" = "ghcr.io/x/y:1.3.0" ]
+
+new_case
+tags v1.2.3 v1.3.0
+printf '%s\n' 1.2.3 1.3.0 >"$STATE/npm_versions"
+img ghcr.io/x/y:1.2.3 ghcr.io/x/y:1.2.3-slim ghcr.io/x/y:1.3.0 ghcr.io/x/y:1.3.0-slim
+echo 3 >"$STATE/image_lookup_errors"
+expect "converge: persistent image lookup failure fails the job" fail "$C" "$PKG" ghcr.io/x/y
+check "converge: unreadable image registry writes no image pointer" [ "$(grep -c ' create ' "$STATE/calls")" -eq 0 ]
+check "converge: unreadable image registry does not fall back to an older version" [ "$(grep -c 'inspect ghcr.io/x/y:1.2.3' "$STATE/calls")" -eq 0 ]
+check "converge: npm still converges when images are unreadable" grep -q "dist-tag add @scope/pkg@1.3.0 latest" "$STATE/calls"
 
 # --- result ------------------------------------------------------------------
 
