@@ -358,16 +358,23 @@ jobs:
           else
             echo "✅ ${NAME}@${VERSION} already published"
           fi
-          # Converge `latest` onto the highest release that is published,
-          # whichever run this is; the last writer always writes the right value.
-          CHANNEL=$(cd .. && scripts/release-channel.sh "$GITHUB_REF_NAME")
-          eval "$CHANNEL"
-          if exists "$highest"; then
+          # Converge `latest` onto the highest published release, whichever
+          # run this is, re-reading until the highest tag is stable across a
+          # write (same argument as the container step).
+          written=""
+          for _ in 1 2 3 4 5; do
+            CHANNEL=$(cd .. && scripts/release-channel.sh "$GITHUB_REF_NAME")
+            eval "$CHANNEL"
+            [ "$highest" = "$written" ] && { echo "✅ latest -> ${highest}"; exit 0; }
+            if ! exists "$highest"; then
+              echo "ℹ️ ${NAME}@${highest} not published yet; its release run will converge latest"
+              exit 0
+            fi
             npm dist-tag add "${NAME}@${highest}" latest
-            echo "✅ latest -> ${highest}"
-          else
-            echo "ℹ️ ${NAME}@${highest} not published yet; its release run will move latest"
-          fi
+            written="$highest"
+          done
+          echo "::error::highest release kept changing; latest not confirmed"
+          exit 1
 
   publish_jsr:
     name: 📦 Publish SDK (JSR)
@@ -492,17 +499,27 @@ jobs:
       # a manifest copy that takes seconds.
       - name: 🏷️ Point :latest and :slim at the highest release
         run: |
-          CHANNEL=$(scripts/release-channel.sh "$GITHUB_REF_NAME")
-          eval "$CHANNEL"
           IMG=ghcr.io/pithecene/quarry
           # Converge, don't claim: point the moving tags at the highest
-          # release, whichever run this is. If that release's images are not
-          # pushed yet, its own run will set them when it finishes.
-          if ! docker buildx imagetools inspect "${IMG}:${highest}" >/dev/null 2>&1 \
-            || ! docker buildx imagetools inspect "${IMG}:${highest}-slim" >/dev/null 2>&1; then
-            echo "ℹ️ ${IMG}:${highest} not published yet; its release run will move :latest and :slim"
-            exit 0
-          fi
-          docker buildx imagetools create -t "${IMG}:latest" "${IMG}:${highest}"
-          docker buildx imagetools create -t "${IMG}:slim" "${IMG}:${highest}-slim"
-          echo "✅ :latest -> ${highest}, :slim -> ${highest}-slim"
+          # release, whichever run this is, then re-read and repeat until the
+          # highest tag is stable across a write. A newer release's tag exists
+          # before its run starts, so any stale write landing after the newer
+          # run's write is followed by a re-read that sees it and corrects.
+          # If the highest release's images are not pushed yet, its own run
+          # converges the tags when it finishes.
+          written=""
+          for _ in 1 2 3 4 5; do
+            CHANNEL=$(scripts/release-channel.sh "$GITHUB_REF_NAME")
+            eval "$CHANNEL"
+            [ "$highest" = "$written" ] && { echo "✅ :latest/:slim -> ${highest}"; exit 0; }
+            if ! docker buildx imagetools inspect "${IMG}:${highest}" >/dev/null 2>&1 \
+              || ! docker buildx imagetools inspect "${IMG}:${highest}-slim" >/dev/null 2>&1; then
+              echo "ℹ️ ${IMG}:${highest} not published yet; its release run will converge :latest and :slim"
+              exit 0
+            fi
+            docker buildx imagetools create -t "${IMG}:latest" "${IMG}:${highest}"
+            docker buildx imagetools create -t "${IMG}:slim" "${IMG}:${highest}-slim"
+            written="$highest"
+          done
+          echo "::error::highest release kept changing; :latest/:slim not confirmed"
+          exit 1
