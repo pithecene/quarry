@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Packaging**: npm `latest` and the `ghcr.io/pithecene/quarry` `:latest`/`:slim` tags always point at the newest published release. Publishing an older patch release after a newer one (as with v0.13.5 after v0.13.6) no longer moves them backwards (#252)
+
 ### Security
 
 - **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing; the SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
