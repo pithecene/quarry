@@ -23,9 +23,13 @@ jobs:
           regex: ^v[0-9]+\.[0-9]+\.[0-9]+$
 
       - name: 📥 Checkout
+        if: ${{ steps.regex-match.outputs.match != '' }}
         uses: actions/checkout@v4
 
+      # Non-release v* tags (e.g. v1.2.3-rc.1) are no-ops for the whole
+      # workflow, so they are not subject to the monotonic gate either.
       - name: 🔎 Releases Are Monotonic
+        if: ${{ steps.regex-match.outputs.match != '' }}
         run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
 
   version_lockstep:
