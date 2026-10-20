@@ -8,7 +8,9 @@ package lode
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
+	"syscall"
 )
 
 // Sentinel errors for storage failure classification.
@@ -119,7 +121,31 @@ type errorPattern struct {
 	kind     error
 }
 
-// classifierTable is a declarative list of error message patterns.
+// typedClassifierTable maps standard error values to sentinels. Typed errors
+// are authoritative and are checked before any message matching: an error
+// message embeds paths and keys, whose digits and words can otherwise match a
+// message pattern (a temp dir containing "403" read as an S3 403).
+var typedClassifierTable = []struct {
+	target error
+	kind   error
+}{
+	{fs.ErrPermission, ErrPermissionDenied},
+	{fs.ErrNotExist, ErrNotFound},
+	{fs.ErrExist, ErrPathExists},
+	{syscall.ENOSPC, ErrDiskFull},
+}
+
+// httpStatusKinds maps HTTP response statuses (exposed by AWS SDK response
+// errors via HTTPStatusCode) to sentinels.
+var httpStatusKinds = map[int]error{
+	401: ErrAuth,
+	403: ErrAccessDenied,
+	404: ErrNotFound,
+	429: ErrThrottled,
+}
+
+// classifierTable is a declarative list of error message patterns, used for
+// errors that carry no typed classification.
 // Entries are checked in order; the first match wins.
 // ErrAccessDenied appears before ErrPermissionDenied so that
 // "AccessDenied"/"Forbidden"/"403" is not shadowed by "access denied".
@@ -143,11 +169,8 @@ func classifyError(err error) error {
 	if err == nil {
 		return nil
 	}
-
-	// Check for typed errors first via errors.As
-	var timeoutErr interface{ Timeout() bool }
-	if errors.As(err, &timeoutErr) && timeoutErr.Timeout() {
-		return ErrTimeout
+	if kind := classifyTyped(err); kind != nil {
+		return kind
 	}
 
 	// Walk the classifier table (first match wins)
@@ -159,6 +182,25 @@ func classifyError(err error) error {
 	}
 
 	return errors.New("storage error")
+}
+
+// classifyTyped returns the sentinel for err's typed chain, or nil if no
+// typed error in the chain is recognized.
+func classifyTyped(err error) error {
+	var timeoutErr interface{ Timeout() bool }
+	if errors.As(err, &timeoutErr) && timeoutErr.Timeout() {
+		return ErrTimeout
+	}
+	for _, entry := range typedClassifierTable {
+		if errors.Is(err, entry.target) {
+			return entry.kind
+		}
+	}
+	var statusErr interface{ HTTPStatusCode() int }
+	if errors.As(err, &statusErr) {
+		return httpStatusKinds[statusErr.HTTPStatusCode()]
+	}
+	return nil
 }
 
 // containsAny checks if s contains any of the substrings (case-insensitive).

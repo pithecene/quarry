@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Release**: Publishing is idempotent. An npm version or JSR version that is already published (re-run or concurrent run) counts as success; npm publishes under the `release` dist-tag, fixing "Cannot implicitly apply the latest tag"; JSR attempts are time-limited, retried, and checked against JSR's own record after a client error (#252)
 - **Release**: npm `latest` and GHCR `:latest`/`:slim` can no longer regress to an older release. Publishing jobs push versioned artifacts only; a single serialized `pointers` job points each moving pointer at the highest release published on its registry, so the result does not depend on which run finishes last. Registry lookup failures are retried and then fail the job, never falling back to an older release (#252)
+- **Storage**: Storage errors are classified from their typed chain (`fs.ErrPermission`, `fs.ErrNotExist`, `fs.ErrExist`, `ENOSPC`, and the HTTP status of AWS SDK response errors) before message matching. Previously a path or key embedded in the message could decide the kind, e.g. a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied`; this also made `TestLodeClient_FSDirectoryCreationFailure_ReadOnlyParent` flaky
 
 ### Security
 
