@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs**: File references across the docs are now navigable relative links (#254)
+- **Release**: Releases are monotonic. A `vX.Y.Z` tag lower than an already-released tag is rejected before anything is published, in both the release workflow and the dry-run; non-release `v*` tags remain no-ops. Release logic lives in tested scripts under `scripts/release/` (`task test` runs them, `task lint` shellchecks them; shellcheck pinned in `mise.toml`) instead of inline workflow shell (#252)
+
+### Fixed
+
+- **Release**: Publishing is idempotent. An npm version or JSR version that is already published (re-run or concurrent run) counts as success; npm publishes under the `release` dist-tag, fixing "Cannot implicitly apply the latest tag"; JSR attempts are time-limited, retried, and checked against JSR's own record after a client error (#252)
+- **Release**: npm `latest` and GHCR `:latest`/`:slim` can no longer regress to an older release. Publishing jobs push versioned artifacts only; a single serialized `pointers` job points each moving pointer at the highest release published on its registry, so the result does not depend on which run finishes last. Registry lookup failures are retried and then fail the job, never falling back to an older release (#252)
+
 ### Security
 
 - **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing; the SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
