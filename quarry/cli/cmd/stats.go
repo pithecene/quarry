@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	lodelibrary "github.com/pithecene-io/lode/lode"
@@ -150,6 +151,8 @@ func statsMetricsCommand() *cli.Command {
 			&cli.StringFlag{Name: "storage-backend", Usage: "Storage backend: fs or s3"},
 			&cli.StringFlag{Name: "storage-path", Usage: "Storage path (fs: directory, s3: bucket/prefix)"},
 			&cli.StringFlag{Name: "storage-region", Usage: "AWS region for S3 backend"},
+			&cli.StringFlag{Name: "storage-endpoint", Usage: "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)"},
+			&cli.BoolFlag{Name: "storage-s3-path-style", Usage: "Force path-style addressing for S3 (required by R2, MinIO)"},
 			&cli.StringFlag{Name: "run-id", Usage: "Read metrics for specific run ID"},
 			&cli.StringFlag{Name: "source", Usage: "Filter by source partition"},
 		),
@@ -165,7 +168,7 @@ func statsMetricsAction(c *cli.Context) error {
 
 	if backend != "" && path != "" {
 		// Build Lode dataset for reading
-		ds, err := buildReadDataset(c.String("storage-dataset"), backend, path, c.String("storage-region"))
+		ds, err := buildReadDataset(c, backend, path)
 		if err != nil {
 			return fmt.Errorf("failed to initialize storage reader: %w", err)
 		}
@@ -203,13 +206,27 @@ func statsMetricsAction(c *cli.Context) error {
 }
 
 // buildReadDataset creates a Lode Dataset for reading based on CLI flags.
-func buildReadDataset(dataset, backend, path, region string) (lodelibrary.Dataset, error) {
+// S3 options mirror `quarry run`, so data written to an S3-compatible
+// provider can be read back from it.
+func buildReadDataset(c *cli.Context, backend, path string) (lodelibrary.Dataset, error) {
+	dataset := c.String("storage-dataset")
+	endpoint := c.String("storage-endpoint")
+	usePathStyle := c.Bool("storage-s3-path-style")
 	switch backend {
 	case "fs":
+		if endpoint != "" || usePathStyle {
+			fmt.Fprintf(os.Stderr, "Warning: --storage-endpoint and --storage-s3-path-style are ignored for fs backend\n")
+		}
 		return lode.NewReadDatasetFS(dataset, path)
 	case "s3":
 		bucket, prefix := lode.ParseS3Path(path)
-		return lode.NewReadDatasetS3(dataset, lode.S3Config{Bucket: bucket, Prefix: prefix, Region: region})
+		return lode.NewReadDatasetS3(dataset, lode.S3Config{
+			Bucket:       bucket,
+			Prefix:       prefix,
+			Region:       c.String("storage-region"),
+			Endpoint:     endpoint,
+			UsePathStyle: usePathStyle,
+		})
 	default:
 		return nil, fmt.Errorf("unsupported storage-backend: %s (must be fs or s3)", backend)
 	}

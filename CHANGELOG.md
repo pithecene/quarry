@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CLI**: `quarry stats metrics` reads from S3-compatible providers (Cloudflare R2, MinIO). The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS; it now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
 - **Packaging**: npm `latest` and the `ghcr.io/pithecene/quarry` `:latest`/`:slim` tags always point at the newest published release. Publishing an older patch release after a newer one (as with v0.13.5 after v0.13.6) no longer moves them backwards (#252)
 - **Storage**: Storage errors are classified by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind, e.g. a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied` instead of `ErrPermissionDenied`
 

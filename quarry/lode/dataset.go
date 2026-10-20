@@ -1,14 +1,9 @@
 package lode
 
 import (
-	"context"
-	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pithecene-io/lode/lode"
-	lodes3 "github.com/pithecene-io/lode/lode/s3"
 )
 
 // NewReadDataset creates a Lode Dataset for reading.
@@ -27,34 +22,14 @@ func NewReadDatasetFS(dataset, rootPath string) (lode.Dataset, error) {
 	return NewReadDataset(dataset, lode.NewFSFactory(rootPath))
 }
 
-// NewReadDatasetS3 creates a read Dataset with S3 storage.
-// Uses AWS SDK default credential chain (env vars, shared config, IAM role).
+// NewReadDatasetS3 creates a read Dataset with S3 storage. The store is
+// built exactly as on the write path, including Endpoint and UsePathStyle.
 func NewReadDatasetS3(dataset string, s3cfg S3Config) (lode.Dataset, error) {
-	if err := s3cfg.Validate(); err != nil {
+	factory, err := newS3StoreFactory(s3cfg)
+	if err != nil {
 		return nil, err
 	}
-
-	ctx := context.Background()
-	var opts []func(*config.LoadOptions) error
-	if s3cfg.Region != "" {
-		opts = append(opts, config.WithRegion(s3cfg.Region))
-	}
-
-	awsConfig, err := config.LoadDefaultConfig(ctx, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	s3Client := s3.NewFromConfig(awsConfig)
-
-	s3Factory := func() (lode.Store, error) {
-		return lodes3.New(s3Client, lodes3.Config{
-			Bucket: s3cfg.Bucket,
-			Prefix: s3cfg.Prefix,
-		})
-	}
-
-	return NewReadDataset(dataset, s3Factory)
+	return NewReadDataset(dataset, factory)
 }
 
 // isMetricsSnapshot checks if a snapshot contains metrics data
