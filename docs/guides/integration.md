@@ -2,7 +2,7 @@
 
 This guide describes patterns for triggering downstream ETL or processing systems
 after Quarry runs complete. It is **non-normative**; the authoritative contracts
-remain in `docs/contracts/`.
+remain in [`docs/contracts/`](../contracts/).
 
 ---
 
@@ -50,7 +50,7 @@ Transform / Load
 The event should be published **after** the storage commit is durable.
 This ensures consumers can read the data referenced in the event.
 
-Per `CONTRACT_RUN.md`, the visibility boundary is:
+Per [`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md), the visibility boundary is:
 
 - `run_complete` or `run_error` is emitted
 - All preceding events are persisted
@@ -243,7 +243,7 @@ events:
 | `--event-sink-redis-retries` | `2` | Retry attempts with exponential backoff |
 | `--event-sink-redis-delivery` | `mandatory` | `mandatory` or `best_effort` |
 
-See `docs/contracts/CONTRACT_INTEGRATION.md` §Event Sink Model for full
+See [`docs/contracts/CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) §Event Sink Model for full
 semantics.
 
 ### Interim Pattern (v0.4.x)
@@ -430,7 +430,7 @@ partial reads.
 
 After `quarry run` exits, data visibility depends on the storage backend's
 consistency model. Consumers must respect the visibility boundary defined in
-`CONTRACT_RUN.md` and implement idempotent processing to handle edge cases
+[`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md) and implement idempotent processing to handle edge cases
 where data appears after the run signal.
 
 ### Processing without idempotency
@@ -442,6 +442,6 @@ create duplicate records in target systems.
 
 ## Related Documents
 
-- `CONTRACT_RUN.md` — Run lifecycle and terminal states
-- `CONTRACT_LODE.md` — Storage interaction semantics
+- [`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md) — Run lifecycle and terminal states
+- [`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md) — Storage interaction semantics
 - `guides/run.md` — User-facing run lifecycle guide

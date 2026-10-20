@@ -1,7 +1,7 @@
 # Runs, Jobs, and Attempts
 
 This document explains Quarry’s run lifecycle at a user level.
-The authoritative contract is `docs/contracts/CONTRACT_RUN.md`.
+The authoritative contract is [`docs/contracts/CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md).
 
 ---
 
@@ -34,7 +34,7 @@ building external wrappers.
 
 **Skip path:** `prepare` returns `{ action: 'skip' }` → emit `run_complete({skipped})` → done. No browser, no context, no other hooks.
 
-See `PUBLIC_API.md` for the full hook reference with signatures and examples.
+See [`PUBLIC_API.md`](../../PUBLIC_API.md) for the full hook reference with signatures and examples.
 
 ---
 

@@ -288,7 +288,7 @@ result, err := workflow.ExecuteActivity(ctx, quarry.ExtractActivity, quarry.Acti
 })
 ```
 
-**Already planned** in the implementation roadmap (see `IMPLEMENTATION_PLAN.md`).
+**Already planned** in the implementation roadmap (see [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)).
 
 **Serves well:**
 - Pipeline step (Temporal's primary use case)

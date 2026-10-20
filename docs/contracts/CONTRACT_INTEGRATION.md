@@ -56,7 +56,7 @@ via `--adapter` flags — they depend on the runtime as a library.
 
 ## Adapter Model
 
-- Adapters are in-repo modules under `quarry/adapter/`.
+- Adapters are in-repo modules under [`quarry/adapter/`](../../quarry/adapter/).
 - The runtime owns adapter lifecycle and selection.
 - Users do not write runtime code; users only provide configuration.
 - Adapter notification is **best-effort**: failures are logged to stderr
@@ -67,8 +67,8 @@ via `--adapter` flags — they depend on the runtime as a library.
 
 | Adapter | Package | Status |
 |---------|---------|--------|
-| Webhook (HTTP POST) | `quarry/adapter/webhook` | Available |
-| Redis (Pub/Sub) | `quarry/adapter/redis` | Available |
+| Webhook (HTTP POST) | [`quarry/adapter/webhook`](../../quarry/adapter/webhook/) | Available |
+| Redis (Pub/Sub) | [`quarry/adapter/redis`](../../quarry/adapter/redis/) | Available |
 | NATS | — | Planned |
 | SNS | — | Planned |
 
@@ -131,8 +131,8 @@ configuration. All configured sinks are propagated to child runs.
 
 | Sink | Package | Description |
 |------|---------|-------------|
-| Lode | `quarry/lode` | Default event persistence (always available) |
-| Redis Streams | `quarry/adapter/redisstream` | Real-time event streaming via XADD |
+| Lode | [`quarry/lode`](../../quarry/lode/) | Default event persistence (always available) |
+| Redis Streams | [`quarry/adapter/redisstream`](../../quarry/adapter/redisstream/) | Real-time event streaming via XADD |
 
 ### Redis Streams Sink
 

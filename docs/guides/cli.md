@@ -1,7 +1,7 @@
 # CLI Overview
 
 This document is a user guide for the Quarry CLI.
-The authoritative contract is `docs/contracts/CONTRACT_CLI.md`.
+The authoritative contract is [`docs/contracts/CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md).
 
 ---
 

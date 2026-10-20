@@ -52,14 +52,14 @@ Required top-level directories:
 - `scripts/` — developer tooling and test harnesses
 
 Required docs structure:
-- `docs/ARCH_INDEX.md` — subsystem navigation
-- `docs/contracts/` — normative behavior contracts
-- `docs/guides/` — user-facing documentation
+- [`docs/ARCH_INDEX.md`](docs/ARCH_INDEX.md) — subsystem navigation
+- [`docs/contracts/`](docs/contracts/) — normative behavior contracts
+- [`docs/guides/`](docs/guides/) — user-facing documentation
 
 Required root files:
-- `AGENTS.md` — agent guardrails
-- `PUBLIC_API.md` — public API contract
-- `Taskfile.yaml` — task orchestration
+- [`AGENTS.md`](AGENTS.md) — agent guardrails
+- [`PUBLIC_API.md`](PUBLIC_API.md) — public API contract
+- [`Taskfile.yaml`](Taskfile.yaml) — task orchestration
 
 Forbidden patterns:
 - No orphan top-level directories without ARCH_INDEX entry
@@ -67,4 +67,4 @@ Forbidden patterns:
 - No cross-language imports (Go/TypeScript boundary enforced by IPC)
 - No public SDK types or functions outside `sdk/`
 - No public Go API types outside `quarry/`
-- No contracts outside `docs/contracts/`
+- No contracts outside [`docs/contracts/`](docs/contracts/)

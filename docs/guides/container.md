@@ -1,7 +1,7 @@
 # Container Usage
 
 This document covers running Quarry via container images.
-For CLI flags and configuration, see `docs/guides/cli.md` and `docs/guides/configuration.md`.
+For CLI flags and configuration, see [`docs/guides/cli.md`](cli.md) and [`docs/guides/configuration.md`](configuration.md).
 
 ---
 

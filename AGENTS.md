@@ -166,20 +166,20 @@ Quarry is **TypeScript-first, ESM-only, modern by default**.
 
 Quarry uses **lockstep versioning**:
 
-- All components share a single canonical version: `quarry/types/version.go`
-- SDK package version (`sdk/package.json`) must match `types.Version`
+- All components share a single canonical version: [`quarry/types/version.go`](quarry/types/version.go)
+- SDK package version ([`sdk/package.json`](sdk/package.json)) must match `types.Version`
 - Contract versions (`CONTRACT_VERSION` in SDK) are derived from this
 - CLI `--version` output must match `types.Version`
 
 When releasing:
 1. Run `task version:bump V=X.Y.Z` — updates all lockstep targets and rebuilds artifacts
-2. Promote `CHANGELOG.md`: move `[Unreleased]` entries to a dated `[X.Y.Z] - YYYY-MM-DD` section, add the `[X.Y.Z]` link reference at the bottom, and restore an empty `[Unreleased]` placeholder
+2. Promote [`CHANGELOG.md`](CHANGELOG.md): move `[Unreleased]` entries to a dated `[X.Y.Z] - YYYY-MM-DD` section, add the `[X.Y.Z]` link reference at the bottom, and restore an empty `[Unreleased]` placeholder
 3. Commit as a single version bump
 
 **Do not skip steps. Do not split across commits.**
 
 Every place the version is written down is listed once, in
-`scripts/version-targets.txt`. `task version:bump` rewrites each target by
+[`scripts/version-targets.txt`](scripts/version-targets.txt). `task version:bump` rewrites each target by
 pattern, rebuilds the SDK and executor bundle, then runs
 `task version:check`, which CI also runs: a target that matches nothing or
 carries another version fails the build. Never hand-edit a version string;

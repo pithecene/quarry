@@ -1,7 +1,7 @@
 # Configuration Reference
 
 This document is a consolidated reference for all Quarry configuration surfaces.
-For command details, see `docs/guides/cli.md`. For proxy setup, see `docs/guides/proxy.md`.
+For command details, see [`docs/guides/cli.md`](cli.md). For proxy setup, see [`docs/guides/proxy.md`](proxy.md).
 
 ---
 
@@ -27,7 +27,7 @@ to reduce flag repetition across invocations.
 
 ## CLI Flags
 
-All flags are passed to `quarry run`. See `docs/guides/cli.md` for full
+All flags are passed to `quarry run`. See [`docs/guides/cli.md`](cli.md) for full
 command reference.
 
 ### Config File
@@ -101,7 +101,7 @@ Both may be specified; the first trigger to fire wins.
 | `--proxy-domain` | string | Domain for sticky derivation (scope=domain) |
 | `--proxy-origin` | string | Origin for sticky derivation (scope=origin, format: `scheme://host:port`) |
 
-See `docs/guides/proxy.md` for pool configuration format and selection behavior.
+See [`docs/guides/proxy.md`](proxy.md) for pool configuration format and selection behavior.
 
 ### Adapter (Event-Bus Notification)
 
@@ -114,7 +114,7 @@ See `docs/guides/proxy.md` for pool configuration format and selection behavior.
 | `--adapter-timeout` | duration | `10s` | Per-request/publish timeout |
 | `--adapter-retries` | int | `3` | Retry attempts |
 
-See `docs/guides/integration.md` for adapter usage patterns.
+See [`docs/guides/integration.md`](integration.md) for adapter usage patterns.
 
 ### Event Sinks (Real-Time Event Delivery)
 
@@ -134,7 +134,7 @@ Event sinks receive events in real time during a run (unlike adapters, which
 fire once after a run completes). When no `--event-sink` flags are set, events
 go to Lode only (default behavior). Each sink declares a delivery mode:
 `mandatory` (failure may fail the run) or `best_effort` (failure logged,
-run continues). See `docs/contracts/CONTRACT_INTEGRATION.md` for semantics.
+run continues). See [`docs/contracts/CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) for semantics.
 
 ### Fan-Out (Derived Work Execution)
 
@@ -168,7 +168,7 @@ at runtime. `--max-runs` is mandatory as a safety rail.
 When scripts import workspace packages (`@myorg/db`, `shared-utils`) that
 are not resolvable from the script's own directory, `--resolve-from` tells
 the executor where to look. Must be an existing directory; absolutized at
-parse time. See `docs/contracts/CONTRACT_CLI.md` for semantics.
+parse time. See [`docs/contracts/CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md) for semantics.
 
 ### Browser Reuse
 
@@ -190,7 +190,7 @@ seconds (default: 60) with no active pages.
 Use `--no-browser-reuse` (or `no_browser_reuse: true` in config) to revert
 to per-run browser launch.
 
-See `docs/guides/cli.md` for usage examples.
+See [`docs/guides/cli.md`](cli.md) for usage examples.
 
 ### Advanced (development only)
 
@@ -412,7 +412,7 @@ Prefer defining pools in the YAML config file under `proxies:`.
 ]
 ```
 
-See `docs/guides/proxy.md` for the full pool configuration schema.
+See [`docs/guides/proxy.md`](proxy.md) for the full pool configuration schema.
 
 ### Job Payload
 
