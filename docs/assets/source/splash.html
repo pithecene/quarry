@@ -1,0 +1,218 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "EBG"; src: url("fonts/EBGaramond.ttf"); font-weight: 400 800; }
+@font-face { font-family: "EBG"; src: url("fonts/EBGaramond-Italic.ttf"); font-style: italic; font-weight: 400 800; }
+html, body { margin: 0; background: #000; }
+svg { display: block; }
+text { font-family: "EBG", Georgia, serif; font-kerning: normal; }
+</style></head>
+<body><div id="root"></div>
+<script>
+// Companion to Lode's Plate I: the same survey-plate conventions, palette and type.
+const dark = location.hash === "#dark";
+const W = 1280, H = 560, M = 22;              // plate size, frame margin
+
+const PAL = dark ? {
+  paper: "#16130f", ink: "#e9e0cf", soft: "#b3a68f", sky0: "#0f141c", sky1: "#1d2431", star: "#e9e0cf",
+  rock: ["#5c4632", "#a29b86", "#56635a", "#8f8874", "#9c7f45", "#7a6a55", "#6f6262"],
+  pat:  ["#2a1f15", "#5a5446", "#2a3330", "#4f4a3d", "#4f3c1c", "#3d3428", "#3a3233"],
+  ground: "#3a3f2c", tree: "#c8c0ad", pit: "#0c0f15", cut: "#e9e0cf",
+} : {
+  paper: "#f2ead8", ink: "#2b241c", soft: "#5f5244", sky0: "#f4ecd8", sky1: "#e9dcbe", star: "#000",
+  rock: ["#8a6a4a", "#e6dec6", "#97a593", "#d4cbb0", "#dcb867", "#b9a07f", "#ae9a9b"],
+  pat:  ["#4d3926", "#a39a80", "#4f5a4c", "#968d72", "#8a6a2a", "#6e5b42", "#6a5859"],
+  ground: "#7d8a52", tree: "#3b3a28", pit: "#d9cba9", cut: "#2b241c",
+};
+
+// --- ground and the pit --------------------------------------------------------
+function surface(x) { return 262 - 18 * Math.exp(-(((x - 800) / 300) ** 2)) + 6 * Math.sin(x / 70) + 3 * Math.sin(x / 23 + 1); }
+const LIP0 = 560, LIP1 = 940, FLOOR = 460, FACE = LIP1 - 30;
+// stepped benches down the west wall, the working face on the east wall
+const PIT = [
+  [LIP0, 310], [600, 310], [600, 360], [640, 360], [640, 410], [680, 410], [680, FLOOR],
+  [FACE, FLOOR], [FACE, 340], [LIP1, 340],
+];
+
+// flat-bedded strata with a gentle dip: soil, limestone, shale, limestone, sandstone, conglomerate, granite
+const BASE = [240, 274, 330, 364, 410, 444, 498];
+// the soil mantle follows the ground; the beds below it dip gently east
+function bnd(i, x) { return i === 0 ? surface(x) : i === 1 ? surface(x) + 12 : BASE[i] + 0.015 * (x - 640) + 3 * Math.sin(x / 110 + i); }
+
+const xs = []; for (let x = M - 10; x <= W - M + 10; x += 4) xs.push(x);
+const fmt = p => p[0].toFixed(1) + " " + p[1].toFixed(1);
+const pathOf = pts => "M" + pts.map(fmt).join(" L");
+const curve = f => xs.map(x => [x, f(x)]);
+const rand = seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+function earthOutline() {
+  const west = xs.filter(x => x < LIP0).map(x => [x, surface(x)]);
+  const east = xs.filter(x => x > LIP1).map(x => [x, surface(x)]);
+  return [...west, [LIP0, surface(LIP0)], ...PIT, [LIP1, surface(LIP1)], ...east];
+}
+
+function strata() {
+  const out = [];
+  for (let i = 0; i < BASE.length - 1; i++) {
+    const top = curve(x => bnd(i, x)), bot = curve(x => bnd(i + 1, x)).reverse();
+    const d = pathOf(top) + " L" + bot.map(fmt).join(" L") + " Z";
+    out.push(`<path d="${d}" fill="${PAL.rock[i]}"/><path d="${d}" fill="url(#p${i})"/>`);
+  }
+  const deep = curve(x => bnd(BASE.length - 1, x));
+  out.push(`<path d="${pathOf(deep)} L${W} ${H} L0 ${H} Z" fill="${PAL.rock[6]}"/><path d="${pathOf(deep)} L${W} ${H} L0 ${H} Z" fill="url(#p6)"/>`);
+  for (let i = 1; i < BASE.length; i++) out.push(`<path d="${pathOf(curve(x => bnd(i, x)))}" fill="none" stroke="${PAL.ink}" stroke-width="0.9" stroke-opacity="0.75"/>`);
+  return out.join("");
+}
+
+// lithology patterns, after survey convention
+function patterns() {
+  const c = PAL.pat, p = [];
+  const pat = (i, w, h, body) => p.push(`<pattern id="p${i}" patternUnits="userSpaceOnUse" width="${w}" height="${h}">${body}</pattern>`);
+  pat(0, 9, 9, `<circle cx="2" cy="2" r="0.9" fill="${c[0]}"/><circle cx="6.5" cy="6.5" r="0.7" fill="${c[0]}"/><path d="M4 7 l2 -1.5" stroke="${c[0]}" stroke-width="0.7"/>`);
+  pat(1, 24, 12, `<path d="M0 0.5 H24 M0 6.5 H24 M0.5 0.5 V6.5 M12.5 6.5 V12 M12.5 0 V0.5" stroke="${c[1]}" stroke-width="0.9" fill="none"/>`);
+  pat(2, 16, 7, `<path d="M1 2 h6 M9 5.5 h6" stroke="${c[2]}" stroke-width="1"/>`);
+  pat(3, 24, 12, `<path d="M0 0.5 H24 M0 6.5 H24 M0.5 0.5 V6.5 M12.5 6.5 V12 M12.5 0 V0.5" stroke="${c[3]}" stroke-width="0.9" fill="none"/>`);
+  pat(4, 8, 8, `<circle cx="2" cy="2" r="0.8" fill="${c[4]}"/><circle cx="6" cy="6" r="0.8" fill="${c[4]}"/>`);
+  pat(5, 22, 16, `<ellipse cx="6" cy="5" rx="3.6" ry="2.4" fill="none" stroke="${c[5]}" stroke-width="0.8"/><ellipse cx="17" cy="12" rx="2.6" ry="1.8" fill="none" stroke="${c[5]}" stroke-width="0.8"/><circle cx="15" cy="3" r="0.8" fill="${c[5]}"/>`);
+  pat(6, 18, 18, `<path d="M4 2 v5 M1.5 4.5 h5 M13 11 v5 M10.5 13.5 h5" stroke="${c[6]}" stroke-width="0.9"/>`);
+  return p.join("");
+}
+
+// the cut: outline of the pit, drill lines on the working face
+function cut() {
+  const rim = `<path d="M${fmt([LIP0, surface(LIP0)])} L${PIT.map(fmt).join(" L")} L${fmt([LIP1, surface(LIP1)])}" fill="none" stroke="${PAL.ink}" stroke-width="1.6"/>`;
+  let drills = "";
+  for (let k = 0; k < 4; k++) drills += `<path d="M${FACE + 4 + k * 6} 346 V${FLOOR - 4}" stroke="${PAL.cut}" stroke-width="0.8" stroke-dasharray="7 4" stroke-opacity="0.7"/>`;
+  for (let k = 0; k < 3; k++) drills += `<path d="M${LIP1 + 3 + k * 6} ${surface(LIP1) + 8} V336" stroke="${PAL.cut}" stroke-width="0.8" stroke-dasharray="7 4" stroke-opacity="0.7"/>`;
+  return rim + drills;
+}
+
+// a dressed block, patterned like the bed it was cut from
+function block(x, y, w, h, bed = 3) {
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${PAL.rock[bed]}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#p${bed})"/>` +
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${PAL.ink}" stroke-width="1"/>`;
+}
+
+// pit floor: blocks waiting to be lifted
+function floor() {
+  return block(702, FLOOR - 22, 46, 22, 1) + block(754, FLOOR - 16, 34, 16, 3) + block(826, FLOOR - 20, 40, 20, 1) + block(872, FLOOR - 13, 26, 13, 3);
+}
+
+// guyed derrick on the west rim, boom out over the pit, a block on the fall
+function derrick() {
+  const mx = 515, g = surface(mx), top = g - 110;
+  const tip = [748, g - 90], hang = 392;
+  const s = `stroke="${PAL.ink}" fill="none" stroke-linecap="round"`;
+  return `<g>
+    <path d="M${mx} ${top} L${mx} ${g}" ${s} stroke-width="3"/>
+    <path d="M${mx + 2} ${g - 10} L${fmt(tip)}" ${s} stroke-width="2.4"/>
+    <path d="M${mx} ${top + 2} L${fmt(tip)}" ${s} stroke-width="0.9"/>
+    <path d="M${mx} ${top + 2} L${400} ${surface(400)} M${mx} ${top + 2} L${450} ${surface(450)}" ${s} stroke-width="0.7" stroke-opacity="0.8"/>
+    <path d="M${tip[0]} ${tip[1]} V${hang - 10} M${tip[0] - 9} ${hang} L${tip[0]} ${hang - 10} L${tip[0] + 9} ${hang}" ${s} stroke-width="0.9"/>
+    <circle cx="${tip[0]}" cy="${tip[1] + 3}" r="3" fill="${PAL.ink}"/>
+    ${block(tip[0] - 20, hang, 40, 20, 1)}
+    <path d="M${mx - 9} ${g + 1} h18" ${s} stroke-width="2"/>
+  </g>
+  <g fill="${PAL.ink}"><path d="M${mx - 52} ${surface(mx - 45) + 1} v-20 l13 -9 l13 9 v20 Z"/></g>
+  <rect x="${mx - 42}" y="${surface(mx - 45) - 12}" width="5" height="6" fill="${PAL.sky1}"/>`;
+}
+
+// tramway west from the derrick: rail, sleepers, two loaded wagons
+function tramway() {
+  const rail = x => surface(x) - 3;
+  const pts = []; for (let x = 60; x <= 452; x += 4) pts.push([x, rail(x)]);
+  let s = `<path d="${pathOf(pts)}" fill="none" stroke="${PAL.ink}" stroke-width="1.3"/>`;
+  for (let x = 64; x <= 450; x += 9) s += `<path d="M${x} ${rail(x) - 1} v4" stroke="${PAL.ink}" stroke-width="1"/>`;
+  const wagon = (x, bed) => {
+    const y = rail(x);
+    return `<path d="M${x - 22} ${y - 18} h44 l-4 12 h-36 Z" fill="${PAL.ink}"/>` +
+      `<circle cx="${x - 12}" cy="${y - 4}" r="4" fill="${PAL.paper}" stroke="${PAL.ink}" stroke-width="1.4"/>` +
+      `<circle cx="${x + 12}" cy="${y - 4}" r="4" fill="${PAL.paper}" stroke="${PAL.ink}" stroke-width="1.4"/>` +
+      block(x - 17, y - 34, 34, 16, bed);
+  };
+  return s + wagon(190, 1) + wagon(262, 3);
+}
+
+function land() {
+  const top = curve(surface);
+  const under = curve(x => surface(x) + 7).reverse();
+  const ground = `<path d="${pathOf(top)} L${under.map(fmt).join(" L")} Z" fill="${PAL.ground}" clip-path="url(#earth)"/>`;
+  const line = `<path d="${pathOf(top.filter(p => p[0] <= LIP0))}" fill="none" stroke="${PAL.ink}" stroke-width="1.6"/>` +
+    `<path d="${pathOf(top.filter(p => p[0] >= LIP1))}" fill="none" stroke="${PAL.ink}" stroke-width="1.6"/>`;
+  let trees = ""; const r = rand(5);
+  for (let k = 0; k < 46; k++) {
+    const x = 40 + r() * 1200;
+    if (x > 150 && x < 545) continue;
+    if (x > LIP0 - 10 && x < LIP1 + 24) continue;
+    if (x < 70) continue;
+    const y = surface(x), h = 10 + r() * 12;
+    trees += r() < 0.65
+      ? `<path d="M${x.toFixed(1)} ${(y - h).toFixed(1)} l${(h * 0.32).toFixed(1)} ${h.toFixed(1)} h${(-h * 0.64).toFixed(1)} Z" fill="${PAL.tree}"/>`
+      : `<path d="M${x.toFixed(1)} ${y.toFixed(1)} v${(-h * 0.5).toFixed(1)}" stroke="${PAL.tree}" stroke-width="1"/><circle cx="${x.toFixed(1)}" cy="${(y - h * 0.62).toFixed(1)}" r="${(h * 0.3).toFixed(1)}" fill="${PAL.tree}"/>`;
+  }
+  return ground + line + trees;
+}
+
+function sky() {
+  let s = `<rect width="${W}" height="${H}" fill="url(#sky)"/>`;
+  if (dark) {
+    const r = rand(3);
+    for (let k = 0; k < 90; k++) s += `<circle cx="${(30 + r() * 1220).toFixed(1)}" cy="${(30 + r() * 170).toFixed(1)}" r="${(0.4 + r() * 0.9).toFixed(2)}" fill="${PAL.star}" fill-opacity="${(0.3 + r() * 0.6).toFixed(2)}"/>`;
+    s += `<circle cx="1010" cy="70" r="15" fill="${PAL.ink}" fill-opacity="0.9"/><circle cx="1016" cy="66" r="13" fill="${PAL.sky0}"/>`;
+  } else {
+    s += `<circle cx="1010" cy="74" r="20" fill="none" stroke="${PAL.ink}" stroke-width="1.1"/>`;
+    for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8; s += `<path d="M${1010 + 26 * Math.cos(a)} ${74 + 26 * Math.sin(a)} L${1010 + (k % 2 ? 32 : 36) * Math.cos(a)} ${74 + (k % 2 ? 32 : 36) * Math.sin(a)}" stroke="${PAL.ink}" stroke-width="1"/>`; }
+  }
+  return s;
+}
+
+function titleblock() {
+  return `<g fill="${PAL.ink}">
+    <text x="62" y="66" font-size="13" letter-spacing="2.6" fill="${PAL.soft}" style="font-variant: small-caps">PLATE II. — SECTION THROUGH A WORKING QUARRY</text>
+    <text x="58" y="150" font-size="104" letter-spacing="-1.5">Quarry</text>
+    <text x="63" y="214" font-size="22" font-style="italic" fill="${PAL.soft}">Browser-driven extraction, durably ingested.</text>
+  </g>`;
+}
+
+function legend() {
+  const x = 1086, y = 128, row = 22;
+  const item = (k, sw, label) => `<g transform="translate(${x},${y + k * row})">${sw}<text x="34" y="9" font-size="13" font-style="italic" fill="${PAL.ink}">${label}</text></g>`;
+  return `<g>
+    <text x="${x}" y="${y - 14}" font-size="11" letter-spacing="2" fill="${PAL.soft}">LEGEND</text>
+    ${item(0, `<rect width="24" height="12" fill="${PAL.rock[1]}" stroke="${PAL.ink}" stroke-width="0.6"/><rect width="24" height="12" fill="url(#p1)"/><path d="M6 1 V11 M12 1 V11 M18 1 V11" stroke="${PAL.cut}" stroke-width="0.8" stroke-dasharray="3 2"/>`, "face — the source")}
+    ${item(1, `<path d="M6 -1 V13 M7 11 L22 1 M6 0 L22 1 M22 1 V8" stroke="${PAL.ink}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`, "derrick — the executor")}
+    ${item(2, block(2, 0, 20, 12, 1), "block — a record")}
+    ${item(3, `<path d="M0 8 H24" stroke="${PAL.ink}" stroke-width="1.3"/><path d="M3 7 v4 M9 7 v4 M15 7 v4 M21 7 v4" stroke="${PAL.ink}" stroke-width="1"/>`, "rail — the stream")}
+  </g>`;
+}
+
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${PAL.sky0}"/><stop offset="0.5" stop-color="${PAL.sky1}"/></linearGradient>
+  <linearGradient id="pitair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${PAL.sky1}" stop-opacity="0"/><stop offset="1" stop-color="${PAL.pit}" stop-opacity="0.85"/></linearGradient>
+  ${patterns()}
+  <clipPath id="earth"><path d="${pathOf(earthOutline())} L${W} ${H} L0 ${H} Z"/></clipPath>
+  <clipPath id="pit"><path d="M${LIP0} 284 L${PIT.map(fmt).join(" L")} L${LIP1} 284 Z"/></clipPath>
+  <clipPath id="frame"><rect x="${M}" y="${M}" width="${W - 2 * M}" height="${H - 2 * M}"/></clipPath>
+  <filter id="paper" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.45  0 0 0 0 0.4  0 0 0 0.10 0"/></filter>
+</defs>
+<rect width="${W}" height="${H}" fill="${PAL.paper}"/>
+<g clip-path="url(#frame)">
+  ${sky()}
+  <g clip-path="url(#pit)" opacity="0.32">${strata()}</g>
+  <path d="M${fmt([LIP0, surface(LIP0)])} L${PIT.map(fmt).join(" L")} L${fmt([LIP1, surface(LIP1)])} Z" fill="url(#pitair)"/>
+  <g clip-path="url(#earth)">${strata()}</g>
+  ${land()}
+  ${cut()}
+  ${floor()}
+  ${tramway()}
+  ${derrick()}
+</g>
+${titleblock()}
+${legend()}
+<rect x="${M}" y="${M}" width="${W - 2 * M}" height="${H - 2 * M}" fill="none" stroke="${PAL.ink}" stroke-width="1.4"/>
+<rect x="${M - 6}" y="${M - 6}" width="${W - 2 * M + 12}" height="${H - 2 * M + 12}" fill="none" stroke="${PAL.ink}" stroke-width="0.6"/>
+<rect width="${W}" height="${H}" filter="url(#paper)"/>
+</svg>`;
+document.getElementById("root").innerHTML = svg;
+</script></body></html>

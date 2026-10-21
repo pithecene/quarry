@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-splash-dark.jpg">
+  <img alt="Quarry — an illustrated geological section through a working quarry: flat-bedded strata cut into stepped benches, a guyed derrick lifting a dressed block out of the pit, and loaded wagons running off along a tramway" src="docs/assets/quarry-splash-light.jpg" width="100%">
+</picture>
+
 # Quarry
 
 [![CI](https://github.com/pithecene/quarry/actions/workflows/ci.yml/badge.svg)](https://github.com/pithecene/quarry/actions/workflows/ci.yml)
