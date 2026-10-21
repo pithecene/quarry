@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-splash-dark.jpg">
-  <img alt="Quarry — a patent drawing of quarrying apparatus: a guyed lattice derrick lifting a dressed block off a hatched rock face, a loaded wagon on a tramway, and the store it runs into, each numbered and keyed to the specification" src="docs/assets/quarry-splash-light.jpg" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-banner-dark.png">
+  <img alt="Quarry — browser-driven extraction, durably ingested. The mark is a terraced block of stone with one gold block lifted out of it." src="docs/assets/quarry-banner-light.png" width="100%">
 </picture>
 
 # Quarry
