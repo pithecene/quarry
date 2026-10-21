@@ -11,8 +11,8 @@ import (
 
 	"github.com/pithecene-io/lode/lode"
 
-	"github.com/pithecene-io/quarry/iox"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/types"
 )
 
 // =============================================================================

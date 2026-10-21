@@ -9,7 +9,7 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // encodeFrame encodes a payload with length prefix (matches Node executor output).

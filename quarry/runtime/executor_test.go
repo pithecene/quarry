@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene-io/quarry/lode"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestExecutorInputJSON_IncludesBrowserWSEndpoint(t *testing.T) {

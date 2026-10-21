@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Go module path**: The module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`, matching the renamed GitHub organization. Go consumers must update `require` directives and imports; releases up to v0.13.7 remain available under the former path. The CLI, SDK, container images and on-disk format are unchanged
+
 ### Changed
 
 - **Packaging**: The npm package `@pithecene/quarry-sdk` declares its license (Apache-2.0), author, homepage, repository and issue tracker, and the container images carry OCI labels (source, license, vendor, contact), so registry pages link back to this repository

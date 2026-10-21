@@ -16,19 +16,19 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"github.com/pithecene-io/quarry/adapter"
-	redisadapter "github.com/pithecene-io/quarry/adapter/redis"
-	"github.com/pithecene-io/quarry/adapter/redisstream"
-	"github.com/pithecene-io/quarry/adapter/webhook"
-	quarryconfig "github.com/pithecene-io/quarry/cli/config"
-	"github.com/pithecene-io/quarry/executor"
-	"github.com/pithecene-io/quarry/iox"
-	"github.com/pithecene-io/quarry/lode"
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/proxy"
-	"github.com/pithecene-io/quarry/runtime"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/adapter"
+	redisadapter "github.com/pithecene/quarry/adapter/redis"
+	"github.com/pithecene/quarry/adapter/redisstream"
+	"github.com/pithecene/quarry/adapter/webhook"
+	quarryconfig "github.com/pithecene/quarry/cli/config"
+	"github.com/pithecene/quarry/executor"
+	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/proxy"
+	"github.com/pithecene/quarry/runtime"
+	"github.com/pithecene/quarry/types"
 )
 
 // Exit codes per CONTRACT_RUN.md.

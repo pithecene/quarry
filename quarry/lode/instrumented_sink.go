@@ -3,9 +3,9 @@ package lode
 import (
 	"context"
 
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // InstrumentedSink wraps a policy.Sink and records write metrics

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // helper to create policy or fail test

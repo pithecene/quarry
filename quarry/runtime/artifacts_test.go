@@ -3,7 +3,7 @@ package runtime
 import (
 	"testing"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestArtifactManager_MaxArtifactSize(t *testing.T) {

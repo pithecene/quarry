@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestCompositeSink_RoutesEventsToEventSink(t *testing.T) {

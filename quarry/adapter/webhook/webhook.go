@@ -14,8 +14,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/pithecene-io/quarry/adapter"
-	"github.com/pithecene-io/quarry/iox"
+	"github.com/pithecene/quarry/adapter"
+	"github.com/pithecene/quarry/iox"
 )
 
 // DefaultTimeout is the default HTTP request timeout.

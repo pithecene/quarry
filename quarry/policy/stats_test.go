@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // TestBufferedPolicy_Stats_ConcurrentAccess verifies that Stats() is safe

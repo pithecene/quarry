@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // Config represents a quarry.yaml configuration file.

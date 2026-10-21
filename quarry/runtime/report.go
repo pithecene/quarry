@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/types"
 )
 
 // RunReport is the structured JSON report written by --report.

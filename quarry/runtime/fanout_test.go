@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestComputeDedupKey_Deterministic(t *testing.T) {

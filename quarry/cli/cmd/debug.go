@@ -5,10 +5,10 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"github.com/pithecene-io/quarry/cli/reader"
-	"github.com/pithecene-io/quarry/cli/render"
-	"github.com/pithecene-io/quarry/proxy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/cli/reader"
+	"github.com/pithecene/quarry/cli/render"
+	"github.com/pithecene/quarry/proxy"
+	"github.com/pithecene/quarry/types"
 )
 
 // DebugCommand returns the debug command with subcommands.

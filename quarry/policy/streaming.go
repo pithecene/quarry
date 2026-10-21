@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pithecene-io/quarry/log"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/log"
+	"github.com/pithecene/quarry/types"
 )
 
 // Internal buffer capacity defaults.

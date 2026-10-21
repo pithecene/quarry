@@ -16,8 +16,8 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // DefaultStreamKey is the default Redis Stream key.

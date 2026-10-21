@@ -10,10 +10,10 @@ import (
 	lodepkg "github.com/pithecene-io/lode/lode"
 	"github.com/vmihailenco/msgpack/v5"
 
-	"github.com/pithecene-io/quarry/lode"
-	"github.com/pithecene-io/quarry/log"
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/log"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // encodeFrame encodes a payload with length prefix

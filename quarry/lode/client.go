@@ -12,8 +12,8 @@ import (
 
 	"github.com/pithecene-io/lode/lode"
 
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/types"
 )
 
 // checksumEnabled controls whether MD5 checksums are computed for chunks.

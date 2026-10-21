@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene-io/quarry/iox"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/types"
 )
 
 var e2e = flag.Bool("e2e", false, "run E2E browser reuse tests (requires Node + Chromium)")

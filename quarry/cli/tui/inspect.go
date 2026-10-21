@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/pithecene-io/quarry/cli/reader"
+	"github.com/pithecene/quarry/cli/reader"
 )
 
 // InspectModel is a Bubble Tea model for inspect views.

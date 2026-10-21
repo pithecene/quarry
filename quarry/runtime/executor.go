@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // ExecutorConfig configures executor execution.

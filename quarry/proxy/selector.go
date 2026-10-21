@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // Selector manages proxy selection from pools.

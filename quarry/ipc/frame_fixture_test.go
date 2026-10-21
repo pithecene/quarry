@@ -22,7 +22,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // e2eManifest represents the manifest JSON structure.

@@ -3,7 +3,7 @@ package runtime
 import (
 	"fmt"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // Exit codes per executor contract (matches TypeScript executor).
