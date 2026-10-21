@@ -268,7 +268,10 @@ jobs:
           TAG="${{ github.ref_name }}"
           BODY=$(gh release view "$TAG" \
             --json body -q '.body' 2>/dev/null || echo "")
-          if echo "$BODY" | grep -qv "TODO: Add release notes"; then
+          # No release (empty body) or the placeholder body means no notes yet.
+          # grep -v would match any line without the marker, including the
+          # empty line echoed for a missing release.
+          if [ -n "$BODY" ] && ! grep -q "TODO: Add release notes" <<<"$BODY"; then
             echo "has_notes=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_notes=false" >> "$GITHUB_OUTPUT"
