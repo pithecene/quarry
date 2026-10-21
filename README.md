@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-splash-dark.jpg">
-  <img alt="Quarry — an illustrated geological section through a working quarry: flat-bedded strata cut into stepped benches, a guyed derrick lifting a dressed block out of the pit, and loaded wagons running off along a tramway" src="docs/assets/quarry-splash-light.jpg" width="100%">
+  <img alt="Quarry — a patent drawing of quarrying apparatus: a guyed lattice derrick lifting a dressed block off a hatched rock face, a loaded wagon on a tramway, and the store it runs into, each numbered and keyed to the specification" src="docs/assets/quarry-splash-light.jpg" width="100%">
 </picture>
 
 # Quarry
