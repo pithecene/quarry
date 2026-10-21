@@ -194,4 +194,4 @@ Breaking changes are gated by contract versioning.
 
 ## License
 
-Apache 2.0
+Apache License 2.0 (see [LICENSE](LICENSE)). Copyright © 2026 Pithecene. Contact: contact@pithecene.sh.
