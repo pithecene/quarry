@@ -266,11 +266,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
-          BODY=$(gh release view "$TAG" \
-            --json body -q '.body' 2>/dev/null || echo "")
+          # Only a confirmed "release not found" leads to creating the draft;
+          # any other lookup failure (network, rate limit, auth) fails the step
+          # so the placeholder body can never overwrite authored notes.
+          if ! BODY=$(gh release view "$TAG" --json body -q '.body' 2>"$RUNNER_TEMP/lookup.err"); then
+            if grep -q "release not found" "$RUNNER_TEMP/lookup.err"; then
+              BODY=""
+            else
+              cat "$RUNNER_TEMP/lookup.err" >&2
+              exit 1
+            fi
+          fi
           # No release (empty body) or the placeholder body means no notes yet.
-          # grep -v would match any line without the marker, including the
-          # empty line echoed for a missing release.
           if [ -n "$BODY" ] && ! grep -q "TODO: Add release notes" <<<"$BODY"; then
             echo "has_notes=true" >> "$GITHUB_OUTPUT"
           else
