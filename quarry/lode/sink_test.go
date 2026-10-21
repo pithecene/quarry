@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestDeriveDay(t *testing.T) {

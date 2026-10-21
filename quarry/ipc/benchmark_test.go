@@ -8,7 +8,7 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // frameTypeProbe is the old approach: unmarshal the entire payload into a

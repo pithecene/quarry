@@ -8,8 +8,8 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 
-	"github.com/pithecene-io/quarry/iox"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/types"
 )
 
 func testEvents() []*types.EventEnvelope {

@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // Policy defines the ingestion policy interface.

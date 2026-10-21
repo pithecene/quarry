@@ -3,8 +3,8 @@ package cmd
 import (
 	"github.com/urfave/cli/v2"
 
-	"github.com/pithecene-io/quarry/cli/render"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/cli/render"
+	"github.com/pithecene/quarry/types"
 )
 
 // VersionResponse is the response for the version command.

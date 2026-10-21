@@ -3,8 +3,8 @@ package policy_test
 import (
 	"testing"
 
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestNoopPolicy_AcceptReturnsNil(t *testing.T) {

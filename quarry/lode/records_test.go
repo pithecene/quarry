@@ -3,7 +3,7 @@ package lode
 import (
 	"testing"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 func TestToEventRecordMap_IncludesPolicy(t *testing.T) {

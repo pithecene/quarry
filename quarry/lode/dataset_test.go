@@ -6,7 +6,7 @@ import (
 
 	"github.com/pithecene-io/lode/lode"
 
-	"github.com/pithecene-io/quarry/metrics"
+	"github.com/pithecene/quarry/metrics"
 )
 
 func TestNewReadDatasetFS(t *testing.T) {

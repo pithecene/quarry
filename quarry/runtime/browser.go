@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pithecene-io/quarry/iox"
+	"github.com/pithecene/quarry/iox"
 )
 
 // ManagedBrowser represents a Quarry-managed browser process.

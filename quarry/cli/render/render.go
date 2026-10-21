@@ -23,8 +23,8 @@ import (
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/pithecene-io/quarry/cli/tui"
-	"github.com/pithecene-io/quarry/iox"
+	"github.com/pithecene/quarry/cli/tui"
+	"github.com/pithecene/quarry/iox"
 )
 
 // Format represents an output format.

@@ -8,9 +8,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // DeriveDay computes the partition day from run start time.

@@ -3,7 +3,7 @@ package policy
 import (
 	"context"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // DeliveryMode controls how sink write failures are handled.

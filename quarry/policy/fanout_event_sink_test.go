@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // stubEventSink is a test double for EventSink.

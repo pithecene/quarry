@@ -10,9 +10,9 @@ import (
 	lodelibrary "github.com/pithecene-io/lode/lode"
 	"github.com/urfave/cli/v2"
 
-	"github.com/pithecene-io/quarry/cli/reader"
-	"github.com/pithecene-io/quarry/cli/render"
-	"github.com/pithecene-io/quarry/lode"
+	"github.com/pithecene/quarry/cli/reader"
+	"github.com/pithecene/quarry/cli/render"
+	"github.com/pithecene/quarry/lode"
 )
 
 // StatsCommand returns the stats command with subcommands.

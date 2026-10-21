@@ -21,8 +21,8 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"github.com/pithecene-io/quarry/cli/cmd"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/cli/cmd"
+	"github.com/pithecene/quarry/types"
 )
 
 // Commit is set via ldflags at build time.

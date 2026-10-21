@@ -7,12 +7,12 @@ import (
 	"io"
 	"strings"
 
-	"github.com/pithecene-io/quarry/ipc"
-	"github.com/pithecene-io/quarry/lode"
-	"github.com/pithecene-io/quarry/log"
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/ipc"
+	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/log"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // IngestionError classifies ingestion errors for outcome determination.

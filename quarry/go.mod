@@ -1,4 +1,4 @@
-module github.com/pithecene-io/quarry
+module github.com/pithecene/quarry
 
 go 1.25.6
 

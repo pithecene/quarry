@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // testPaths holds resolved paths for E2E tests.

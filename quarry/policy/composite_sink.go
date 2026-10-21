@@ -3,7 +3,7 @@ package policy
 import (
 	"context"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // CompositeSink implements [Sink] by routing events and chunks to separate

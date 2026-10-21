@@ -8,8 +8,8 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 
-	"github.com/pithecene-io/quarry/adapter"
-	"github.com/pithecene-io/quarry/iox"
+	"github.com/pithecene/quarry/adapter"
+	"github.com/pithecene/quarry/iox"
 )
 
 func testEvent() *adapter.RunCompletedEvent {

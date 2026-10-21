@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/types"
 )
 
 // SinkEntry pairs an EventSink with its delivery mode.

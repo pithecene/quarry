@@ -6,11 +6,11 @@ import (
 	"io"
 	"time"
 
-	"github.com/pithecene-io/quarry/lode"
-	"github.com/pithecene-io/quarry/log"
-	"github.com/pithecene-io/quarry/metrics"
-	"github.com/pithecene-io/quarry/policy"
-	"github.com/pithecene-io/quarry/types"
+	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/log"
+	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/policy"
+	"github.com/pithecene/quarry/types"
 )
 
 // Executor abstracts executor process lifecycle for testing.
