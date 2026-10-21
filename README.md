@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-banner-dark.png">
-  <img alt="Quarry — browser-driven extraction, durably ingested. The mark is a terraced block of stone with one gold block lifted out of it." src="docs/assets/quarry-banner-light.png" width="100%">
+  <img alt="Quarry — browser-driven extraction, durably ingested. Banner art after Auguste Lepère, Fontainebleau Forest: Sandstone Quarry (1890), Cleveland Museum of Art, CC0" src="docs/assets/quarry-banner-light.png" width="100%">
 </picture>
 
 # Quarry
