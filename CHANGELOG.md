@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Packaging**: The npm package `@pithecene/quarry-sdk` declares its license (Apache-2.0), author, homepage, repository and issue tracker, and the container images carry OCI labels (source, license, vendor, contact), so registry pages link back to this repository
-- **License**: The copyright holder is Pithecene (was Andrew Hu), matching Lode; the license itself (Apache-2.0) is unchanged
+- **License**: The copyright holder is Pithecene LLC (was Andrew Hu), matching Lode; the license itself (Apache-2.0) is unchanged
 
 ---
 
