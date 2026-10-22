@@ -215,3 +215,39 @@ func TestStreamingPolicy_CloseReportsUnflushedData(t *testing.T) {
 		t.Error("the timed-out close flush was not counted as an error")
 	}
 }
+
+// An ingest blocked on a full buffer wakes when Close begins and refuses its
+// data instead of appending after the final flush's snapshot.
+func TestStreamingPolicy_BlockedIngestRefusedOnClose(t *testing.T) {
+	pol, err := NewStreamingPolicy(NewStubSink(), StreamingConfig{FlushCount: streamingMaxBufferEvents * 10})
+	if err != nil {
+		t.Fatalf("NewStreamingPolicy: %v", err)
+	}
+	// Fill the buffer to capacity directly, so the next ingest waits for room.
+	pol.mu.Lock()
+	for i := range streamingMaxBufferEvents {
+		pol.eventBuffer = append(pol.eventBuffer, &types.EventEnvelope{RunID: "r", Seq: int64(i + 1), Type: types.EventTypeItem})
+	}
+	pol.bufferBytes = 1
+	pol.mu.Unlock()
+
+	blocked := make(chan error, 1)
+	go func() {
+		blocked <- pol.IngestEvent(t.Context(), &types.EventEnvelope{RunID: "r", Seq: 1 << 20, Type: types.EventTypeItem})
+	}()
+	select {
+	case err := <-blocked:
+		t.Fatalf("IngestEvent returned %v before Close; the buffer should be full", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	_ = pol.Close()
+	select {
+	case err := <-blocked:
+		if !errors.Is(err, ErrPolicyClosed) {
+			t.Fatalf("blocked IngestEvent = %v, want ErrPolicyClosed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocked IngestEvent never returned after Close")
+	}
+}

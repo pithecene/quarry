@@ -157,6 +157,10 @@ func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.Event
 	// Block until buffer has room for this item (backpressure per CONTRACT_POLICY.md).
 	// Allow single-item overflow when buffer is empty to prevent deadlock for oversized entries.
 	p.waitForRoomLocked(eventSize)
+	if p.stopped { // Close began while this call waited for room
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalEventsLocked()
 	p.eventBuffer = append(p.eventBuffer, envelope)
@@ -196,6 +200,10 @@ func (p *StreamingPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.
 	// Block until buffer has room for this chunk (backpressure per CONTRACT_POLICY.md).
 	// Allow single-item overflow when buffer is empty to prevent deadlock for oversized chunks.
 	p.waitForRoomLocked(chunkSize)
+	if p.stopped { // Close began while this call waited for room
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalChunksLocked()
 	p.chunkBuffer = append(p.chunkBuffer, chunk)
@@ -334,6 +342,8 @@ func (p *StreamingPolicy) Close() error {
 			p.stopped = true
 			close(p.stopCh)
 		}
+		// Wake ingestion waiting for buffer room: it now refuses the data.
+		p.bufferCond.Broadcast()
 		p.mu.Unlock()
 		p.loopCancel()
 
@@ -441,7 +451,7 @@ func (p *StreamingPolicy) recalculateBufferBytes() {
 // rather than deadlocking (it will be flushed on the next trigger).
 // Caller must hold mu.
 func (p *StreamingPolicy) waitForRoomLocked(additionalBytes int64) {
-	for p.bufferBytes > 0 && p.wouldExceedCapacityLocked(additionalBytes) {
+	for !p.stopped && p.bufferBytes > 0 && p.wouldExceedCapacityLocked(additionalBytes) {
 		p.bufferCond.Wait()
 	}
 }

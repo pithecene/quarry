@@ -63,7 +63,8 @@ func TestPolicies_RefuseIngestAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStreamingPolicy: %v", err)
 	}
-	for name, pol := range map[string]policy.Policy{"buffered": buffered, "streaming": streaming} {
+	strict := policy.NewStrictPolicy(policy.NewStubSink())
+	for name, pol := range map[string]policy.Policy{"buffered": buffered, "streaming": streaming, "strict": strict} {
 		_ = pol.Close()
 		if err := pol.IngestEvent(t.Context(), ev); !errors.Is(err, policy.ErrPolicyClosed) {
 			t.Errorf("%s IngestEvent after Close: %v, want ErrPolicyClosed", name, err)
