@@ -26,8 +26,8 @@ async function fakeQuarry(stdout: string, exitCode = 0, stderr = ''): Promise<Fa
   const script = [
     '#!/usr/bin/env node',
     `require('node:fs').writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)))`,
-    `process.stdout.write(${JSON.stringify(stdout)})`,
-    `process.stderr.write(${JSON.stringify(stderr)})`,
+    `require('node:fs').writeSync(1, ${JSON.stringify(stdout)})`,
+    `require('node:fs').writeSync(2, ${JSON.stringify(stderr)})`,
     `process.exitCode = ${exitCode}`
   ].join('\n')
   await writeFile(path, script)
