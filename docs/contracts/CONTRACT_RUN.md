@@ -125,6 +125,108 @@ auto-emit terminal → [cleanup] → run_result → return
 
 ---
 
+## Run Finalization (v0.14.0+)
+
+The runtime owns a run's whole lifecycle. `Execute`
+(`runtime.RunOrchestrator.Execute`) performs, in order:
+
+1. Write the run's **start record** (§Run Records). Nothing else is
+   written for the run before it.
+2. Launch the executor, ingest, flush the policy, and close it, on every
+   path including a failed start record. Buffered and streaming policies
+   flush once more on close (bounded at 30 seconds; an interval flush
+   still in progress is cancelled and joined, never abandoned), so closing
+   happens here, before the end record; close is one-shot, so a caller's later
+   close writes nothing. Policy statistics are taken after the close, so
+   the metrics record and exit report match what was persisted.
+3. Persist the run's metrics record (CONTRACT_LODE.md §Metrics Record
+   Storage).
+4. Write the run's **end record**.
+5. Return.
+
+Nothing is written for the run after the end record, so a present end
+record means every other object of the run is final.
+
+The time bounds in this section assume store operations return. A write
+that is abandoned at a deadline could still land later, after the end
+record, so the runtime never abandons one: a store call that never returns
+blocks the run at that call, as it would block any write. Lode's
+filesystem and S3 stores return; S3 calls also honour cancellation.
+
+Finalization happens inside `Execute` for every caller: the CLI, fan-out
+child runs, and any embedding host (CONTRACT_INTEGRATION.md §Activity
+Boundary). Callers do not persist metrics themselves. When `Execute` has
+no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
+
+### Failure Semantics
+
+- **Start record.** If the start record cannot be written, the run does
+  not start: no executor is launched and no run data (events, artifacts,
+  metrics) is written. The outcome is `executor_crash`, as when the
+  executor fails to launch, and a retry is safe.
+  - A store can report a write as failed after the object landed, so the
+    runtime still attempts the end record, which gives such a run
+    terminal evidence.
+  - If a start record already exists at the run's key (same dataset,
+    source, category, day, and run ID), that key belongs to another
+    execution. The runtime then writes nothing at all, not even an end
+    record, and reports the conflict in the outcome message. This check
+    is scoped to the key: global `run_id` uniqueness (§Canonical
+    Identifiers) remains the caller's obligation.
+  - Values that can never form a valid key are rejected earlier, as a
+    configuration error, before `Execute` (CONTRACT_LODE.md §Key
+    Encoding).
+- **Metrics record.** Best-effort, as before: failure is a warning, does
+  not change the outcome, and is recorded in the end record
+  (`metrics_persisted: false`).
+- **End record.** Failure does not change the outcome. It is surfaced on
+  stderr, in `RunResult.RunRecordError`, and in the structured exit report
+  (`run_record_error`). As with the start record, a write reported as
+  failed may still have landed.
+
+---
+
+## Run Records (v0.14.0+)
+
+Every run has two small JSON records that the runtime writes outside
+Lode's partition tree: a start record and an end record. Their location
+and key encoding are defined in CONTRACT_LODE.md §Run Record Namespace.
+Records are written once and never rewritten.
+
+### Start Record (`start.json`)
+
+| Field            | Type   | Required | Description |
+|------------------|--------|----------|-------------|
+| `record_kind`    | string | yes      | `"run_start"` |
+| `schema_version` | int    | yes      | `1` |
+| `run_id`         | string | yes      | Run identifier |
+| `job_id`         | string | no       | Omitted when unknown |
+| `parent_run_id`  | string | no       | As in the run's lineage (§Lineage Fields); omitted when absent. Fan-out child runs do not yet carry their enqueueing run here (§Child Runs), so their records omit it |
+| `attempt`        | int    | yes      | Per §Lineage Fields |
+| `dataset`        | string | yes      | Lode dataset ID |
+| `source`         | string | yes      | Partition key (unencoded) |
+| `category`       | string | yes      | Partition key (unencoded) |
+| `day`            | string | yes      | Partition day, `YYYY-MM-DD`, derived from `started_at` |
+| `partition`      | string | yes      | The run's Lode partition prefix relative to the dataset's partition root, Hive-encoded: `source=…/category=…/day=…/run_id=…/`. Every `event_type` partition of the run sits under it |
+| `started_at`     | string | yes      | Run start time, RFC 3339 UTC with nanoseconds |
+| `quarry_version` | string | yes      | Version of the writer |
+
+### End Record (`end.json`)
+
+| Field               | Type           | Required | Description |
+|---------------------|----------------|----------|-------------|
+| `record_kind`       | string         | yes      | `"run_end"` |
+| `schema_version`    | int            | yes      | `1` |
+| `run_id`            | string         | yes      | Run identifier |
+| `ended_at`          | string         | yes      | RFC 3339 UTC with nanoseconds |
+| `outcome`           | string         | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements) |
+| `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`); `null` when none was received |
+| `message`           | string         | no       | Outcome message; omitted when empty |
+| `event_count`       | int            | yes      | Events processed |
+| `metrics_persisted` | bool           | yes      | Whether the metrics record was written |
+
+---
+
 ## Idempotency Expectations
 
 - Runs are **append-only**; no event mutation is allowed after emission.
@@ -151,7 +253,8 @@ This metadata must be available to storage and logs.
 When `--report <path>` is specified, the runtime writes a structured JSON
 report on exit. `--report -` writes to stderr.
 
-The report is written after metrics persistence and adapter notification.
+The report is written after `Execute` returns (metrics and the end record
+are persisted; §Run Finalization) and after adapter notification.
 All data is composed from `RunResult` and `metrics.Snapshot` — no additional
 data fetching occurs.
 
@@ -189,7 +292,8 @@ data fetching occurs.
     "port": 8080,
     "username": "user (omitted if none)"
   },
-  "stderr": "string (omitted if empty)"
+  "stderr": "string (omitted if empty)",
+  "run_record_error": "string (omitted unless the end record failed)"
 }
 ```
 
@@ -201,5 +305,7 @@ data fetching occurs.
 - `terminal_summary` is omitted when no terminal event was received.
 - `proxy_used` is omitted when no proxy was configured.
 - `stderr` is omitted when empty.
+- `run_record_error` is omitted unless writing the end record failed
+  (§Run Finalization).
 - `policy.flush_triggers` is omitted for non-streaming policies.
 - `exit_code` matches the process exit code per §Exit Codes in CONTRACT_CLI.md.

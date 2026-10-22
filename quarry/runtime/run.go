@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -38,7 +39,8 @@ type RunConfig struct {
 	// Proxy is the optional resolved proxy endpoint per CONTRACT_PROXY.md.
 	// If nil, executor launches without a proxy.
 	Proxy *types.ProxyEndpoint
-	// Policy is the ingestion policy.
+	// Policy is the ingestion policy. Execute closes it before writing the
+	// end record.
 	Policy policy.Policy
 	// ExecutorFactory overrides executor creation (for testing).
 	// If nil, uses NewExecutorManager.
@@ -68,7 +70,26 @@ type RunConfig struct {
 	// Collector is the metrics collector for this run per CONTRACT_METRICS.md.
 	// If nil, no metrics are recorded (all Collector methods are nil-safe).
 	Collector *metrics.Collector
+	// Storage persists the run's finalization: start record, metrics record,
+	// and end record (CONTRACT_RUN.md §Run Finalization). If nil, nothing is
+	// persisted outside the policy (unit tests).
+	Storage RunStorage
+	// StartedAt is the run start time the partition day was derived from.
+	// Recorded in the start record so started_at and day agree. If zero,
+	// Execute's own start time is used.
+	StartedAt time.Time
 }
+
+// RunStorage persists a run's finalization records. lode.LodeClient
+// implements it.
+type RunStorage interface {
+	WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time) error
+	WriteMetrics(ctx context.Context, snap metrics.Snapshot, completedAt time.Time) error
+	WriteEndRecord(ctx context.Context, end lode.RunEnd) error
+}
+
+// finalizeTimeout bounds the metrics and end-record writes after a run.
+const finalizeTimeout = 30 * time.Second
 
 // RunResult represents the result of a run.
 type RunResult struct {
@@ -94,6 +115,12 @@ type RunResult struct {
 	// TerminalSummary is the payload from the terminal event (run_complete or run_error).
 	// Nil if no terminal event was received.
 	TerminalSummary map[string]any
+	// TerminalType is the type of the terminal event received, or "" if none.
+	TerminalType types.EventType
+	// RunRecordError reports a failed end-record write (CONTRACT_RUN.md
+	// §Failure Semantics). Empty when the end record was written or the run
+	// has no storage.
+	RunRecordError string
 }
 
 // RunOrchestrator orchestrates a single run.
@@ -110,6 +137,13 @@ func NewRunOrchestrator(config *RunConfig) (*RunOrchestrator, error) {
 	if err := config.RunMeta.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid run metadata: %w", err)
 	}
+	// Run records are keyed by these values; reject unsafe ones before
+	// anything is written (CONTRACT_LODE.md §Key Encoding).
+	if config.Storage != nil {
+		if err := lode.ValidateRunKey(config.StorageDataset, config.Source, config.Category, config.RunMeta.RunID); err != nil {
+			return nil, fmt.Errorf("invalid run storage key: %w", err)
+		}
+	}
 
 	// Create logger with run context
 	logger := log.NewLogger(config.RunMeta)
@@ -120,20 +154,130 @@ func NewRunOrchestrator(config *RunConfig) (*RunOrchestrator, error) {
 	}, nil
 }
 
-// Execute executes the run end-to-end.
-// This is the main entry point for run orchestration.
+// Execute executes the run end-to-end, including finalization
+// (CONTRACT_RUN.md §Run Finalization).
 //
 // Execution flow:
-//  1. Start executor process
-//  2. Run IPC ingestion loop (concurrent)
-//  3. Wait for executor exit
-//  4. Flush policy
-//  5. Determine outcome
-//  6. Return result
+//  1. Write the start record (nothing is written for the run before it)
+//  2. Start executor process, run the IPC ingestion loop, wait for exit
+//  3. Flush policy, determine outcome, and close the policy
+//  4. Persist metrics, then write the end record (nothing is written after it)
+//
+// Execute closes the policy; a caller's later Close must be harmless.
+//  5. Return result
 func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 	r.startTime = time.Now()
 	r.config.Collector.IncRunStarted()
 
+	if err := r.writeStartRecord(ctx); err != nil {
+		// The run never starts: no executor is launched and no run data is
+		// written. Retrying is safe, as for an executor that fails to launch.
+		r.logger.Error("run start record write failed", map[string]any{
+			"error": err.Error(),
+		})
+		result := r.buildResult(&types.RunOutcome{
+			Status:  types.OutcomeExecutorCrash,
+			Message: fmt.Sprintf("run start record write failed: %v", err),
+		}, "", nil, nil)
+		r.closePolicy(result)
+		// A failed remote write may still have landed, so the end record is
+		// attempted, unless a start record already existed: then the records
+		// belong to another execution with this run ID and must not be touched.
+		if !errors.Is(err, lode.ErrPathExists) {
+			r.writeEndRecord(ctx, result, false)
+		}
+		return result, nil
+	}
+
+	result := r.execute(ctx)
+	r.closePolicy(result)
+	r.finalize(ctx, result)
+	return result, nil
+}
+
+// closePolicy closes the policy before finalization. Buffered and streaming
+// policies flush once more on Close, and nothing may be written after the
+// end record; Close is one-shot, so a caller's later Close writes nothing.
+// The policy's statistics are refreshed afterwards, because that last flush
+// can change them, and the metrics record and exit report must agree with
+// what was persisted.
+func (r *RunOrchestrator) closePolicy(result *RunResult) {
+	if err := r.config.Policy.Close(); err != nil {
+		r.logger.Warn("policy close failed", map[string]any{
+			"error": err.Error(),
+		})
+	}
+	result.PolicyStats = r.config.Policy.Stats()
+	r.absorbPolicyStats(result.PolicyStats)
+}
+
+// absorbPolicyStats copies policy statistics into the metrics collector.
+func (r *RunOrchestrator) absorbPolicyStats(ps policy.Stats) {
+	droppedByType := make(map[string]int64, len(ps.DroppedByType))
+	for k, v := range ps.DroppedByType {
+		droppedByType[string(k)] = v
+	}
+	r.config.Collector.AbsorbPolicyStats(ps.TotalEvents, ps.EventsPersisted, ps.EventsDropped, droppedByType, ps.FlushTriggers)
+}
+
+// writeStartRecord writes the run's start record when storage is configured.
+func (r *RunOrchestrator) writeStartRecord(ctx context.Context) error {
+	if r.config.Storage == nil {
+		return nil
+	}
+	startedAt := r.config.StartedAt
+	if startedAt.IsZero() {
+		startedAt = r.startTime
+	}
+	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, startedAt)
+}
+
+// finalize persists the metrics record and then the end record. Neither
+// failure changes the outcome: a metrics failure is a warning, and an
+// end-record failure is also reported on the result.
+func (r *RunOrchestrator) finalize(ctx context.Context, result *RunResult) {
+	if r.config.Storage == nil {
+		return
+	}
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
+	defer cancel()
+
+	metricsPersisted := true
+	if err := r.config.Storage.WriteMetrics(fctx, r.config.Collector.Snapshot(), time.Now()); err != nil {
+		metricsPersisted = false
+		r.logger.Warn("failed to persist metrics", map[string]any{
+			"error": err.Error(),
+		})
+	}
+	r.writeEndRecord(fctx, result, metricsPersisted)
+}
+
+// writeEndRecord writes the end record; a failure is reported on the result.
+func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult, metricsPersisted bool) {
+	if r.config.Storage == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
+	defer cancel()
+
+	end := lode.RunEnd{
+		EndedAt:          time.Now(),
+		Outcome:          result.Outcome.Status,
+		Terminal:         result.TerminalType,
+		Message:          result.Outcome.Message,
+		EventCount:       result.EventCount,
+		MetricsPersisted: metricsPersisted,
+	}
+	if err := r.config.Storage.WriteEndRecord(ctx, end); err != nil {
+		result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)
+		r.logger.Error("run end record write failed", map[string]any{
+			"error": err.Error(),
+		})
+	}
+}
+
+// execute runs the executor and ingestion and determines the outcome.
+func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	r.logger.Info("starting run", map[string]any{
 		"script":   r.config.ScriptPath,
 		"executor": r.config.ExecutorPath,
@@ -202,7 +346,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		return r.buildResult(&types.RunOutcome{
 			Status:  types.OutcomeExecutorCrash,
 			Message: fmt.Sprintf("failed to start executor: %v", err),
-		}, "", nil, nil), nil
+		}, "", nil, nil)
 	}
 
 	r.config.Collector.IncExecutorLaunchSuccess()
@@ -278,7 +422,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		return r.buildResult(&types.RunOutcome{
 			Status:  types.OutcomeExecutorCrash,
 			Message: fmt.Sprintf("executor wait failed: %v", execErr),
-		}, "", artifacts, ingestion), nil
+		}, "", artifacts, ingestion)
 	}
 
 	// Handle ingestion errors
@@ -314,7 +458,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 			}
 		}
 
-		return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion), nil
+		return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion)
 	}
 
 	// If flush failed and there were no other errors, report policy failure
@@ -322,7 +466,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		return r.buildResult(&types.RunOutcome{
 			Status:  types.OutcomePolicyFailure,
 			Message: fmt.Sprintf("policy flush failed: %v", flushErr),
-		}, string(execResult.StderrBytes), artifacts, ingestion), nil
+		}, string(execResult.StderrBytes), artifacts, ingestion)
 	}
 
 	// Determine outcome based on exit code and run_result frame.
@@ -388,7 +532,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		})
 	}
 
-	return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion), nil
+	return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion)
 }
 
 // runResultOutcomeToRunOutcome converts a RunResultFrame to a RunOutcome.
@@ -457,6 +601,7 @@ func (r *RunOrchestrator) buildResult(
 	if ingestion != nil {
 		result.EventCount = ingestion.CurrentSeq()
 		if termEvent, hasTerm := ingestion.GetTerminalEvent(); hasTerm {
+			result.TerminalType = termEvent.Type
 			if termEvent.Payload != nil {
 				result.TerminalSummary = termEvent.Payload
 			} else {
@@ -476,12 +621,7 @@ func (r *RunOrchestrator) buildResult(
 	}
 
 	// Absorb policy stats into the metrics collector
-	ps := result.PolicyStats
-	droppedByType := make(map[string]int64, len(ps.DroppedByType))
-	for k, v := range ps.DroppedByType {
-		droppedByType[string(k)] = v
-	}
-	r.config.Collector.AbsorbPolicyStats(ps.TotalEvents, ps.EventsPersisted, ps.EventsDropped, droppedByType, ps.FlushTriggers)
+	r.absorbPolicyStats(result.PolicyStats)
 
 	return result
 }

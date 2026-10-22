@@ -152,7 +152,9 @@ Checksum validation is a downstream consumer responsibility.
 
 ## Metrics Record Storage
 
-A metrics snapshot is written at run completion under `event_type=metrics`.
+A metrics snapshot is written at run completion under `event_type=metrics`,
+by the runtime inside `Execute`, before the end record (CONTRACT_RUN.md
+§Run Finalization).
 Write is best-effort — failure produces a warning but does not change run outcome.
 
 ### Metrics Record Schema
@@ -266,6 +268,59 @@ Error text changed in v0.10.0 (`lode: invalid argument: <value>`,
 `invalid path`, one extra nesting level on manifest read failures);
 `errors.Is` classification is unchanged and Quarry matches on sentinels,
 never on message text.
+
+---
+
+## Run Record Namespace (v0.14.0+)
+
+Run start and end records (CONTRACT_RUN.md §Run Records) are stored
+outside Lode's partition tree, in a namespace Quarry owns inside the
+dataset:
+
+```
+datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/start.json
+datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/end.json
+```
+
+- Records are written with `Store.Put`, not `Dataset.Write`; they are not
+  Lode records, have no manifest, and are scoped by `--storage-dataset`
+  like everything else the run writes. `Store.Put` is create-only on every
+  backend, so a record is never overwritten.
+- Lode never reads or modifies this namespace: it lies outside
+  `datasets/<dataset>/partitions/` and Lode's manifests and pointer.
+- Order is `source/category/day/run_id`, matching the partition layout.
+
+### Key Encoding
+
+The `dataset` component is the dataset ID exactly as Lode uses it in its
+own `datasets/<dataset>/` directory, so records sit beside the dataset's
+partitions. Every other path component (`source`, `category`, `day`,
+`run_id`) is encoded with Lode's Hive value encoding (`url.PathEscape`),
+never concatenated raw. A value such as `a/b` is stored as `a%2Fb`,
+exactly as the partition tree stores it, so a record can neither escape
+the namespace nor create an ambiguous prefix. One builder in
+`quarry/lode` computes these keys.
+
+`run` rejects, before anything is written, values that cannot form a safe
+key, as a configuration error:
+
+- `source`, `category`, `run_id`: empty, `.`, or `..` (Hive encoding
+  leaves `.` and `..` unchanged), or a value with a `.` or `..` path
+  segment (split on `/` or `\`). Sidecar file paths (§Sidecar File
+  Inventory) still interpolate these values unencoded, so such a segment
+  could place one run's files under another run's partition.
+- Dataset ID: empty, `.`, `..`, or any value containing `/` or `\`. The
+  dataset component is not encoded, so these would leave the dataset's
+  directory or add path segments.
+
+Fan-out child runs are checked the same way before they start, and so is
+every embedding host: `runtime.NewRunOrchestrator` rejects an unsafe key
+when storage is configured, and the record writer refuses one.
+
+The start record's `partition` field uses the same encoding for the
+partition prefix (`source=<enc>/category=<enc>/day=<enc>/run_id=<enc>/`),
+so the run's Lode partitions are addressed from the record without
+re-deriving keys.
 
 ---
 
