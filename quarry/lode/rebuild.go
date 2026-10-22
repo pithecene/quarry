@@ -111,6 +111,11 @@ func RebuildRunRecords(ctx context.Context, dataset string, factory lode.StoreFa
 		report.RunsScanned++
 		out, indexed, err := rb.rebuild(ctx, run)
 		if err != nil {
+			// Report what this run got before the error, so the report
+			// covers every record written.
+			if out.WroteStart || out.WroteEnd {
+				report.add(out, false)
+			}
 			return report, err
 		}
 		report.add(out, indexed)
@@ -364,7 +369,7 @@ func (b *rebuilder) writeEnd(ctx context.Context, run legacyRun, terminal map[st
 // exists was written concurrently: it is reported as not written.
 func (b *rebuilder) put(ctx context.Context, cfg Config, name string, rec any) (bool, error) {
 	if b.dryRun {
-		return true, nil
+		return !b.existing[RunRecordDir(cfg)+name], nil
 	}
 	err := putRunRecord(ctx, b.store, cfg, name, rec)
 	if errors.Is(err, ErrPathExists) {

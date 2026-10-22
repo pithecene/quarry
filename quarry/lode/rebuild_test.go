@@ -1,7 +1,11 @@
 package lode
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,5 +193,52 @@ func TestRebuild_EmptyDataset(t *testing.T) {
 	}
 	if _, err := RebuildRunRecords(t.Context(), "..", sharedMemoryFactory(), RebuildOptions{}); err == nil {
 		t.Fatal("unsafe dataset accepted")
+	}
+}
+
+// failEndPut fails every end-record write.
+type failEndPut struct{ lode.Store }
+
+var errEndPut = errors.New("end put failed")
+
+func (s failEndPut) Put(ctx context.Context, path string, r io.Reader) error {
+	if strings.HasSuffix(path, "/"+EndRecordName) {
+		return errEndPut
+	}
+	return s.Store.Put(ctx, path, r)
+}
+
+// A store error stops the rebuild, and the report still lists the start
+// record written before it.
+func TestRebuild_ErrorReportsRecordsWritten(t *testing.T) {
+	t.Parallel()
+	factory := sharedMemoryFactory()
+	writeLegacyRun(t, factory, "src", "r1", types.EventTypeRunComplete)
+	store, _ := factory()
+	failing := func() (lode.Store, error) { return failEndPut{store}, nil }
+
+	report, err := RebuildRunRecords(t.Context(), "quarry", failing, RebuildOptions{})
+	if !errors.Is(err, errEndPut) {
+		t.Fatalf("err = %v, want the end-record write error", err)
+	}
+	if report.StartsWritten != 1 || len(report.Runs) != 1 || !report.Runs[0].WroteStart || report.Runs[0].WroteEnd {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
+// A dry run reports exactly the records a real rebuild would write: an
+// existing end record is not reported as written.
+func TestRebuild_DryRunMatchesExistingRecords(t *testing.T) {
+	t.Parallel()
+	factory := sharedMemoryFactory()
+	cfg := writeLegacyRun(t, factory, "src", "r1", types.EventTypeRunComplete)
+	store, _ := factory()
+	if err := putRunRecord(t.Context(), store, cfg, EndRecordName, map[string]any{"record_kind": RecordKindRunEnd}); err != nil {
+		t.Fatal(err)
+	}
+	dry := rebuild(t, factory, true)
+	real := rebuild(t, factory, false)
+	if dry.StartsWritten != 1 || dry.EndsWritten != 0 || real.StartsWritten != 1 || real.EndsWritten != 0 {
+		t.Fatalf("dry = %+v, real = %+v", dry, real)
 	}
 }
