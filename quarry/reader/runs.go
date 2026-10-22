@@ -93,8 +93,7 @@ type Page struct {
 // Reader reads one dataset.
 type Reader struct {
 	dataset string
-	factory lode.StoreFactory
-	store   lode.Store
+	store   lode.Store // one store for listing runs and reading their events
 }
 
 // New returns a reader for the dataset stored behind factory.
@@ -104,11 +103,17 @@ func New(dataset string, factory lode.StoreFactory) (*Reader, error) {
 	if err := qlode.ValidateRunKey(dataset, "x", "x", "x"); err != nil {
 		return nil, err
 	}
+	if factory == nil {
+		return nil, errors.New("reader: nil store factory")
+	}
 	store, err := factory()
 	if err != nil {
 		return nil, qlode.WrapReadError(err, "datasets/"+dataset)
 	}
-	return &Reader{dataset: dataset, factory: factory, store: store}, nil
+	if store == nil {
+		return nil, errors.New("reader: store factory returned a nil store")
+	}
+	return &Reader{dataset: dataset, store: store}, nil
 }
 
 // ListRuns lists the runs under the selector's key prefix, ordered by key

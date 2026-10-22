@@ -292,3 +292,34 @@ func TestReadEvents_NoPrefixBleed(t *testing.T) {
 func metricsSnapshot(runID string) metrics.Snapshot {
 	return metrics.Snapshot{RunID: runID, Policy: "strict", Executor: "test", StorageBackend: "fs"}
 }
+
+func TestNew_RejectsInvalidFactory(t *testing.T) {
+	if _, err := New("quarry", nil); err == nil {
+		t.Error("nil factory accepted")
+	}
+	if _, err := New("quarry", func() (lode.Store, error) { return nil, nil }); err == nil {
+		t.Error("nil store accepted")
+	}
+}
+
+// A factory that returns a new store per call must not split listing and
+// event reads across stores.
+func TestReadEvents_UsesTheListingStore(t *testing.T) {
+	f := seedRuns(t)
+	calls := 0
+	r, err := New("quarry", func() (lode.Store, error) {
+		calls++
+		if calls == 1 {
+			return f.store, nil
+		}
+		return lode.NewMemory(), nil
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p, _ := r.ListRuns(t.Context(), Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, ListOptions{})
+	evs, err := r.ReadEvents(t.Context(), p.Runs[0])
+	if err != nil || len(evs) != 2 {
+		t.Fatalf("events = %d err %v, want 2 from the listing store", len(evs), err)
+	}
+}

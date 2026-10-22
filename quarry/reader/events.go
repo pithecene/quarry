@@ -25,7 +25,10 @@ func (r *Reader) ReadEvents(ctx context.Context, run Run) ([]map[string]any, err
 	if run.Partition == "" || !strings.HasSuffix(run.Partition, "/") {
 		return nil, fmt.Errorf("%w: %q", ErrRunWithoutPartition, run.RunID)
 	}
-	dr, err := lode.NewDatasetReader(r.factory, lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"))
+	// Bind the dataset reader to the reader's store, so events come from the
+	// same store the run was listed from.
+	store := r.store
+	dr, err := lode.NewDatasetReader(func() (lode.Store, error) { return store, nil }, lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"))
 	if err != nil {
 		return nil, qlode.WrapReadError(err, "datasets/"+r.dataset)
 	}
