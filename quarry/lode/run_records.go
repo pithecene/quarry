@@ -146,10 +146,10 @@ type RunEnd struct {
 
 // EndRecord is a run's end record (CONTRACT_RUN.md §End Record).
 type EndRecord struct {
-	RecordKind       string  `json:"record_kind"`
-	SchemaVersion    int     `json:"schema_version"`
-	RunID            string  `json:"run_id"`
-	EndedAt          string  `json:"ended_at"`
+	RecordKind    string `json:"record_kind"`
+	SchemaVersion int    `json:"schema_version"`
+	RunID         string `json:"run_id"`
+	EndedAt       string `json:"ended_at"`
 	// Outcome and EventCount are null on a backfilled record: storage does
 	// not prove the runtime's classification or what it processed.
 	Outcome          *string `json:"outcome"`
