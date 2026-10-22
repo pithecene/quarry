@@ -450,6 +450,10 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		"",
 	)
 
+	if err := lode.ValidateRunKey(cf.storageDataset, childSource, childCategory, item.RunID); err != nil {
+		return nil, fmt.Errorf("invalid child run key: %w", err)
+	}
+
 	childStartTime := time.Now()
 	childPol, childLodeClient, childFileWriter, err := buildPolicy(
 		cf.policyChoice, cf.storage, cf.storageDataset,
@@ -477,6 +481,8 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		StorageDataset:    cf.storageDataset,
 		StorageDay:        lode.DeriveDay(childStartTime),
 		Collector:         childCollector,
+		Storage:           childLodeClient,
+		StartedAt:         childStartTime,
 	}
 
 	orchestrator, err := runtime.NewRunOrchestrator(config)
@@ -484,28 +490,20 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		return nil, fmt.Errorf("failed to create child orchestrator: %w", err)
 	}
 
+	// Execute persists the child's metrics and run records itself
+	// (CONTRACT_RUN.md §Run Finalization).
 	result, err := orchestrator.Execute(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("child execution failed: %w", err)
 	}
-
-	// Persist child metrics (best effort)
-	if childLodeClient != nil {
-		metricsCtx, metricsCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		if writeErr := childLodeClient.WriteMetrics(metricsCtx, childCollector.Snapshot(), time.Now()); writeErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to persist child metrics for %s: %v\n", item.RunID, writeErr)
-		}
-		metricsCancel()
-	}
-
 	return result, nil
 }
 
-// runFinalizer handles post-execution concerns: metrics persistence,
-// adapter notification, and result printing. Built once per run invocation
-// and shared across fan-out and single-run paths.
+// runFinalizer handles post-execution concerns: adapter notification, the
+// exit report, and result printing. Metrics and run records are persisted by
+// Execute itself (CONTRACT_RUN.md §Run Finalization). Built once per run
+// invocation and shared across fan-out and single-run paths.
 type runFinalizer struct {
-	lodeClient     lode.Client
 	collector      *metrics.Collector
 	adapter        *adapterChoice
 	storage        storageChoice
@@ -518,29 +516,19 @@ type runFinalizer struct {
 	reportPath     string
 }
 
-// Finalize persists metrics, notifies the adapter, writes the report, and prints results.
+// Finalize notifies the adapter, writes the report, and prints results.
 // duration is computed from startTime internally.
 //
 // Note: run_completed events reach all configured event sinks (including Redis Streams)
 // through the normal policy path — no separate terminal publish is needed.
 func (f *runFinalizer) Finalize(result *runtime.RunResult) {
 	duration := time.Since(f.startTime)
-	f.persistMetrics(duration)
+	if result.RunRecordError != "" {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RunRecordError)
+	}
 	f.notifyAdapter(result, duration)
 	f.writeReport(result)
 	f.printResults(result, duration)
-}
-
-func (f *runFinalizer) persistMetrics(duration time.Duration) {
-	if f.lodeClient == nil {
-		return
-	}
-	completedAt := f.startTime.Add(duration)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := f.lodeClient.WriteMetrics(ctx, f.collector.Snapshot(), completedAt); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to persist metrics: %v\n", err)
-	}
 }
 
 func (f *runFinalizer) notifyAdapter(result *runtime.RunResult, duration time.Duration) {
@@ -692,6 +680,9 @@ func runAction(c *cli.Context) error {
 	}
 
 	storageDataset := resolveString(c, "storage-dataset", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Dataset }))
+	if err := lode.ValidateRunKey(storageDataset, source, category, runMeta.RunID); err != nil {
+		return cli.Exit(err.Error(), exitConfigError)
+	}
 
 	// Parse and validate adapter config (pre-execution: fail fast on bad config)
 	var adptConfig *adapterChoice
@@ -819,7 +810,6 @@ func runAction(c *cli.Context) error {
 
 	// Build finalizer (shared post-run concerns for both execution paths)
 	finalizer := &runFinalizer{
-		lodeClient:     lodeClient,
 		collector:      collector,
 		adapter:        adptConfig,
 		storage:        storageConfig,
@@ -848,6 +838,8 @@ func runAction(c *cli.Context) error {
 		StorageDataset:    storageDataset,
 		StorageDay:        lode.DeriveDay(startTime),
 		Collector:         collector,
+		Storage:           lodeClient,
+		StartedAt:         startTime,
 	}
 
 	// Branch: fan-out or single run
@@ -1428,7 +1420,7 @@ Quarry could not locate the executor. To fix:
   3. Or add quarry-executor to your PATH`)
 }
 
-func buildPolicy(choice policyChoice, storageConfig storageChoice, dataset, source, category, runID string, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, lode.Client, lode.FileWriter, error) {
+func buildPolicy(choice policyChoice, storageConfig storageChoice, dataset, source, category, runID string, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
 	lodeSink, client, fw, err := buildStorageSink(storageConfig, dataset, source, category, runID, choice.name, startTime, collector)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create storage sink: %w", err)
@@ -1468,9 +1460,9 @@ func buildPolicy(choice policyChoice, storageConfig storageChoice, dataset, sour
 // buildStorageSink creates a Lode storage sink based on CLI configuration.
 // Storage backend and path are required - no silent fallback to stub.
 // If collector is non-nil, wraps the sink with metrics instrumentation.
-// Returns the sink, the underlying client (for metrics persistence),
+// Returns the sink, the underlying client (for run finalization),
 // a FileWriter for sidecar file uploads, and any error.
-func buildStorageSink(storageConfig storageChoice, dataset, source, category, runID, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, lode.Client, lode.FileWriter, error) {
+func buildStorageSink(storageConfig storageChoice, dataset, source, category, runID, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, lode.FileWriter, error) {
 	// Build Lode config with partition keys
 	cfg := lode.Config{
 		Dataset:  dataset,

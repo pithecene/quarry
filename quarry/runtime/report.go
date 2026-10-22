@@ -30,6 +30,7 @@ type RunReport struct {
 	TerminalSummary *map[string]any              `json:"terminal_summary,omitempty"`
 	ProxyUsed       *types.ProxyEndpointRedacted `json:"proxy_used,omitempty"`
 	Stderr          string                       `json:"stderr,omitempty"`
+	RunRecordError  string                       `json:"run_record_error,omitempty"`
 }
 
 // ReportPolicy holds policy stats in the report.
@@ -79,6 +80,7 @@ func BuildRunReport(result *RunResult, snap metrics.Snapshot, policyName string,
 		Metrics:   &snap,
 		ProxyUsed: result.ProxyUsed,
 		Stderr:          result.StderrOutput,
+		RunRecordError:  result.RunRecordError,
 	}
 
 	if result.RunMeta.JobID != nil {

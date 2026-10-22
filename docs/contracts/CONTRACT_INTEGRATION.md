@@ -254,10 +254,17 @@ Ordering and fan-out strategies are explicitly out of scope for now.
 
 ## Invocation Ordering
 
-The adapter is invoked **after** all of the following:
+The adapter is invoked **after** `Execute` returns, so all of the following
+have happened (CONTRACT_RUN.md §Run Finalization):
 1. Run execution completes (success or failure)
 2. Policy flush completes
 3. Metrics are persisted to Lode
+4. The run's end record is written, or its write failed (v0.14.0+)
+
+Notification is not skipped when finalization is incomplete: a run whose
+start record failed is notified as `executor_crash` (it never started),
+and a run whose end record failed is notified with its real outcome while
+the failure is surfaced as CONTRACT_RUN.md requires.
 
 This ensures consumers can read the data referenced in the event payload.
 Adapter publish is the last step before CLI output and exit.
@@ -288,8 +295,12 @@ that embed the Quarry runtime as a unit of work.
 
 The orchestrator invokes `runtime.NewRunOrchestrator(config).Execute(ctx)`
 as an atomic unit of work. The runtime owns everything inside this boundary
-(executor lifecycle, IPC, policy, Lode persistence). The orchestrator owns
-everything outside (scheduling, retries, fan-out, notification).
+(executor lifecycle, IPC, policy, Lode persistence, and, from v0.14.0, run
+finalization: the start record, metrics persistence, and the end record;
+CONTRACT_RUN.md §Run Finalization). The orchestrator owns everything
+outside that boundary (scheduling, retries, fan-out, and notification) and
+receives the same storage contents as the CLI without persisting anything
+itself.
 
 ### Outcome Mapping
 

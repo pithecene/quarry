@@ -13,12 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Go module path**: The module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`, matching the renamed GitHub organization. Go consumers must update `require` directives and imports; releases up to v0.13.7 remain available under the former path. The CLI, SDK, container images and on-disk format are unchanged
 
+### Added
+
+- **Run records**: Every run writes a start record before anything else and an end record after everything else, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/` (`start.json`, `end.json`). They carry the run's lineage, partition prefix, start and end times, outcome, and terminal event, so a reader can find runs and their outcomes without enumerating partitions. The exit report gains `run_record_error` when the end record could not be written
+- **Run key validation**: `run` rejects a dataset ID, source, category, or run ID that cannot form a safe storage key (empty, `.`, `..`, and for the dataset ID any `/` or `\`), and refuses a run ID that already has a start record instead of writing into another run's partitions
+
 ### Fixed
 
 - **Policy close**: `Close` on the buffered, streaming, and strict policies is one-shot, so a second close no longer flushes again. Its best-effort flush has a 30-second deadline; sinks must honor cancellation, and a write is never abandoned. The streaming policy cancels an interval flush in progress and waits for it instead of racing it. If the close-time flush leaves accepted data unpersisted, `Close` returns `ErrCloseUnflushed` instead of nil (the streaming policy includes the event and chunk counts). Data offered after `Close` begins is refused with `ErrPolicyClosed`. A streaming flush that times out while waiting for another flush is counted and logged
 
 ### Changed
 
+- **Run finalization**: `Execute` closes the policy and then persists the metrics record and the run records itself, so nothing is written for a run after its end record, and embedding hosts and fan-out child runs receive the same storage contents as the CLI without persisting anything
 - **Packaging**: The npm package `@pithecene/quarry-sdk` declares its license (Apache-2.0), author, homepage, repository and issue tracker, and the container images carry OCI labels (source, license, vendor, contact), so registry pages link back to this repository
 - **License**: The copyright holder is Pithecene LLC (was Andrew Hu), matching Lode; the license itself (Apache-2.0) is unchanged
 
