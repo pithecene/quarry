@@ -616,8 +616,8 @@
             "state": {
               "type": "string",
               "required": false,
-              "description": "Filter by state: succeeded, failed, unterminated, unclassified (with storage); running, failed, succeeded (stub)",
-              "validation": "With storage: succeeded, failed, unterminated, unclassified. Stub: running, failed, succeeded"
+              "description": "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",
+              "validation": "With storage: succeeded, failed, unterminated. Stub: running, failed, succeeded"
             },
             "limit": {
               "type": "int",

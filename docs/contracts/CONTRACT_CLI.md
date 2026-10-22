@@ -600,7 +600,7 @@ Storage-backed flags:
   (CONTRACT_LODE.md §Run Record Namespace). `--category` requires
   `--source`, and `--day` requires `--category`; omitting all three lists
   the whole dataset
-- `--state=succeeded|failed|unterminated|unclassified`
+- `--state=succeeded|failed|unterminated`
 - `--limit=<n>` (0 = no limit)
 - `--after=<cursor>`: the `next` value of a previous page
 
@@ -621,10 +621,10 @@ Run:
   day: string             # YYYY-MM-DD
   partition: string       # Hive-encoded partition prefix
   started_at: time | null # null when backfilled
-  state: succeeded | failed | unterminated | unclassified
+  state: succeeded | failed | unterminated  # backfilled: from the terminal event
   backfilled: bool        # records written by index rebuild
   ended_at: time | null   # null when unterminated
-  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated or unclassified
+  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated or backfilled
   terminal: string | null # run_complete | run_error | null
   message: string         # omitted when absent
   event_count: number | null # null when unterminated or backfilled

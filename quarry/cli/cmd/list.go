@@ -45,7 +45,7 @@ func listRunsCommand() *cli.Command {
 		Flags: append(append(append(ReadOnlyFlags(), storageReadFlags()...), runSelectorFlags()...),
 			&cli.StringFlag{
 				Name:  "state",
-				Usage: "Filter by state: succeeded, failed, unterminated, unclassified (with storage); running, failed, succeeded (stub)",
+				Usage: "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",
 			},
 			&cli.IntFlag{
 				Name:  "limit",
@@ -90,7 +90,7 @@ func listRunsAction(c *cli.Context) error {
 	switch st := c.String("state"); st {
 	case "", "running", "failed", "succeeded":
 	default:
-		return cli.Exit(fmt.Sprintf("--state %q: stub data has states running, failed, succeeded (succeeded, failed, unterminated, unclassified need storage)", st), 1)
+		return cli.Exit(fmt.Sprintf("--state %q: stub data has states running, failed, succeeded (unterminated requires storage)", st), 1)
 	}
 
 	opts := reader.ListRunsOptions{

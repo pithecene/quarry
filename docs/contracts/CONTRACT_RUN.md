@@ -271,11 +271,17 @@ Readers (CONTRACT_CLI.md §list runs) apply these rules:
   without a start record (a start write that failed without landing) is
   ignored.
 - A run's state is `succeeded` when its end record's outcome is
-  `success`, `failed` for any other outcome, `unclassified` when the
-  outcome is `null` (a backfilled end record: the run ended, its outcome
-  is unknown), and `unterminated` when it has no end record. Unterminated covers a live run, a killed process, and
+  `success`, `failed` for any other outcome, and `unterminated` when it
+  has no end record. Unterminated covers a live run, a killed process, and
   a run whose end record could not be written; storage cannot tell them
   apart, so a reader never presents such a run as running.
+- A backfilled end record has no outcome, so its state follows its
+  terminal event: `run_complete` is `succeeded` and `run_error` is
+  `failed`. The record's `outcome` remains `null` and `backfilled` is
+  `true`, so a reader can distinguish this state from a recorded outcome.
+  In the rare case in which a run emitted `run_complete` and then failed
+  (for example, its final policy flush failed), the run is listed as
+  `succeeded`.
 - A present end record means every other object of the run is final
   (§Run Finalization).
 

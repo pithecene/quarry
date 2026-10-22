@@ -347,7 +347,7 @@ S3-compatible provider is read back from the same provider.
 Thin enumerations (not inspect-level detail).
 
 Subcommands:
-- `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated|unclassified] [--limit <n>] [--after <cursor>]`
+- `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
 - `list events <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
 - `list jobs`
 - `list pools`
@@ -366,8 +366,9 @@ Notes:
 - Pages are ordered by source, category, day, and run ID. Pass a page's
   `next` value as `--after` to get the following page.
 - Runs written before v0.14.0 are listed only after `quarry index rebuild`
-  backfills their records. Backfilled runs have no `started_at`, and a
-  finished one is `unclassified`: storage shows it ended, not its outcome.
+  backfills their records. Backfilled runs have no `started_at` or
+  `outcome`; a finished one is `succeeded` if it ended with `run_complete`
+  and `failed` if it ended with `run_error`.
 
 Examples:
 
