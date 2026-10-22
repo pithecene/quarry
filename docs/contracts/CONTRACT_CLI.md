@@ -25,8 +25,10 @@ Non-goals:
 ## Invariants
 
 - The CLI is the **only execution entrypoint**.
-- All commands except `run` are **read-only** with respect to execution,
-  datasets, and persisted state.
+- All commands except `run` and `index rebuild` are **read-only** with
+  respect to execution, datasets, and persisted state. `index rebuild`
+  writes only backfilled run records, create-only, and never writes or
+  deletes partition data (§index rebuild).
 - A small set of `debug` commands may mutate **ephemeral runtime mechanics**
   only when explicitly requested and documented.
 - The CLI talks **only** to the Go runtime.
@@ -60,6 +62,8 @@ quarry
 │  ├─ jobs
 │  ├─ pools
 │  └─ executors
+├─ index
+│  └─ rebuild
 ├─ debug
 │  ├─ resolve proxy <pool>
 │  └─ ipc
@@ -596,7 +600,7 @@ Storage-backed flags:
   (CONTRACT_LODE.md §Run Record Namespace). `--category` requires
   `--source`, and `--day` requires `--category`; omitting all three lists
   the whole dataset
-- `--state=succeeded|failed|unterminated`
+- `--state=succeeded|failed|unterminated|unclassified`
 - `--limit=<n>` (0 = no limit)
 - `--after=<cursor>`: the `next` value of a previous page
 
@@ -616,13 +620,14 @@ Run:
   category: string
   day: string             # YYYY-MM-DD
   partition: string       # Hive-encoded partition prefix
-  started_at: time
-  state: succeeded | failed | unterminated
+  started_at: time | null # null when backfilled
+  state: succeeded | failed | unterminated | unclassified
+  backfilled: bool        # records written by index rebuild
   ended_at: time | null   # null when unterminated
-  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated
+  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated or unclassified
   terminal: string | null # run_complete | run_error | null
   message: string         # omitted when absent
-  event_count: number | null
+  event_count: number | null # null when unterminated or backfilled
 ```
 
 `table` renders `runs` only and prints `More runs: --after <cursor>` to
@@ -695,6 +700,53 @@ Response must include:
 Response must include:
 - `executor_id`
 - `state`
+
+---
+
+## `index` (run records)
+
+### `index rebuild` (v0.14.0+)
+
+Backfills run records for runs written before v0.14.0, which `list runs`
+cannot otherwise find (CONTRACT_RUN.md §Backfilled Run Records). It scans
+the dataset's partition tree, writes a start record (and, when storage
+proves the run ended, an end record) for each run that has no start
+record, and reports what it wrote. Records are created, never replaced, so
+rerunning writes only what is still missing; an interrupted rebuild is
+resumed by rerunning it.
+
+Flags:
+- `--storage-backend`, `--storage-path` (required) and the other storage
+  flags as on `list runs`
+- `--dry-run`: report what would be written; write nothing
+- `--format`, `--no-color`
+
+Response (`json`, `yaml`):
+```
+RebuildReport:
+  dataset: string
+  dry_run: bool
+  runs_scanned: number
+  already_indexed: number   # runs needing nothing; not listed in runs
+  starts_written: number    # in a dry run: would be written
+  ends_written: number
+  skipped: number
+  runs: RebuiltRun[]
+
+RebuiltRun:
+  source: string
+  category: string
+  day: string
+  run_id: string
+  partition: string
+  wrote_start: bool
+  wrote_end: bool
+  no_end: string    # why no end record was written; omitted otherwise
+  skipped: string   # why the run was not indexed; omitted otherwise
+```
+
+`table` renders `runs` and prints the totals to stderr. A store error
+stops the rebuild with exit code 1 after rendering the report so far.
 
 ---
 

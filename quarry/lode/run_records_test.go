@@ -116,7 +116,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 		"record_kind": "run_start", "schema_version": float64(1), "run_id": "run-1", "job_id": "job-1",
 		"attempt": float64(1), "dataset": "quarry", "source": "src", "category": "cat", "day": "2026-10-21",
 		"partition": "source=src/category=cat/day=2026-10-21/run_id=run-1/",
-		"started_at": "2026-10-21T08:30:00.000000123Z", "quarry_version": types.Version,
+		"started_at": "2026-10-21T08:30:00.000000123Z", "quarry_version": types.Version, "backfilled": false,
 	} {
 		if start[k] != want {
 			t.Errorf("start[%q] = %v, want %v", k, start[k], want)
@@ -130,7 +130,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	readJSON(t, store, RunRecordDir(cfg)+"end.json", &endRec)
 	for k, want := range map[string]any{
 		"record_kind": "run_end", "run_id": "run-1", "outcome": "script_error", "terminal": "run_error",
-		"message": "boom", "event_count": float64(7), "metrics_persisted": true,
+		"message": "boom", "event_count": float64(7), "metrics_persisted": true, "backfilled": false,
 	} {
 		if endRec[k] != want {
 			t.Errorf("end[%q] = %v, want %v", k, endRec[k], want)

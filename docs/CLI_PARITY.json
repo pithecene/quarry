@@ -616,8 +616,8 @@
             "state": {
               "type": "string",
               "required": false,
-              "description": "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",
-              "validation": "With storage: succeeded, failed, unterminated. Stub: running, failed, succeeded"
+              "description": "Filter by state: succeeded, failed, unterminated, unclassified (with storage); running, failed, succeeded (stub)",
+              "validation": "With storage: succeeded, failed, unterminated, unclassified. Stub: running, failed, succeeded"
             },
             "limit": {
               "type": "int",
@@ -848,6 +848,66 @@
               "default": false,
               "description": "Enable interactive TUI mode",
               "notes": "Not supported for list commands - returns error"
+            }
+          }
+        }
+      }
+    },
+    "index": {
+      "description": "Maintain run records (rebuild)",
+      "subcommands": {
+        "rebuild": {
+          "flags": {
+            "dry-run": {
+              "type": "bool",
+              "required": false,
+              "default": false,
+              "description": "Report the records that would be written; write nothing"
+            },
+            "storage-dataset": {
+              "type": "string",
+              "required": false,
+              "default": "quarry",
+              "description": "Lode dataset ID (default: \"quarry\")"
+            },
+            "storage-backend": {
+              "type": "string",
+              "required": false,
+              "description": "Storage backend: fs or s3",
+              "validation": "Must be one of: fs, s3"
+            },
+            "storage-path": {
+              "type": "string",
+              "required": false,
+              "description": "Storage path (fs: directory, s3: bucket/prefix)"
+            },
+            "storage-region": {
+              "type": "string",
+              "required": false,
+              "description": "AWS region for S3 backend"
+            },
+            "storage-endpoint": {
+              "type": "string",
+              "required": false,
+              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-s3-path-style": {
+              "type": "bool",
+              "required": false,
+              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "format": {
+              "type": "string",
+              "aliases": ["f"],
+              "required": false,
+              "description": "Output format: json, table, yaml"
+            },
+            "no-color": {
+              "type": "bool",
+              "required": false,
+              "description": "Disable colored output (table format only)"
             }
           }
         }

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pithecene-io/lode/lode"
+
 	"github.com/pithecene/quarry/types"
 )
 
@@ -124,8 +126,10 @@ type StartRecord struct {
 	Category      string  `json:"category"`
 	Day           string  `json:"day"`
 	Partition     string  `json:"partition"`
-	StartedAt     string  `json:"started_at"`
+	// StartedAt is null on a backfilled record: storage does not prove it.
+	StartedAt     *string `json:"started_at"`
 	QuarryVersion string  `json:"quarry_version"`
+	Backfilled    bool    `json:"backfilled"`
 }
 
 // RunEnd is what the runtime knows when a run ends; WriteEndRecord turns it
@@ -146,11 +150,14 @@ type EndRecord struct {
 	SchemaVersion    int     `json:"schema_version"`
 	RunID            string  `json:"run_id"`
 	EndedAt          string  `json:"ended_at"`
-	Outcome          string  `json:"outcome"`
+	// Outcome and EventCount are null on a backfilled record: storage does
+	// not prove the runtime's classification or what it processed.
+	Outcome          *string `json:"outcome"`
 	Terminal         *string `json:"terminal"`
 	Message          string  `json:"message,omitempty"`
-	EventCount       int64   `json:"event_count"`
+	EventCount       *int64  `json:"event_count"`
 	MetricsPersisted bool    `json:"metrics_persisted"`
+	Backfilled       bool    `json:"backfilled"`
 }
 
 // NewStartRecord builds the start record for the run cfg describes.
@@ -167,7 +174,7 @@ func NewStartRecord(cfg Config, meta *types.RunMeta, startedAt time.Time) StartR
 		Category:      cfg.Category,
 		Day:           cfg.Day,
 		Partition:     PartitionPrefix(cfg),
-		StartedAt:     formatRecordTime(startedAt),
+		StartedAt:     ptr(formatRecordTime(startedAt)),
 		QuarryVersion: types.Version,
 	}
 }
@@ -179,9 +186,9 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		SchemaVersion:    RunRecordSchemaVersion,
 		RunID:            cfg.RunID,
 		EndedAt:          formatRecordTime(end.EndedAt),
-		Outcome:          string(end.Outcome),
+		Outcome:          ptr(string(end.Outcome)),
 		Message:          end.Message,
-		EventCount:       end.EventCount,
+		EventCount:       ptr(end.EventCount),
 		MetricsPersisted: end.MetricsPersisted,
 	}
 	if end.Terminal != "" {
@@ -190,6 +197,8 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 	}
 	return rec
 }
+
+func ptr[T any](v T) *T { return &v }
 
 func formatRecordTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
@@ -201,29 +210,44 @@ func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, 
 	if day := DeriveDay(startedAt); day != c.config.Day {
 		return fmt.Errorf("%w: started_at %s is on %s, not the client's day %s", ErrInvalidRunKey, formatRecordTime(startedAt), day, c.config.Day)
 	}
-	return c.putRecord(ctx, RunRecordDir(c.config)+StartRecordName, NewStartRecord(c.config, meta, startedAt))
+	return c.putRecord(ctx, StartRecordName, NewStartRecord(c.config, meta, startedAt))
 }
 
 // WriteEndRecord writes the run's end record.
 func (c *LodeClient) WriteEndRecord(ctx context.Context, end RunEnd) error {
-	return c.putRecord(ctx, RunRecordDir(c.config)+EndRecordName, NewEndRecord(c.config, end))
+	return c.putRecord(ctx, EndRecordName, NewEndRecord(c.config, end))
 }
 
-func (c *LodeClient) putRecord(ctx context.Context, path string, record any) error {
-	if err := ValidateRunKey(c.config.Dataset, c.config.Source, c.config.Category, c.config.RunID); err != nil {
+func (c *LodeClient) putRecord(ctx context.Context, name string, record any) error {
+	store, err := c.getOrCreateStore()
+	if err != nil {
+		return fmt.Errorf("run record store init failed: %w", err)
+	}
+	return putRunRecord(ctx, store, c.config, name, record)
+}
+
+// validateRecordKey rejects a run whose components cannot form a safe
+// record key or whose day is not YYYY-MM-DD.
+func validateRecordKey(cfg Config) error {
+	if err := ValidateRunKey(cfg.Dataset, cfg.Source, cfg.Category, cfg.RunID); err != nil {
 		return err
 	}
-	if _, err := time.Parse(time.DateOnly, c.config.Day); err != nil {
-		return fmt.Errorf("%w: day must be YYYY-MM-DD: %q", ErrInvalidRunKey, c.config.Day)
+	if _, err := time.Parse(time.DateOnly, cfg.Day); err != nil {
+		return fmt.Errorf("%w: day must be YYYY-MM-DD: %q", ErrInvalidRunKey, cfg.Day)
+	}
+	return nil
+}
+
+// putRunRecord writes one record of the run cfg names, create-only.
+func putRunRecord(ctx context.Context, store lode.Store, cfg Config, name string, record any) error {
+	if err := validateRecordKey(cfg); err != nil {
+		return err
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("run record marshal failed: %w", err)
 	}
-	store, err := c.getOrCreateStore()
-	if err != nil {
-		return fmt.Errorf("run record store init failed: %w", err)
-	}
+	path := RunRecordDir(cfg) + name
 	if err := store.Put(ctx, path, bytes.NewReader(data)); err != nil {
 		return WrapWriteError(err, path)
 	}

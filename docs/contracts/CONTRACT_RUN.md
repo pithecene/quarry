@@ -194,7 +194,8 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
 Every run has two small JSON records that the runtime writes outside
 Lode's partition tree: a start record and an end record. Their location
 and key encoding are defined in CONTRACT_LODE.md §Run Record Namespace.
-Records are written once and never rewritten.
+Records are written once and never rewritten. Runs written before records
+existed get backfilled records (§Backfilled Run Records).
 
 ### Start Record (`start.json`)
 
@@ -211,8 +212,9 @@ Records are written once and never rewritten.
 | `category`       | string | yes      | Partition key (unencoded) |
 | `day`            | string | yes      | Partition day, `YYYY-MM-DD`, derived from `started_at` |
 | `partition`      | string | yes      | The run's Lode partition prefix relative to the dataset's partition root, Hive-encoded: `source=…/category=…/day=…/run_id=…/`. Every `event_type` partition of the run sits under it |
-| `started_at`     | string | yes      | Run start time, RFC 3339 UTC with nanoseconds |
+| `started_at`     | string \| null | yes | Run start time, RFC 3339 UTC with nanoseconds; `null` on a backfilled record |
 | `quarry_version` | string | yes      | Version of the writer |
+| `backfilled`     | bool   | yes      | `true` when written by `quarry index rebuild` rather than the runtime |
 
 ### End Record (`end.json`)
 
@@ -222,11 +224,42 @@ Records are written once and never rewritten.
 | `schema_version`    | int            | yes      | `1` |
 | `run_id`            | string         | yes      | Run identifier |
 | `ended_at`          | string         | yes      | RFC 3339 UTC with nanoseconds |
-| `outcome`           | string         | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements) |
+| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements); `null` on a backfilled record |
 | `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`); `null` when none was received |
 | `message`           | string         | no       | Outcome message; omitted when empty |
-| `event_count`       | int            | yes      | Events processed |
+| `event_count`       | int \| null    | yes      | Events processed; `null` on a backfilled record |
 | `metrics_persisted` | bool           | yes      | Whether the metrics record was written |
+| `backfilled`        | bool           | yes      | As on the start record |
+
+### Backfilled Run Records
+
+`quarry index rebuild` (CONTRACT_CLI.md §index rebuild) writes records for
+runs that have partitions but no start record. It is the only reader of
+the partition tree that finds runs, and it writes only what storage proves:
+
+- **Start record**, for every such run. `day`, `source`, `category`,
+  `run_id`, and `partition` come from the run's partition path, which must
+  be the canonical encoding of those values; `attempt`, `job_id`, and
+  `parent_run_id` come from the run's terminal event, or else from its
+  first event record in event-type order. `started_at` is `null`. A run
+  with no event record (only a metrics record) is skipped and reported.
+- **End record**, only when the run has exactly one terminal event
+  (`run_complete` or `run_error`). `ended_at` is that event's `ts`,
+  `terminal` its type, and `metrics_persisted` whether the run has a
+  metrics record. `outcome` and `event_count` are `null`: a terminal event
+  does not determine the runtime's outcome (a policy failure can follow
+  `run_complete`). A run with no terminal event, or more than one, gets no
+  end record, and the report says why.
+
+Both records carry `backfilled: true`. The rebuild never touches a run
+whose start record the runtime wrote, even one without an end record (it
+may be live, and only the runtime classifies it). A backfilled run without
+an end record gains one on a later rebuild once its terminal event is
+stored, so rebuilds are idempotent and resumable.
+
+A backfilled end record states that the run's objects are final. That
+holds only when no writer older than v0.14.0 is still writing the run:
+run the rebuild after such writers have stopped writing to the dataset.
 
 ---
 
@@ -238,8 +271,9 @@ Readers (CONTRACT_CLI.md §list runs) apply these rules:
   without a start record (a start write that failed without landing) is
   ignored.
 - A run's state is `succeeded` when its end record's outcome is
-  `success`, `failed` for any other outcome, and `unterminated` when it
-  has no end record. Unterminated covers a live run, a killed process, and
+  `success`, `failed` for any other outcome, `unclassified` when the
+  outcome is `null` (a backfilled end record: the run ended, its outcome
+  is unknown), and `unterminated` when it has no end record. Unterminated covers a live run, a killed process, and
   a run whose end record could not be written; storage cannot tell them
   apart, so a reader never presents such a run as running.
 - A present end record means every other object of the run is final

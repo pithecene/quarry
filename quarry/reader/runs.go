@@ -18,6 +18,7 @@ import (
 
 	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/types"
 )
 
 // State is a run's state as storage proves it.
@@ -32,6 +33,10 @@ const (
 	// process, or a run whose end record could not be written. Storage
 	// cannot tell these apart, so it is never presented as running.
 	StateUnterminated State = "unterminated"
+	// StateUnclassified is a run with a backfilled end record: storage
+	// proves it ended (it has a terminal event) but not the runtime's
+	// outcome, which a terminal event alone does not determine.
+	StateUnclassified State = "unclassified"
 )
 
 var (
@@ -42,7 +47,7 @@ var (
 	// produce.
 	ErrInvalidCursor = errors.New("invalid cursor")
 	// ErrInvalidState is returned for an unknown state filter.
-	ErrInvalidState = errors.New("invalid state: must be succeeded, failed, or unterminated")
+	ErrInvalidState = errors.New("invalid state: must be succeeded, failed, unterminated, or unclassified")
 )
 
 // Selector narrows a listing to a key prefix. Fields are leading selectors:
@@ -74,8 +79,10 @@ type Run struct {
 	Category    string  `json:"category"`
 	Day         string  `json:"day"`
 	Partition   string  `json:"partition"`
-	StartedAt   string  `json:"started_at"`
-	State       State   `json:"state"`
+	// StartedAt is null for a run whose records were backfilled.
+	StartedAt  *string `json:"started_at"`
+	State      State   `json:"state"`
+	Backfilled bool    `json:"backfilled"`
 	// The fields below come from the end record and are null for an
 	// unterminated run.
 	EndedAt    *string `json:"ended_at"`
@@ -248,7 +255,7 @@ func (r *Reader) prefix(sel Selector) (string, error) {
 
 func (s State) validate() error {
 	switch s {
-	case "", StateSucceeded, StateFailed, StateUnterminated:
+	case "", StateSucceeded, StateFailed, StateUnterminated, StateUnclassified:
 		return nil
 	}
 	return fmt.Errorf("%w: %q", ErrInvalidState, s)
@@ -263,7 +270,7 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 	run := Run{
 		RunID: start.RunID, JobID: start.JobID, ParentRunID: start.ParentRunID, Attempt: start.Attempt,
 		Dataset: start.Dataset, Source: start.Source, Category: start.Category, Day: start.Day,
-		Partition: start.Partition, StartedAt: start.StartedAt, State: StateUnterminated,
+		Partition: start.Partition, StartedAt: start.StartedAt, State: StateUnterminated, Backfilled: start.Backfilled,
 	}
 
 	endKey := strings.TrimSuffix(startKey, qlode.StartRecordName) + qlode.EndRecordName
@@ -276,17 +283,26 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 		return Run{}, err
 	}
 	run.EndedAt = &end.EndedAt
-	run.Outcome = &end.Outcome
+	run.Outcome = end.Outcome
 	run.Terminal = end.Terminal
 	if end.Message != "" {
 		run.Message = &end.Message
 	}
-	run.EventCount = &end.EventCount
-	run.State = StateFailed
-	if end.Outcome == "success" {
-		run.State = StateSucceeded
-	}
+	run.EventCount = end.EventCount
+	run.State = endState(end.Outcome)
 	return run, nil
+}
+
+// endState is the state an end record proves: a null outcome (a backfilled
+// record) proves only that the run ended.
+func endState(outcome *string) State {
+	switch {
+	case outcome == nil:
+		return StateUnclassified
+	case *outcome == string(types.OutcomeSuccess):
+		return StateSucceeded
+	}
+	return StateFailed
 }
 
 func (r *Reader) getJSON(ctx context.Context, key string, v any) error {

@@ -145,8 +145,8 @@ func TestListRuns_RunFields(t *testing.T) {
 	if r1.State != StateSucceeded || *r1.Outcome != "success" || *r1.Terminal != "run_complete" || *r1.EventCount != 2 {
 		t.Errorf("r1 = %+v", r1)
 	}
-	if r1.Partition != "source=src/category=cat/day=2026-10-21/run_id=r1/" || r1.StartedAt != "2026-10-21T01:00:00Z" {
-		t.Errorf("r1 start fields = %q %q", r1.Partition, r1.StartedAt)
+	if r1.Partition != "source=src/category=cat/day=2026-10-21/run_id=r1/" || r1.StartedAt == nil || *r1.StartedAt != "2026-10-21T01:00:00Z" || r1.Backfilled {
+		t.Errorf("r1 start fields = %q %v backfilled=%v", r1.Partition, r1.StartedAt, r1.Backfilled)
 	}
 	if r3.State != StateUnterminated || r3.EndedAt != nil || r3.Outcome != nil || r3.EventCount != nil {
 		t.Errorf("unterminated r3 should have null end fields: %+v", r3)
@@ -354,5 +354,43 @@ func TestListRuns_CursorIsAKeyPosition(t *testing.T) {
 	}
 	if got := fmt.Sprint(runIDs(p)); got != "[r2 r3 r4]" {
 		t.Fatalf("runs = %s, want [r2 r3 r4]", got)
+	}
+}
+
+// A backfilled run is listed, unclassified when it has a terminal event,
+// and its events are read from the partition its start record names.
+func TestListRuns_BackfilledRun(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	cfg := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "legacy"}
+	c, err := qlode.NewLodeClientWithFactory(cfg, f.factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, et := range []types.EventType{types.EventTypeItem, types.EventTypeRunComplete} {
+		ev := &types.EventEnvelope{ContractVersion: types.ContractVersion, EventID: fmt.Sprintf("e%d", i+1), RunID: "legacy", Seq: int64(i + 1), Type: et, Ts: "2026-10-21T01:00:00Z", Attempt: 1}
+		if err := c.WriteEvents(t.Context(), "quarry", "legacy", []*types.EventEnvelope{ev}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := qlode.RebuildRunRecords(t.Context(), "quarry", f.factory, qlode.RebuildOptions{}); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+
+	r := f.reader()
+	p, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{State: StateUnclassified})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if len(p.Runs) != 1 {
+		t.Fatalf("runs = %v", runIDs(p))
+	}
+	run := p.Runs[0]
+	if !run.Backfilled || run.StartedAt != nil || run.Outcome != nil || run.EventCount != nil || run.Terminal == nil || *run.Terminal != "run_complete" {
+		t.Errorf("backfilled run = %+v", run)
+	}
+	events, err := r.ReadEvents(t.Context(), run)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("ReadEvents = %d events, %v", len(events), err)
 	}
 }
