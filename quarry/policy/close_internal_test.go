@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -131,7 +132,7 @@ func TestStreamingPolicy_CloseJoinsInFlightCountFlush(t *testing.T) {
 	}
 	ingestDone := make(chan struct{})
 	go func() {
-		_ = pol.IngestEvent(context.Background(), &types.EventEnvelope{RunID: "r", Seq: 1, Type: types.EventTypeItem})
+		_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{RunID: "r", Seq: 1, Type: types.EventTypeItem})
 		close(ingestDone)
 	}()
 	<-sink.entered // the count-triggered flush is writing
@@ -171,4 +172,46 @@ func (s *closeTrackingSink) closed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.isClosed
+}
+
+// When a flush in flight holds the sink past the close deadline, events
+// accepted meanwhile are not persisted; Close reports them instead of
+// returning nil.
+func TestStreamingPolicy_CloseReportsUnflushedData(t *testing.T) {
+	prev := closeFlushTimeout
+	closeFlushTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { closeFlushTimeout = prev })
+
+	sink := &blockingSink{StubSink: NewStubSink(), entered: make(chan struct{}), release: make(chan struct{})}
+	pol, err := NewStreamingPolicy(sink, StreamingConfig{FlushCount: 100})
+	if err != nil {
+		t.Fatalf("NewStreamingPolicy: %v", err)
+	}
+	ctx := t.Context()
+	if err := pol.IngestEvent(ctx, &types.EventEnvelope{RunID: "r", Seq: 1, Type: types.EventTypeItem}); err != nil {
+		t.Fatalf("IngestEvent: %v", err)
+	}
+	flushDone := make(chan struct{})
+	go func() { _ = pol.Flush(ctx); close(flushDone) }()
+	<-sink.entered // the caller's flush holds the sink
+	if err := pol.IngestEvent(ctx, &types.EventEnvelope{RunID: "r", Seq: 2, Type: types.EventTypeItem}); err != nil {
+		t.Fatalf("IngestEvent: %v", err)
+	}
+
+	closeErr := make(chan error, 1)
+	go func() { closeErr <- pol.Close() }()
+	time.Sleep(150 * time.Millisecond) // the close-time flush has timed out
+	sink.release <- struct{}{}
+	<-flushDone
+	select {
+	case err := <-closeErr:
+		if !errors.Is(err, ErrCloseUnflushed) {
+			t.Fatalf("Close err = %v, want ErrCloseUnflushed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return")
+	}
+	if pol.Stats().Errors == 0 {
+		t.Error("the timed-out close flush was not counted as an error")
+	}
 }

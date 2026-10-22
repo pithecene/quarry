@@ -22,7 +22,10 @@ func TestBufferedPolicy_SecondCloseWritesNothing(t *testing.T) {
 	}
 
 	sink.ErrorOnWrite = errors.New("store unavailable")
-	_ = pol.Close() // flush fails; events stay buffered
+	// The flush fails, so the events stay buffered: Close reports the loss.
+	if err := pol.Close(); !errors.Is(err, policy.ErrCloseUnflushed) {
+		t.Fatalf("first Close err = %v, want ErrCloseUnflushed", err)
+	}
 	sink.ErrorOnWrite = nil
 
 	_ = pol.Close()

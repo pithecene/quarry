@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -228,6 +229,11 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 	select {
 	case p.flushSem <- struct{}{}:
 	case <-ctx.Done():
+		// Another flush still holds the sink: this one never started.
+		p.mu.Lock()
+		p.stats.incErrorsLocked()
+		p.mu.Unlock()
+		p.logFlushFailure("all", trigger, ctx.Err())
 		return ctx.Err()
 	}
 	defer func() { <-p.flushSem }()
@@ -327,13 +333,23 @@ func (p *StreamingPolicy) Close() error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
 		defer cancel()
-		_ = p.Flush(ctx)
+		flushErr := p.Flush(ctx)
 
 		// Join any flush still in flight (count-, capacity-, or caller-
 		// triggered) before closing the sink: none is abandoned.
 		p.flushSem <- struct{}{}
 		defer func() { <-p.flushSem }()
-		return p.sink.Close()
+
+		// Data still buffered now was accepted but never persisted: report it
+		// rather than closing over it silently.
+		p.mu.Lock()
+		events, chunks := len(p.eventBuffer), len(p.chunkBuffer)
+		p.mu.Unlock()
+		var lossErr error
+		if events > 0 || chunks > 0 {
+			lossErr = fmt.Errorf("%w: %d events and %d chunks not persisted at close: %w", ErrCloseUnflushed, events, chunks, flushErr)
+		}
+		return errors.Join(lossErr, p.sink.Close())
 	})
 }
 
