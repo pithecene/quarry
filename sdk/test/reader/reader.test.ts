@@ -114,12 +114,41 @@ describe('listRuns', () => {
 
   it('throws QuarryReadError on output that is not JSON', async () => {
     const fake = await fakeQuarry('not json')
-    await expect(listRuns({ quarryPath: fake.path, storage })).rejects.toThrow(/invalid JSON/)
+    await expect(listRuns({ quarryPath: fake.path, storage })).rejects.toThrow(
+      /not its JSON response/
+    )
   })
 
   it('throws QuarryReadError when the executable is missing', async () => {
     const read = listRuns({ quarryPath: join(tmpdir(), 'no-such-quarry-binary'), storage })
     await expect(read).rejects.toMatchObject({ name: 'QuarryReadError', exitCode: null })
+  })
+})
+
+describe('response validation', () => {
+  it.each([
+    ['null', 'null'],
+    ['an empty object', '{}'],
+    ['runs that are not runs', '{"runs":[1]}']
+  ])('rejects %s from list runs', async (_name, stdout) => {
+    const fake = await fakeQuarry(stdout)
+    await expect(listRuns({ quarryPath: fake.path, storage })).rejects.toBeInstanceOf(
+      QuarryReadError
+    )
+  })
+
+  it('rejects a list events response without a run', async () => {
+    const fake = await fakeQuarry('{"events":[]}')
+    const locator = { source: 'demo', category: 'default', day: '2026-10-22', runId: 'r1' }
+    await expect(readRun(locator, { quarryPath: fake.path, storage })).rejects.toBeInstanceOf(
+      QuarryReadError
+    )
+  })
+
+  it('wraps an invalid executable string as QuarryReadError', async () => {
+    await expect(listRuns({ quarryPath: 'bad\0path', storage })).rejects.toBeInstanceOf(
+      QuarryReadError
+    )
   })
 })
 

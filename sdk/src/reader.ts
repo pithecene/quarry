@@ -127,7 +127,7 @@ export async function listRuns(options: ListRunsOptions): Promise<RunPage> {
       after: options.after
     })
   ]
-  return runQuarry<RunPage>(args, options)
+  return runQuarry(args, options, isRunPage)
 }
 
 /** Reads one run and its events in sequence order. */
@@ -143,7 +143,7 @@ export async function readRun(run: RunLocator, options: ReaderOptions): Promise<
       'run-id': run.runId
     })
   ]
-  return runQuarry<RunEvents>(args, options)
+  return runQuarry(args, options, isRunEvents)
 }
 
 function storageArgs(storage: ReaderStorage): string[] {
@@ -166,8 +166,13 @@ function optionalArgs(flags: Record<string, string | number | undefined>): strin
   )
 }
 
-async function runQuarry<T>(args: string[], options: ReaderOptions): Promise<T> {
+async function runQuarry<T>(
+  args: string[],
+  options: ReaderOptions,
+  isShape: (v: unknown) => v is T
+): Promise<T> {
   const command = options.quarryPath ?? 'quarry'
+  const label = `quarry ${args.slice(0, 2).join(' ')}`
   const { code, stdout, stderr } = await capture(
     command,
     [...args, '--format=json'],
@@ -175,21 +180,46 @@ async function runQuarry<T>(args: string[], options: ReaderOptions): Promise<T> 
   )
   if (code !== 0) {
     const detail = stderr.trim() || `exit code ${code}`
+    throw new QuarryReadError(`${label} failed: ${detail}`, code, stderr)
+  }
+  const parsed = parseJSON(stdout)
+  if (!isShape(parsed)) {
     throw new QuarryReadError(
-      `quarry ${args.slice(0, 2).join(' ')} failed: ${detail}`,
+      `${label} returned output that is not its JSON response`,
       code,
       stderr
     )
   }
+  return parsed
+}
+
+function parseJSON(text: string): unknown {
   try {
-    return JSON.parse(stdout) as T
-  } catch (err) {
-    throw new QuarryReadError(
-      `quarry ${args.slice(0, 2).join(' ')} returned invalid JSON: ${String(err)}`,
-      code,
-      stderr
-    )
+    return JSON.parse(text)
+  } catch {
+    return undefined
   }
+}
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function isRunSummary(v: unknown): v is RunSummary {
+  return isObject(v) && typeof v.run_id === 'string' && typeof v.state === 'string'
+}
+
+function isRunPage(v: unknown): v is RunPage {
+  return (
+    isObject(v) &&
+    Array.isArray(v.runs) &&
+    v.runs.every(isRunSummary) &&
+    (v.next === undefined || typeof v.next === 'string')
+  )
+}
+
+function isRunEvents(v: unknown): v is RunEvents {
+  return isObject(v) && isRunSummary(v.run) && Array.isArray(v.events) && v.events.every(isObject)
 }
 
 type Captured = { code: number | null; stdout: string; stderr: string }
@@ -200,20 +230,21 @@ function capture(
   signal: AbortSignal | undefined
 ): Promise<Captured> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { signal, stdio: ['ignore', 'pipe', 'pipe'] })
+    const fail = (e: Error, stderr: string): void =>
+      reject(new QuarryReadError(`could not run ${command}: ${e.message}`, null, stderr))
+    let child: ReturnType<typeof spawn>
+    try {
+      // spawn throws synchronously for an invalid command string.
+      child = spawn(command, args, { signal, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      fail(e instanceof Error ? e : new Error(String(e)), '')
+      return
+    }
     const out: Buffer[] = []
     const err: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => out.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => err.push(chunk))
-    child.on('error', (e) =>
-      reject(
-        new QuarryReadError(
-          `could not run ${command}: ${e.message}`,
-          null,
-          Buffer.concat(err).toString()
-        )
-      )
-    )
+    child.stdout?.on('data', (chunk: Buffer) => out.push(chunk))
+    child.stderr?.on('data', (chunk: Buffer) => err.push(chunk))
+    child.on('error', (e) => fail(e, Buffer.concat(err).toString()))
     child.on('close', (code) =>
       resolve({
         code,
