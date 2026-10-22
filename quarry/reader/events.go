@@ -5,24 +5,32 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/pithecene-io/lode/lode"
 
 	qlode "github.com/pithecene/quarry/lode"
 )
 
-// ErrRunWithoutPartition is returned when a run's start record names no
-// partition prefix.
-var ErrRunWithoutPartition = errors.New("run has no partition")
+// ErrInvalidRun is returned when a run passed to ReadEvents was not read
+// from this reader's dataset or its partition is not the run's own prefix.
+var ErrInvalidRun = errors.New("invalid run")
 
 // ReadEvents returns the run's event records (record_kind "event" and
 // "artifact_event") in sequence order. Artifact chunks and the metrics record
 // are not events and are omitted. The run's partitions are addressed from its
 // start record's partition prefix, never re-derived.
 func (r *Reader) ReadEvents(ctx context.Context, run Run) ([]map[string]any, error) {
-	if run.Partition == "" || !strings.HasSuffix(run.Partition, "/") {
-		return nil, fmt.Errorf("%w: %q", ErrRunWithoutPartition, run.RunID)
+	// A Run is a plain value: check it names exactly its own partition in
+	// this dataset, so a foreign or altered Run cannot widen the listing.
+	if run.Dataset != r.dataset {
+		return nil, fmt.Errorf("%w: run %q is in dataset %q, not %q", ErrInvalidRun, run.RunID, run.Dataset, r.dataset)
+	}
+	cfg := qlode.Config{Dataset: run.Dataset, Source: run.Source, Category: run.Category, Day: run.Day, RunID: run.RunID}
+	if err := qlode.ValidateRunKey(cfg.Dataset, cfg.Source, cfg.Category, cfg.RunID); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRun, err)
+	}
+	if want := qlode.PartitionPrefix(cfg); run.Partition != want {
+		return nil, fmt.Errorf("%w: run %q has partition %q, want %q", ErrInvalidRun, run.RunID, run.Partition, want)
 	}
 	// Bind the dataset reader to the reader's store, so events come from the
 	// same store the run was listed from.

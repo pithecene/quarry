@@ -222,8 +222,8 @@ func TestListRuns_RejectsNonStartKeyCursor(t *testing.T) {
 		"datasets/quarry/runs/src/z",
 		"datasets/quarry/runs/src/cat/2026-10-21/r1/end.json",
 		"datasets/quarry/runs/src/cat/2026-10-21/start.json",
-		"datasets/quarry/runs/src/cat/2026-10-21/r\\1/start.json", // raw backslash: never written
-		"datasets/quarry/runs/src/cat/2026-10-21/r%31/start.json", // non-canonical encoding of "r1"
+		"datasets/quarry/runs/src/cat/2026-10-21/r\\1/start.json",   // raw backslash: never written
+		"datasets/quarry/runs/src/cat/2026-10-21/r%31/start.json",   // non-canonical encoding of "r1"
 		"datasets/quarry/runs/src/cat/2026-10-21/%2E%2E/start.json", // ".." run ID
 	} {
 		if _, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{After: after}); !errors.Is(err, ErrInvalidCursor) {
@@ -392,5 +392,24 @@ func TestListRuns_BackfilledRun(t *testing.T) {
 	events, err := r.ReadEvents(t.Context(), run)
 	if err != nil || len(events) != 2 {
 		t.Fatalf("ReadEvents = %d events, %v", len(events), err)
+	}
+}
+
+// ReadEvents follows only a run's own partition in the reader's dataset.
+func TestReadEvents_RejectsForeignOrAlteredRun(t *testing.T) {
+	t.Parallel()
+	r := seedRuns(t).reader()
+	run, err := r.FindRun(t.Context(), Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, "r1")
+	if err != nil {
+		t.Fatalf("FindRun: %v", err)
+	}
+	other := run
+	other.Dataset = "elsewhere"
+	widened := run
+	widened.Partition = "source=src/"
+	for name, bad := range map[string]Run{"other dataset": other, "widened partition": widened} {
+		if _, err := r.ReadEvents(t.Context(), bad); !errors.Is(err, ErrInvalidRun) {
+			t.Errorf("%s: err = %v, want ErrInvalidRun", name, err)
+		}
 	}
 }

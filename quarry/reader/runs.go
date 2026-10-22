@@ -70,32 +70,32 @@ type ListOptions struct {
 
 // Run is one run as its records describe it.
 type Run struct {
-	RunID       string  `json:"run_id"`
-	JobID       *string `json:"job_id,omitempty"`
-	ParentRunID *string `json:"parent_run_id,omitempty"`
-	Attempt     int     `json:"attempt"`
-	Dataset     string  `json:"dataset"`
-	Source      string  `json:"source"`
-	Category    string  `json:"category"`
-	Day         string  `json:"day"`
-	Partition   string  `json:"partition"`
+	RunID       string  `json:"run_id" yaml:"run_id"`
+	JobID       *string `json:"job_id,omitempty" yaml:"job_id,omitempty"`
+	ParentRunID *string `json:"parent_run_id,omitempty" yaml:"parent_run_id,omitempty"`
+	Attempt     int     `json:"attempt" yaml:"attempt"`
+	Dataset     string  `json:"dataset" yaml:"dataset"`
+	Source      string  `json:"source" yaml:"source"`
+	Category    string  `json:"category" yaml:"category"`
+	Day         string  `json:"day" yaml:"day"`
+	Partition   string  `json:"partition" yaml:"partition"`
 	// StartedAt is null for a run whose records were backfilled.
-	StartedAt  *string `json:"started_at"`
-	State      State   `json:"state"`
-	Backfilled bool    `json:"backfilled"`
+	StartedAt  *string `json:"started_at" yaml:"started_at"`
+	State      State   `json:"state" yaml:"state"`
+	Backfilled bool    `json:"backfilled" yaml:"backfilled"`
 	// The fields below come from the end record and are null for an
 	// unterminated run.
-	EndedAt    *string `json:"ended_at"`
-	Outcome    *string `json:"outcome"`
-	Terminal   *string `json:"terminal"`
-	Message    *string `json:"message,omitempty"`
-	EventCount *int64  `json:"event_count"`
+	EndedAt    *string `json:"ended_at" yaml:"ended_at"`
+	Outcome    *string `json:"outcome" yaml:"outcome"`
+	Terminal   *string `json:"terminal" yaml:"terminal"`
+	Message    *string `json:"message,omitempty" yaml:"message,omitempty"`
+	EventCount *int64  `json:"event_count" yaml:"event_count"`
 }
 
 // Page is one page of a run listing. Next is empty on the last page.
 type Page struct {
-	Runs []Run  `json:"runs"`
-	Next string `json:"next,omitempty"`
+	Runs []Run  `json:"runs" yaml:"runs"`
+	Next string `json:"next,omitempty" yaml:"next,omitempty"`
 }
 
 // Reader reads one dataset.

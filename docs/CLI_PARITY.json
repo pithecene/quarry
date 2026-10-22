@@ -718,13 +718,13 @@
             },
             "storage-backend": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Storage backend: fs or s3",
               "validation": "Must be one of: fs, s3"
             },
             "storage-path": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Storage path (fs: directory, s3: bucket/prefix)"
             },
             "storage-region": {
@@ -746,18 +746,18 @@
             },
             "source": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Source to list (required with storage; cross-source listing omits it)"
             },
             "category": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Category (requires --source)",
               "dependsOn": ["source"]
             },
             "day": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Partition day YYYY-MM-DD (requires --category)",
               "dependsOn": ["category"]
             },
@@ -872,13 +872,13 @@
             },
             "storage-backend": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Storage backend: fs or s3",
               "validation": "Must be one of: fs, s3"
             },
             "storage-path": {
               "type": "string",
-              "required": false,
+              "required": true,
               "description": "Storage path (fs: directory, s3: bucket/prefix)"
             },
             "storage-region": {
