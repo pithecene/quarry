@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Policy close**: `Close` on the buffered, streaming, and strict policies is one-shot, so a second close no longer flushes again, and its best-effort flush has a 30-second deadline (sinks must honour cancellation; a write is never abandoned). The streaming policy cancels and waits for an interval flush in progress instead of racing it. If accepted data is still buffered after the close-time flush, `Close` returns `ErrCloseUnflushed` with the counts instead of returning nil, and a streaming flush that times out waiting for another is counted and logged
+- **Policy close**: `Close` on the buffered, streaming, and strict policies is one-shot, so a second close no longer flushes again, and its best-effort flush has a 30-second deadline (sinks must honour cancellation; a write is never abandoned). The streaming policy cancels and waits for an interval flush in progress instead of racing it. If the close-time flush leaves accepted data unpersisted, `Close` returns `ErrCloseUnflushed` instead of returning nil (the streaming policy includes the event and chunk counts), and data offered after `Close` began is refused with `ErrPolicyClosed`, and a streaming flush that times out waiting for another is counted and logged
 
 ### Changed
 

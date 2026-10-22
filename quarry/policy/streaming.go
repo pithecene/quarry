@@ -147,6 +147,10 @@ func NewStreamingPolicy(sink Sink, config StreamingConfig) (*StreamingPolicy, er
 // If count threshold is reached after append, triggers a flush.
 func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnvelope) error {
 	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	eventSize := p.estimateEventSize(envelope)
 
@@ -182,6 +186,10 @@ func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.Event
 // in count-only mode where chunks don't contribute to the event count trigger.
 func (p *StreamingPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error {
 	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	chunkSize := int64(len(chunk.Data))
 

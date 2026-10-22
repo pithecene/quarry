@@ -85,6 +85,7 @@ type BufferedPolicy struct {
 	logger *log.Logger
 
 	closer onceCloser
+	closed bool // set under mu when Close begins; ingestion is refused after
 
 	mu              sync.Mutex // guards buffer state only
 	eventBuffer     []*types.EventEnvelope
@@ -140,6 +141,9 @@ func NewBufferedPolicy(sink Sink, config BufferedConfig) (*BufferedPolicy, error
 func (p *BufferedPolicy) IngestEvent(_ context.Context, envelope *types.EventEnvelope) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalEventsLocked()
 
@@ -192,6 +196,9 @@ func (p *BufferedPolicy) appendEvent(envelope *types.EventEnvelope, eventSize in
 func (p *BufferedPolicy) IngestArtifactChunk(_ context.Context, chunk *types.ArtifactChunk) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalChunksLocked()
 
@@ -466,6 +473,12 @@ func (p *BufferedPolicy) Close() error {
 		// honour (see Sink); the write is never abandoned.
 		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
 		defer cancel()
+		// Refuse ingestion from here on, so nothing is accepted after the final
+		// flush takes its snapshot.
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
+
 		// A failed close-time flush leaves accepted data unpersisted: report it
 		// rather than closing over it silently. (Buffers may also hold data
 		// already written and kept for retry, so the flush result, not buffer
