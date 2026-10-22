@@ -356,3 +356,22 @@ func TestListRuns_CursorIsAKeyPosition(t *testing.T) {
 		t.Fatalf("runs = %s, want [r2 r3 r4]", got)
 	}
 }
+
+// ReadEvents follows only a run's own partition in the reader's dataset.
+func TestReadEvents_RejectsForeignOrAlteredRun(t *testing.T) {
+	t.Parallel()
+	r := seedRuns(t).reader()
+	run, err := r.FindRun(t.Context(), Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, "r1")
+	if err != nil {
+		t.Fatalf("FindRun: %v", err)
+	}
+	other := run
+	other.Dataset = "elsewhere"
+	widened := run
+	widened.Partition = "source=src/"
+	for name, bad := range map[string]Run{"other dataset": other, "widened partition": widened} {
+		if _, err := r.ReadEvents(t.Context(), bad); !errors.Is(err, ErrInvalidRun) {
+			t.Errorf("%s: err = %v, want ErrInvalidRun", name, err)
+		}
+	}
+}

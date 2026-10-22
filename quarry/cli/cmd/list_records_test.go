@@ -166,3 +166,33 @@ func TestListRuns_OptionalStorageFlagWithoutPairFails(t *testing.T) {
 		}
 	}
 }
+
+// YAML uses the documented field names, and omits what JSON omits.
+func TestListRuns_YAMLFieldNames(t *testing.T) {
+	root := t.TempDir()
+	writeFSRun(t, root, "run-a")
+	out, err := runListCLI(t, "runs", "--format", "yaml", "--storage-backend", "fs", "--storage-path", root, "--source", "demo")
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	for _, want := range []string{"run_id: run-a", "event_count: 2", "started_at:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("yaml lacks %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"runid", "next:", "job_id"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("yaml has %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+func TestEventSummaries_ArtifactCommitType(t *testing.T) {
+	got := eventSummaries([]map[string]any{
+		{"seq": 1, "type": "item", "record_kind": "event"},
+		{"seq": 2, "event_type": "artifact", "record_kind": "artifact_event"},
+	})
+	if got[0].Type != "item" || got[1].Type != "artifact" {
+		t.Fatalf("types = %v, %v", got[0].Type, got[1].Type)
+	}
+}

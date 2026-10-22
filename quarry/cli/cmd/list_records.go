@@ -123,8 +123,8 @@ func listEventsCommand() *cli.Command {
 
 // listEventsResponse is the JSON shape of `list events`.
 type listEventsResponse struct {
-	Run    runreader.Run    `json:"run"`
-	Events []map[string]any `json:"events"`
+	Run    runreader.Run    `json:"run" yaml:"run"`
+	Events []map[string]any `json:"events" yaml:"events"`
 }
 
 func listEventsAction(c *cli.Context) error {
@@ -171,17 +171,26 @@ func listEventsAction(c *cli.Context) error {
 // shape (events, artifact commits), so the table shows the fields every
 // record has; json and yaml carry the full records.
 type eventSummary struct {
-	Seq        any `json:"seq"`
-	Type       any `json:"type"`
-	RecordKind any `json:"record_kind"`
-	Ts         any `json:"ts"`
-	EventID    any `json:"event_id"`
+	Seq        any `json:"seq" yaml:"seq"`
+	Type       any `json:"type" yaml:"type"`
+	RecordKind any `json:"record_kind" yaml:"record_kind"`
+	Ts         any `json:"ts" yaml:"ts"`
+	EventID    any `json:"event_id" yaml:"event_id"`
+}
+
+// eventType is the record's event type: artifact commit records carry it
+// only as their event_type partition key.
+func eventType(e map[string]any) any {
+	if t, ok := e["type"]; ok {
+		return t
+	}
+	return e["event_type"]
 }
 
 func eventSummaries(events []map[string]any) []eventSummary {
 	out := make([]eventSummary, 0, len(events))
 	for _, e := range events {
-		out = append(out, eventSummary{Seq: e["seq"], Type: e["type"], RecordKind: e["record_kind"], Ts: e["ts"], EventID: e["event_id"]})
+		out = append(out, eventSummary{Seq: e["seq"], Type: eventType(e), RecordKind: e["record_kind"], Ts: e["ts"], EventID: e["event_id"]})
 	}
 	return out
 }
