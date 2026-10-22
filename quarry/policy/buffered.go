@@ -466,16 +466,13 @@ func (p *BufferedPolicy) Close() error {
 		// honour (see Sink); the write is never abandoned.
 		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
 		defer cancel()
-		flushErr := p.Flush(ctx)
-
-		// Data still buffered now was accepted but never persisted: report it
-		// rather than closing over it silently.
-		p.mu.Lock()
-		events, chunks := len(p.eventBuffer)+len(p.eventBufferNext), len(p.chunkBuffer)
-		p.mu.Unlock()
+		// A failed close-time flush leaves accepted data unpersisted: report it
+		// rather than closing over it silently. (Buffers may also hold data
+		// already written and kept for retry, so the flush result, not buffer
+		// lengths, is what says whether anything was lost.)
 		var lossErr error
-		if events > 0 || chunks > 0 {
-			lossErr = fmt.Errorf("%w: %d events and %d chunks not persisted at close: %w", ErrCloseUnflushed, events, chunks, flushErr)
+		if err := p.Flush(ctx); err != nil {
+			lossErr = fmt.Errorf("%w: close-time flush failed: %w", ErrCloseUnflushed, err)
 		}
 		return errors.Join(lossErr, p.sink.Close())
 	})
