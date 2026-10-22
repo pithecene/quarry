@@ -132,3 +132,9 @@ func TestListRuns_StorageOnlyFlagsRejectedOnStub(t *testing.T) {
 		}
 	}
 }
+
+func TestListRuns_StubRejectsStorageOnlyState(t *testing.T) {
+	if _, err := runListCLI(t, "runs", "--state", "unterminated"); err == nil || !strings.Contains(err.Error(), "need storage") {
+		t.Fatalf("err = %v", err)
+	}
+}
