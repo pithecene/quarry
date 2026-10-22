@@ -157,6 +157,26 @@ await batch.flush()  // wait for all writes before terminal event
 - `flush()` must be called before terminal events — buffered writes are lost otherwise
 - Fail-fast: first error rejects all queued writes and poisons the batcher
 
+### listRuns / readRun
+
+Read persisted runs from Node.js (v0.14.0+), for example, to ingest finished
+runs. Both run the `quarry` CLI, which must be installed (`quarryPath`
+overrides the executable), and reject with `QuarryReadError` on failure.
+
+```typescript
+import { listRuns, readRun } from '@pithecene/quarry-sdk'
+
+const storage = { backend: 'fs', path: './quarry-data' } as const
+const page = await listRuns({ storage, source: 'demo', state: 'succeeded', limit: 100 })
+const { events } = await readRun(
+  { source: 'demo', category: 'default', day: '2026-10-22', runId: page.runs[0].run_id },
+  { storage }
+)
+```
+
+`page.next`, passed as `after`, returns the following page. See PUBLIC_API.md
+§Reading Runs.
+
 ### MemoryAPI
 
 Pull-based memory monitoring for container-constrained workloads.

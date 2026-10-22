@@ -56,6 +56,19 @@ export type {
 // Proxy validation (from sdk/src/proxy.ts)
 export type { ProxyValidationError, ProxyValidationResult, ProxyValidationWarning } from './proxy'
 export { redactProxyEndpoint, validateProxyEndpoint, validateProxyPool } from './proxy'
+// Run reader (public — lists runs and reads their events via the quarry CLI)
+export type {
+  ListRunsOptions,
+  ReaderOptions,
+  ReaderStorage,
+  RunEvents,
+  RunLocator,
+  RunPage,
+  RunState,
+  RunSummary,
+  StoredEvent
+} from './reader'
+export { listRuns, QuarryReadError, readRun } from './reader'
 // Storage batcher utility (public — bounded-concurrency file uploads)
 export type { PendingStoragePut, StorageBatcher, StorageBatcherOptions } from './storage-batcher'
 export { createStorageBatcher } from './storage-batcher'

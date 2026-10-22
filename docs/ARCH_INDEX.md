@@ -104,6 +104,7 @@ Defines **stable APIs** for emitting events, artifacts, and lifecycle signals.
 - [`hooks.ts`](../sdk/src/hooks.ts) — lifecycle hooks
 - [`storage-batcher.ts`](../sdk/src/storage-batcher.ts) — bounded-concurrency storage pipelining
 - [`memory.ts`](../sdk/src/memory.ts) — memory pressure detection API
+- [`reader.ts`](../sdk/src/reader.ts) — run reader (`listRuns`, `readRun`) over the CLI's JSON output
 - `types/` — shared domain types exposed by the SDK
 
 ### sdk/test/
