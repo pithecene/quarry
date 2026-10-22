@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/pithecene/quarry/types"
 )
@@ -17,6 +18,7 @@ type StrictPolicy struct {
 	sink Sink
 
 	closer onceCloser
+	closed atomic.Bool // ingestion after Close is refused
 
 	stats *statsRecorder
 }
@@ -32,6 +34,9 @@ func NewStrictPolicy(sink Sink) *StrictPolicy {
 // IngestEvent writes the event immediately to the sink.
 // Returns error on sink failure (terminates run).
 func (p *StrictPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnvelope) error {
+	if p.closed.Load() {
+		return ErrPolicyClosed
+	}
 	p.stats.incTotalEvents()
 
 	// Write immediately (batch of 1)
@@ -48,6 +53,9 @@ func (p *StrictPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnv
 // IngestArtifactChunk writes the chunk immediately to the sink.
 // Returns error on sink failure (terminates run).
 func (p *StrictPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error {
+	if p.closed.Load() {
+		return ErrPolicyClosed
+	}
 	p.stats.incTotalChunks()
 
 	// Write immediately (batch of 1)
@@ -67,9 +75,13 @@ func (p *StrictPolicy) Flush(_ context.Context) error {
 	return nil
 }
 
-// Close closes the underlying sink.
+// Close refuses further ingestion and closes the underlying sink. See the
+// Policy.Close precondition: no ingestion of the caller's is in progress.
 func (p *StrictPolicy) Close() error {
-	return p.closer.close(p.sink.Close)
+	return p.closer.close(func() error {
+		p.closed.Store(true)
+		return p.sink.Close()
+	})
 }
 
 // Stats returns policy statistics.

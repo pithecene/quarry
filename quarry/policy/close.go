@@ -1,9 +1,19 @@
 package policy
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
+
+// ErrPolicyClosed is returned when data is ingested after Close began: it
+// could not be included in the final flush, so it is refused instead of
+// being accepted and lost.
+var ErrPolicyClosed = errors.New("policy is closed")
+
+// ErrCloseUnflushed is returned by Close when accepted data is still buffered
+// after the close-time flush, so it was never persisted.
+var ErrCloseUnflushed = errors.New("policy closed with unflushed data")
 
 // closeFlushTimeout is the deadline of the best-effort flush a policy performs
 // on Close. It bounds Close for sinks that honour cancellation (see Sink).

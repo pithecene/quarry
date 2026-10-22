@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -146,12 +147,20 @@ func NewStreamingPolicy(sink Sink, config StreamingConfig) (*StreamingPolicy, er
 // If count threshold is reached after append, triggers a flush.
 func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnvelope) error {
 	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	eventSize := p.estimateEventSize(envelope)
 
 	// Block until buffer has room for this item (backpressure per CONTRACT_POLICY.md).
 	// Allow single-item overflow when buffer is empty to prevent deadlock for oversized entries.
 	p.waitForRoomLocked(eventSize)
+	if p.stopped { // Close began while this call waited for room
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalEventsLocked()
 	p.eventBuffer = append(p.eventBuffer, envelope)
@@ -181,12 +190,20 @@ func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.Event
 // in count-only mode where chunks don't contribute to the event count trigger.
 func (p *StreamingPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error {
 	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	chunkSize := int64(len(chunk.Data))
 
 	// Block until buffer has room for this chunk (backpressure per CONTRACT_POLICY.md).
 	// Allow single-item overflow when buffer is empty to prevent deadlock for oversized chunks.
 	p.waitForRoomLocked(chunkSize)
+	if p.stopped { // Close began while this call waited for room
+		p.mu.Unlock()
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalChunksLocked()
 	p.chunkBuffer = append(p.chunkBuffer, chunk)
@@ -228,6 +245,11 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 	select {
 	case p.flushSem <- struct{}{}:
 	case <-ctx.Done():
+		// Another flush still holds the sink: this one never started.
+		p.mu.Lock()
+		p.stats.incErrorsLocked()
+		p.mu.Unlock()
+		p.logFlushFailure("all", trigger, ctx.Err())
 		return ctx.Err()
 	}
 	defer func() { <-p.flushSem }()
@@ -320,6 +342,8 @@ func (p *StreamingPolicy) Close() error {
 			p.stopped = true
 			close(p.stopCh)
 		}
+		// Wake ingestion waiting for buffer room: it now refuses the data.
+		p.bufferCond.Broadcast()
 		p.mu.Unlock()
 		p.loopCancel()
 
@@ -327,13 +351,23 @@ func (p *StreamingPolicy) Close() error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
 		defer cancel()
-		_ = p.Flush(ctx)
+		flushErr := p.Flush(ctx)
 
 		// Join any flush still in flight (count-, capacity-, or caller-
 		// triggered) before closing the sink: none is abandoned.
 		p.flushSem <- struct{}{}
 		defer func() { <-p.flushSem }()
-		return p.sink.Close()
+
+		// Data still buffered now was accepted but never persisted: report it
+		// rather than closing over it silently.
+		p.mu.Lock()
+		events, chunks := len(p.eventBuffer), len(p.chunkBuffer)
+		p.mu.Unlock()
+		var lossErr error
+		if events > 0 || chunks > 0 {
+			lossErr = fmt.Errorf("%w: %d events and %d chunks not persisted at close: %w", ErrCloseUnflushed, events, chunks, flushErr)
+		}
+		return errors.Join(lossErr, p.sink.Close())
 	})
 }
 
@@ -417,7 +451,7 @@ func (p *StreamingPolicy) recalculateBufferBytes() {
 // rather than deadlocking (it will be flushed on the next trigger).
 // Caller must hold mu.
 func (p *StreamingPolicy) waitForRoomLocked(additionalBytes int64) {
-	for p.bufferBytes > 0 && p.wouldExceedCapacityLocked(additionalBytes) {
+	for !p.stopped && p.bufferBytes > 0 && p.wouldExceedCapacityLocked(additionalBytes) {
 		p.bufferCond.Wait()
 	}
 }

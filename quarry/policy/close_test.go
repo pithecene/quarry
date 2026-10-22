@@ -22,7 +22,10 @@ func TestBufferedPolicy_SecondCloseWritesNothing(t *testing.T) {
 	}
 
 	sink.ErrorOnWrite = errors.New("store unavailable")
-	_ = pol.Close() // flush fails; events stay buffered
+	// The flush fails, so the events stay buffered: Close reports the loss.
+	if err := pol.Close(); !errors.Is(err, policy.ErrCloseUnflushed) {
+		t.Fatalf("first Close err = %v, want ErrCloseUnflushed", err)
+	}
 	sink.ErrorOnWrite = nil
 
 	_ = pol.Close()
@@ -49,4 +52,25 @@ type countingCloseSink struct {
 func (s *countingCloseSink) Close() error {
 	s.closes++
 	return s.StubSink.Close()
+}
+
+// Data offered after Close began is refused, not accepted and lost behind
+// the final flush.
+func TestPolicies_RefuseIngestAfterClose(t *testing.T) {
+	ev := &types.EventEnvelope{RunID: "run-001", Seq: 1, Type: types.EventTypeItem}
+	buffered := mustNewBufferedPolicy(t, policy.NewStubSink(), policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 1 << 20})
+	streaming, err := policy.NewStreamingPolicy(policy.NewStubSink(), policy.StreamingConfig{FlushCount: 10})
+	if err != nil {
+		t.Fatalf("NewStreamingPolicy: %v", err)
+	}
+	strict := policy.NewStrictPolicy(policy.NewStubSink())
+	for name, pol := range map[string]policy.Policy{"buffered": buffered, "streaming": streaming, "strict": strict} {
+		_ = pol.Close()
+		if err := pol.IngestEvent(t.Context(), ev); !errors.Is(err, policy.ErrPolicyClosed) {
+			t.Errorf("%s IngestEvent after Close: %v, want ErrPolicyClosed", name, err)
+		}
+		if err := pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{ArtifactID: "a", Data: []byte("x")}); !errors.Is(err, policy.ErrPolicyClosed) {
+			t.Errorf("%s IngestArtifactChunk after Close: %v, want ErrPolicyClosed", name, err)
+		}
+	}
 }
