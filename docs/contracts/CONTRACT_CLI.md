@@ -643,7 +643,9 @@ Selector values are rejected when they are `.`, `..`, or contain a `.` or
 segments, which would widen the prefix beyond the selected runs.
 
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
-`--limit=<n>`; each item includes `run_id`, `state`, `started_at`.
+`--limit=<n>`; each item includes `run_id`, `state`, `started_at`. The
+storage-only flags (`--source`, `--category`, `--day`, `--after`) are an
+error without storage.
 
 ### `list events` (v0.14.0+)
 

@@ -123,3 +123,12 @@ func TestListEvents_FromStorage(t *testing.T) {
 		t.Fatalf("missing run err = %v", err)
 	}
 }
+
+func TestListRuns_StorageOnlyFlagsRejectedOnStub(t *testing.T) {
+	for _, flag := range []string{"--after", "--source", "--category", "--day"} {
+		_, err := runListCLI(t, "runs", flag, "x")
+		if err == nil || !strings.Contains(err.Error(), "requires --storage-backend") {
+			t.Errorf("%s on the stub path: err = %v", flag, err)
+		}
+	}
+}
