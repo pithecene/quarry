@@ -668,18 +668,18 @@
             "source": {
               "type": "string",
               "required": false,
-              "description": "Source to list (required with storage; cross-source listing omits it)"
+              "description": "Source selector (storage only)"
             },
             "category": {
               "type": "string",
               "required": false,
-              "description": "Category (requires --source)",
+              "description": "Category selector (requires --source)",
               "dependsOn": ["source"]
             },
             "day": {
               "type": "string",
               "required": false,
-              "description": "Partition day YYYY-MM-DD (requires --category)",
+              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
               "dependsOn": ["category"]
             },
             "format": {
@@ -747,18 +747,18 @@
             "source": {
               "type": "string",
               "required": true,
-              "description": "Source to list (required with storage; cross-source listing omits it)"
+              "description": "Source selector (storage only)"
             },
             "category": {
               "type": "string",
               "required": true,
-              "description": "Category (requires --source)",
+              "description": "Category selector (requires --source)",
               "dependsOn": ["source"]
             },
             "day": {
               "type": "string",
               "required": true,
-              "description": "Partition day YYYY-MM-DD (requires --category)",
+              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
               "dependsOn": ["category"]
             },
             "format": {

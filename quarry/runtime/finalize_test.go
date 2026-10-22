@@ -151,7 +151,7 @@ func TestExecute_StartRecordFailure_RunNeverStarts(t *testing.T) {
 	result := executeRun(t, finalizeConfig(t, storage, exec))
 
 	// No executor and no run data; the end record is still attempted,
-	// because a failed remote write may have landed.
+	// because a failed remote write may have been persisted.
 	if got, want := storage.sequence(), "start,close,end"; got != want {
 		t.Fatalf("call order = %q, want %q", got, want)
 	}

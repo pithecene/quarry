@@ -80,7 +80,7 @@ func listRunsAction(c *cli.Context) error {
 	if withStorage {
 		return listRunsFromRecords(c, r)
 	}
-	// Selectors and cursors only have meaning against storage; never ignore
+	// Selectors and cursors have meaning only against storage; never ignore
 	// them silently on the stub path.
 	for _, name := range []string{"after", "source", "category", "day"} {
 		if c.IsSet(name) {

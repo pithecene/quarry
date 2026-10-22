@@ -16,7 +16,7 @@ var ErrPolicyClosed = errors.New("policy is closed")
 var ErrCloseUnflushed = errors.New("policy closed with unflushed data")
 
 // closeFlushTimeout is the deadline of the best-effort flush a policy performs
-// on Close. It bounds Close for sinks that honour cancellation (see Sink).
+// on Close. It bounds Close for sinks that honor cancellation (see Sink).
 var closeFlushTimeout = 30 * time.Second // var so tests can shorten it
 
 // onceCloser makes a policy's Close one-shot, so a policy closed by one owner

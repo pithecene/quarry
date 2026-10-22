@@ -132,16 +132,17 @@ The runtime owns a run's whole lifecycle. `Execute`
 
 1. Write the run's **start record** (§Run Records). Nothing else is
    written for the run before it.
-2. Launch the executor, ingest, flush the policy, and close it, on every
-   path including a failed start record. Buffered and streaming policies
-   flush once more on close (bounded at 30 seconds; an interval flush
-   still in progress is cancelled and joined, never abandoned), so closing
-   happens here, before the end record; close is one-shot, so a caller's later
-   close writes nothing. The close happens while the outcome is still being
-   decided: if it leaves accepted data unpersisted, a run that would
-   otherwise succeed fails with `policy_failure` (a run that already
-   failed keeps its outcome). Policy statistics are taken after the close, so the
-   metrics record and exit report match what was persisted.
+2. Launch the executor, ingest events, and flush the policy. Close the
+   policy on every path, including a failed start record. Buffered and
+   streaming policies flush once more on close (bounded at 30 seconds; an
+   interval flush still in progress is canceled and joined, never
+   abandoned), so the close occurs here, before the end record. Close is
+   one-shot, so a caller's later close writes nothing. The close occurs
+   while the outcome is still being determined: if it leaves accepted data
+   unpersisted, a run that would otherwise succeed fails with
+   `policy_failure` (a run that has already failed retains its outcome).
+   Policy statistics are taken after the close, so the metrics record and
+   the exit report match what was persisted.
 3. Persist the run's metrics record (CONTRACT_LODE.md §Metrics Record
    Storage).
 4. Write the run's **end record**.
@@ -151,10 +152,10 @@ Nothing is written for the run after the end record, so a present end
 record means every other object of the run is final.
 
 The time bounds in this section assume store operations return. A write
-that is abandoned at a deadline could still land later, after the end
-record, so the runtime never abandons one: a store call that never returns
+that is abandoned at a deadline could still be persisted later, after the
+end record, so the runtime never abandons one: a store call that never returns
 blocks the run at that call, as it would block any write. Lode's
-filesystem and S3 stores return; S3 calls also honour cancellation.
+filesystem and S3 stores return; S3 calls also honor cancellation.
 
 Finalization happens inside `Execute` for every caller: the CLI, fan-out
 child runs, and any embedding host (CONTRACT_INTEGRATION.md §Activity
@@ -167,8 +168,8 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
   not start: no executor is launched and no run data (events, artifacts,
   metrics) is written. The outcome is `executor_crash`, as when the
   executor fails to launch, and a retry is safe.
-  - A store can report a write as failed after the object landed, so the
-    runtime still attempts the end record, which gives such a run
+  - A store can report a write as failed after the object was persisted,
+    so the runtime still attempts the end record, which gives such a run
     terminal evidence.
   - If a start record already exists at the run's key (same dataset,
     source, category, day, and run ID), that key belongs to another
@@ -179,13 +180,13 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
   - Values that can never form a valid key are rejected earlier, as a
     configuration error, before `Execute` (CONTRACT_LODE.md §Key
     Encoding).
-- **Metrics record.** Best-effort, as before: failure is a warning, does
+- **Metrics record.** Best-effort, as before: a failure is a warning, does
   not change the outcome, and is recorded in the end record
   (`metrics_persisted: false`).
 - **End record.** Failure does not change the outcome. It is surfaced on
   stderr, in `RunResult.RunRecordError`, and in the structured exit report
   (`run_record_error`). As with the start record, a write reported as
-  failed may still have landed.
+  failed may still have been persisted.
 
 ---
 
@@ -269,7 +270,7 @@ run the rebuild after such writers have stopped writing to the dataset.
 Readers (CONTRACT_CLI.md §list runs) apply these rules:
 
 - A run is listed if and only if its start record exists. An end record
-  without a start record (a start write that failed without landing) is
+  without a start record (left by a start-record write that failed without being persisted) is
   ignored.
 - A run's state is `succeeded` when its end record's outcome is
   `success`, `failed` for any other outcome, and `unterminated` when it

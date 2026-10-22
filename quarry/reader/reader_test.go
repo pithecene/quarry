@@ -250,8 +250,8 @@ func TestListRuns_NoCursorWhenNoFurtherMatch(t *testing.T) {
 	}
 }
 
-// An end record without a start record (a start write that failed and never
-// landed) is ignored: runs are listed by their start record only.
+// An end record without a start record (left by a start write that failed
+// and was never persisted) is ignored: runs are listed by their start record only.
 func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
