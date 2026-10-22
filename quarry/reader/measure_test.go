@@ -14,8 +14,8 @@ import (
 )
 
 // countingStore counts the store work a reader does: List calls, keys those
-// calls return (on S3, ListObjectsV2 returns at most 1000 keys per request,
-// so keys returned bound the requests), and objects read.
+// calls return (on S3, ListObjectsV2 returns at most 1,000 keys per request,
+// so the keys returned bound the requests), and objects read.
 type countingStore struct {
 	lode.Store
 	mu         sync.Mutex

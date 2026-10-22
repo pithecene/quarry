@@ -222,8 +222,8 @@ func TestListRuns_RejectsNonStartKeyCursor(t *testing.T) {
 		"datasets/quarry/runs/src/z",
 		"datasets/quarry/runs/src/cat/2026-10-21/r1/end.json",
 		"datasets/quarry/runs/src/cat/2026-10-21/start.json",
-		"datasets/quarry/runs/src/cat/2026-10-21/r\\1/start.json", // raw backslash: never written
-		"datasets/quarry/runs/src/cat/2026-10-21/r%31/start.json", // non-canonical encoding of "r1"
+		"datasets/quarry/runs/src/cat/2026-10-21/r\\1/start.json",   // raw backslash: never written
+		"datasets/quarry/runs/src/cat/2026-10-21/r%31/start.json",   // non-canonical encoding of "r1"
 		"datasets/quarry/runs/src/cat/2026-10-21/%2E%2E/start.json", // ".." run ID
 	} {
 		if _, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{After: after}); !errors.Is(err, ErrInvalidCursor) {
@@ -250,8 +250,8 @@ func TestListRuns_NoCursorWhenNoFurtherMatch(t *testing.T) {
 	}
 }
 
-// An end record without a start record (a start write that failed and never
-// landed) is ignored: runs are listed by their start record only.
+// An end record without a start record (left by a start write that failed
+// and was never persisted) is ignored: runs are listed by their start record only.
 func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

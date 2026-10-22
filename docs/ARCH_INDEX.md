@@ -169,7 +169,7 @@ Go module root. Contains runtime, CLI, and core types.
 
 ### quarry/reader/
 
-- `reader/` — read side over Quarry's own layout: lists runs from run records (never from partitions) and reads a run's events from the partitions its start record names
+- `reader/` — read access to Quarry's own storage layout: lists runs from run records (never from partitions) and reads a run's events from the partitions its start record names
 
 ### quarry/log/
 

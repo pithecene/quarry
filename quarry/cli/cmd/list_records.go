@@ -17,8 +17,8 @@ import (
 // readTimeout bounds a storage-backed read command.
 const readTimeout = 5 * time.Minute
 
-// storageReadFlags are the storage flags of read commands that read Lode
-// storage. They mean the same as on `run`.
+// storageReadFlags are the storage flags of commands that read Lode
+// storage. They have the same meaning as on `run`.
 func storageReadFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "storage-dataset", Usage: "Lode dataset ID (default: \"quarry\")", Value: lode.DefaultDataset},
@@ -33,14 +33,14 @@ func storageReadFlags() []cli.Flag {
 // runSelectorFlags select runs by key prefix, in order.
 func runSelectorFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.StringFlag{Name: "source", Usage: "Source to list (required with storage; cross-source listing omits it)"},
-		&cli.StringFlag{Name: "category", Usage: "Category (requires --source)"},
-		&cli.StringFlag{Name: "day", Usage: "Partition day YYYY-MM-DD (requires --category)"},
+		&cli.StringFlag{Name: "source", Usage: "Source selector (storage only)"},
+		&cli.StringFlag{Name: "category", Usage: "Category selector (requires --source)"},
+		&cli.StringFlag{Name: "day", Usage: "Partition day selector, YYYY-MM-DD (requires --category)"},
 	}
 }
 
-// storageRequested reports whether storage flags were given, and errors if
-// any was given without the required pair: a storage flag never silently
+// storageRequested reports whether storage flags were given and returns an
+// error if any was given without the required pair: a storage flag never silently
 // falls back to stub data.
 func storageRequested(c *cli.Context) (bool, error) {
 	backend, path := c.String("storage-backend"), c.String("storage-path")

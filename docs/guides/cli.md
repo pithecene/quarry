@@ -363,7 +363,7 @@ Notes:
   its process was killed. Storage cannot tell which, so it is never shown
   as running.
 - Pages are ordered by source, category, day, and run ID. Pass a page's
-  `next` value as `--after` to get the following page.
+  `next` value as `--after` to retrieve the following page.
 
 Examples:
 

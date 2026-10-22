@@ -634,20 +634,21 @@ passing it as `--after` returns the runs after it. `next` is present only
 when another run matching the request exists. The cursor is a key
 position, not a reference to a stored run: listing resumes at the first
 start-record key after it, so paging stays correct when the run it names
-is deleted between pages (retention). A value that does not have the shape
-of a start-record key under the selected prefix, with each key component
-encoded exactly as the write path encodes it, is an error; a well-formed
-key that names no run is accepted and resumes after its position. With `--state`, a
-page holds up to `--limit` matching runs.
+is deleted between pages (for example, by retention). A value that does
+not have the shape of a start-record key under the selected prefix, with
+each key component encoded exactly as the write path encodes it, is an
+error; a well-formed key that names no run is accepted, and listing
+resumes after its position. With `--state`, a page holds up to `--limit`
+matching runs.
 
 Selector values are rejected when they are `.`, `..`, or contain a `.` or
 `..` path segment (CONTRACT_LODE.md §Key Encoding): stores normalize such
 segments, which would widen the prefix beyond the selected runs.
 
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
-`--limit=<n>`; each item includes `run_id`, `state`, `started_at`. The
-storage-only flags (`--source`, `--category`, `--day`, `--after`) are an
-error without storage, and any storage flag given without both
+`--limit=<n>`; each item includes `run_id`, `state`, and `started_at`. Using a
+storage-only flag (`--source`, `--category`, `--day`, or `--after`)
+without storage is an error, and any storage flag given without both
 `--storage-backend` and `--storage-path` is an error, never a fallback to
 stub data.
 

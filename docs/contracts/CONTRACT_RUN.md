@@ -235,7 +235,7 @@ Records are written once and never rewritten.
 Readers (CONTRACT_CLI.md §list runs) apply these rules:
 
 - A run is listed if and only if its start record exists. An end record
-  without a start record (a start write that failed without landing) is
+  without a start record (left by a start-record write that failed without being persisted) is
   ignored.
 - A run's state is `succeeded` when its end record's outcome is
   `success`, `failed` for any other outcome, and `unterminated` when it
