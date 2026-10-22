@@ -84,6 +84,9 @@ type BufferedPolicy struct {
 	config BufferedConfig
 	logger *log.Logger
 
+	closer onceCloser
+	closed bool // set under mu when Close begins; ingestion is refused afterward
+
 	mu              sync.Mutex // guards buffer state only
 	eventBuffer     []*types.EventEnvelope
 	eventBufferNext []*types.EventEnvelope // TwoPhase: events added after eventsFlushed=true
@@ -138,6 +141,9 @@ func NewBufferedPolicy(sink Sink, config BufferedConfig) (*BufferedPolicy, error
 func (p *BufferedPolicy) IngestEvent(_ context.Context, envelope *types.EventEnvelope) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalEventsLocked()
 
@@ -190,6 +196,9 @@ func (p *BufferedPolicy) appendEvent(envelope *types.EventEnvelope, eventSize in
 func (p *BufferedPolicy) IngestArtifactChunk(_ context.Context, chunk *types.ArtifactChunk) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return ErrPolicyClosed
+	}
 
 	p.stats.incTotalChunksLocked()
 
@@ -459,9 +468,27 @@ func (p *BufferedPolicy) recalculateBufferBytes() {
 
 // Close flushes remaining data and closes the sink.
 func (p *BufferedPolicy) Close() error {
-	// Best-effort flush on close
-	_ = p.Flush(context.Background())
-	return p.sink.Close()
+	return p.closer.close(func() error {
+		// Best-effort flush on close, bounded by a deadline the sink must
+		// honor (see Sink); the write is never abandoned.
+		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
+		defer cancel()
+		// Refuse ingestion from this point, so nothing is accepted after the final
+		// flush takes its snapshot.
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
+
+		// A failed close-time flush leaves accepted data unpersisted: report it
+		// rather than closing without reporting it. (Buffers may also retain data
+		// already written and kept for retry, so the flush result, not the buffer
+		// lengths, determines whether any data was lost.)
+		var lossErr error
+		if err := p.Flush(ctx); err != nil {
+			lossErr = fmt.Errorf("%w: close-time flush failed: %w", ErrCloseUnflushed, err)
+		}
+		return errors.Join(lossErr, p.sink.Close())
+	})
 }
 
 // Stats returns policy statistics.
