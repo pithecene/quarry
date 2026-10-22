@@ -192,7 +192,9 @@ func (r *Reader) anyMatch(ctx context.Context, rest []string, state State) (bool
 
 // isStartKeyUnder reports whether key has the shape of a start-record key,
 // datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/start.json,
-// and lies under prefix.
+// and lies under prefix. A cursor is a key position, not a stored run: it
+// need not exist, so a page sequence survives runs deleted between pages
+// (CONTRACT_CLI.md §list runs).
 func (r *Reader) isStartKeyUnder(key, prefix string) bool {
 	root := qlode.RunRecordPrefix(r.dataset)
 	if !strings.HasPrefix(key, prefix) || !strings.HasPrefix(key, root) {

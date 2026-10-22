@@ -339,3 +339,17 @@ func TestReadEvents_UsesTheListingStore(t *testing.T) {
 		t.Fatalf("events = %d err %v, want 2 from the listing store", len(evs), err)
 	}
 }
+
+// A well-formed cursor naming a run that no longer exists resumes after its
+// key position, so paging survives runs deleted between pages.
+func TestListRuns_CursorIsAKeyPosition(t *testing.T) {
+	t.Parallel()
+	r := seedRuns(t).reader()
+	p, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{After: "datasets/quarry/runs/src/cat/2026-10-21/r15/start.json"})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if got := fmt.Sprint(runIDs(p)); got != "[r2 r3 r4]" {
+		t.Fatalf("runs = %s, want [r2 r3 r4]", got)
+	}
+}

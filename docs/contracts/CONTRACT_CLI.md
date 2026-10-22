@@ -630,8 +630,12 @@ stderr when another page exists.
 Ordering and paging: runs are ordered by record key (source, category,
 day, run ID) on every backend. `next` is the key of the last run returned;
 passing it as `--after` returns the runs after it. `next` is present only
-when another run matching the request exists. A cursor that is not a
-start-record key under the selected prefix is an error. With `--state`, a
+when another run matching the request exists. The cursor is a key
+position, not a reference to a stored run: listing resumes at the first
+start-record key after it, so paging stays correct when the run it names
+is deleted between pages (retention). A value that does not have the shape
+of a start-record key under the selected prefix is an error; a well-formed
+key that names no run is accepted and resumes after its position. With `--state`, a
 page holds up to `--limit` matching runs.
 
 Selector values are rejected when they are `.`, `..`, or contain a `.` or
