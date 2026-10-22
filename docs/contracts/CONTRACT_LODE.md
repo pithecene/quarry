@@ -309,6 +309,13 @@ key, as a configuration error:
   segment (split on `/` or `\`). Sidecar file paths (§Sidecar File
   Inventory) still interpolate these values unencoded, so such a segment
   could place one run's files under another run's partition.
+- Known limitation, unchanged from earlier releases: for a value that
+  Hive encoding changes (one containing `/`, `\`, `%`, a space, and so on),
+  the sidecar file path differs from the run's partition prefix, because
+  sidecar paths (and the key the SDK reports from `storage.put()`) are
+  built raw. Run records and the partition tree always agree. Moving
+  sidecar keys to the same encoding needs the IPC acknowledgement to carry
+  the resolved key first, and is roadmap decision B1.
 - Dataset ID: empty, `.`, `..`, or any value containing `/` or `\`. The
   dataset component is not encoded, so these would leave the dataset's
   directory or add path segments.

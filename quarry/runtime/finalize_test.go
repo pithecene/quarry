@@ -11,6 +11,7 @@ import (
 
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -223,5 +224,32 @@ func TestNewRunOrchestrator_RejectsUnsafeStorageKey(t *testing.T) {
 	config.StorageDataset = "../other"
 	if _, err := NewRunOrchestrator(config); !errors.Is(err, lode.ErrInvalidRunKey) {
 		t.Fatalf("NewRunOrchestrator err = %v, want ErrInvalidRunKey", err)
+	}
+}
+
+// unflushedClosePolicy fails its close-time flush, leaving data unpersisted.
+type unflushedClosePolicy struct {
+	*flushTrackingPolicy
+}
+
+func (p *unflushedClosePolicy) Close() error {
+	return fmt.Errorf("%w: 3 events not persisted", policy.ErrCloseUnflushed)
+}
+
+// Data left unpersisted at close fails the run before the end record is
+// written, rather than being reported after a "success" outcome.
+func TestExecute_UnflushedCloseFailsRun(t *testing.T) {
+	storage := &recordingStorage{}
+	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
+	config := finalizeConfig(t, storage, exec)
+	config.Policy = &unflushedClosePolicy{flushTrackingPolicy: newFlushTrackingPolicy()}
+
+	result := executeRun(t, config)
+
+	if result.Outcome.Status != types.OutcomePolicyFailure {
+		t.Fatalf("outcome = %s, want policy_failure", result.Outcome.Status)
+	}
+	if storage.end == nil || storage.end.Outcome != types.OutcomePolicyFailure {
+		t.Fatalf("end record outcome = %+v, want policy_failure", storage.end)
 	}
 }

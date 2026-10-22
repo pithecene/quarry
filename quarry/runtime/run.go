@@ -128,6 +128,9 @@ type RunOrchestrator struct {
 	config    *RunConfig
 	logger    *log.Logger
 	startTime time.Time
+
+	policyClosed   bool  // the policy has been closed (Close is one-shot)
+	policyCloseErr error // the result of that close
 }
 
 // NewRunOrchestrator creates a new run orchestrator.
@@ -202,13 +205,27 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 // can change them, and the metrics record and exit report must agree with
 // what was persisted.
 func (r *RunOrchestrator) closePolicy(result *RunResult) {
-	if err := r.config.Policy.Close(); err != nil {
-		r.logger.Warn("policy close failed", map[string]any{
-			"error": err.Error(),
-		})
-	}
+	_ = r.closePolicyOnce()
 	result.PolicyStats = r.config.Policy.Stats()
 	r.absorbPolicyStats(result.PolicyStats)
+}
+
+// closePolicyOnce closes the policy the first time it is called and returns
+// that result on every call. Normally it runs right after the termination
+// flush, while the outcome is still being decided, so data left unpersisted
+// at close fails the run (policy.ErrCloseUnflushed).
+func (r *RunOrchestrator) closePolicyOnce() error {
+	if r.policyClosed {
+		return r.policyCloseErr
+	}
+	r.policyClosed = true
+	r.policyCloseErr = r.config.Policy.Close()
+	if r.policyCloseErr != nil {
+		r.logger.Warn("policy close failed", map[string]any{
+			"error": r.policyCloseErr.Error(),
+		})
+	}
+	return r.policyCloseErr
 }
 
 // absorbPolicyStats copies policy statistics into the metrics collector.
@@ -343,6 +360,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 			})
 		}
 		flushCancel()
+		_ = r.closePolicyOnce()
 		return r.buildResult(&types.RunOutcome{
 			Status:  types.OutcomeExecutorCrash,
 			Message: fmt.Sprintf("failed to start executor: %v", err),
@@ -412,6 +430,11 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		r.logger.Warn("policy flush failed (best effort)", map[string]any{
 			"error": flushErr.Error(),
 		})
+	}
+	// Close now, so data the close-time flush could not persist decides the
+	// outcome instead of being reported after it.
+	if closeErr := r.closePolicyOnce(); flushErr == nil && errors.Is(closeErr, policy.ErrCloseUnflushed) {
+		flushErr = closeErr
 	}
 
 	// Handle executor wait error
