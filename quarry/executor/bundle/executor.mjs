@@ -392,8 +392,7 @@ var init_dist = __esm({
       state: oneOf(...[
         "succeeded",
         "failed",
-        "unterminated",
-        "unclassified"
+        "unterminated"
       ]),
       backfilled: (v) => typeof v === "boolean",
       ended_at: orNull(isString),

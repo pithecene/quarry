@@ -1,17 +1,17 @@
 /**
  * Run reader: lists runs and reads their events by invoking the `quarry`
  * CLI and parsing its JSON output (CONTRACT_CLI.md §list runs, §list events).
- * The CLI is the one implementation of the storage layout, so this module
+ * The CLI is the only implementation of the storage layout, so this module
  * never reads storage itself.
  */
 import { spawn } from 'node:child_process'
 
 /**
- * A run's state as storage proves it. `unterminated` runs have no end record
- * (live, killed, or unrecorded); `unclassified` runs ended but their outcome
- * is unknown (backfilled records).
+ * A run's state, derived from its run records. An `unterminated` run has no
+ * end record (it is live, was killed, or its end record was not written). A
+ * backfilled run's state follows its terminal event.
  */
-export type RunState = 'succeeded' | 'failed' | 'unterminated' | 'unclassified'
+export type RunState = 'succeeded' | 'failed' | 'unterminated'
 
 /** One run, as `quarry list runs --format json` reports it. */
 export type RunSummary = {
@@ -77,7 +77,7 @@ export type ReaderOptions = {
 
 /** Selectors and paging for {@link listRuns}. */
 export type ListRunsOptions = ReaderOptions & {
-  /** Leading selectors: `category` requires `source`, `day` requires `category`. */
+  /** Leading selectors: `category` requires `source`, and `day` requires `category`. */
   source?: string
   category?: string
   day?: string
@@ -160,8 +160,8 @@ function storageArgs(storage: ReaderStorage): string[] {
 }
 
 // `--flag=value` keeps a value that starts with "-" from being read as a flag.
-// An empty value is rejected: the CLI would read it as the flag being absent
-// (a default dataset, an unselected source) and read something else.
+// An empty value is rejected: the CLI would treat the flag as absent (for
+// example, reading the default dataset or all sources) and read other data.
 function optionalArgs(flags: Record<string, string | number | undefined>): string[] {
   return Object.entries(flags).flatMap(([name, value]) => {
     if (value === '') {
@@ -227,7 +227,7 @@ const optional =
   (v) =>
     v === undefined || check(v)
 
-const RUN_STATES: readonly RunState[] = ['succeeded', 'failed', 'unterminated', 'unclassified']
+const RUN_STATES: readonly RunState[] = ['succeeded', 'failed', 'unterminated']
 
 // Field rules for RunSummary (CONTRACT_CLI.md §list runs).
 const runSummaryFields: Record<string, FieldCheck> = {

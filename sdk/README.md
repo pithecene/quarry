@@ -159,7 +159,7 @@ await batch.flush()  // wait for all writes before terminal event
 
 ### listRuns / readRun
 
-Read persisted runs from Node.js (v0.14.0+), for example to ingest finished
+Read persisted runs from Node.js (v0.14.0+), for example, to ingest finished
 runs. Both run the `quarry` CLI, which must be installed (`quarryPath`
 overrides the executable), and reject with `QuarryReadError` on failure.
 

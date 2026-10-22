@@ -1,6 +1,6 @@
 /**
  * Unit tests for the run reader. A fake `quarry` executable records its
- * arguments and replies with canned output, so these tests pin the CLI
+ * arguments and replies with canned output, so these tests verify the CLI
  * invocation (CONTRACT_CLI.md §list runs, §list events) and the error
  * handling without a Go build.
  */
@@ -50,7 +50,7 @@ const run = {
   day: '2026-10-22',
   partition: 'source=demo/category=default/day=2026-10-22/run_id=r1/',
   started_at: null,
-  state: 'unclassified',
+  state: 'succeeded',
   backfilled: true,
   ended_at: '2026-10-22T04:18:53.858Z',
   outcome: null,
@@ -66,7 +66,7 @@ describe('listRuns', () => {
       storage: { ...storage, dataset: 'other', endpoint: 'https://r2.example', s3PathStyle: true },
       source: 'demo',
       category: 'default',
-      state: 'unclassified',
+      state: 'succeeded',
       limit: 10,
       after: 'cursor-0'
     })
@@ -82,7 +82,7 @@ describe('listRuns', () => {
       '--storage-s3-path-style',
       '--source=demo',
       '--category=default',
-      '--state=unclassified',
+      '--state=succeeded',
       '--limit=10',
       '--after=cursor-0',
       '--format=json'
