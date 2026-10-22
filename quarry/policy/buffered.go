@@ -84,6 +84,8 @@ type BufferedPolicy struct {
 	config BufferedConfig
 	logger *log.Logger
 
+	closer onceCloser
+
 	mu              sync.Mutex // guards buffer state only
 	eventBuffer     []*types.EventEnvelope
 	eventBufferNext []*types.EventEnvelope // TwoPhase: events added after eventsFlushed=true
@@ -459,9 +461,14 @@ func (p *BufferedPolicy) recalculateBufferBytes() {
 
 // Close flushes remaining data and closes the sink.
 func (p *BufferedPolicy) Close() error {
-	// Best-effort flush on close
-	_ = p.Flush(context.Background())
-	return p.sink.Close()
+	return p.closer.close(func() error {
+		// Best-effort flush on close, bounded by a deadline the sink must
+		// honour (see Sink); the write is never abandoned.
+		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
+		defer cancel()
+		_ = p.Flush(ctx)
+		return p.sink.Close()
+	})
 }
 
 // Stats returns policy statistics.

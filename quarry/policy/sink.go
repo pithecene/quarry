@@ -12,6 +12,11 @@ import (
 // Implementations may write to storage, forward to a queue, or stub for testing.
 //
 // Methods are batch-oriented to support both strict (batch of 1) and buffered policies.
+//
+// Write methods must return once ctx is done. Policies bound their close-time
+// flush with a context deadline and never abandon a write in progress (it
+// could otherwise land after the caller considers the policy closed), so that
+// bound holds only for sinks that honour cancellation.
 type Sink interface {
 	// WriteEvents persists a batch of event envelopes.
 	// Must preserve ordering within the batch.

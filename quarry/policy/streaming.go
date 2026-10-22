@@ -68,14 +68,18 @@ var ErrStreamingInvalidConfig = errors.New("invalid streaming config: at least o
 //
 // Thread safety:
 //   - mu guards buffer state (append, size tracking, stats)
-//   - flushMu serializes flush operations to prevent concurrent writes
+//   - flushSem serializes flush operations to prevent concurrent writes;
+//     acquiring it honours the caller's context, so a flush stalled in the
+//     sink cannot block another flush past its deadline
 //   - IngestEvent/IngestArtifactChunk hold mu briefly to append
-//   - triggerFlush holds flushMu for the duration of the write,
+//   - triggerFlush holds flushSem for the duration of the write,
 //     and mu briefly to swap/restore buffers
 type StreamingPolicy struct {
 	sink   Sink
 	config StreamingConfig
 	logger *log.Logger
+
+	closer onceCloser
 
 	mu          sync.Mutex // guards buffer state and stats
 	bufferCond  *sync.Cond // signaled after flush drains buffer; uses mu as locker
@@ -84,9 +88,9 @@ type StreamingPolicy struct {
 	bufferBytes int64
 	stats       *statsRecorder
 
-	// flushMu serializes flush operations.
+	// flushSem serializes flush operations (capacity 1).
 	// Prevents concurrent flushes from interval goroutine and count trigger.
-	flushMu sync.Mutex
+	flushSem chan struct{}
 
 	// flushTriggerCounts tracks how many times each trigger type fired.
 	// Guarded by mu.
@@ -97,6 +101,11 @@ type StreamingPolicy struct {
 
 	// stopCh signals the interval goroutine to stop.
 	stopCh chan struct{}
+	// loopCtx is the context of interval flushes; Close cancels it.
+	loopCtx    context.Context
+	loopCancel context.CancelFunc
+	// loopDone is closed when the interval goroutine exits (or never ran).
+	loopDone chan struct{}
 	// stopped indicates Close has been called. Guarded by mu.
 	stopped bool
 }
@@ -116,12 +125,17 @@ func NewStreamingPolicy(sink Sink, config StreamingConfig) (*StreamingPolicy, er
 		chunkBuffer: make([]*types.ArtifactChunk, 0),
 		stats:       newStatsRecorder(),
 		stopCh:      make(chan struct{}),
+		flushSem:    make(chan struct{}, 1),
+		loopDone:    make(chan struct{}),
 	}
 	p.bufferCond = sync.NewCond(&p.mu)
+	p.loopCtx, p.loopCancel = context.WithCancel(context.Background())
 
 	// Start interval flush goroutine if configured
 	if config.FlushInterval > 0 {
 		go p.intervalLoop()
+	} else {
+		close(p.loopDone)
 	}
 
 	return p, nil
@@ -200,14 +214,23 @@ func (p *StreamingPolicy) Flush(ctx context.Context) error {
 }
 
 // triggerFlush performs a flush with the given trigger reason.
-// Serialized by flushMu to prevent concurrent writes.
+// Serialized by flushSem to prevent concurrent writes.
 //
 // Strategy: swap buffers under mu, write outside mu, restore on failure.
 // This allows IngestEvent/IngestArtifactChunk to continue appending to
 // fresh buffers during a write, without blocking on the sink.
 func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger) error {
-	p.flushMu.Lock()
-	defer p.flushMu.Unlock()
+	// A cancelled context never starts a flush; select alone would pick the
+	// free semaphore at random even when the context is already done.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case p.flushSem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-p.flushSem }()
 
 	// Swap buffers under mu
 	p.mu.Lock()
@@ -285,18 +308,33 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 	return nil
 }
 
-// Close stops the interval goroutine and closes the sink.
+// Close stops and joins the interval goroutine, flushes once more, and
+// closes the sink. An interval flush in progress is cancelled; every flush
+// in progress is joined before the sink closes, so no write of this policy
+// outlives Close. The final flush is bounded by closeFlushTimeout for sinks
+// that honour cancellation (see Sink).
 func (p *StreamingPolicy) Close() error {
-	p.mu.Lock()
-	if !p.stopped {
-		p.stopped = true
-		close(p.stopCh)
-	}
-	p.mu.Unlock()
+	return p.closer.close(func() error {
+		p.mu.Lock()
+		if !p.stopped {
+			p.stopped = true
+			close(p.stopCh)
+		}
+		p.mu.Unlock()
+		p.loopCancel()
 
-	// Best-effort flush on close
-	_ = p.Flush(context.Background())
-	return p.sink.Close()
+		<-p.loopDone
+
+		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
+		defer cancel()
+		_ = p.Flush(ctx)
+
+		// Join any flush still in flight (count-, capacity-, or caller-
+		// triggered) before closing the sink: none is abandoned.
+		p.flushSem <- struct{}{}
+		defer func() { <-p.flushSem }()
+		return p.sink.Close()
+	})
 }
 
 // Stats returns policy statistics.
@@ -333,6 +371,7 @@ func (p *StreamingPolicy) FlushTriggerStats() map[FlushTrigger]int64 {
 
 // intervalLoop runs in a goroutine and triggers flushes on the configured interval.
 func (p *StreamingPolicy) intervalLoop() {
+	defer close(p.loopDone)
 	ticker := time.NewTicker(p.config.FlushInterval)
 	defer ticker.Stop()
 
@@ -345,7 +384,7 @@ func (p *StreamingPolicy) intervalLoop() {
 
 			if hasData {
 				// Best-effort interval flush — errors logged but not fatal
-				_ = p.triggerFlush(context.Background(), FlushTriggerInterval)
+				_ = p.triggerFlush(p.loopCtx, FlushTriggerInterval)
 			}
 		case <-p.stopCh:
 			return

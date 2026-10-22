@@ -31,7 +31,10 @@ type Policy interface {
 	// Called on run_complete, run_error, or runtime termination.
 	Flush(ctx context.Context) error
 
-	// Close cleans up policy resources.
+	// Close flushes what it can (within a deadline the sink must honour; see
+	// Sink) and releases policy resources.
+	// It is one-shot: any later Close returns the first result without
+	// flushing or writing.
 	Close() error
 
 	// Stats returns policy statistics for observability.

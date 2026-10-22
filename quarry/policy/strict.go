@@ -16,6 +16,8 @@ import (
 type StrictPolicy struct {
 	sink Sink
 
+	closer onceCloser
+
 	stats *statsRecorder
 }
 
@@ -67,7 +69,7 @@ func (p *StrictPolicy) Flush(_ context.Context) error {
 
 // Close closes the underlying sink.
 func (p *StrictPolicy) Close() error {
-	return p.sink.Close()
+	return p.closer.close(p.sink.Close)
 }
 
 // Stats returns policy statistics.
