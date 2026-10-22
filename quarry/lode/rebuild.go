@@ -327,17 +327,17 @@ func (b *rebuilder) terminalEvent(ctx context.Context, run legacyRun) (map[strin
 // writeStart writes the run's backfilled start record, or returns the reason
 // it skipped the run.
 func (b *rebuilder) writeStart(ctx context.Context, run legacyRun, terminal map[string]any) (string, error) {
-	evidence := terminal
-	if evidence == nil {
+	meta, ok := lineage(terminal)
+	if !ok {
+		// A terminal event without usable lineage falls back to the first
+		// event record (CONTRACT_RUN.md §Backfilled Run Records).
 		found, err := b.lineageEvent(ctx, run)
 		if err != nil {
 			return "", err
 		}
-		evidence = found
-	}
-	meta, ok := lineage(evidence)
-	if !ok {
-		return skipNoLineage, nil
+		if meta, ok = lineage(found); !ok {
+			return skipNoLineage, nil
+		}
 	}
 	rec := NewStartRecord(run.cfg, meta, time.Time{})
 	rec.StartedAt = nil

@@ -242,3 +242,39 @@ func TestRebuild_DryRunMatchesExistingRecords(t *testing.T) {
 		t.Fatalf("dry = %+v, real = %+v", dry, real)
 	}
 }
+
+// A terminal event without usable lineage does not skip the run: its
+// lineage comes from the first event record instead.
+func TestRebuild_LineageFallsBackWhenTerminalLacksIt(t *testing.T) {
+	t.Parallel()
+	factory := sharedMemoryFactory()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "r1"}
+	c, err := NewLodeClientWithFactory(cfg, factory)
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	job := "job-7"
+	for i, ev := range []struct {
+		et      types.EventType
+		attempt int
+	}{{types.EventTypeItem, 3}, {types.EventTypeRunComplete, 0}} {
+		env := &types.EventEnvelope{
+			ContractVersion: types.ContractVersion, EventID: fmt.Sprintf("e%d", i+1), RunID: "r1",
+			Seq: int64(i + 1), Type: ev.et, Ts: legacyTs, Payload: map[string]any{}, JobID: &job, Attempt: ev.attempt,
+		}
+		if err := c.WriteEvents(t.Context(), "quarry", "r1", []*types.EventEnvelope{env}); err != nil {
+			t.Fatalf("events: %v", err)
+		}
+	}
+
+	report := rebuild(t, factory, false)
+	if report.StartsWritten != 1 || report.EndsWritten != 1 || report.Skipped != 0 {
+		t.Fatalf("report = %+v", report)
+	}
+	store, _ := factory()
+	var start map[string]any
+	readJSON(t, store, RunRecordDir(cfg)+StartRecordName, &start)
+	if start["attempt"] != float64(3) {
+		t.Errorf("attempt = %v, want 3 from the first event record", start["attempt"])
+	}
+}
