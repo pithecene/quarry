@@ -90,7 +90,7 @@ func listRunsAction(c *cli.Context) error {
 	switch st := c.String("state"); st {
 	case "", "running", "failed", "succeeded":
 	default:
-		return cli.Exit(fmt.Sprintf("--state %q: stub data has states running, failed, succeeded (succeeded, failed, unterminated need storage)", st), 1)
+		return cli.Exit(fmt.Sprintf("--state %q: stub data has states running, failed, succeeded (unterminated requires storage)", st), 1)
 	}
 
 	opts := reader.ListRunsOptions{

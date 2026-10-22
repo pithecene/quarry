@@ -17,8 +17,14 @@ import (
 // runListCLI runs `quarry list ...` and returns stdout.
 func runListCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	return runCLI(t, append([]string{"list"}, args...)...)
+}
+
+// runCLI runs a quarry command and captures its stdout.
+func runCLI(t *testing.T, args ...string) (string, error) {
+	t.Helper()
 	app := cli.NewApp()
-	app.Commands = []*cli.Command{ListCommand()}
+	app.Commands = []*cli.Command{ListCommand(), IndexCommand()}
 	app.ExitErrHandler = func(*cli.Context, error) {}
 
 	orig := os.Stdout
@@ -27,7 +33,7 @@ func runListCLI(t *testing.T, args ...string) (string, error) {
 		t.Fatalf("pipe: %v", err)
 	}
 	os.Stdout = wr
-	runErr := app.Run(append([]string{"quarry", "list"}, args...))
+	runErr := app.Run(append([]string{"quarry"}, args...))
 	_ = wr.Close()
 	os.Stdout = orig
 	out, _ := io.ReadAll(rd)
@@ -134,7 +140,7 @@ func TestListRuns_StorageOnlyFlagsRejectedOnStub(t *testing.T) {
 }
 
 func TestListRuns_StubRejectsStorageOnlyState(t *testing.T) {
-	if _, err := runListCLI(t, "runs", "--state", "unterminated"); err == nil || !strings.Contains(err.Error(), "need storage") {
+	if _, err := runListCLI(t, "runs", "--state", "unterminated"); err == nil || !strings.Contains(err.Error(), "requires storage") {
 		t.Fatalf("err = %v", err)
 	}
 }

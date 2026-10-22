@@ -18,9 +18,10 @@ import (
 
 	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/types"
 )
 
-// State is a run's state as storage proves it.
+// State is a run's state, derived from its run records.
 type State string
 
 const (
@@ -74,8 +75,10 @@ type Run struct {
 	Category    string  `json:"category" yaml:"category"`
 	Day         string  `json:"day" yaml:"day"`
 	Partition   string  `json:"partition" yaml:"partition"`
-	StartedAt   string  `json:"started_at" yaml:"started_at"`
-	State       State   `json:"state" yaml:"state"`
+	// StartedAt is null for a run whose records were backfilled.
+	StartedAt  *string `json:"started_at" yaml:"started_at"`
+	State      State   `json:"state" yaml:"state"`
+	Backfilled bool    `json:"backfilled" yaml:"backfilled"`
 	// The fields below come from the end record and are null for an
 	// unterminated run.
 	EndedAt    *string `json:"ended_at" yaml:"ended_at"`
@@ -263,7 +266,7 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 	run := Run{
 		RunID: start.RunID, JobID: start.JobID, ParentRunID: start.ParentRunID, Attempt: start.Attempt,
 		Dataset: start.Dataset, Source: start.Source, Category: start.Category, Day: start.Day,
-		Partition: start.Partition, StartedAt: start.StartedAt, State: StateUnterminated,
+		Partition: start.Partition, StartedAt: start.StartedAt, State: StateUnterminated, Backfilled: start.Backfilled,
 	}
 
 	endKey := strings.TrimSuffix(startKey, qlode.StartRecordName) + qlode.EndRecordName
@@ -276,17 +279,28 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 		return Run{}, err
 	}
 	run.EndedAt = &end.EndedAt
-	run.Outcome = &end.Outcome
+	run.Outcome = end.Outcome
 	run.Terminal = end.Terminal
 	if end.Message != "" {
 		run.Message = &end.Message
 	}
-	run.EventCount = &end.EventCount
-	run.State = StateFailed
-	if end.Outcome == "success" {
-		run.State = StateSucceeded
-	}
+	run.EventCount = end.EventCount
+	run.State = endState(end)
 	return run, nil
+}
+
+// endState is the state an end record gives a run. A backfilled record has
+// no outcome, so its state follows the terminal event: run_complete reads as
+// succeeded and run_error as failed (CONTRACT_RUN.md §Reading Run Records).
+func endState(end qlode.EndRecord) State {
+	succeeded := end.Terminal != nil && *end.Terminal == string(types.EventTypeRunComplete)
+	if end.Outcome != nil {
+		succeeded = *end.Outcome == string(types.OutcomeSuccess)
+	}
+	if succeeded {
+		return StateSucceeded
+	}
+	return StateFailed
 }
 
 func (r *Reader) getJSON(ctx context.Context, key string, v any) error {

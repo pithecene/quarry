@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	lodelib "github.com/pithecene-io/lode/lode"
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/cli/render"
@@ -64,20 +65,25 @@ func anyStorageFlagSet(c *cli.Context) bool {
 
 // newRunReader builds a run-record reader from the storage flags.
 func newRunReader(c *cli.Context) (*runreader.Reader, error) {
+	factory, err := storeFactoryFrom(c)
+	if err != nil {
+		return nil, err
+	}
+	return runreader.New(c.String("storage-dataset"), factory)
+}
+
+// storeFactoryFrom builds the store factory the storage flags describe.
+func storeFactoryFrom(c *cli.Context) (lodelib.StoreFactory, error) {
 	backend := c.String("storage-backend")
 	endpoint, pathStyle := c.String("storage-endpoint"), c.Bool("storage-s3-path-style")
 	if backend == "fs" && (endpoint != "" || pathStyle) {
 		fmt.Fprintf(os.Stderr, "Warning: --storage-endpoint and --storage-s3-path-style are ignored for fs backend\n")
 	}
-	factory, err := lode.NewStoreFactory(backend, c.String("storage-path"), lode.S3Config{
+	return lode.NewStoreFactory(backend, c.String("storage-path"), lode.S3Config{
 		Region:       c.String("storage-region"),
 		Endpoint:     endpoint,
 		UsePathStyle: pathStyle,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return runreader.New(c.String("storage-dataset"), factory)
 }
 
 func selectorFrom(c *cli.Context) runreader.Selector {

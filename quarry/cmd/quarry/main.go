@@ -39,6 +39,7 @@ func main() {
 			cmd.InspectCommand(),
 			cmd.StatsCommand(),
 			cmd.ListCommand(),
+			cmd.IndexCommand(),
 			cmd.DebugCommand(),
 			cmd.VersionCommand("", commit),
 		},

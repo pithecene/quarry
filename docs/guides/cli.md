@@ -51,6 +51,7 @@ quarry inspect run run-001 --tui
 - `inspect`: deep view of a single entity (run, job, task, proxy, executor)
 - `stats`: aggregated facts (runs, jobs, tasks, proxies, executors)
 - `list`: thin enumerations (runs, jobs, pools, executors)
+- `index`: maintain the run records `list runs` reads (`index rebuild`)
 - `debug`: opt-in diagnostics (read-only by default)
 - `version`: CLI and contract versions
 
@@ -364,6 +365,10 @@ Notes:
   as running.
 - Pages are ordered by source, category, day, and run ID. Pass a page's
   `next` value as `--after` to retrieve the following page.
+- Runs written before v0.14.0 are listed only after `quarry index rebuild`
+  backfills their records. Backfilled runs have no `started_at` or
+  `outcome`; a finished one is `succeeded` if it ended with `run_complete`
+  and `failed` if it ended with `run_error`.
 
 Examples:
 
@@ -374,6 +379,20 @@ quarry list runs --storage-backend s3 --storage-path my-bucket/quarry \
   --source demo --category default --state succeeded --limit 100
 quarry list events --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 --run-id run-001
+```
+
+### `index`
+
+`index rebuild <storage flags> [--dry-run]` backfills run records for runs
+written before v0.14.0. It writes only what the stored data shows and never
+modifies runs that the runtime recorded. A rerun writes only missing
+records, so running it again resumes an interrupted rebuild. Run it with
+`--dry-run` first, after any pre-v0.14.0 writers have stopped writing to
+the dataset.
+
+```
+quarry index rebuild --storage-backend fs --storage-path ./quarry-data --dry-run
+quarry index rebuild --storage-backend fs --storage-path ./quarry-data
 ```
 
 ### `debug`

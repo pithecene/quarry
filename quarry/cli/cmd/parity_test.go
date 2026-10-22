@@ -176,6 +176,33 @@ func TestCLIParityListCommand(t *testing.T) {
 	}
 }
 
+// TestCLIParityIndexCommand validates the index command flags against the parity artifact.
+func TestCLIParityIndexCommand(t *testing.T) {
+	t.Parallel()
+	parityIndex, ok := loadParityArtifact(t).Commands["index"]
+	if !ok {
+		t.Fatal("parity artifact missing 'index' command")
+	}
+	for _, subCmd := range IndexCommand().Subcommands {
+		paritySubCmd, ok := parityIndex.Subcommands[subCmd.Name]
+		if !ok {
+			t.Errorf("CLI has index subcommand %q but it is not in parity artifact", subCmd.Name)
+			continue
+		}
+		actualFlags := extractFlags(subCmd)
+		for flagName := range paritySubCmd.Flags {
+			if _, exists := actualFlags[flagName]; !exists {
+				t.Errorf("parity artifact declares flag --%s for 'index %s' but it does not exist", flagName, subCmd.Name)
+			}
+		}
+		for flagName := range actualFlags {
+			if _, exists := paritySubCmd.Flags[flagName]; !exists {
+				t.Errorf("CLI 'index %s' has flag --%s but it is not in parity artifact", subCmd.Name, flagName)
+			}
+		}
+	}
+}
+
 // TestCLIParityDebugCommand validates the debug command flags against the parity artifact.
 func TestCLIParityDebugCommand(t *testing.T) {
 	artifact := loadParityArtifact(t)
