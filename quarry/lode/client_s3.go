@@ -108,3 +108,18 @@ func NewLodeS3Client(cfg Config, s3cfg S3Config) (*LodeClient, error) {
 
 	return newClient(ds, cfg, s3Factory, gate), nil
 }
+
+// NewStoreFactory returns the store factory for a storage backend, built
+// exactly as the write path builds it ("fs": path is a directory; "s3": path
+// is bucket/prefix and s3cfg supplies region, endpoint, and addressing).
+func NewStoreFactory(backend, path string, s3cfg S3Config) (lode.StoreFactory, error) {
+	switch backend {
+	case "fs":
+		return lode.NewFSFactory(path), nil
+	case "s3":
+		s3cfg.Bucket, s3cfg.Prefix = ParseS3Path(path)
+		return newS3StoreFactory(s3cfg)
+	default:
+		return nil, fmt.Errorf("unsupported storage-backend: %s (must be fs or s3)", backend)
+	}
+}

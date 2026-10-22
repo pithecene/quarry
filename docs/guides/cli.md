@@ -346,7 +346,8 @@ S3-compatible provider is read back from the same provider.
 Thin enumerations (not inspect-level detail).
 
 Subcommands:
-- `list runs [--state running|failed|succeeded] [--limit <n>]`
+- `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
+- `list events <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
 - `list jobs`
 - `list pools`
 - `list executors`
@@ -354,12 +355,25 @@ Subcommands:
 Notes:
 - `--limit` defaults to `0` (no limit).
 - If output is large, the CLI may warn and suggest `--limit`.
+- With `--storage-backend` and `--storage-path`, `list runs` reads the run
+  records every run writes (v0.14.0+), and `list events` returns a run's
+  events in sequence order. Without storage flags, `list runs` returns stub
+  data.
+- A run with no end record is `unterminated`: it may still be running, or
+  its process was killed. Storage cannot tell which, so it is never shown
+  as running.
+- Pages are ordered by source, category, day, and run ID. Pass a page's
+  `next` value as `--after` to get the following page.
 
 Examples:
 
 ```
-quarry list runs
-quarry list runs --state running --limit 25
+quarry list runs --storage-backend fs --storage-path ./quarry-data --source demo
+quarry list runs --storage-backend s3 --storage-path my-bucket/quarry \
+  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style \
+  --source demo --category default --state succeeded --limit 100
+quarry list events --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day 2026-10-22 --run-id run-001
 ```
 
 ### `debug`

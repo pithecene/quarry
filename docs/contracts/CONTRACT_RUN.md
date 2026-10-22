@@ -230,6 +230,23 @@ Records are written once and never rewritten.
 
 ---
 
+### Reading Run Records
+
+Readers (CONTRACT_CLI.md §list runs) apply these rules:
+
+- A run is listed if and only if its start record exists. An end record
+  without a start record (a start write that failed without landing) is
+  ignored.
+- A run's state is `succeeded` when its end record's outcome is
+  `success`, `failed` for any other outcome, and `unterminated` when it
+  has no end record. Unterminated covers a live run, a killed process, and
+  a run whose end record could not be written; storage cannot tell them
+  apart, so a reader never presents such a run as running.
+- A present end record means every other object of the run is final
+  (§Run Finalization).
+
+---
+
 ## Idempotency Expectations
 
 - Runs are **append-only**; no event mutation is allowed after emission.
