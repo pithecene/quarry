@@ -11,14 +11,14 @@ import (
 )
 
 // blockingSink stalls its first WriteEvents; later writes succeed at once.
-// When honourCtx is true the stalled write returns on context cancellation;
+// When honorCtx is true the stalled write returns on context cancellation;
 // otherwise it ignores the context, like a hung store.
 type blockingSink struct {
 	*StubSink
-	honourCtx bool
-	entered   chan struct{}
-	once      sync.Once
-	release   chan struct{}
+	honorCtx bool
+	entered  chan struct{}
+	once     sync.Once
+	release  chan struct{}
 }
 
 func (s *blockingSink) WriteEvents(ctx context.Context, _ []*types.EventEnvelope) error {
@@ -27,7 +27,7 @@ func (s *blockingSink) WriteEvents(ctx context.Context, _ []*types.EventEnvelope
 	if !first {
 		return nil
 	}
-	if s.honourCtx {
+	if s.honorCtx {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -39,9 +39,9 @@ func (s *blockingSink) WriteEvents(ctx context.Context, _ []*types.EventEnvelope
 	return nil
 }
 
-func newStalledStreamingPolicy(t *testing.T, honourCtx bool) (*StreamingPolicy, *blockingSink) {
+func newStalledStreamingPolicy(t *testing.T, honorCtx bool) (*StreamingPolicy, *blockingSink) {
 	t.Helper()
-	sink := &blockingSink{StubSink: NewStubSink(), honourCtx: honourCtx, entered: make(chan struct{}), release: make(chan struct{})}
+	sink := &blockingSink{StubSink: NewStubSink(), honorCtx: honorCtx, entered: make(chan struct{}), release: make(chan struct{})}
 	t.Cleanup(func() {
 		select {
 		case <-sink.release:
@@ -64,7 +64,7 @@ func newStalledStreamingPolicy(t *testing.T, honourCtx bool) (*StreamingPolicy, 
 	return pol, sink
 }
 
-// A stalled interval flush that honours its context is cancelled by Close.
+// A stalled interval flush that honors its context is canceled by Close.
 func TestStreamingPolicy_CloseCancelsStalledIntervalFlush(t *testing.T) {
 	pol, _ := newStalledStreamingPolicy(t, true)
 	done := make(chan struct{})
@@ -77,14 +77,14 @@ func TestStreamingPolicy_CloseCancelsStalledIntervalFlush(t *testing.T) {
 }
 
 // An interval flush that ignores its context is joined, never abandoned:
-// Close does not return while that write is still in flight.
+// Close does not return while that write is still in progress.
 func TestStreamingPolicy_CloseJoinsUncancellableIntervalFlush(t *testing.T) {
 	pol, sink := newStalledStreamingPolicy(t, false)
 	done := make(chan struct{})
 	go func() { _ = pol.Close(); close(done) }()
 	select {
 	case <-done:
-		t.Fatal("Close returned while the interval write was still in flight")
+		t.Fatal("Close returned while the interval write was still in progress")
 	case <-time.After(200 * time.Millisecond):
 	}
 	sink.release <- struct{}{} // the write returns
@@ -95,9 +95,9 @@ func TestStreamingPolicy_CloseJoinsUncancellableIntervalFlush(t *testing.T) {
 	}
 }
 
-// A flush with an already-cancelled context does nothing, even when the
+// A flush with an already-canceled context does nothing, even when the
 // flush lock is free.
-func TestStreamingPolicy_CancelledFlushWritesNothing(t *testing.T) {
+func TestStreamingPolicy_CanceledFlushWritesNothing(t *testing.T) {
 	sink := NewStubSink()
 	pol, err := NewStreamingPolicy(sink, StreamingConfig{FlushCount: 100})
 	if err != nil {
@@ -110,17 +110,17 @@ func TestStreamingPolicy_CancelledFlushWritesNothing(t *testing.T) {
 	cancel()
 	for range 50 {
 		if err := pol.Flush(ctx); err == nil {
-			t.Fatal("Flush with a cancelled context returned nil")
+			t.Fatal("Flush with a canceled context returned nil")
 		}
 	}
 	if got := sink.Stats().EventsWritten; got != 0 {
-		t.Fatalf("cancelled flushes wrote %d events, want 0", got)
+		t.Fatalf("canceled flushes wrote %d events, want 0", got)
 	}
 }
 
 // A count-triggered flush still writing when Close's own flush times out is
 // joined before the sink closes, never abandoned.
-func TestStreamingPolicy_CloseJoinsInFlightCountFlush(t *testing.T) {
+func TestStreamingPolicy_CloseJoinsInProgressCountFlush(t *testing.T) {
 	prev := closeFlushTimeout
 	closeFlushTimeout = 50 * time.Millisecond
 	t.Cleanup(func() { closeFlushTimeout = prev })
@@ -148,7 +148,7 @@ func TestStreamingPolicy_CloseJoinsInFlightCountFlush(t *testing.T) {
 	select {
 	case <-closeDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Close did not return after the in-flight flush finished")
+		t.Fatal("Close did not return after the in-progress flush finished")
 	}
 	if !sink.closed() {
 		t.Fatal("sink not closed")
@@ -174,7 +174,7 @@ func (s *closeTrackingSink) closed() bool {
 	return s.isClosed
 }
 
-// When a flush in flight holds the sink past the close deadline, events
+// When a flush in progress holds the sink past the close deadline, events
 // accepted meanwhile are not persisted; Close reports them instead of
 // returning nil.
 func TestStreamingPolicy_CloseReportsUnflushedData(t *testing.T) {
