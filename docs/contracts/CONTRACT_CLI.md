@@ -27,8 +27,8 @@ Non-goals:
 - The CLI is the **only execution entrypoint**.
 - All commands except `run` and `index rebuild` are **read-only** with
   respect to execution, datasets, and persisted state. `index rebuild`
-  writes only backfilled run records, create-only, and never writes or
-  deletes partition data (§index rebuild).
+  only creates backfilled run records: it never overwrites a record and
+  never writes or deletes partition data (§index rebuild).
 - A small set of `debug` commands may mutate **ephemeral runtime mechanics**
   only when explicitly requested and documented.
 - The CLI talks **only** to the Go runtime.
@@ -709,16 +709,16 @@ Response must include:
 
 Backfills run records for runs written before v0.14.0, which `list runs`
 cannot otherwise find (CONTRACT_RUN.md §Backfilled Run Records). It scans
-the dataset's partition tree, writes a start record (and, when storage
-proves the run ended, an end record) for each run that has no start
-record, and reports what it wrote. Records are created, never replaced, so
-rerunning writes only what is still missing; an interrupted rebuild is
-resumed by rerunning it.
+the dataset's partition tree, writes a start record (and, when the stored
+data shows that the run ended, an end record) for each run that has no
+start record, and reports what it wrote. Records are created, never
+replaced, so a rerun writes only the records still missing, and rerunning
+an interrupted rebuild resumes it.
 
 Flags:
 - `--storage-backend`, `--storage-path` (required) and the other storage
   flags as on `list runs`
-- `--dry-run`: report what would be written; write nothing
+- `--dry-run`: report what would be written, without writing it
 - `--format`, `--no-color`
 
 Response (`json`, `yaml`):
@@ -727,7 +727,7 @@ RebuildReport:
   dataset: string
   dry_run: bool
   runs_scanned: number
-  already_indexed: number   # runs needing nothing; not listed in runs
+  already_indexed: number   # runs that already have records; not listed in runs
   starts_written: number    # in a dry run: would be written
   ends_written: number
   skipped: number
@@ -746,7 +746,8 @@ RebuiltRun:
 ```
 
 `table` renders `runs` and prints the totals to stderr. A store error
-stops the rebuild with exit code 1 after rendering the report so far.
+terminates the rebuild with exit code 1 after the partial report is
+rendered.
 
 ---
 

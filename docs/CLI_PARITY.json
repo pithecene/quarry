@@ -862,7 +862,7 @@
               "type": "bool",
               "required": false,
               "default": false,
-              "description": "Report the records that would be written; write nothing"
+              "description": "Report the records that would be written, without writing them"
             },
             "storage-dataset": {
               "type": "string",

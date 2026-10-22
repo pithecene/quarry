@@ -234,8 +234,9 @@ existed get backfilled records (§Backfilled Run Records).
 ### Backfilled Run Records
 
 `quarry index rebuild` (CONTRACT_CLI.md §index rebuild) writes records for
-runs that have partitions but no start record. It is the only reader of
-the partition tree that finds runs, and it writes only what storage proves:
+runs that have partitions but no start record. It is the only reader
+that finds runs by scanning the partition tree, and it writes only what
+the stored data shows:
 
 - **Start record**, for every such run. `day`, `source`, `category`,
   `run_id`, and `partition` come from the run's partition path, which must
@@ -249,11 +250,11 @@ the partition tree that finds runs, and it writes only what storage proves:
   metrics record. `outcome` and `event_count` are `null`: a terminal event
   does not determine the runtime's outcome (a policy failure can follow
   `run_complete`). A run with no terminal event, or more than one, gets no
-  end record, and the report says why.
+  end record, and the report states the reason.
 
 Both records carry `backfilled: true`. The rebuild never touches a run
-whose start record the runtime wrote, even one without an end record (it
-may be live, and only the runtime classifies it). A backfilled run without
+whose start record the runtime wrote, even one without an end record (the
+run may still be in progress, and only the runtime records its outcome). A backfilled run without
 an end record gains one on a later rebuild once its terminal event is
 stored, so rebuilds are idempotent and resumable.
 

@@ -384,9 +384,9 @@ quarry list events --storage-backend fs --storage-path ./quarry-data \
 ### `index`
 
 `index rebuild <storage flags> [--dry-run]` backfills run records for runs
-written before v0.14.0. It writes only what storage proves, never touches
-runs the runtime recorded, and writes only what is missing when rerun, so an
-interrupted rebuild is resumed by running it again. Run it with
+written before v0.14.0. It writes only what the stored data shows and never
+modifies runs that the runtime recorded. A rerun writes only missing
+records, so running it again resumes an interrupted rebuild. Run it with
 `--dry-run` first, after any pre-v0.14.0 writers have stopped writing to
 the dataset.
 
