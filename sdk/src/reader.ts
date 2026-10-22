@@ -148,9 +148,9 @@ export async function readRun(run: RunLocator, options: ReaderOptions): Promise<
 
 function storageArgs(storage: ReaderStorage): string[] {
   return [
-    `--storage-backend=${storage.backend}`,
-    `--storage-path=${storage.path}`,
     ...optionalArgs({
+      'storage-backend': storage.backend,
+      'storage-path': storage.path,
       'storage-dataset': storage.dataset,
       'storage-region': storage.region,
       'storage-endpoint': storage.endpoint

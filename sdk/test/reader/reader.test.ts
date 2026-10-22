@@ -168,6 +168,7 @@ describe('response validation', () => {
 describe('empty options', () => {
   it.each([
     ['dataset', { storage: { ...storage, dataset: '' } }],
+    ['storage path', { storage: { ...storage, path: '' } }],
     ['source', { storage, source: '' }]
   ])('rejects an empty %s instead of reading the default', async (_name, opts) => {
     const fake = await fakeQuarry(JSON.stringify({ runs: [] }))
