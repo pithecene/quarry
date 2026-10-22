@@ -30,32 +30,32 @@ type RebuildOptions struct {
 // RebuiltRun is one run the rebuild wrote records for, would write records
 // for in a dry run, or skipped.
 type RebuiltRun struct {
-	Source    string `json:"source"`
-	Category  string `json:"category"`
-	Day       string `json:"day"`
-	RunID     string `json:"run_id"`
-	Partition string `json:"partition"`
+	Source    string `json:"source" yaml:"source"`
+	Category  string `json:"category" yaml:"category"`
+	Day       string `json:"day" yaml:"day"`
+	RunID     string `json:"run_id" yaml:"run_id"`
+	Partition string `json:"partition" yaml:"partition"`
 	// WroteStart and WroteEnd say which records were written (or, in a dry
 	// run, would be).
-	WroteStart bool `json:"wrote_start"`
-	WroteEnd   bool `json:"wrote_end"`
+	WroteStart bool `json:"wrote_start" yaml:"wrote_start"`
+	WroteEnd   bool `json:"wrote_end" yaml:"wrote_end"`
 	// NoEnd says why no end record was written for an indexed run.
-	NoEnd string `json:"no_end,omitempty"`
+	NoEnd string `json:"no_end,omitempty" yaml:"no_end,omitempty"`
 	// Skipped says why the run was not indexed at all.
-	Skipped string `json:"skipped,omitempty"`
+	Skipped string `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 
 // RebuildReport summarizes a rebuild. Runs lists only runs that needed a
 // record or were skipped; runs already indexed are counted, not listed.
 type RebuildReport struct {
-	Dataset        string       `json:"dataset"`
-	DryRun         bool         `json:"dry_run"`
-	RunsScanned    int          `json:"runs_scanned"`
-	AlreadyIndexed int          `json:"already_indexed"`
-	StartsWritten  int          `json:"starts_written"`
-	EndsWritten    int          `json:"ends_written"`
-	Skipped        int          `json:"skipped"`
-	Runs           []RebuiltRun `json:"runs"`
+	Dataset        string       `json:"dataset" yaml:"dataset"`
+	DryRun         bool         `json:"dry_run" yaml:"dry_run"`
+	RunsScanned    int          `json:"runs_scanned" yaml:"runs_scanned"`
+	AlreadyIndexed int          `json:"already_indexed" yaml:"already_indexed"`
+	StartsWritten  int          `json:"starts_written" yaml:"starts_written"`
+	EndsWritten    int          `json:"ends_written" yaml:"ends_written"`
+	Skipped        int          `json:"skipped" yaml:"skipped"`
+	Runs           []RebuiltRun `json:"runs" yaml:"runs"`
 }
 
 // Reasons a rebuild does not write a record.

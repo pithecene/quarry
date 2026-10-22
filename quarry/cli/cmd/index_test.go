@@ -72,3 +72,21 @@ func TestIndexRebuild_RequiresStorage(t *testing.T) {
 		t.Fatalf("err = %v, want storage required", err)
 	}
 }
+
+// YAML uses the documented field names.
+func TestIndexRebuild_YAMLFieldNames(t *testing.T) {
+	root := t.TempDir()
+	writeLegacyFSRun(t, root, "legacy-1")
+	out, err := runCLI(t, "index", "rebuild", "--dry-run", "--format", "yaml", "--storage-backend", "fs", "--storage-path", root)
+	if err != nil {
+		t.Fatalf("index rebuild: %v", err)
+	}
+	for _, want := range []string{"runs_scanned: 1", "starts_written: 1", "run_id: legacy-1", "wrote_start: true"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("yaml lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "no_end:") || strings.Contains(out, "skipped: \"\"") {
+		t.Errorf("yaml keeps omitted fields:\n%s", out)
+	}
+}
