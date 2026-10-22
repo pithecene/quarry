@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -204,8 +205,23 @@ func (r *Reader) isStartKeyUnder(key, prefix string) bool {
 	if len(parts) != 5 || parts[4] != qlode.StartRecordName {
 		return false
 	}
-	for _, p := range parts[:4] {
-		if p == "" || p == "." || p == ".." {
+	return all(parts[:4], isEncodedComponent)
+}
+
+// isEncodedComponent reports whether p is exactly how the write path encodes
+// a valid key component, so a cursor can only name a position the reader
+// itself could have produced.
+func isEncodedComponent(p string) bool {
+	v, err := url.PathUnescape(p)
+	if err != nil || url.PathEscape(v) != p {
+		return false
+	}
+	return qlode.ValidateKeyComponent("cursor", v) == nil
+}
+
+func all(ps []string, ok func(string) bool) bool {
+	for _, p := range ps {
+		if !ok(p) {
 			return false
 		}
 	}
