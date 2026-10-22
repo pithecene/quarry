@@ -21,7 +21,7 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-// State is a run's state as storage proves it.
+// State is a run's state, derived from its run records.
 type State string
 
 const (
