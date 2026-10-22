@@ -153,3 +153,16 @@ func TestListEvents_TableSummaryRows(t *testing.T) {
 		}
 	}
 }
+
+// An optional storage flag alone is an error, never stub data.
+func TestListRuns_OptionalStorageFlagWithoutPairFails(t *testing.T) {
+	for _, args := range [][]string{
+		{"runs", "--storage-dataset", "other"},
+		{"runs", "--storage-region", "us-east-1"},
+		{"runs", "--storage-s3-path-style"},
+	} {
+		if _, err := runListCLI(t, args...); err == nil {
+			t.Errorf("%v: want error, got stub output", args)
+		}
+	}
+}

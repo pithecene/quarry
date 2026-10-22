@@ -40,16 +40,26 @@ func runSelectorFlags() []cli.Flag {
 }
 
 // storageRequested reports whether storage flags were given, and errors if
-// only one of the required pair was.
+// any was given without the required pair: a storage flag never silently
+// falls back to stub data.
 func storageRequested(c *cli.Context) (bool, error) {
 	backend, path := c.String("storage-backend"), c.String("storage-path")
-	if backend == "" && path == "" {
+	if !anyStorageFlagSet(c) {
 		return false, nil
 	}
 	if backend == "" || path == "" {
 		return false, errors.New("both --storage-backend and --storage-path are required for Lode reads")
 	}
 	return true, nil
+}
+
+func anyStorageFlagSet(c *cli.Context) bool {
+	for _, f := range storageReadFlags() {
+		if c.IsSet(f.Names()[0]) {
+			return true
+		}
+	}
+	return false
 }
 
 // newRunReader builds a run-record reader from the storage flags.

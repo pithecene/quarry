@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -160,7 +159,11 @@ func statsMetricsAction(c *cli.Context) error {
 
 	var snapshot *reader.MetricsSnapshot
 
-	if backend != "" && path != "" {
+	withStorage, err := storageRequested(c)
+	if err != nil {
+		return err
+	}
+	if withStorage {
 		// Build Lode dataset for reading
 		ds, err := buildReadDataset(c, backend, path)
 		if err != nil {
@@ -181,9 +184,6 @@ func statsMetricsAction(c *cli.Context) error {
 		}
 		snapshot = parsed
 	} else {
-		if backend != "" || path != "" {
-			return errors.New("both --storage-backend and --storage-path are required for Lode reads")
-		}
 		snapshot = reader.StatsMetrics()
 	}
 

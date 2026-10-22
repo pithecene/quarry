@@ -531,9 +531,10 @@ Optional flags:
 - `--run-id=<id>` — read metrics for a specific run
 - `--source=<source>` — filter by source partition
 
-Both `--storage-backend` and `--storage-path` must be provided together.
-When provided, metrics are read from Lode storage. When omitted, stub
-data is returned (see Data Source Progression in CONTRACT_METRICS.md).
+Both `--storage-backend` and `--storage-path` must be provided together;
+any storage flag given without both is an error.
+When provided, metrics are read from Lode storage. When no storage flag is
+given, stub data is returned (see Data Source Progression in CONTRACT_METRICS.md).
 
 Response:
 ```
@@ -634,7 +635,8 @@ when another run matching the request exists. The cursor is a key
 position, not a reference to a stored run: listing resumes at the first
 start-record key after it, so paging stays correct when the run it names
 is deleted between pages (retention). A value that does not have the shape
-of a start-record key under the selected prefix is an error; a well-formed
+of a start-record key under the selected prefix, with each key component
+encoded exactly as the write path encodes it, is an error; a well-formed
 key that names no run is accepted and resumes after its position. With `--state`, a
 page holds up to `--limit` matching runs.
 
@@ -645,7 +647,9 @@ segments, which would widen the prefix beyond the selected runs.
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
 `--limit=<n>`; each item includes `run_id`, `state`, `started_at`. The
 storage-only flags (`--source`, `--category`, `--day`, `--after`) are an
-error without storage.
+error without storage, and any storage flag given without both
+`--storage-backend` and `--storage-path` is an error, never a fallback to
+stub data.
 
 ### `list events` (v0.14.0+)
 
