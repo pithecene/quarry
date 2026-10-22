@@ -138,8 +138,9 @@ The runtime owns a run's whole lifecycle. `Execute`
    still in progress is cancelled and joined, never abandoned), so closing
    happens here, before the end record; close is one-shot, so a caller's later
    close writes nothing. The close happens while the outcome is still being
-   decided: if it leaves accepted data unpersisted, the outcome is
-   `policy_failure`. Policy statistics are taken after the close, so the
+   decided: if it leaves accepted data unpersisted, a run that would
+   otherwise succeed fails with `policy_failure` (a run that already
+   failed keeps its outcome). Policy statistics are taken after the close, so the
    metrics record and exit report match what was persisted.
 3. Persist the run's metrics record (CONTRACT_LODE.md §Metrics Record
    Storage).

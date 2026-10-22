@@ -75,8 +75,8 @@ type RunConfig struct {
 	// persisted outside the policy (unit tests).
 	Storage RunStorage
 	// StartedAt is the run start time the partition day was derived from.
-	// Recorded in the start record so started_at and day agree. If zero,
-	// Execute's own start time is used.
+	// Recorded in the start record so started_at and day agree. Required
+	// when Storage is set.
 	StartedAt time.Time
 }
 
@@ -145,6 +145,14 @@ func NewRunOrchestrator(config *RunConfig) (*RunOrchestrator, error) {
 	if config.Storage != nil {
 		if err := lode.ValidateRunKey(config.StorageDataset, config.Source, config.Category, config.RunMeta.RunID); err != nil {
 			return nil, fmt.Errorf("invalid run storage key: %w", err)
+		}
+		// The start record's started_at must be the time the partition day
+		// was derived from, so the record never describes another day.
+		if config.StartedAt.IsZero() {
+			return nil, errors.New("RunConfig.StartedAt is required with Storage: pass the time the partition day was derived from")
+		}
+		if config.StorageDay != "" && lode.DeriveDay(config.StartedAt) != config.StorageDay {
+			return nil, fmt.Errorf("RunConfig.StartedAt %s is not on StorageDay %s", config.StartedAt.UTC().Format(time.RFC3339), config.StorageDay)
 		}
 	}
 
@@ -242,11 +250,7 @@ func (r *RunOrchestrator) writeStartRecord(ctx context.Context) error {
 	if r.config.Storage == nil {
 		return nil
 	}
-	startedAt := r.config.StartedAt
-	if startedAt.IsZero() {
-		startedAt = r.startTime
-	}
-	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, startedAt)
+	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, r.config.StartedAt)
 }
 
 // finalize persists the metrics record and then the end record. Neither

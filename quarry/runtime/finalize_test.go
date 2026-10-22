@@ -92,6 +92,7 @@ func finalizeConfig(t *testing.T, storage *recordingStorage, exec *mockExecutor)
 		StorageDataset: "quarry",
 		Source:         "src",
 		Category:       "default",
+		StartedAt:      time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC),
 		ExecutorFactory: func(_ *ExecutorConfig) Executor {
 			return &startRecordingExecutor{mockExecutor: exec, storage: storage}
 		},
@@ -251,5 +252,18 @@ func TestExecute_UnflushedCloseFailsRun(t *testing.T) {
 	}
 	if storage.end == nil || storage.end.Outcome != types.OutcomePolicyFailure {
 		t.Fatalf("end record outcome = %+v, want policy_failure", storage.end)
+	}
+}
+
+func TestNewRunOrchestrator_StartedAtMustMatchDay(t *testing.T) {
+	config := finalizeConfig(t, &recordingStorage{}, newMockExecutor(nil, 0))
+	config.StartedAt = time.Time{}
+	if _, err := NewRunOrchestrator(config); err == nil {
+		t.Error("zero StartedAt accepted with Storage")
+	}
+	config.StartedAt = time.Date(2026, 10, 21, 23, 59, 0, 0, time.UTC)
+	config.StorageDay = "2026-10-22"
+	if _, err := NewRunOrchestrator(config); err == nil {
+		t.Error("StartedAt on another day than StorageDay accepted")
 	}
 }
