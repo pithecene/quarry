@@ -882,7 +882,10 @@ do {
   unknown). Select `succeeded` to ingest only runs the runtime classified
   as successful.
 - A CLI failure (a non-zero exit, a missing executable, or invalid output)
-  rejects with `QuarryReadError`, which carries `exitCode` and `stderr`.
+  rejects with `QuarryReadError`, which carries `exitCode` and `stderr`. An
+  option given as an empty string also rejects, before the CLI runs, since
+  the CLI would read it as absent (the default dataset, an unselected
+  source).
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
 
 **Built-in adapters** (v0.5.0+): `--adapter webhook` sends an HTTP POST, and

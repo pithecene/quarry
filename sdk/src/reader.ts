@@ -160,10 +160,15 @@ function storageArgs(storage: ReaderStorage): string[] {
 }
 
 // `--flag=value` keeps a value that starts with "-" from being read as a flag.
+// An empty value is rejected: the CLI would read it as the flag being absent
+// (a default dataset, an unselected source) and read something else.
 function optionalArgs(flags: Record<string, string | number | undefined>): string[] {
-  return Object.entries(flags).flatMap(([name, value]) =>
-    value === undefined || value === '' ? [] : [`--${name}=${value}`]
-  )
+  return Object.entries(flags).flatMap(([name, value]) => {
+    if (value === '') {
+      throw new QuarryReadError(`--${name} must not be empty`, null, '')
+    }
+    return value === undefined ? [] : [`--${name}=${value}`]
+  })
 }
 
 async function runQuarry<T>(

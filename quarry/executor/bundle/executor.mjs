@@ -337,7 +337,7 @@ function createContext(options) {
   };
   return Object.freeze(ctx);
 }
-var CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD;
+var CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
 var init_dist = __esm({
   "../sdk/dist/index.mjs"() {
     "use strict";
@@ -373,6 +373,40 @@ var init_dist = __esm({
       critical: 0.9
     };
     CGROUP_UNLIMITED_THRESHOLD = 2 ** 62;
+    isString = (v) => typeof v === "string";
+    isNumber = (v) => typeof v === "number";
+    oneOf = (...values) => (v) => values.includes(v);
+    orNull = (check) => (v) => v === null || check(v);
+    optional = (check) => (v) => v === void 0 || check(v);
+    runSummaryFields = {
+      run_id: isString,
+      job_id: optional(isString),
+      parent_run_id: optional(isString),
+      attempt: isNumber,
+      dataset: isString,
+      source: isString,
+      category: isString,
+      day: isString,
+      partition: isString,
+      started_at: orNull(isString),
+      state: oneOf(...[
+        "succeeded",
+        "failed",
+        "unterminated",
+        "unclassified"
+      ]),
+      backfilled: (v) => typeof v === "boolean",
+      ended_at: orNull(isString),
+      outcome: orNull(isString),
+      terminal: oneOf("run_complete", "run_error", null),
+      message: optional(isString),
+      event_count: orNull(isNumber)
+    };
+    storedEventFields = {
+      record_kind: oneOf("event", "artifact_event"),
+      seq: isNumber,
+      ts: isString
+    };
   }
 });
 

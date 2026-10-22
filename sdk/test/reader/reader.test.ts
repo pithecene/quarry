@@ -165,6 +165,16 @@ describe('response validation', () => {
   })
 })
 
+describe('empty options', () => {
+  it.each([
+    ['dataset', { storage: { ...storage, dataset: '' } }],
+    ['source', { storage, source: '' }]
+  ])('rejects an empty %s instead of reading the default', async (_name, opts) => {
+    const fake = await fakeQuarry(JSON.stringify({ runs: [] }))
+    await expect(listRuns({ quarryPath: fake.path, ...opts })).rejects.toThrow(/must not be empty/)
+  })
+})
+
 describe('readRun', () => {
   it('locates the run with list events and returns the run and its events', async () => {
     const events = [{ record_kind: 'event', seq: 1, ts: '2026-10-22T04:18:53Z', type: 'item' }]
