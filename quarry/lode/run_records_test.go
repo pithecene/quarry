@@ -158,10 +158,11 @@ func TestWriteStartRecord_DuplicateRunIDRefused(t *testing.T) {
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	client, _ := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
 	meta := &types.RunMeta{RunID: cfg.RunID, Attempt: 1}
-	if err := client.WriteStartRecord(t.Context(), meta, time.Now()); err != nil {
+	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	if err := client.WriteStartRecord(t.Context(), meta, at); err != nil {
 		t.Fatalf("first WriteStartRecord: %v", err)
 	}
-	err := client.WriteStartRecord(t.Context(), meta, time.Now())
+	err := client.WriteStartRecord(t.Context(), meta, at)
 	// The runtime matches Quarry's sentinel to tell a duplicate run ID apart
 	// from a failed write (CONTRACT_RUN.md §Failure Semantics).
 	if !errors.Is(err, ErrPathExists) || !errors.Is(err, lode.ErrPathExists) {
@@ -202,5 +203,26 @@ func TestWriteStartRecord_RejectsUnsafeKey(t *testing.T) {
 	}
 	if err := client.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "run-1", Attempt: 1}, time.Now()); !errors.Is(err, ErrInvalidRunKey) {
 		t.Fatalf("err = %v, want ErrInvalidRunKey", err)
+	}
+}
+
+func TestWriteStartRecord_DayChecks(t *testing.T) {
+	meta := &types.RunMeta{RunID: "run-1", Attempt: 1}
+	on := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, day string
+		at        time.Time
+	}{
+		{"empty day", "", on},
+		{"malformed day", "21-10-2026", on},
+		{"started_at on another day", "2026-10-22", on},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: tc.day, RunID: "run-1"}
+			client, _ := NewLodeClientWithFactory(cfg, sharedMemoryFactory())
+			if err := client.WriteStartRecord(t.Context(), meta, tc.at); !errors.Is(err, ErrInvalidRunKey) {
+				t.Fatalf("err = %v, want ErrInvalidRunKey", err)
+			}
+		})
 	}
 }

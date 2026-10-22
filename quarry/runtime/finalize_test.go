@@ -93,6 +93,7 @@ func finalizeConfig(t *testing.T, storage *recordingStorage, exec *mockExecutor)
 		Source:         "src",
 		Category:       "default",
 		StartedAt:      time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC),
+		StorageDay:     "2026-10-21",
 		ExecutorFactory: func(_ *ExecutorConfig) Executor {
 			return &startRecordingExecutor{mockExecutor: exec, storage: storage}
 		},

@@ -151,7 +151,10 @@ func NewRunOrchestrator(config *RunConfig) (*RunOrchestrator, error) {
 		if config.StartedAt.IsZero() {
 			return nil, errors.New("RunConfig.StartedAt is required with Storage: pass the time the partition day was derived from")
 		}
-		if config.StorageDay != "" && lode.DeriveDay(config.StartedAt) != config.StorageDay {
+		if config.StorageDay == "" {
+			return nil, errors.New("RunConfig.StorageDay is required with Storage")
+		}
+		if lode.DeriveDay(config.StartedAt) != config.StorageDay {
 			return nil, fmt.Errorf("RunConfig.StartedAt %s is not on StorageDay %s", config.StartedAt.UTC().Format(time.RFC3339), config.StorageDay)
 		}
 	}

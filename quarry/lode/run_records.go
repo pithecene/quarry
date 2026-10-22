@@ -169,6 +169,9 @@ func formatRecordTime(t time.Time) string {
 // WriteStartRecord writes the run's start record. Lode's Put is
 // create-only, so a run ID that already has a start record is refused.
 func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time) error {
+	if day := DeriveDay(startedAt); day != c.config.Day {
+		return fmt.Errorf("%w: started_at %s is on %s, not the client's day %s", ErrInvalidRunKey, formatRecordTime(startedAt), day, c.config.Day)
+	}
 	return c.putRecord(ctx, RunRecordDir(c.config)+startRecordName, NewStartRecord(c.config, meta, startedAt))
 }
 
@@ -180,6 +183,9 @@ func (c *LodeClient) WriteEndRecord(ctx context.Context, end RunEnd) error {
 func (c *LodeClient) putRecord(ctx context.Context, path string, record any) error {
 	if err := ValidateRunKey(c.config.Dataset, c.config.Source, c.config.Category, c.config.RunID); err != nil {
 		return err
+	}
+	if _, err := time.Parse(time.DateOnly, c.config.Day); err != nil {
+		return fmt.Errorf("%w: day must be YYYY-MM-DD: %q", ErrInvalidRunKey, c.config.Day)
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
