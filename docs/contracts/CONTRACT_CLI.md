@@ -27,8 +27,8 @@ Non-goals:
 - The CLI is the **only execution entrypoint**.
 - All commands except `run` and `index rebuild` are **read-only** with
   respect to execution, datasets, and persisted state. `index rebuild`
-  writes only backfilled run records, create-only, and never writes or
-  deletes partition data (§index rebuild).
+  only creates backfilled run records: it never overwrites a record and
+  never writes or deletes partition data (§index rebuild).
 - A small set of `debug` commands may mutate **ephemeral runtime mechanics**
   only when explicitly requested and documented.
 - The CLI talks **only** to the Go runtime.
@@ -600,7 +600,7 @@ Storage-backed flags:
   (CONTRACT_LODE.md §Run Record Namespace). `--category` requires
   `--source`, and `--day` requires `--category`; omitting all three lists
   the whole dataset
-- `--state=succeeded|failed|unterminated|unclassified`
+- `--state=succeeded|failed|unterminated`
 - `--limit=<n>` (0 = no limit)
 - `--after=<cursor>`: the `next` value of a previous page
 
@@ -621,10 +621,10 @@ Run:
   day: string             # YYYY-MM-DD
   partition: string       # Hive-encoded partition prefix
   started_at: time | null # null when backfilled
-  state: succeeded | failed | unterminated | unclassified
+  state: succeeded | failed | unterminated  # backfilled: from the terminal event
   backfilled: bool        # records written by index rebuild
   ended_at: time | null   # null when unterminated
-  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated or unclassified
+  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated or backfilled
   terminal: string | null # run_complete | run_error | null
   message: string         # omitted when absent
   event_count: number | null # null when unterminated or backfilled
@@ -639,20 +639,21 @@ passing it as `--after` returns the runs after it. `next` is present only
 when another run matching the request exists. The cursor is a key
 position, not a reference to a stored run: listing resumes at the first
 start-record key after it, so paging stays correct when the run it names
-is deleted between pages (retention). A value that does not have the shape
-of a start-record key under the selected prefix, with each key component
-encoded exactly as the write path encodes it, is an error; a well-formed
-key that names no run is accepted and resumes after its position. With `--state`, a
-page holds up to `--limit` matching runs.
+is deleted between pages (for example, by retention). A value that does
+not have the shape of a start-record key under the selected prefix, with
+each key component encoded exactly as the write path encodes it, is an
+error; a well-formed key that names no run is accepted, and listing
+resumes after its position. With `--state`, a page holds up to `--limit`
+matching runs.
 
 Selector values are rejected when they are `.`, `..`, or contain a `.` or
 `..` path segment (CONTRACT_LODE.md §Key Encoding): stores normalize such
 segments, which would widen the prefix beyond the selected runs.
 
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
-`--limit=<n>`; each item includes `run_id`, `state`, `started_at`. The
-storage-only flags (`--source`, `--category`, `--day`, `--after`) are an
-error without storage, and any storage flag given without both
+`--limit=<n>`; each item includes `run_id`, `state`, and `started_at`. Using a
+storage-only flag (`--source`, `--category`, `--day`, or `--after`)
+without storage is an error, and any storage flag given without both
 `--storage-backend` and `--storage-path` is an error, never a fallback to
 stub data.
 
@@ -709,16 +710,16 @@ Response must include:
 
 Backfills run records for runs written before v0.14.0, which `list runs`
 cannot otherwise find (CONTRACT_RUN.md §Backfilled Run Records). It scans
-the dataset's partition tree, writes a start record (and, when storage
-proves the run ended, an end record) for each run that has no start
-record, and reports what it wrote. Records are created, never replaced, so
-rerunning writes only what is still missing; an interrupted rebuild is
-resumed by rerunning it.
+the dataset's partition tree, writes a start record (and, when the stored
+data shows that the run ended, an end record) for each run that has no
+start record, and reports what it wrote. Records are created, never
+replaced, so a rerun writes only the records still missing, and rerunning
+an interrupted rebuild resumes it.
 
 Flags:
 - `--storage-backend`, `--storage-path` (required) and the other storage
   flags as on `list runs`
-- `--dry-run`: report what would be written; write nothing
+- `--dry-run`: report what would be written, without writing it
 - `--format`, `--no-color`
 
 Response (`json`, `yaml`):
@@ -727,7 +728,7 @@ RebuildReport:
   dataset: string
   dry_run: bool
   runs_scanned: number
-  already_indexed: number   # runs needing nothing; not listed in runs
+  already_indexed: number   # runs that already have records; not listed in runs
   starts_written: number    # in a dry run: would be written
   ends_written: number
   skipped: number
@@ -746,7 +747,8 @@ RebuiltRun:
 ```
 
 `table` renders `runs` and prints the totals to stderr. A store error
-stops the rebuild with exit code 1 after rendering the report so far.
+terminates the rebuild with exit code 1 after the partial report is
+rendered.
 
 ---
 

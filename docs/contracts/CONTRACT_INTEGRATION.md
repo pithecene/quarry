@@ -295,11 +295,12 @@ that embed the Quarry runtime as a unit of work.
 
 The orchestrator invokes `runtime.NewRunOrchestrator(config).Execute(ctx)`
 as an atomic unit of work. The runtime owns everything inside this boundary
-(executor lifecycle, IPC, policy, Lode persistence, and from v0.14.0 run
+(executor lifecycle, IPC, policy, Lode persistence, and, from v0.14.0, run
 finalization: the start record, metrics persistence, and the end record;
 CONTRACT_RUN.md §Run Finalization). The orchestrator owns everything
-outside (scheduling, retries, fan-out, notification), and gets the same
-storage contents as the CLI without persisting anything itself.
+outside that boundary (scheduling, retries, fan-out, and notification) and
+receives the same storage contents as the CLI without persisting anything
+itself.
 
 ### Outcome Mapping
 

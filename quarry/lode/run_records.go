@@ -54,7 +54,7 @@ func ValidateRunKey(dataset, source, category, runID string) error {
 	if strings.ContainsAny(dataset, `/\`) {
 		return fmt.Errorf("%w: dataset must not contain '/' or '\\': %q", ErrInvalidRunKey, dataset)
 	}
-	// Sidecar file paths still interpolate these values raw, so a "." or ".."
+	// Sidecar file paths still interpolate these values unencoded, so a "." or ".."
 	// path segment could place a run's files under another run's partition.
 	for _, c := range []struct{ name, value string }{
 		{"source", source}, {"category", category}, {"run_id", runID},
@@ -126,7 +126,8 @@ type StartRecord struct {
 	Category      string  `json:"category"`
 	Day           string  `json:"day"`
 	Partition     string  `json:"partition"`
-	// StartedAt is null on a backfilled record: storage does not prove it.
+	// StartedAt is null on a backfilled record: the stored data does not
+	// establish it.
 	StartedAt     *string `json:"started_at"`
 	QuarryVersion string  `json:"quarry_version"`
 	Backfilled    bool    `json:"backfilled"`
@@ -137,7 +138,8 @@ type StartRecord struct {
 type RunEnd struct {
 	EndedAt time.Time
 	Outcome types.OutcomeStatus
-	// Terminal is the terminal event type received, or "" when none was.
+	// Terminal is the terminal event type received, or "" when none was
+	// received.
 	Terminal         types.EventType
 	Message          string
 	EventCount       int64
@@ -150,8 +152,8 @@ type EndRecord struct {
 	SchemaVersion int    `json:"schema_version"`
 	RunID         string `json:"run_id"`
 	EndedAt       string `json:"ended_at"`
-	// Outcome and EventCount are null on a backfilled record: storage does
-	// not prove the runtime's classification or what it processed.
+	// Outcome and EventCount are null on a backfilled record: the stored data
+	// establishes neither the runtime's outcome nor the events it processed.
 	Outcome          *string `json:"outcome"`
 	Terminal         *string `json:"terminal"`
 	Message          string  `json:"message,omitempty"`

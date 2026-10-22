@@ -150,11 +150,11 @@ them without an end record:
 | Partition enumeration, all runs | 1 | 2,200 | 0 | 200 runs, terminal event present or not |
 
 Run records list two keys per finished run and one per unterminated run,
-whatever the run wrote. The partition tree lists a data object and a
+regardless of what the run wrote. The partition tree lists a data object and a
 manifest per batch per event type, so its size grows with every flush a
-run makes; the runs here flush a handful of times, and runs that flush on
-an interval grow it further. On S3, keys listed bound the number of
+run makes; the runs here flush only a few times, and runs that flush on
+an interval grow it further. On S3, the number of keys listed bounds the number of
 `ListObjectsV2` requests (at most 1,000 keys each). Records also give the
-outcome, which the partition tree cannot: it only shows whether a
+outcome, which the partition tree cannot: it shows only whether a
 terminal event was written. A page of records reads only the records of
 the runs it returns.

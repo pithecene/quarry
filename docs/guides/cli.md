@@ -347,7 +347,7 @@ S3-compatible provider is read back from the same provider.
 Thin enumerations (not inspect-level detail).
 
 Subcommands:
-- `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated|unclassified] [--limit <n>] [--after <cursor>]`
+- `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
 - `list events <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
 - `list jobs`
 - `list pools`
@@ -364,10 +364,11 @@ Notes:
   its process was killed. Storage cannot tell which, so it is never shown
   as running.
 - Pages are ordered by source, category, day, and run ID. Pass a page's
-  `next` value as `--after` to get the following page.
+  `next` value as `--after` to retrieve the following page.
 - Runs written before v0.14.0 are listed only after `quarry index rebuild`
-  backfills their records. Backfilled runs have no `started_at`, and a
-  finished one is `unclassified`: storage shows it ended, not its outcome.
+  backfills their records. Backfilled runs have no `started_at` or
+  `outcome`; a finished one is `succeeded` if it ended with `run_complete`
+  and `failed` if it ended with `run_error`.
 
 Examples:
 
@@ -383,9 +384,9 @@ quarry list events --storage-backend fs --storage-path ./quarry-data \
 ### `index`
 
 `index rebuild <storage flags> [--dry-run]` backfills run records for runs
-written before v0.14.0. It writes only what storage proves, never touches
-runs the runtime recorded, and writes only what is missing when rerun, so an
-interrupted rebuild is resumed by running it again. Run it with
+written before v0.14.0. It writes only what the stored data shows and never
+modifies runs that the runtime recorded. A rerun writes only missing
+records, so running it again resumes an interrupted rebuild. Run it with
 `--dry-run` first, after any pre-v0.14.0 writers have stopped writing to
 the dataset.
 

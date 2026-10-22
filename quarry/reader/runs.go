@@ -21,7 +21,7 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-// State is a run's state as storage proves it.
+// State is a run's state, derived from its run records.
 type State string
 
 const (
@@ -33,10 +33,6 @@ const (
 	// process, or a run whose end record could not be written. Storage
 	// cannot tell these apart, so it is never presented as running.
 	StateUnterminated State = "unterminated"
-	// StateUnclassified is a run with a backfilled end record: storage
-	// proves it ended (it has a terminal event) but not the runtime's
-	// outcome, which a terminal event alone does not determine.
-	StateUnclassified State = "unclassified"
 )
 
 var (
@@ -47,7 +43,7 @@ var (
 	// produce.
 	ErrInvalidCursor = errors.New("invalid cursor")
 	// ErrInvalidState is returned for an unknown state filter.
-	ErrInvalidState = errors.New("invalid state: must be succeeded, failed, unterminated, or unclassified")
+	ErrInvalidState = errors.New("invalid state: must be succeeded, failed, or unterminated")
 )
 
 // Selector narrows a listing to a key prefix. Fields are leading selectors:
@@ -255,7 +251,7 @@ func (r *Reader) prefix(sel Selector) (string, error) {
 
 func (s State) validate() error {
 	switch s {
-	case "", StateSucceeded, StateFailed, StateUnterminated, StateUnclassified:
+	case "", StateSucceeded, StateFailed, StateUnterminated:
 		return nil
 	}
 	return fmt.Errorf("%w: %q", ErrInvalidState, s)
@@ -289,17 +285,19 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 		run.Message = &end.Message
 	}
 	run.EventCount = end.EventCount
-	run.State = endState(end.Outcome)
+	run.State = endState(end)
 	return run, nil
 }
 
-// endState is the state an end record proves: a null outcome (a backfilled
-// record) proves only that the run ended.
-func endState(outcome *string) State {
-	switch {
-	case outcome == nil:
-		return StateUnclassified
-	case *outcome == string(types.OutcomeSuccess):
+// endState is the state an end record gives a run. A backfilled record has
+// no outcome, so its state follows the terminal event: run_complete reads as
+// succeeded and run_error as failed (CONTRACT_RUN.md §Reading Run Records).
+func endState(end qlode.EndRecord) State {
+	succeeded := end.Terminal != nil && *end.Terminal == string(types.EventTypeRunComplete)
+	if end.Outcome != nil {
+		succeeded = *end.Outcome == string(types.OutcomeSuccess)
+	}
+	if succeeded {
 		return StateSucceeded
 	}
 	return StateFailed

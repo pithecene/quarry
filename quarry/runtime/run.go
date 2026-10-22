@@ -173,12 +173,12 @@ func NewRunOrchestrator(config *RunConfig) (*RunOrchestrator, error) {
 //
 // Execution flow:
 //  1. Write the start record (nothing is written for the run before it)
-//  2. Start executor process, run the IPC ingestion loop, wait for exit
-//  3. Flush policy, determine outcome, and close the policy
+//  2. Start the executor process, run the IPC ingestion loop, and wait for exit
+//  3. Flush the policy, determine outcome, and close the policy
 //  4. Persist metrics, then write the end record (nothing is written after it)
 //
 // Execute closes the policy; a caller's later Close must be harmless.
-//  5. Return result
+//  5. Return the result
 func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 	r.startTime = time.Now()
 	r.config.Collector.IncRunStarted()
@@ -194,7 +194,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 			Message: fmt.Sprintf("run start record write failed: %v", err),
 		}, "", nil, nil)
 		r.closePolicy(result)
-		// A failed remote write may still have landed, so the end record is
+		// A failed remote write may still have been persisted, so the end record is
 		// attempted, unless a start record already existed: then the records
 		// belong to another execution with this run ID and must not be touched.
 		if !errors.Is(err, lode.ErrPathExists) {
@@ -212,7 +212,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 // closePolicy closes the policy before finalization. Buffered and streaming
 // policies flush once more on Close, and nothing may be written after the
 // end record; Close is one-shot, so a caller's later Close writes nothing.
-// The policy's statistics are refreshed afterwards, because that last flush
+// The policy's statistics are refreshed afterward, because that last flush
 // can change them, and the metrics record and exit report must agree with
 // what was persisted.
 func (r *RunOrchestrator) closePolicy(result *RunResult) {
@@ -222,8 +222,8 @@ func (r *RunOrchestrator) closePolicy(result *RunResult) {
 }
 
 // closePolicyOnce closes the policy the first time it is called and returns
-// that result on every call. Normally it runs right after the termination
-// flush, while the outcome is still being decided, so data left unpersisted
+// that result on every call. It normally runs immediately after the
+// termination flush, while the outcome is still being determined, so data left unpersisted
 // at close fails the run (policy.ErrCloseUnflushed).
 func (r *RunOrchestrator) closePolicyOnce() error {
 	if r.policyClosed {

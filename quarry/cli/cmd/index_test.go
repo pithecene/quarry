@@ -50,7 +50,7 @@ func TestIndexRebuild_DryRunThenWrite(t *testing.T) {
 	if !dry.DryRun || dry.RunsScanned != 2 || dry.AlreadyIndexed != 1 || dry.StartsWritten != 1 || dry.EndsWritten != 1 {
 		t.Fatalf("dry run = %+v", dry)
 	}
-	out, err := runListCLI(t, append([]string{"runs", "--state", "unclassified", "--source", "demo"}, storage...)...)
+	out, err := runListCLI(t, append([]string{"runs", "--state", "succeeded", "--source", "demo"}, storage...)...)
 	if err != nil || strings.Contains(out, "legacy-1") {
 		t.Fatalf("dry run indexed the run: %v %s", err, out)
 	}
@@ -58,8 +58,8 @@ func TestIndexRebuild_DryRunThenWrite(t *testing.T) {
 	if got := rebuild(); got.StartsWritten != 1 || got.EndsWritten != 1 {
 		t.Fatalf("rebuild = %+v", got)
 	}
-	out, err = runListCLI(t, append([]string{"runs", "--state", "unclassified", "--source", "demo"}, storage...)...)
-	if err != nil || !strings.Contains(out, `"legacy-1"`) || strings.Contains(out, "native-1") {
+	out, err = runListCLI(t, append([]string{"runs", "--state", "succeeded", "--source", "demo"}, storage...)...)
+	if err != nil || !strings.Contains(out, `"legacy-1"`) || !strings.Contains(out, `"backfilled": true`) {
 		t.Fatalf("list runs after rebuild: %v %s", err, out)
 	}
 	if again := rebuild(); again.AlreadyIndexed != 2 || len(again.Runs) != 0 {

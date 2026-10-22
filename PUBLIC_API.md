@@ -780,7 +780,7 @@ For `docker run`, Docker Compose, and sidecar patterns, see [docs/guides/contain
 4. **No transactional storage writes**: S3 and S3-compatible providers (R2, MinIO) do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler; external orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
-7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (any storage flag without both is an error; with no storage flag, `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers (R2, MinIO) via `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them; backfilled runs carry only what storage proves (no start time, and no outcome, so they are listed as `unclassified`). The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See [`docs/guides/integration.md`](docs/guides/integration.md).
+7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error; with no storage flag, `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers (R2, MinIO) via `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them; backfilled runs have no start time or recorded outcome, and their state follows their terminal event. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See [`docs/guides/integration.md`](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release; config-based logical names are under consideration.
 
@@ -849,8 +849,8 @@ processing after runs complete, see [docs/guides/integration.md](docs/guides/int
 
 `listRuns` and `readRun` read persisted runs from Node.js programs, such as
 an ETL job that ingests finished runs. They run the `quarry` CLI
-(`list runs` / `list events --format json`, CONTRACT_CLI.md) and return its
-JSON, so they read exactly what the CLI reads. The `quarry` executable must
+(`list runs` and `list events` with `--format json`; CONTRACT_CLI.md) and
+return its JSON, so they read exactly what the CLI reads. The `quarry` executable must
 be installed; pass `quarryPath` when it is not on `PATH`.
 
 ```typescript
@@ -866,26 +866,26 @@ do {
       { source: run.source, category: run.category, day: run.day, runId: run.run_id },
       { storage },
     );
-    // ingest events (sequence order)
+    // Ingest the events, which are in sequence order.
   }
   after = page.next;
 } while (after);
 ```
 
-- `storage` takes the CLI storage flags: `backend`, `path`, and optional
-  `dataset`, `region`, `endpoint`, `s3PathStyle`.
-- `listRuns` takes the selectors `source`, `category`, `day` (each requires
+- `storage` takes the CLI storage flags: `backend`, `path`, and,
+  optionally, `dataset`, `region`, `endpoint`, and `s3PathStyle`.
+- `listRuns` takes the selectors `source`, `category`, and `day` (each requires
   the one before it), `state`, `limit`, and `after` (a previous page's
   `next`). Runs are ordered by source, category, day, and run ID.
-- Run states are `succeeded`, `failed`, `unterminated` (no end record),
-  and `unclassified` (backfilled by `quarry index rebuild`: ended, outcome
-  unknown). Select `succeeded` to ingest only runs the runtime classified
-  as successful.
+- Run states are `succeeded`, `failed`, and `unterminated` (no end
+  record). A run backfilled by `quarry index rebuild` has no recorded
+  outcome: its state follows its terminal event, and `backfilled` is
+  `true`. Select `succeeded` to ingest only successful runs.
 - A CLI failure (a non-zero exit, a missing executable, or invalid output)
   rejects with `QuarryReadError`, which carries `exitCode` and `stderr`. An
-  option given as an empty string also rejects, before the CLI runs, since
-  the CLI would read it as absent (the default dataset, an unselected
-  source).
+  option given as an empty string also rejects before the CLI runs,
+  because the CLI would treat it as absent (for example, reading the
+  default dataset or all sources).
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
 
 **Built-in adapters** (v0.5.0+): `--adapter webhook` sends an HTTP POST, and

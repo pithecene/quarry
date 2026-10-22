@@ -250,8 +250,8 @@ func TestListRuns_NoCursorWhenNoFurtherMatch(t *testing.T) {
 	}
 }
 
-// An end record without a start record (a start write that failed and never
-// landed) is ignored: runs are listed by their start record only.
+// An end record without a start record (left by a start write that failed
+// and was never persisted) is ignored: runs are listed by their start record only.
 func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -357,8 +357,8 @@ func TestListRuns_CursorIsAKeyPosition(t *testing.T) {
 	}
 }
 
-// A backfilled run is listed, unclassified when it has a terminal event,
-// and its events are read from the partition its start record names.
+// A backfilled run is listed in the state its terminal event gives it, and
+// its events are read from the partition its start record names.
 func TestListRuns_BackfilledRun(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -378,7 +378,7 @@ func TestListRuns_BackfilledRun(t *testing.T) {
 	}
 
 	r := f.reader()
-	p, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{State: StateUnclassified})
+	p, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{State: StateSucceeded})
 	if err != nil {
 		t.Fatalf("ListRuns: %v", err)
 	}
@@ -410,6 +410,29 @@ func TestReadEvents_RejectsForeignOrAlteredRun(t *testing.T) {
 	for name, bad := range map[string]Run{"other dataset": other, "widened partition": widened} {
 		if _, err := r.ReadEvents(t.Context(), bad); !errors.Is(err, ErrInvalidRun) {
 			t.Errorf("%s: err = %v, want ErrInvalidRun", name, err)
+		}
+	}
+}
+
+// An end record's outcome decides the state; a backfilled record has none,
+// so its terminal event does.
+func TestEndState(t *testing.T) {
+	t.Parallel()
+	str := func(s string) *string { return &s }
+	for _, tc := range []struct {
+		name     string
+		outcome  *string
+		terminal *string
+		want     State
+	}{
+		{"success", str("success"), str("run_complete"), StateSucceeded},
+		{"failure after run_complete", str("policy_failure"), str("run_complete"), StateFailed},
+		{"script error", str("script_error"), str("run_error"), StateFailed},
+		{"backfilled run_complete", nil, str("run_complete"), StateSucceeded},
+		{"backfilled run_error", nil, str("run_error"), StateFailed},
+	} {
+		if got := endState(qlode.EndRecord{Outcome: tc.outcome, Terminal: tc.terminal}); got != tc.want {
+			t.Errorf("%s: state = %s, want %s", tc.name, got, tc.want)
 		}
 	}
 }

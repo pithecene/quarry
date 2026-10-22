@@ -19,9 +19,9 @@ func IndexCommand() *cli.Command {
 		Subcommands: []*cli.Command{
 			{
 				Name:  "rebuild",
-				Usage: "Backfill run records for runs written before they existed",
+				Usage: "Backfill run records for runs written before v0.14.0",
 				Flags: append([]cli.Flag{FormatFlag, NoColorFlag,
-					&cli.BoolFlag{Name: "dry-run", Usage: "Report the records that would be written; write nothing"},
+					&cli.BoolFlag{Name: "dry-run", Usage: "Report the records that would be written, without writing them"},
 				}, storageReadFlags()...),
 				Action: indexRebuildAction,
 			},
@@ -53,7 +53,7 @@ func indexRebuildAction(c *cli.Context) error {
 		return err
 	}
 	if rebuildErr != nil {
-		return cli.Exit(fmt.Sprintf("index rebuild stopped (rerun to resume): %v", rebuildErr), 1)
+		return cli.Exit(fmt.Sprintf("index rebuild failed (rerun it to resume): %v", rebuildErr), 1)
 	}
 	return nil
 }
@@ -68,7 +68,7 @@ func renderRebuild(r *render.Renderer, report lode.RebuildReport) error {
 	if report.DryRun {
 		verb = "would write"
 	}
-	fmt.Fprintf(os.Stderr, "Scanned %d runs: %d already indexed, %s %d start and %d end records, skipped %d\n",
+	fmt.Fprintf(os.Stderr, "Scanned %d runs: %d already indexed, %s %d start and %d end records, %d skipped\n",
 		report.RunsScanned, report.AlreadyIndexed, verb, report.StartsWritten, report.EndsWritten, report.Skipped)
 	return r.Render(report.Runs)
 }

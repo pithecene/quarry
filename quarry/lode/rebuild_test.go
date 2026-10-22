@@ -135,8 +135,8 @@ func TestRebuild_DryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// A rerun writes nothing new, and a backfilled run whose terminal event
-// lands later gains its end record.
+// A rerun writes nothing new, and a backfilled run whose terminal event is
+// persisted later gains its end record.
 func TestRebuild_IdempotentAndResumes(t *testing.T) {
 	t.Parallel()
 	factory := sharedMemoryFactory()
@@ -164,7 +164,7 @@ func TestRebuild_IdempotentAndResumes(t *testing.T) {
 }
 
 // A run the runtime started is never touched, even with no end record: it
-// may be live, and only the runtime classifies it.
+// may still be in progress, and only the runtime records its outcome.
 func TestRebuild_LeavesRuntimeRecordsAlone(t *testing.T) {
 	t.Parallel()
 	factory := sharedMemoryFactory()
@@ -208,7 +208,7 @@ func (s failEndPut) Put(ctx context.Context, path string, r io.Reader) error {
 	return s.Store.Put(ctx, path, r)
 }
 
-// A store error stops the rebuild, and the report still lists the start
+// A store error terminates the rebuild, and the report still lists the start
 // record written before it.
 func TestRebuild_ErrorReportsRecordsWritten(t *testing.T) {
 	t.Parallel()

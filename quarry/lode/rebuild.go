@@ -19,7 +19,8 @@ import (
 
 // Rebuild backfills run records for runs that predate them (CONTRACT_RUN.md
 // §Backfilled Run Records). It derives runs from Lode's partition tree, the
-// one place that enumerates partitions, and writes only what storage proves.
+// one place that enumerates partitions, and writes only what the stored data
+// shows.
 
 // RebuildOptions controls a run-record rebuild.
 type RebuildOptions struct {
@@ -35,13 +36,13 @@ type RebuiltRun struct {
 	Day       string `json:"day" yaml:"day"`
 	RunID     string `json:"run_id" yaml:"run_id"`
 	Partition string `json:"partition" yaml:"partition"`
-	// WroteStart and WroteEnd say which records were written (or, in a dry
+	// WroteStart and WroteEnd report which records were written (or, in a dry
 	// run, would be).
 	WroteStart bool `json:"wrote_start" yaml:"wrote_start"`
 	WroteEnd   bool `json:"wrote_end" yaml:"wrote_end"`
-	// NoEnd says why no end record was written for an indexed run.
+	// NoEnd gives the reason no end record was written for an indexed run.
 	NoEnd string `json:"no_end,omitempty" yaml:"no_end,omitempty"`
-	// Skipped says why the run was not indexed at all.
+	// Skipped gives the reason the run was not indexed at all.
 	Skipped string `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 
@@ -83,8 +84,8 @@ type legacyRun struct {
 // partition tree that has none: a start record, and an end record when the
 // run has exactly one terminal event. A run that already has a start record
 // written by the runtime is never touched, and a backfilled run gains only a
-// missing end record, so rerunning is idempotent. Store errors abort the
-// rebuild and return the report so far; a rerun resumes.
+// missing end record, so rerunning is idempotent. A store error terminates
+// the rebuild and returns the partial report; a rerun resumes it.
 func RebuildRunRecords(ctx context.Context, dataset string, factory lode.StoreFactory, opts RebuildOptions) (RebuildReport, error) {
 	report := RebuildReport{Dataset: dataset, DryRun: opts.DryRun, Runs: []RebuiltRun{}}
 	if err := ValidateRunKey(dataset, "x", "x", "x"); err != nil {
@@ -111,7 +112,7 @@ func RebuildRunRecords(ctx context.Context, dataset string, factory lode.StoreFa
 		report.RunsScanned++
 		out, indexed, err := rb.rebuild(ctx, run)
 		if err != nil {
-			// Report what this run got before the error, so the report
+			// Report the records this run received before the error, so the report
 			// covers every record written.
 			if out.WroteStart || out.WroteEnd {
 				report.add(out, false)
@@ -231,7 +232,7 @@ type rebuilder struct {
 	dryRun   bool
 }
 
-// rebuild indexes one run. indexed reports a run that needs nothing.
+// rebuild indexes one run. indexed reports a run that already has its records.
 func (b *rebuilder) rebuild(ctx context.Context, run legacyRun) (out RebuiltRun, indexed bool, err error) {
 	cfg := run.cfg
 	out = RebuiltRun{Source: cfg.Source, Category: cfg.Category, Day: cfg.Day, RunID: cfg.RunID, Partition: run.prefix}
@@ -323,8 +324,8 @@ func (b *rebuilder) terminalEvent(ctx context.Context, run legacyRun) (map[strin
 	return nil, noEndAmbiguous, nil
 }
 
-// writeStart writes the run's backfilled start record, or returns why it
-// skipped the run.
+// writeStart writes the run's backfilled start record, or returns the reason
+// it skipped the run.
 func (b *rebuilder) writeStart(ctx context.Context, run legacyRun, terminal map[string]any) (string, error) {
 	evidence := terminal
 	if evidence == nil {
