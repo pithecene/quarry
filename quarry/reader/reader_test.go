@@ -39,7 +39,11 @@ func (f *fixture) write(spec runSpec) {
 		f.t.Fatalf("client: %v", err)
 	}
 	ctx := f.t.Context()
-	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, time.Date(2026, 10, 21, 1, 0, 0, 0, time.UTC)); err != nil {
+	day, err := time.Parse(time.DateOnly, spec.day)
+	if err != nil {
+		f.t.Fatalf("day: %v", err)
+	}
+	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, day.Add(time.Hour)); err != nil {
 		f.t.Fatalf("start: %v", err)
 	}
 	// Write events in two batches, out of seq order across event types, so
@@ -98,6 +102,7 @@ func runIDs(p Page) []string {
 }
 
 func TestListRuns_SelectorsStatesAndOrder(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	ctx := t.Context()
 	cases := []struct {
@@ -130,6 +135,7 @@ func TestListRuns_SelectorsStatesAndOrder(t *testing.T) {
 }
 
 func TestListRuns_RunFields(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	p, err := r.ListRuns(t.Context(), Selector{Source: "src", Category: "cat"}, ListOptions{})
 	if err != nil {
@@ -148,6 +154,7 @@ func TestListRuns_RunFields(t *testing.T) {
 }
 
 func TestListRuns_Paging(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	ctx := t.Context()
 	var got []string
@@ -171,6 +178,7 @@ func TestListRuns_Paging(t *testing.T) {
 }
 
 func TestListRuns_Errors(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	ctx := t.Context()
 	if _, err := r.ListRuns(ctx, Selector{Category: "cat"}, ListOptions{}); !errors.Is(err, ErrSelectorOrder) {
@@ -193,6 +201,7 @@ func TestListRuns_Errors(t *testing.T) {
 // Stores normalize "." and ".." segments, which would widen a prefix
 // beyond the selected runs.
 func TestListRuns_RejectsDotSelectors(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	for _, sel := range []Selector{{Source: ".."}, {Source: "src", Category: "cat", Day: ".."}, {Source: "src/../x"}} {
 		if _, err := r.ListRuns(t.Context(), sel, ListOptions{}); !errors.Is(err, qlode.ErrInvalidRunKey) {
@@ -207,6 +216,7 @@ func TestListRuns_RejectsDotSelectors(t *testing.T) {
 // A cursor must be a start-record key: an arbitrary path under the prefix
 // would silently skip runs.
 func TestListRuns_RejectsNonStartKeyCursor(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	for _, after := range []string{
 		"datasets/quarry/runs/src/z",
@@ -222,6 +232,7 @@ func TestListRuns_RejectsNonStartKeyCursor(t *testing.T) {
 // With a state filter, a page that fills on the last match carries no
 // cursor: there is no further matching run.
 func TestListRuns_NoCursorWhenNoFurtherMatch(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	p, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{State: StateFailed, Limit: 1})
 	if err != nil {
@@ -239,6 +250,7 @@ func TestListRuns_NoCursorWhenNoFurtherMatch(t *testing.T) {
 // An end record without a start record (a start write that failed and never
 // landed) is ignored: runs are listed by their start record only.
 func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	cfg := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "orphan"}
 	c, _ := qlode.NewLodeClientWithFactory(cfg, f.factory)
@@ -252,6 +264,7 @@ func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {
 }
 
 func TestReadEvents_OrderedEventsOnly(t *testing.T) {
+	t.Parallel()
 	r := seedRuns(t).reader()
 	ctx := t.Context()
 	p, _ := r.ListRuns(ctx, Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, ListOptions{})
@@ -275,6 +288,7 @@ func TestReadEvents_OrderedEventsOnly(t *testing.T) {
 // r1 and r10 share a raw prefix; the partition prefix ends with "/" so one
 // run's events never include another's.
 func TestReadEvents_NoPrefixBleed(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.write(runSpec{"src", "cat", "2026-10-21", "r1", []types.EventType{types.EventTypeItem}, nil})
 	f.write(runSpec{"src", "cat", "2026-10-21", "r10", []types.EventType{types.EventTypeItem, types.EventTypeItem}, nil})
@@ -294,6 +308,7 @@ func metricsSnapshot(runID string) metrics.Snapshot {
 }
 
 func TestNew_RejectsInvalidFactory(t *testing.T) {
+	t.Parallel()
 	if _, err := New("quarry", nil); err == nil {
 		t.Error("nil factory accepted")
 	}
@@ -305,6 +320,7 @@ func TestNew_RejectsInvalidFactory(t *testing.T) {
 // A factory that returns a new store per call must not split listing and
 // event reads across stores.
 func TestReadEvents_UsesTheListingStore(t *testing.T) {
+	t.Parallel()
 	f := seedRuns(t)
 	calls := 0
 	r, err := New("quarry", func() (lode.Store, error) {

@@ -53,6 +53,7 @@ func (s *countingStore) reset() {
 // partition). Runs are written through the real write path: a few event
 // batches each, so every run has several partitions and segments.
 func TestMeasure_ListRunsVsPartitionEnumeration(t *testing.T) {
+	t.Parallel()
 	const runs, days = 200, 10
 	f := newFixture(t)
 	for i := range runs {

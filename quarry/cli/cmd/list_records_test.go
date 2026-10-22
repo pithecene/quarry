@@ -43,7 +43,7 @@ func writeFSRun(t *testing.T, root, runID string) {
 		t.Fatalf("client: %v", err)
 	}
 	ctx := t.Context()
-	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: runID, Attempt: 1}, time.Now()); err != nil {
+	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: runID, Attempt: 1}, time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	for i, typ := range []types.EventType{types.EventTypeItem, types.EventTypeRunComplete} {
