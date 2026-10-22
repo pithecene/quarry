@@ -205,8 +205,63 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
+type FieldCheck = (v: unknown) => boolean
+
+const isString: FieldCheck = (v) => typeof v === 'string'
+const isNumber: FieldCheck = (v) => typeof v === 'number'
+const oneOf =
+  (...values: readonly unknown[]): FieldCheck =>
+  (v) =>
+    values.includes(v)
+const orNull =
+  (check: FieldCheck): FieldCheck =>
+  (v) =>
+    v === null || check(v)
+const optional =
+  (check: FieldCheck): FieldCheck =>
+  (v) =>
+    v === undefined || check(v)
+
+const RUN_STATES: readonly RunState[] = ['succeeded', 'failed', 'unterminated', 'unclassified']
+
+// Field rules for RunSummary (CONTRACT_CLI.md §list runs).
+const runSummaryFields: Record<string, FieldCheck> = {
+  run_id: isString,
+  job_id: optional(isString),
+  parent_run_id: optional(isString),
+  attempt: isNumber,
+  dataset: isString,
+  source: isString,
+  category: isString,
+  day: isString,
+  partition: isString,
+  started_at: orNull(isString),
+  state: oneOf(...RUN_STATES),
+  backfilled: (v) => typeof v === 'boolean',
+  ended_at: orNull(isString),
+  outcome: orNull(isString),
+  terminal: oneOf('run_complete', 'run_error', null),
+  message: optional(isString),
+  event_count: orNull(isNumber)
+}
+
+// Field rules every stored event record satisfies.
+const storedEventFields: Record<string, FieldCheck> = {
+  record_kind: oneOf('event', 'artifact_event'),
+  seq: isNumber,
+  ts: isString
+}
+
+function hasFields(v: unknown, fields: Record<string, FieldCheck>): v is Record<string, unknown> {
+  return isObject(v) && Object.entries(fields).every(([name, check]) => check(v[name]))
+}
+
 function isRunSummary(v: unknown): v is RunSummary {
-  return isObject(v) && typeof v.run_id === 'string' && typeof v.state === 'string'
+  return hasFields(v, runSummaryFields)
+}
+
+function isStoredEvent(v: unknown): v is StoredEvent {
+  return hasFields(v, storedEventFields)
 }
 
 function isRunPage(v: unknown): v is RunPage {
@@ -219,7 +274,9 @@ function isRunPage(v: unknown): v is RunPage {
 }
 
 function isRunEvents(v: unknown): v is RunEvents {
-  return isObject(v) && isRunSummary(v.run) && Array.isArray(v.events) && v.events.every(isObject)
+  return (
+    isObject(v) && isRunSummary(v.run) && Array.isArray(v.events) && v.events.every(isStoredEvent)
+  )
 }
 
 type Captured = { code: number | null; stdout: string; stderr: string }

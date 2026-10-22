@@ -129,10 +129,23 @@ describe('response validation', () => {
   it.each([
     ['null', 'null'],
     ['an empty object', '{}'],
-    ['runs that are not runs', '{"runs":[1]}']
+    ['runs that are not runs', '{"runs":[1]}'],
+    ['an unknown state', JSON.stringify({ runs: [{ ...run, state: 'bogus' }] })],
+    ['a missing field', JSON.stringify({ runs: [{ ...run, partition: undefined }] })],
+    ['a non-string cursor', JSON.stringify({ runs: [], next: 3 })]
   ])('rejects %s from list runs', async (_name, stdout) => {
     const fake = await fakeQuarry(stdout)
     await expect(listRuns({ quarryPath: fake.path, storage })).rejects.toBeInstanceOf(
+      QuarryReadError
+    )
+  })
+
+  it('rejects a list events record that is not an event record', async () => {
+    const fake = await fakeQuarry(
+      JSON.stringify({ run, events: [{ record_kind: 'artifact_chunk', seq: 1, ts: 'x' }] })
+    )
+    const locator = { source: 'demo', category: 'default', day: '2026-10-22', runId: 'r1' }
+    await expect(readRun(locator, { quarryPath: fake.path, storage })).rejects.toBeInstanceOf(
       QuarryReadError
     )
   })
