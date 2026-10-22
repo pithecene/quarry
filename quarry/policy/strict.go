@@ -76,7 +76,7 @@ func (p *StrictPolicy) Flush(_ context.Context) error {
 }
 
 // Close refuses further ingestion and closes the underlying sink. See the
-// Policy.Close precondition: no ingestion of the caller's is in progress.
+// Policy.Close precondition: the caller has no ingestion in progress.
 func (p *StrictPolicy) Close() error {
 	return p.closer.close(func() error {
 		p.closed.Store(true)
