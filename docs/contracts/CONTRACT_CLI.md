@@ -629,9 +629,14 @@ stderr when another page exists.
 
 Ordering and paging: runs are ordered by record key (source, category,
 day, run ID) on every backend. `next` is the key of the last run returned;
-passing it as `--after` returns the runs after it. A cursor that does not
-belong to the selected prefix is an error. With `--state`, a page holds up
-to `--limit` matching runs.
+passing it as `--after` returns the runs after it. `next` is present only
+when another run matching the request exists. A cursor that is not a
+start-record key under the selected prefix is an error. With `--state`, a
+page holds up to `--limit` matching runs.
+
+Selector values are rejected when they are `.`, `..`, or contain a `.` or
+`..` path segment (CONTRACT_LODE.md §Key Encoding): stores normalize such
+segments, which would widen the prefix beyond the selected runs.
 
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
 `--limit=<n>`; each item includes `run_id`, `state`, `started_at`.

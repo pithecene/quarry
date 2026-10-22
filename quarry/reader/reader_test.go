@@ -190,6 +190,52 @@ func TestListRuns_Errors(t *testing.T) {
 	}
 }
 
+// Stores normalize "." and ".." segments, which would widen a prefix
+// beyond the selected runs.
+func TestListRuns_RejectsDotSelectors(t *testing.T) {
+	r := seedRuns(t).reader()
+	for _, sel := range []Selector{{Source: ".."}, {Source: "src", Category: "cat", Day: ".."}, {Source: "src/../x"}} {
+		if _, err := r.ListRuns(t.Context(), sel, ListOptions{}); !errors.Is(err, qlode.ErrInvalidRunKey) {
+			t.Errorf("selector %+v: err = %v, want ErrInvalidRunKey", sel, err)
+		}
+	}
+	if _, err := r.FindRun(t.Context(), Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, ".."); !errors.Is(err, qlode.ErrInvalidRunKey) {
+		t.Errorf("FindRun dot run id: %v", err)
+	}
+}
+
+// A cursor must be a start-record key: an arbitrary path under the prefix
+// would silently skip runs.
+func TestListRuns_RejectsNonStartKeyCursor(t *testing.T) {
+	r := seedRuns(t).reader()
+	for _, after := range []string{
+		"datasets/quarry/runs/src/z",
+		"datasets/quarry/runs/src/cat/2026-10-21/r1/end.json",
+		"datasets/quarry/runs/src/cat/2026-10-21/start.json",
+	} {
+		if _, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{After: after}); !errors.Is(err, ErrInvalidCursor) {
+			t.Errorf("cursor %q: err = %v, want ErrInvalidCursor", after, err)
+		}
+	}
+}
+
+// With a state filter, a page that fills on the last match carries no
+// cursor: there is no further matching run.
+func TestListRuns_NoCursorWhenNoFurtherMatch(t *testing.T) {
+	r := seedRuns(t).reader()
+	p, err := r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{State: StateFailed, Limit: 1})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if fmt.Sprint(runIDs(p)) != "[r2]" || p.Next != "" {
+		t.Fatalf("page = %v next %q, want [r2] and no cursor", runIDs(p), p.Next)
+	}
+	p, err = r.ListRuns(t.Context(), Selector{Source: "src"}, ListOptions{State: StateSucceeded, Limit: 1})
+	if err != nil || fmt.Sprint(runIDs(p)) != "[r1]" || p.Next == "" {
+		t.Fatalf("page = %v next %q err %v, want [r1] with a cursor (r4 matches)", runIDs(p), p.Next, err)
+	}
+}
+
 // An end record without a start record (a start write that failed and never
 // landed) is ignored: runs are listed by their start record only.
 func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {

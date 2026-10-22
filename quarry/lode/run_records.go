@@ -57,10 +57,25 @@ func ValidateRunKey(dataset, source, category, runID string) error {
 	for _, c := range []struct{ name, value string }{
 		{"source", source}, {"category", category}, {"run_id", runID},
 	} {
-		for _, seg := range strings.FieldsFunc(c.value, func(r rune) bool { return r == '/' || r == '\\' }) {
-			if seg == "." || seg == ".." {
-				return fmt.Errorf("%w: %s must not contain a %q path segment: %q", ErrInvalidRunKey, c.name, seg, c.value)
-			}
+		if err := ValidateKeyComponent(c.name, c.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateKeyComponent rejects a run key component (source, category, day,
+// or run ID) that is empty, "." or "..", or has a "." or ".." path segment.
+// Readers apply it to selectors before building key prefixes, since stores
+// normalize such segments and would widen the prefix.
+func ValidateKeyComponent(name, value string) error {
+	switch value {
+	case "", ".", "..":
+		return fmt.Errorf("%w: %s must not be %q", ErrInvalidRunKey, name, value)
+	}
+	for _, seg := range strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == "." || seg == ".." {
+			return fmt.Errorf("%w: %s must not contain a %q path segment: %q", ErrInvalidRunKey, name, seg, value)
 		}
 	}
 	return nil

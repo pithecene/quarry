@@ -121,8 +121,8 @@ func (r *Reader) ListRuns(ctx context.Context, sel Selector, opts ListOptions) (
 	if err := opts.State.validate(); err != nil {
 		return Page{}, err
 	}
-	if opts.After != "" && !strings.HasPrefix(opts.After, prefix) {
-		return Page{}, fmt.Errorf("%w: %q is not under %q", ErrInvalidCursor, opts.After, prefix)
+	if opts.After != "" && !r.isStartKeyUnder(opts.After, prefix) {
+		return Page{}, fmt.Errorf("%w: %q is not a run start-record key under %q", ErrInvalidCursor, opts.After, prefix)
 	}
 
 	keys, err := r.store.List(ctx, prefix)
@@ -153,7 +153,11 @@ func (r *Reader) ListRuns(ctx context.Context, sel Selector, opts ListOptions) (
 		}
 		page.Runs = append(page.Runs, run)
 		if opts.Limit > 0 && len(page.Runs) == opts.Limit {
-			if i < len(starts)-1 {
+			more, err := r.anyMatch(ctx, starts[i+1:], opts.State)
+			if err != nil {
+				return Page{}, err
+			}
+			if more {
 				page.Next = key
 			}
 			break
@@ -162,17 +166,59 @@ func (r *Reader) ListRuns(ctx context.Context, sel Selector, opts ListOptions) (
 	return page, nil
 }
 
+// anyMatch reports whether any of the remaining start keys is a run in the
+// wanted state, so a page carries a cursor only when another match exists.
+// Without a state filter every remaining key matches, and nothing is read.
+func (r *Reader) anyMatch(ctx context.Context, rest []string, state State) (bool, error) {
+	if state == "" {
+		return len(rest) > 0, nil
+	}
+	for _, key := range rest {
+		run, err := r.readRun(ctx, key)
+		if err != nil {
+			return false, err
+		}
+		if run.State == state {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// isStartKeyUnder reports whether key has the shape of a start-record key,
+// datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/start.json,
+// and lies under prefix.
+func (r *Reader) isStartKeyUnder(key, prefix string) bool {
+	root := qlode.RunRecordPrefix(r.dataset)
+	if !strings.HasPrefix(key, prefix) || !strings.HasPrefix(key, root) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(key, root), "/")
+	if len(parts) != 5 || parts[4] != qlode.StartRecordName {
+		return false
+	}
+	for _, p := range parts[:4] {
+		if p == "" || p == "." || p == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // prefix builds the listing prefix, enforcing selector order.
 func (r *Reader) prefix(sel Selector) (string, error) {
 	if (sel.Category != "" && sel.Source == "") || (sel.Day != "" && sel.Category == "") {
 		return "", ErrSelectorOrder
 	}
 	var parts []string
-	for _, v := range []string{sel.Source, sel.Category, sel.Day} {
-		if v == "" {
+	for _, c := range []struct{ name, value string }{{"source", sel.Source}, {"category", sel.Category}, {"day", sel.Day}} {
+		if c.value == "" {
 			break
 		}
-		parts = append(parts, v)
+		if err := qlode.ValidateKeyComponent(c.name, c.value); err != nil {
+			return "", err
+		}
+		parts = append(parts, c.value)
 	}
 	return qlode.RunRecordPrefix(r.dataset, parts...), nil
 }
@@ -247,6 +293,12 @@ var ErrRunNotFound = errors.New("run not found")
 func (r *Reader) FindRun(ctx context.Context, sel Selector, runID string) (Run, error) {
 	if sel.Source == "" || sel.Category == "" || sel.Day == "" || runID == "" {
 		return Run{}, fmt.Errorf("%w: source, category, day, and run ID are required", ErrSelectorOrder)
+	}
+	if _, err := r.prefix(sel); err != nil {
+		return Run{}, err
+	}
+	if err := qlode.ValidateKeyComponent("run_id", runID); err != nil {
+		return Run{}, err
 	}
 	key := qlode.RunRecordPrefix(r.dataset, sel.Source, sel.Category, sel.Day, runID) + qlode.StartRecordName
 	run, err := r.readRun(ctx, key)
