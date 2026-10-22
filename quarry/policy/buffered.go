@@ -85,7 +85,7 @@ type BufferedPolicy struct {
 	logger *log.Logger
 
 	closer onceCloser
-	closed bool // set under mu when Close begins; ingestion is refused after
+	closed bool // set under mu when Close begins; ingestion is refused afterward
 
 	mu              sync.Mutex // guards buffer state only
 	eventBuffer     []*types.EventEnvelope
@@ -470,19 +470,19 @@ func (p *BufferedPolicy) recalculateBufferBytes() {
 func (p *BufferedPolicy) Close() error {
 	return p.closer.close(func() error {
 		// Best-effort flush on close, bounded by a deadline the sink must
-		// honour (see Sink); the write is never abandoned.
+		// honor (see Sink); the write is never abandoned.
 		ctx, cancel := context.WithTimeout(context.Background(), closeFlushTimeout)
 		defer cancel()
-		// Refuse ingestion from here on, so nothing is accepted after the final
+		// Refuse ingestion from this point, so nothing is accepted after the final
 		// flush takes its snapshot.
 		p.mu.Lock()
 		p.closed = true
 		p.mu.Unlock()
 
 		// A failed close-time flush leaves accepted data unpersisted: report it
-		// rather than closing over it silently. (Buffers may also hold data
-		// already written and kept for retry, so the flush result, not buffer
-		// lengths, is what says whether anything was lost.)
+		// rather than closing without reporting it. (Buffers may also retain data
+		// already written and kept for retry, so the flush result, not the buffer
+		// lengths, determines whether any data was lost.)
 		var lossErr error
 		if err := p.Flush(ctx); err != nil {
 			lossErr = fmt.Errorf("%w: close-time flush failed: %w", ErrCloseUnflushed, err)

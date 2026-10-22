@@ -31,7 +31,7 @@ type Policy interface {
 	// Called on run_complete, run_error, or runtime termination.
 	Flush(ctx context.Context) error
 
-	// Close flushes what it can (within a deadline the sink must honour; see
+	// Close flushes what it can (within a deadline the sink must honor; see
 	// Sink) and releases policy resources.
 	// It is one-shot: any later Close returns the first result without
 	// flushing or writing.
@@ -40,7 +40,7 @@ type Policy interface {
 	// while an IngestEvent, IngestArtifactChunk, or Flush call of the caller's
 	// is in progress; the runtime closes the policy only after ingestion has
 	// ended. Flushes the policy runs on its own (the streaming interval flush)
-	// are cancelled and joined by Close. Ingestion attempted after Close is
+	// are canceled and joined by Close. Ingestion attempted after Close is
 	// refused with ErrPolicyClosed.
 	Close() error
 

@@ -52,7 +52,7 @@ func ValidateRunKey(dataset, source, category, runID string) error {
 	if strings.ContainsAny(dataset, `/\`) {
 		return fmt.Errorf("%w: dataset must not contain '/' or '\\': %q", ErrInvalidRunKey, dataset)
 	}
-	// Sidecar file paths still interpolate these values raw, so a "." or ".."
+	// Sidecar file paths still interpolate these values unencoded, so a "." or ".."
 	// path segment could place a run's files under another run's partition.
 	for _, c := range []struct{ name, value string }{
 		{"source", source}, {"category", category}, {"run_id", runID},
@@ -133,7 +133,8 @@ type StartRecord struct {
 type RunEnd struct {
 	EndedAt time.Time
 	Outcome types.OutcomeStatus
-	// Terminal is the terminal event type received, or "" when none was.
+	// Terminal is the terminal event type received, or "" when none was
+	// received.
 	Terminal         types.EventType
 	Message          string
 	EventCount       int64

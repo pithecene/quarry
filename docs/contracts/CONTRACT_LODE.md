@@ -288,10 +288,10 @@ datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/end.json
   backend, so a record is never overwritten.
 - Lode never reads or modifies this namespace: it lies outside
   `datasets/<dataset>/partitions/` and Lode's manifests and pointer.
-- Order is `source/category/day/run_id`, matching the partition layout.
-  A listing is narrowed by key prefix only for leading selectors: `source`,
-  then `source` and `category`, then `source`, `category`, and `day`. A
-  selector cannot skip an earlier one.
+- Path components are ordered `source/category/day/run_id`, matching the
+  partition layout. A listing is narrowed by key prefix only for leading
+  selectors: `source`, then `source` and `category`, then `source`,
+  `category`, and `day`. A selector cannot skip an earlier one.
 - `Store.List` guarantees no order and no continuation, so readers sort the
   matching start-record keys lexicographically and cut pages on them; the
   cursor is the last start-record key returned. Exactly one start record
@@ -321,8 +321,8 @@ key, as a configuration error:
   the sidecar file path differs from the run's partition prefix, because
   sidecar paths (and the key the SDK reports from `storage.put()`) are
   built raw. Run records and the partition tree always agree. Moving
-  sidecar keys to the same encoding needs the IPC acknowledgement to carry
-  the resolved key first, and is roadmap decision B1.
+  sidecar keys to the same encoding requires the IPC acknowledgment to
+  carry the resolved key first; it is roadmap decision B1.
 - Dataset ID: empty, `.`, `..`, or any value containing `/` or `\`. The
   dataset component is not encoded, so these would leave the dataset's
   directory or add path segments.

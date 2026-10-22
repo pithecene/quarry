@@ -70,7 +70,7 @@ var ErrStreamingInvalidConfig = errors.New("invalid streaming config: at least o
 // Thread safety:
 //   - mu guards buffer state (append, size tracking, stats)
 //   - flushSem serializes flush operations to prevent concurrent writes;
-//     acquiring it honours the caller's context, so a flush stalled in the
+//     acquiring it honors the caller's context, so a flush stalled in the
 //     sink cannot block another flush past its deadline
 //   - IngestEvent/IngestArtifactChunk hold mu briefly to append
 //   - triggerFlush holds flushSem for the duration of the write,
@@ -237,7 +237,7 @@ func (p *StreamingPolicy) Flush(ctx context.Context) error {
 // This allows IngestEvent/IngestArtifactChunk to continue appending to
 // fresh buffers during a write, without blocking on the sink.
 func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger) error {
-	// A cancelled context never starts a flush; select alone would pick the
+	// A canceled context never starts a flush; select alone would pick the
 	// free semaphore at random even when the context is already done.
 	if err := ctx.Err(); err != nil {
 		return err
@@ -331,10 +331,10 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 }
 
 // Close stops and joins the interval goroutine, flushes once more, and
-// closes the sink. An interval flush in progress is cancelled; every flush
+// closes the sink. An interval flush in progress is canceled; every flush
 // in progress is joined before the sink closes, so no write of this policy
 // outlives Close. The final flush is bounded by closeFlushTimeout for sinks
-// that honour cancellation (see Sink).
+// that honor cancellation (see Sink).
 func (p *StreamingPolicy) Close() error {
 	return p.closer.close(func() error {
 		p.mu.Lock()
@@ -353,13 +353,13 @@ func (p *StreamingPolicy) Close() error {
 		defer cancel()
 		flushErr := p.Flush(ctx)
 
-		// Join any flush still in flight (count-, capacity-, or caller-
+		// Join any flush still in progress (count-, capacity-, or caller-
 		// triggered) before closing the sink: none is abandoned.
 		p.flushSem <- struct{}{}
 		defer func() { <-p.flushSem }()
 
 		// Data still buffered now was accepted but never persisted: report it
-		// rather than closing over it silently.
+		// rather than closing without reporting it.
 		p.mu.Lock()
 		events, chunks := len(p.eventBuffer), len(p.chunkBuffer)
 		p.mu.Unlock()
