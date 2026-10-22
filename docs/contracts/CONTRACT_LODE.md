@@ -289,7 +289,13 @@ datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/end.json
 - Lode never reads or modifies this namespace: it lies outside
   `datasets/<dataset>/partitions/` and Lode's manifests and pointer.
 - Path components are ordered `source/category/day/run_id`, matching the
-  partition layout.
+  partition layout. A listing is narrowed by key prefix only for leading
+  selectors: `source`, then `source` and `category`, then `source`,
+  `category`, and `day`. A selector cannot skip an earlier one.
+- `Store.List` guarantees no order and no continuation, so readers sort the
+  matching start-record keys lexicographically and cut pages on them; the
+  cursor is the last start-record key returned. Exactly one start record
+  exists per run, so a page boundary is a run boundary.
 
 ### Key Encoding
 

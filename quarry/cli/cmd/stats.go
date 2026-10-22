@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -146,13 +145,7 @@ func statsMetricsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "metrics",
 		Usage: "Show contract metrics (run lifecycle, ingestion, executor, storage)",
-		Flags: append(TUIReadOnlyFlags(),
-			&cli.StringFlag{Name: "storage-dataset", Usage: "Lode dataset ID (default: \"quarry\")", Value: lode.DefaultDataset},
-			&cli.StringFlag{Name: "storage-backend", Usage: "Storage backend: fs or s3"},
-			&cli.StringFlag{Name: "storage-path", Usage: "Storage path (fs: directory, s3: bucket/prefix)"},
-			&cli.StringFlag{Name: "storage-region", Usage: "AWS region for S3 backend"},
-			&cli.StringFlag{Name: "storage-endpoint", Usage: "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)"},
-			&cli.BoolFlag{Name: "storage-s3-path-style", Usage: "Force path-style addressing for S3 (required by R2, MinIO)"},
+		Flags: append(append(TUIReadOnlyFlags(), storageReadFlags()...),
 			&cli.StringFlag{Name: "run-id", Usage: "Read metrics for specific run ID"},
 			&cli.StringFlag{Name: "source", Usage: "Filter by source partition"},
 		),
@@ -166,7 +159,11 @@ func statsMetricsAction(c *cli.Context) error {
 
 	var snapshot *reader.MetricsSnapshot
 
-	if backend != "" && path != "" {
+	withStorage, err := storageRequested(c)
+	if err != nil {
+		return err
+	}
+	if withStorage {
 		// Build Lode dataset for reading
 		ds, err := buildReadDataset(c, backend, path)
 		if err != nil {
@@ -187,9 +184,6 @@ func statsMetricsAction(c *cli.Context) error {
 		}
 		snapshot = parsed
 	} else {
-		if backend != "" || path != "" {
-			return errors.New("both --storage-backend and --storage-path are required for Lode reads")
-		}
 		snapshot = reader.StatsMetrics()
 	}
 

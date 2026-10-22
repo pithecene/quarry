@@ -167,6 +167,10 @@ Go module root. Contains runtime, CLI, and core types.
 
 - `metrics/` — per-run metrics collection: lifecycle, ingestion, executor, and storage operation counters
 
+### quarry/reader/
+
+- `reader/` — read access to Quarry's own storage layout: lists runs from run records (never from partitions) and reads a run's events from the partitions its start record names
+
 ### quarry/log/
 
 - `log/` — structured JSON logging with run context fields (run_id, attempt, job_id)

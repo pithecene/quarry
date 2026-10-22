@@ -129,3 +129,32 @@ synchronization via the policy's own mutex.
 All benchmarks use a no-op or configurable-delay sink to isolate policy
 overhead from I/O. Real-world performance will be dominated by sink
 latency (network/disk), not policy overhead.
+
+## Run Listing: Records vs Partitions (v0.14.0)
+
+Store work to find runs and their states, measured by
+`TestMeasure_ListRunsVsPartitionEnumeration` in `quarry/reader`:
+
+```
+cd quarry && go test ./reader -run Measure -v
+```
+
+200 runs over 10 days, each written through the real write path (two to
+four event batches, a chunk batch, and a metrics record), a quarter of
+them without an end record:
+
+| Method | `List` calls | Keys listed | Objects read | Result |
+|---|---|---|---|---|
+| Run records, one page of 50 | 1 | 350 | 100 | 50 runs with state and outcome |
+| Run records, all runs | 1 | 350 | 400 | 200 runs with state and outcome |
+| Partition enumeration, all runs | 1 | 2,200 | 0 | 200 runs, terminal event present or not |
+
+Run records list two keys per finished run and one per unterminated run,
+regardless of what the run wrote. The partition tree lists a data object and a
+manifest per batch per event type, so its size grows with every flush a
+run makes; the runs here flush only a few times, and runs that flush on
+an interval grow it further. On S3, the number of keys listed bounds the number of
+`ListObjectsV2` requests (at most 1,000 keys each). Records also give the
+outcome, which the partition tree cannot: it shows only whether a
+terminal event was written. A page of records reads only the records of
+the runs it returns.

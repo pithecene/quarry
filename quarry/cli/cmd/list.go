@@ -30,6 +30,7 @@ func ListCommand() *cli.Command {
 		Usage: "List entities (runs, jobs, pools, executors)",
 		Subcommands: []*cli.Command{
 			listRunsCommand(),
+			listEventsCommand(),
 			listJobsCommand(),
 			listPoolsCommand(),
 			listExecutorsCommand(),
@@ -41,15 +42,19 @@ func listRunsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "runs",
 		Usage: "List runs",
-		Flags: append(ReadOnlyFlags(),
+		Flags: append(append(append(ReadOnlyFlags(), storageReadFlags()...), runSelectorFlags()...),
 			&cli.StringFlag{
 				Name:  "state",
-				Usage: "Filter by state: running, failed, succeeded",
+				Usage: "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",
 			},
 			&cli.IntFlag{
 				Name:  "limit",
 				Usage: "Maximum number of runs to return (0 = no limit)",
 				Value: 0,
+			},
+			&cli.StringFlag{
+				Name:  "after",
+				Usage: "Resume after the cursor a previous page returned (with storage)",
 			},
 		),
 		Action: listRunsAction,
@@ -65,6 +70,27 @@ func listRunsAction(c *cli.Context) error {
 	// TUI not supported for list commands
 	if c.Bool("tui") {
 		return cli.Exit("--tui is not supported for list commands", 1)
+	}
+
+	// With storage, runs come from run records; without, from the stub.
+	withStorage, err := storageRequested(c)
+	if err != nil {
+		return cli.Exit(err.Error(), 1)
+	}
+	if withStorage {
+		return listRunsFromRecords(c, r)
+	}
+	// Selectors and cursors have meaning only against storage; never ignore
+	// them silently on the stub path.
+	for _, name := range []string{"after", "source", "category", "day"} {
+		if c.IsSet(name) {
+			return cli.Exit(fmt.Sprintf("--%s requires --storage-backend and --storage-path", name), 1)
+		}
+	}
+	switch st := c.String("state"); st {
+	case "", "running", "failed", "succeeded":
+	default:
+		return cli.Exit(fmt.Sprintf("--state %q: stub data has states running, failed, succeeded (succeeded, failed, unterminated need storage)", st), 1)
 	}
 
 	opts := reader.ListRunsOptions{

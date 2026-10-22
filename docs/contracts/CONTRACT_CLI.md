@@ -56,6 +56,7 @@ quarry
 │  └─ metrics
 ├─ list
 │  ├─ runs
+│  ├─ events
 │  ├─ jobs
 │  ├─ pools
 │  └─ executors
@@ -530,9 +531,10 @@ Optional flags:
 - `--run-id=<id>` — read metrics for a specific run
 - `--source=<source>` — filter by source partition
 
-Both `--storage-backend` and `--storage-path` must be provided together.
-When provided, metrics are read from Lode storage. When omitted, stub
-data is returned (see Data Source Progression in CONTRACT_METRICS.md).
+Both `--storage-backend` and `--storage-path` must be provided together;
+any storage flag given without both is an error.
+When provided, metrics are read from Lode storage. When no storage flag is
+given, stub data is returned (see Data Source Progression in CONTRACT_METRICS.md).
 
 Response:
 ```
@@ -582,14 +584,100 @@ quarry stats metrics --format json
 
 ### `list runs`
 
-Supported filters:
-- `--state=running|failed|succeeded`
-- `--limit=<n>`
+With `--storage-backend` and `--storage-path` (v0.14.0+), runs are listed
+from their run records (CONTRACT_RUN.md §Run Records, §Reading Run Records).
+Without them, the stub data below is returned. Giving only one of the pair
+is an error.
 
-Response must include:
-- `run_id`
-- `state`
-- `started_at`
+Storage-backed flags:
+- Storage flags as on `stats metrics` (`--storage-dataset`, `--storage-region`,
+  `--storage-endpoint`, `--storage-s3-path-style`)
+- `--source`, `--category`, `--day`: leading selectors, in that order
+  (CONTRACT_LODE.md §Run Record Namespace). `--category` requires
+  `--source`, and `--day` requires `--category`; omitting all three lists
+  the whole dataset
+- `--state=succeeded|failed|unterminated`
+- `--limit=<n>` (0 = no limit)
+- `--after=<cursor>`: the `next` value of a previous page
+
+Response (`json`, `yaml`):
+```
+RunPage:
+  runs: Run[]
+  next: string        # omitted on the last page
+
+Run:
+  run_id: string
+  job_id: string          # omitted when unknown
+  parent_run_id: string   # omitted when absent
+  attempt: number
+  dataset: string
+  source: string
+  category: string
+  day: string             # YYYY-MM-DD
+  partition: string       # Hive-encoded partition prefix
+  started_at: time
+  state: succeeded | failed | unterminated
+  ended_at: time | null   # null when unterminated
+  outcome: string | null  # CONTRACT_RUN.md outcome; null when unterminated
+  terminal: string | null # run_complete | run_error | null
+  message: string         # omitted when absent
+  event_count: number | null
+```
+
+`table` renders `runs` only and prints `More runs: --after <cursor>` to
+stderr when another page exists.
+
+Ordering and paging: runs are ordered by record key (source, category,
+day, run ID) on every backend. `next` is the key of the last run returned;
+passing it as `--after` returns the runs after it. `next` is present only
+when another run matching the request exists. The cursor is a key
+position, not a reference to a stored run: listing resumes at the first
+start-record key after it, so paging stays correct when the run it names
+is deleted between pages (for example, by retention). A value that does
+not have the shape of a start-record key under the selected prefix, with
+each key component encoded exactly as the write path encodes it, is an
+error; a well-formed key that names no run is accepted, and listing
+resumes after its position. With `--state`, a page holds up to `--limit`
+matching runs.
+
+Selector values are rejected when they are `.`, `..`, or contain a `.` or
+`..` path segment (CONTRACT_LODE.md §Key Encoding): stores normalize such
+segments, which would widen the prefix beyond the selected runs.
+
+Stub flags and response (no storage): `--state=running|failed|succeeded`,
+`--limit=<n>`; each item includes `run_id`, `state`, and `started_at`. Using a
+storage-only flag (`--source`, `--category`, `--day`, or `--after`)
+without storage is an error, and any storage flag given without both
+`--storage-backend` and `--storage-path` is an error, never a fallback to
+stub data.
+
+### `list events` (v0.14.0+)
+
+Lists one run's events, read from storage.
+
+Required flags:
+- `--storage-backend`, `--storage-path` (and the other storage flags as on
+  `list runs`)
+- `--source`, `--category`, `--day`, `--run-id`: these locate the run's
+  records directly
+
+Response (`json`, `yaml`):
+```
+RunEvents:
+  run: Run             # as in list runs
+  events: object[]     # stored event records, in seq order
+```
+
+`events` holds the run's stored records of `record_kind` `event` and
+`artifact_event` (CONTRACT_LODE.md §Record Types), ordered by `seq`.
+Artifact chunks and the metrics record are not events and are omitted.
+Item payloads are returned as stored; Quarry does not know a script's
+item schema. The run's partitions are addressed from its start record's
+`partition`. `table` renders one summary row per record (`seq`, `type`,
+`record_kind`, `ts`, `event_id`); `json` and `yaml` carry the full records.
+
+A run with no start record is an error (`run not found`).
 
 ### `list jobs`
 

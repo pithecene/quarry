@@ -26,8 +26,10 @@ const (
 	// RunRecordSchemaVersion is the schema_version written in run records.
 	RunRecordSchemaVersion = 1
 
-	startRecordName = "start.json"
-	endRecordName   = "end.json"
+	// StartRecordName is the object name of a run's start record.
+	StartRecordName = "start.json"
+	// EndRecordName is the object name of a run's end record.
+	EndRecordName = "end.json"
 )
 
 // ErrInvalidRunKey is returned when a dataset, source, category, or run ID
@@ -55,10 +57,25 @@ func ValidateRunKey(dataset, source, category, runID string) error {
 	for _, c := range []struct{ name, value string }{
 		{"source", source}, {"category", category}, {"run_id", runID},
 	} {
-		for _, seg := range strings.FieldsFunc(c.value, func(r rune) bool { return r == '/' || r == '\\' }) {
-			if seg == "." || seg == ".." {
-				return fmt.Errorf("%w: %s must not contain a %q path segment: %q", ErrInvalidRunKey, c.name, seg, c.value)
-			}
+		if err := ValidateKeyComponent(c.name, c.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateKeyComponent rejects a run key component (source, category, day,
+// or run ID) that is empty, "." or "..", or has a "." or ".." path segment.
+// Readers apply it to selectors before building key prefixes, since stores
+// normalize such segments and would widen the prefix.
+func ValidateKeyComponent(name, value string) error {
+	switch value {
+	case "", ".", "..":
+		return fmt.Errorf("%w: %s must not be %q", ErrInvalidRunKey, name, value)
+	}
+	for _, seg := range strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == "." || seg == ".." {
+			return fmt.Errorf("%w: %s must not contain a %q path segment: %q", ErrInvalidRunKey, name, seg, value)
 		}
 	}
 	return nil
@@ -70,8 +87,20 @@ func encode(v string) string { return url.PathEscape(v) }
 // RunRecordDir is the run's directory in the run-record namespace:
 // datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/.
 func RunRecordDir(cfg Config) string {
-	return "datasets/" + cfg.Dataset + "/runs/" +
-		encode(cfg.Source) + "/" + encode(cfg.Category) + "/" + encode(cfg.Day) + "/" + encode(cfg.RunID) + "/"
+	return RunRecordPrefix(cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
+}
+
+// RunRecordPrefix is a key prefix in the dataset's run-record namespace for
+// the leading components given, in order source, category, day, run_id:
+// datasets/<dataset>/runs/<enc>/.../. With no components it is the whole
+// namespace.
+func RunRecordPrefix(dataset string, components ...string) string {
+	var b strings.Builder
+	b.WriteString("datasets/" + dataset + "/runs/")
+	for _, c := range components {
+		b.WriteString(encode(c) + "/")
+	}
+	return b.String()
 }
 
 // PartitionPrefix is the run's Lode partition prefix relative to the
@@ -173,12 +202,12 @@ func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, 
 	if day := DeriveDay(startedAt); day != c.config.Day {
 		return fmt.Errorf("%w: started_at %s is on %s, not the client's day %s", ErrInvalidRunKey, formatRecordTime(startedAt), day, c.config.Day)
 	}
-	return c.putRecord(ctx, RunRecordDir(c.config)+startRecordName, NewStartRecord(c.config, meta, startedAt))
+	return c.putRecord(ctx, RunRecordDir(c.config)+StartRecordName, NewStartRecord(c.config, meta, startedAt))
 }
 
 // WriteEndRecord writes the run's end record.
 func (c *LodeClient) WriteEndRecord(ctx context.Context, end RunEnd) error {
-	return c.putRecord(ctx, RunRecordDir(c.config)+endRecordName, NewEndRecord(c.config, end))
+	return c.putRecord(ctx, RunRecordDir(c.config)+EndRecordName, NewEndRecord(c.config, end))
 }
 
 func (c *LodeClient) putRecord(ctx context.Context, path string, record any) error {

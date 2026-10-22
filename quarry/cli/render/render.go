@@ -94,6 +94,11 @@ func NewRendererWithWriter(format Format, noColor bool, out io.Writer) *Renderer
 	}
 }
 
+// Format returns the renderer's output format.
+func (r *Renderer) Format() Format {
+	return r.format
+}
+
 // Render outputs the data in the configured format.
 func (r *Renderer) Render(data any) error {
 	switch r.format {

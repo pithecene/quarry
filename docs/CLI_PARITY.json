@@ -616,14 +616,150 @@
             "state": {
               "type": "string",
               "required": false,
-              "description": "Filter by state: running, failed, succeeded",
-              "validation": "Must be one of: running, failed, succeeded"
+              "description": "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",
+              "validation": "With storage: succeeded, failed, unterminated. Stub: running, failed, succeeded"
             },
             "limit": {
               "type": "int",
               "required": false,
               "default": 0,
               "description": "Maximum number of runs to return (0 = no limit)"
+            },
+            "after": {
+              "type": "string",
+              "required": false,
+              "description": "Resume after the cursor a previous page returned (with storage)",
+              "dependsOn": ["storage-backend"]
+            },
+            "storage-dataset": {
+              "type": "string",
+              "required": false,
+              "default": "quarry",
+              "description": "Lode dataset ID (default: \"quarry\")"
+            },
+            "storage-backend": {
+              "type": "string",
+              "required": false,
+              "description": "Storage backend: fs or s3",
+              "validation": "Must be one of: fs, s3"
+            },
+            "storage-path": {
+              "type": "string",
+              "required": false,
+              "description": "Storage path (fs: directory, s3: bucket/prefix)"
+            },
+            "storage-region": {
+              "type": "string",
+              "required": false,
+              "description": "AWS region for S3 backend"
+            },
+            "storage-endpoint": {
+              "type": "string",
+              "required": false,
+              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-s3-path-style": {
+              "type": "bool",
+              "required": false,
+              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "source": {
+              "type": "string",
+              "required": false,
+              "description": "Source selector (storage only)"
+            },
+            "category": {
+              "type": "string",
+              "required": false,
+              "description": "Category selector (requires --source)",
+              "dependsOn": ["source"]
+            },
+            "day": {
+              "type": "string",
+              "required": false,
+              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
+              "dependsOn": ["category"]
+            },
+            "format": {
+              "type": "string",
+              "aliases": ["f"],
+              "required": false,
+              "description": "Output format: json, table, yaml"
+            },
+            "no-color": {
+              "type": "bool",
+              "required": false,
+              "default": false,
+              "description": "Disable colored output (table format only)"
+            },
+            "tui": {
+              "type": "bool",
+              "required": false,
+              "default": false,
+              "description": "Enable interactive TUI mode",
+              "notes": "Not supported for list commands - returns error"
+            }
+          }
+        },
+        "events": {
+          "flags": {
+            "run-id": {
+              "type": "string",
+              "required": true,
+              "description": "Run whose events to list (required)"
+            },
+            "storage-dataset": {
+              "type": "string",
+              "required": false,
+              "default": "quarry",
+              "description": "Lode dataset ID (default: \"quarry\")"
+            },
+            "storage-backend": {
+              "type": "string",
+              "required": true,
+              "description": "Storage backend: fs or s3",
+              "validation": "Must be one of: fs, s3"
+            },
+            "storage-path": {
+              "type": "string",
+              "required": true,
+              "description": "Storage path (fs: directory, s3: bucket/prefix)"
+            },
+            "storage-region": {
+              "type": "string",
+              "required": false,
+              "description": "AWS region for S3 backend"
+            },
+            "storage-endpoint": {
+              "type": "string",
+              "required": false,
+              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-s3-path-style": {
+              "type": "bool",
+              "required": false,
+              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "source": {
+              "type": "string",
+              "required": true,
+              "description": "Source selector (storage only)"
+            },
+            "category": {
+              "type": "string",
+              "required": true,
+              "description": "Category selector (requires --source)",
+              "dependsOn": ["source"]
+            },
+            "day": {
+              "type": "string",
+              "required": true,
+              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
+              "dependsOn": ["category"]
             },
             "format": {
               "type": "string",

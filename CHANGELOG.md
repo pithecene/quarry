@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Run records**: Every run writes a start record before anything else and an end record after everything else, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/` (`start.json`, `end.json`). They carry the run's lineage, partition prefix, start and end times, outcome, and terminal event, so a reader can find runs and their outcomes without enumerating partitions. The exit report gains `run_record_error` when the end record could not be written
+- **Run reader**: `quarry list runs` with `--storage-backend` and `--storage-path` lists runs from their run records (selectors `--source`, `--category`, `--day`; `--state succeeded|failed|unterminated`; `--limit` and an `--after` cursor), and the new `quarry list events` returns one run's events in sequence order. The `quarry/reader` package provides the same reads to Go programs. Runs are never found by enumerating partitions, and a run without an end record is reported as `unterminated`, never as running
 - **Run key validation**: `run` rejects a dataset ID, source, category, or run ID that cannot form a safe storage key (empty, `.`, `..`, and for the dataset ID any `/` or `\`), and refuses a run ID that already has a start record instead of writing into another run's partitions
 
 ### Fixed
