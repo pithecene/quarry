@@ -152,7 +152,26 @@ func listEventsAction(c *cli.Context) error {
 		return cli.Exit(fmt.Sprintf("list events: %v", err), 1)
 	}
 	if r.Format() == render.FormatTable {
-		return r.Render(events)
+		return r.Render(eventSummaries(events))
 	}
 	return r.Render(listEventsResponse{Run: run, Events: events})
+}
+
+// eventSummary is one row of `list events --format table`. Records differ in
+// shape (events, artifact commits), so the table shows the fields every
+// record has; json and yaml carry the full records.
+type eventSummary struct {
+	Seq        any `json:"seq"`
+	Type       any `json:"type"`
+	RecordKind any `json:"record_kind"`
+	Ts         any `json:"ts"`
+	EventID    any `json:"event_id"`
+}
+
+func eventSummaries(events []map[string]any) []eventSummary {
+	out := make([]eventSummary, 0, len(events))
+	for _, e := range events {
+		out = append(out, eventSummary{Seq: e["seq"], Type: e["type"], RecordKind: e["record_kind"], Ts: e["ts"], EventID: e["event_id"]})
+	}
+	return out
 }

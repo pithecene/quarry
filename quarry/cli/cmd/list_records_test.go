@@ -138,3 +138,18 @@ func TestListRuns_StubRejectsStorageOnlyState(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestListEvents_TableSummaryRows(t *testing.T) {
+	root := t.TempDir()
+	writeFSRun(t, root, "run-a")
+	out, err := runListCLI(t, "events", "--format", "table", "--no-color", "--storage-backend", "fs", "--storage-path", root,
+		"--source", "demo", "--category", "default", "--day", "2026-10-22", "--run-id", "run-a")
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	for _, want := range []string{"seq", "record_kind", "event_id", "run_complete"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("table output lacks %q:\n%s", want, out)
+		}
+	}
+}

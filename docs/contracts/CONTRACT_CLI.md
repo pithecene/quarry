@@ -669,7 +669,8 @@ RunEvents:
 Artifact chunks and the metrics record are not events and are omitted.
 Item payloads are returned as stored; Quarry does not know a script's
 item schema. The run's partitions are addressed from its start record's
-`partition`. `table` renders `events` only.
+`partition`. `table` renders one summary row per record (`seq`, `type`,
+`record_kind`, `ts`, `event_id`); `json` and `yaml` carry the full records.
 
 A run with no start record is an error (`run not found`).
 
