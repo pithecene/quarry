@@ -7,6 +7,8 @@ import (
 )
 
 func TestParseFormat(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		input   string
@@ -37,6 +39,8 @@ func TestParseFormat(t *testing.T) {
 }
 
 func TestParseFormat_InvalidErrorMessage(t *testing.T) {
+	t.Parallel()
+
 	_, err := ParseFormat("xml")
 	if err == nil {
 		t.Fatal("expected error for invalid format")
@@ -47,6 +51,8 @@ func TestParseFormat_InvalidErrorMessage(t *testing.T) {
 }
 
 func TestRenderer_JSON(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 	r := NewRendererWithWriter(FormatJSON, false, &buf)
 
@@ -62,6 +68,8 @@ func TestRenderer_JSON(t *testing.T) {
 }
 
 func TestRenderer_YAML(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 	r := NewRendererWithWriter(FormatYAML, false, &buf)
 
@@ -77,6 +85,8 @@ func TestRenderer_YAML(t *testing.T) {
 }
 
 func TestRenderer_Table_Struct(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 	r := NewRendererWithWriter(FormatTable, false, &buf)
 
@@ -100,6 +110,8 @@ func TestRenderer_Table_Struct(t *testing.T) {
 }
 
 func TestRenderer_Table_Slice(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 	r := NewRendererWithWriter(FormatTable, false, &buf)
 
@@ -129,6 +141,8 @@ func TestRenderer_Table_Slice(t *testing.T) {
 }
 
 func TestRenderer_Table_EmptySlice(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 	r := NewRendererWithWriter(FormatTable, false, &buf)
 
@@ -144,6 +158,8 @@ func TestRenderer_Table_EmptySlice(t *testing.T) {
 }
 
 func TestRenderer_NoColor_DoesNotAffectJSON(t *testing.T) {
+	t.Parallel()
+
 	// --no-color should not change JSON output
 	var bufColor, bufNoColor bytes.Buffer
 

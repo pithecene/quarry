@@ -5,6 +5,8 @@ import (
 )
 
 func TestRunMeta_Validate(t *testing.T) {
+	t.Parallel()
+
 	parent := "run-parent-001"
 
 	tests := []struct {

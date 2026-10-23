@@ -8,6 +8,8 @@ import (
 )
 
 func TestNoopPolicy_AcceptReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	pol := policy.NewNoopPolicy()
 
 	// Every event type should be accepted without error
@@ -39,6 +41,8 @@ func TestNoopPolicy_AcceptReturnsNil(t *testing.T) {
 }
 
 func TestNoopPolicy_AcceptChunkReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	pol := policy.NewNoopPolicy()
 
 	chunk := &types.ArtifactChunk{
@@ -55,6 +59,8 @@ func TestNoopPolicy_AcceptChunkReturnsNil(t *testing.T) {
 }
 
 func TestNoopPolicy_StatsDefensiveCopy(t *testing.T) {
+	t.Parallel()
+
 	pol := policy.NewNoopPolicy()
 
 	// Ingest an event so stats are non-zero
@@ -84,6 +90,8 @@ func TestNoopPolicy_StatsDefensiveCopy(t *testing.T) {
 }
 
 func TestNoopPolicy_CloseReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	pol := policy.NewNoopPolicy()
 
 	err := pol.Close()
@@ -93,6 +101,8 @@ func TestNoopPolicy_CloseReturnsNil(t *testing.T) {
 }
 
 func TestNoopPolicy_FlushReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	pol := policy.NewNoopPolicy()
 
 	err := pol.Flush(t.Context())
@@ -102,6 +112,8 @@ func TestNoopPolicy_FlushReturnsNil(t *testing.T) {
 }
 
 func TestNoopPolicy_DroppableVsNonDroppableStats(t *testing.T) {
+	t.Parallel()
+
 	pol := policy.NewNoopPolicy()
 
 	// Ingest a non-droppable event
