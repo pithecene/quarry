@@ -12,6 +12,8 @@ import (
 )
 
 func TestLodeClient_WriteEvents(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -57,6 +59,8 @@ func TestLodeClient_WriteEvents(t *testing.T) {
 }
 
 func TestLodeClient_WriteArtifactEvent(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -107,6 +111,8 @@ func TestLodeClient_WriteArtifactEvent(t *testing.T) {
 }
 
 func TestLodeClient_WriteChunks(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -144,6 +150,8 @@ func TestLodeClient_WriteChunks(t *testing.T) {
 }
 
 func TestLodeClient_ChunkOffset(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -182,6 +190,8 @@ func TestLodeClient_ChunkOffset(t *testing.T) {
 }
 
 func TestLodeClient_ChunkOffset_AcrossBatches(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -226,6 +236,8 @@ func TestLodeClient_ChunkOffset_AcrossBatches(t *testing.T) {
 }
 
 func TestLodeClient_CommitRequiresChunks(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -267,6 +279,8 @@ func TestLodeClient_CommitRequiresChunks(t *testing.T) {
 }
 
 func TestLodeClient_CommitSucceedsWithChunks(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -312,6 +326,8 @@ func TestLodeClient_CommitSucceedsWithChunks(t *testing.T) {
 }
 
 func TestLodeClient_OffsetsResetAfterCommit(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -382,6 +398,8 @@ func TestLodeClient_OffsetsResetAfterCommit(t *testing.T) {
 }
 
 func TestLodeClient_CommitRejectsMissingArtifactID(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -426,6 +444,8 @@ func containsError(err, target error) bool {
 }
 
 func TestComputeMD5(t *testing.T) {
+	t.Parallel()
+
 	data := []byte("hello world")
 	got := computeMD5(data)
 	want := "5eb63bbbe01eeed093cb22bb8f5acdc3" // known MD5 of "hello world"
@@ -436,6 +456,8 @@ func TestComputeMD5(t *testing.T) {
 }
 
 func TestToEventRecord(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "my-source",
@@ -478,6 +500,8 @@ func TestToEventRecord(t *testing.T) {
 }
 
 func TestS3Config_Validate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		cfg     S3Config
@@ -516,6 +540,8 @@ func TestS3Config_Validate(t *testing.T) {
 }
 
 func TestParseS3Path(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		path       string
 		wantBucket string
@@ -540,6 +566,8 @@ func TestParseS3Path(t *testing.T) {
 }
 
 func TestLodeClient_WriteMetrics(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -578,6 +606,8 @@ func TestLodeClient_WriteMetrics(t *testing.T) {
 }
 
 func TestToMetricsRecordMap(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "my-source",
@@ -651,6 +681,8 @@ func TestToMetricsRecordMap(t *testing.T) {
 }
 
 func TestNewClient_InitializesMaps(t *testing.T) {
+	t.Parallel()
+
 	// Regression: NewLodeS3Client previously returned &LodeClient{} without
 	// initializing offsets/chunksSeen maps, causing nil-map panic on first
 	// WriteChunks call. All constructors now use newClient() which must
@@ -692,6 +724,8 @@ func TestNewClient_InitializesMaps(t *testing.T) {
 }
 
 func TestToArtifactCommitRecord(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "my-source",
@@ -741,6 +775,8 @@ func TestToArtifactCommitRecord(t *testing.T) {
 // writer advances the dataset pointer, the client's next write conflicts
 // once and retries, and the collector observes exactly one retry.
 func TestLodeClient_RetryObserver_CountsCASRetries(t *testing.T) {
+	t.Parallel()
+
 	mem := lode.NewMemory()
 	factory := func() (lode.Store, error) { return mem, nil }
 
@@ -812,6 +848,8 @@ func TestLodeClient_RetryObserver_CountsCASRetries(t *testing.T) {
 // metrics write still succeeds (only possible via CAS retry), and the
 // collector's retry counter is unchanged.
 func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
+	t.Parallel()
+
 	mem := lode.NewMemory()
 	factory := func() (lode.Store, error) { return mem, nil }
 

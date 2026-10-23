@@ -30,7 +30,7 @@ linters:
     rules:
       # Packages not yet moved to the test convention. Each rollout change
       # removes its packages from this pattern.
-      - path: ^(cli/cmd|cmd|lode|runtime)/
+      - path: ^(cli/cmd|cmd|runtime)/
         linters: [testparallel]
 
 issues:

@@ -15,6 +15,8 @@ import (
 )
 
 func TestValidateRunKey(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name                              string
 		dataset, source, category, runID string
@@ -48,6 +50,8 @@ func TestValidateRunKey(t *testing.T) {
 }
 
 func TestRunRecordDir_EncodesComponents(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{Dataset: "quarry", Source: "a/b", Category: "c d", Day: "2026-10-21", RunID: "run/1"}
 	want := "datasets/quarry/runs/a%2Fb/c%20d/2026-10-21/run%2F1/"
 	if got := RunRecordDir(cfg); got != want {
@@ -58,6 +62,8 @@ func TestRunRecordDir_EncodesComponents(t *testing.T) {
 // The start record's partition must address the partitions Lode actually
 // writes, so readers never re-derive keys.
 func TestPartitionPrefix_MatchesLodeHiveLayout(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{Dataset: "quarry", Source: "a/b", Category: "c d", Day: "2026-10-21", RunID: "run-1"}
 	factory := sharedMemoryFactory()
 	client, err := NewLodeClientWithFactory(cfg, factory)
@@ -89,6 +95,8 @@ func TestPartitionPrefix_MatchesLodeHiveLayout(t *testing.T) {
 }
 
 func TestWriteStartAndEndRecords(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	factory := sharedMemoryFactory()
 	client, err := NewLodeClientWithFactory(cfg, factory)
@@ -139,6 +147,8 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 }
 
 func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	factory := sharedMemoryFactory()
 	client, _ := NewLodeClientWithFactory(cfg, factory)
@@ -155,6 +165,8 @@ func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {
 
 // A run ID that already has a start record is refused: Put is create-only.
 func TestWriteStartRecord_DuplicateRunIDRefused(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	client, _ := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
 	meta := &types.RunMeta{RunID: cfg.RunID, Attempt: 1}
@@ -196,6 +208,8 @@ func readJSON(t *testing.T, store lode.Store, path string, v any) {
 // Programmatic callers that bypass the CLI still cannot write outside the
 // dataset's namespace.
 func TestWriteStartRecord_RejectsUnsafeKey(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{Dataset: "../other", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	client, err := NewLodeClientWithFactory(cfg, sharedMemoryFactory())
 	if err != nil {
@@ -207,6 +221,8 @@ func TestWriteStartRecord_RejectsUnsafeKey(t *testing.T) {
 }
 
 func TestWriteStartRecord_DayChecks(t *testing.T) {
+	t.Parallel()
+
 	meta := &types.RunMeta{RunID: "run-1", Attempt: 1}
 	on := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {

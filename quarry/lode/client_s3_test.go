@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/pithecene/quarry/internal/testutil"
 )
 
 // fakeS3 records the request paths it receives and answers every request
@@ -35,6 +37,7 @@ func (f *fakeS3) requests() []string {
 // The read path must reach the configured S3-compatible endpoint with
 // path-style addressing, exactly like the write path (issue #253).
 func TestNewReadDatasetS3_HonorsEndpointAndPathStyle(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
 	t.Setenv("AWS_ENDPOINT_URL", "")
