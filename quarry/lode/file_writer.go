@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 )
 
 // SidecarFileRef describes a sidecar file written via PutFile.

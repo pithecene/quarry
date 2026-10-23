@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	lodelib "github.com/pithecene-io/lode/lode"
+	lodelib "github.com/pithecene/lode/lode"
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/cli/render"

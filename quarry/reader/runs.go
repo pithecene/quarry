@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"

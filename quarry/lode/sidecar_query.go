@@ -3,7 +3,7 @@ package lode
 import (
 	"context"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 )
 
 // QuerySidecarFiles collects all sidecar file refs from snapshot metadata

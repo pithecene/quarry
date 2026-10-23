@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
