@@ -443,8 +443,11 @@ func TestListRunKeys_DecodesKeysAndSeparatesOthers(t *testing.T) {
 	f := seedRuns(t)
 	// A start record at a key the write path never produces.
 	bad := "datasets/quarry/runs/src/cat/2026-10-21/a b/start.json"
-	if err := f.store.Put(t.Context(), bad, strings.NewReader("{}")); err != nil {
-		t.Fatalf("put: %v", err)
+	notDay := "datasets/quarry/runs/src/cat/not-a-day/r1/start.json"
+	for _, k := range []string{bad, notDay} {
+		if err := f.store.Put(t.Context(), k, strings.NewReader("{}")); err != nil {
+			t.Fatalf("put: %v", err)
+		}
 	}
 	// An end record whose start record is gone.
 	orphan := "datasets/quarry/runs/src/cat/2026-10-21/gone/end.json"
@@ -466,7 +469,7 @@ func TestListRunKeys_DecodesKeysAndSeparatesOthers(t *testing.T) {
 	if fmt.Sprint(keys) != fmt.Sprint(want) {
 		t.Fatalf("keys = %v, want %v", keys, want)
 	}
-	if fmt.Sprint(malformed) != fmt.Sprint([]string{bad}) {
+	if fmt.Sprint(malformed) != fmt.Sprint([]string{bad, notDay}) {
 		t.Fatalf("malformed = %v", malformed)
 	}
 	if fmt.Sprint(got.OrphanEnds) != fmt.Sprint([]string{orphan}) {

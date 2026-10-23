@@ -75,6 +75,8 @@ func (o Options) validate() error {
 		return fmt.Errorf("%w: the sweep grace period must not be negative", ErrInvalidOptions)
 	case o.RunID != "" && (o.Selector.Source == "" || o.Selector.Category == "" || o.Selector.Day == ""):
 		return fmt.Errorf("%w: a run ID requires its source, category, and day", ErrInvalidOptions)
+	case o.Selector.Day != "" && !isDay(o.Selector.Day):
+		return fmt.Errorf("%w: day must be YYYY-MM-DD: %q", ErrInvalidOptions, o.Selector.Day)
 	case o.Now.IsZero():
 		return fmt.Errorf("%w: no current time", ErrInvalidOptions)
 	}
@@ -241,4 +243,9 @@ func recordKeyMatches(dataset string, k reader.Key, run reader.Run) bool {
 	cfg := qlode.Config{Dataset: dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
 	return run.Dataset == dataset && run.Source == k.Source && run.Category == k.Category &&
 		run.Day == k.Day && run.RunID == k.RunID && run.Partition == qlode.PartitionPrefix(cfg)
+}
+
+func isDay(s string) bool {
+	_, err := time.Parse(time.DateOnly, s)
+	return err == nil
 }

@@ -398,15 +398,18 @@ implements it.
 - A run's state is the state that `list runs` reports: `succeeded`,
   `failed`, or `unterminated`. The policy gives each state an age at
   which its runs are removed. A state without an age is kept.
-- A run's age is measured from its end record's `ended_at` when it has
-  one, and otherwise from its start record's `started_at`. A backfilled
-  start record has no `started_at`, so the end of its partition day
-  stands in.
+- A terminated run's age is measured from its end record's `ended_at`.
+  An unterminated run's age is measured from the later of its start
+  record's `started_at` and the instant its most recent snapshot began
+  (read from the snapshot ID), so a run that started long ago and is
+  still writing is not selected. A backfilled start record has no
+  `started_at`, so the end of its partition day stands in.
 - An unterminated run cannot be told apart from a live one, so its age
   must be at least 24 hours and must exceed the longest run. A
   terminated run is final (CONTRACT_RUN.md §Run Finalization), so any age,
   including zero, is safe.
-- A start-record key that the write path could not have produced, and a
+- A start-record key that the write path could not have produced
+  (including a day that is not `YYYY-MM-DD`), and a
   start record whose fields do not describe the key it is stored at, are
   reported and never acted on. A record therefore cannot direct deletion
   at another run.
@@ -457,8 +460,10 @@ data that a manifest describes.
 
 ### Concurrency
 
-A prune can run while runs are written to the dataset. Lode re-checks the
-head before each expiry, so a run that commits during the prune is never
-removed. A run that the policy selects is presumed final; a prune does not
-coordinate with readers of that run.
+A prune can run while runs are written to the dataset. A run that the
+policy selects is presumed final: a terminated run is final by
+CONTRACT_RUN.md §Run Finalization, and an unterminated run has written
+nothing for at least its age. If such a run nevertheless commits during
+the prune and takes the head, step 3 keeps its snapshots and the run's
+records remain. A prune does not coordinate with readers of the run.
 

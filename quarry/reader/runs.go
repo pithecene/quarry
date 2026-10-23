@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pithecene/lode/lode"
 
@@ -373,7 +374,12 @@ func (r *Reader) ListRunKeys(ctx context.Context, sel Selector) (RunKeys, error)
 		case !r.isStartKeyUnder(k, prefix):
 			out.Malformed = append(out.Malformed, k)
 		default:
-			out.Runs = append(out.Runs, decodeKey(strings.Split(strings.TrimPrefix(k, root), "/")))
+			key := decodeKey(strings.Split(strings.TrimPrefix(k, root), "/"))
+			if _, err := time.Parse(time.DateOnly, key.Day); err != nil {
+				out.Malformed = append(out.Malformed, k) // the write path writes only YYYY-MM-DD
+				continue
+			}
+			out.Runs = append(out.Runs, key)
 		}
 	}
 	return out, nil

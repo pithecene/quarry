@@ -15,7 +15,15 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-var now = time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+// Snapshot IDs carry the real time of each write, so the dates are set
+// around today: old runs began 20 days ago, and ages are measured 30 days
+// from now.
+var (
+	today     = time.Now().UTC().Truncate(24 * time.Hour)
+	oldDay    = today.AddDate(0, 0, -20).Format(time.DateOnly)
+	recentDay = today.AddDate(0, 0, -1).Format(time.DateOnly)
+	now       = today.AddDate(0, 0, 30)
+)
 
 // fixture writes runs through the real write path into one memory store.
 type fixture struct {
@@ -128,10 +136,10 @@ func outcomes(r Report) string {
 func seed(t *testing.T) (*fixture, map[string]qlode.Config) {
 	f := newFixture(t)
 	cfgs := map[string]qlode.Config{
-		"failed":       f.write(runSpec{source: "src", runID: "r1", day: "2026-10-01", outcome: types.OutcomeScriptError, lateFile: true}),
-		"unterminated": f.write(runSpec{source: "src", runID: "r2", day: "2026-10-01"}),
-		"succeeded":    f.write(runSpec{source: "src", runID: "r3", day: "2026-10-01", outcome: types.OutcomeSuccess}),
-		"head":         f.write(runSpec{source: "src", runID: "r4", day: "2026-10-21", outcome: types.OutcomeSuccess}),
+		"failed":       f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, lateFile: true}),
+		"unterminated": f.write(runSpec{source: "src", runID: "r2", day: oldDay}),
+		"succeeded":    f.write(runSpec{source: "src", runID: "r3", day: oldDay, outcome: types.OutcomeSuccess}),
+		"head":         f.write(runSpec{source: "src", runID: "r4", day: recentDay, outcome: types.OutcomeSuccess}),
 	}
 	return f, cfgs
 }
@@ -203,19 +211,40 @@ func TestPrune_KeepsTheRunHoldingTheHead(t *testing.T) {
 func TestPrune_AgeThreshold(t *testing.T) {
 	t.Parallel()
 	f, _ := seed(t)
-	// The old runs ended or started on 2026-10-01, 20 days before now.
-	if r := f.prune(Options{Policy: Policy{Failed: days(21), Unterminated: days(21)}, DryRun: true}); len(r.Runs) != 0 {
-		t.Fatalf("runs younger than the threshold were selected: %s", outcomes(r))
+	// The failed run ended 50 days before now, less two hours.
+	if r := f.prune(Options{Policy: Policy{Failed: days(50)}, DryRun: true}); len(r.Runs) != 0 {
+		t.Fatalf("a run younger than the threshold was selected: %s", outcomes(r))
 	}
-	if r := f.prune(Options{Policy: Policy{Failed: days(20), Unterminated: days(20)}, DryRun: true}); len(r.Runs) != 2 {
-		t.Fatalf("runs at the threshold were not selected: %s", outcomes(r))
+	if r := f.prune(Options{Policy: Policy{Failed: days(49)}, DryRun: true}); outcomes(r) != "[r1:pruned]" {
+		t.Fatalf("a run past the threshold was not selected: %s", outcomes(r))
+	}
+	// The unterminated run started 50 days before now but last wrote
+	// within the last 31 days, so its age runs from that write.
+	if r := f.prune(Options{Policy: Policy{Unterminated: days(31)}, DryRun: true}); len(r.Runs) != 0 {
+		t.Fatalf("a run that wrote recently was selected: %s", outcomes(r))
+	}
+	if r := f.prune(Options{Policy: Policy{Unterminated: days(28)}, DryRun: true}); outcomes(r) != "[r2:pruned]" {
+		t.Fatalf("a run idle past the threshold was not selected: %s", outcomes(r))
+	}
+}
+
+func TestPrune_LiveRunThatStartedLongAgoIsNotDue(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	// Measured now, the unterminated run started 20 days ago and wrote today.
+	report, err := Prune(t.Context(), "quarry", f.factory, Options{Policy: Policy{Unterminated: days(7)}, Now: time.Now()})
+	if err != nil || len(report.Runs) != 0 || report.NotDue != 4 {
+		t.Fatalf("report = %+v, err = %v", report, err)
+	}
+	if len(f.keys(cfgs["unterminated"])) == 0 {
+		t.Fatal("live run removed")
 	}
 }
 
 func TestPrune_OneRun(t *testing.T) {
 	t.Parallel()
 	f, cfgs := seed(t)
-	sel := reader.Selector{Source: "src", Category: "cat", Day: "2026-10-01"}
+	sel := reader.Selector{Source: "src", Category: "cat", Day: oldDay}
 	report := f.prune(Options{Selector: sel, RunID: "r3", Policy: Policy{Succeeded: days(0)}})
 	if got, want := outcomes(report), "[r3:pruned]"; got != want {
 		t.Fatalf("runs = %s, want %s", got, want)
@@ -255,8 +284,8 @@ func TestPrune_RecordForAnotherKeyIsKept(t *testing.T) {
 func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	cfg := f.write(runSpec{source: "a/b", runID: "r1", day: "2026-10-01", outcome: types.OutcomeScriptError, lateFile: true})
-	f.write(runSpec{source: "src", runID: "head", day: "2026-10-21", outcome: types.OutcomeSuccess})
+	cfg := f.write(runSpec{source: "a/b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, lateFile: true})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
 
 	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
 	if got, want := outcomes(report), "[r1:pruned]"; got != want {
@@ -280,9 +309,9 @@ func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
 func TestPrune_Sweep(t *testing.T) {
 	t.Parallel()
 	f, _ := seed(t)
-	// Data of a write that never committed, begun on 2026-10-01.
-	began := time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC).UnixNano()
-	orphan := fmt.Sprintf("datasets/quarry/partitions/source=src/category=cat/day=2026-10-01/run_id=rx/event_type=item/segments/%d-0123456789abcdef/data/data", began)
+	// Data of a write that never committed, begun 20 days ago.
+	began := today.AddDate(0, 0, -20).Add(time.Hour).UnixNano()
+	orphan := fmt.Sprintf("datasets/quarry/partitions/source=src/category=cat/day=%s/run_id=rx/event_type=item/segments/%d-0123456789abcdef/data/data", oldDay, began)
 	if err := f.store.Put(t.Context(), orphan, strings.NewReader("{}\n")); err != nil {
 		t.Fatalf("put: %v", err)
 	}
@@ -304,7 +333,7 @@ func TestPrune_RejectsUnsafeOptions(t *testing.T) {
 		"unterminated too new": {Now: now, Policy: Policy{Unterminated: days(0)}},
 		"negative grace":       {Now: now, Policy: Policy{Failed: days(1)}, SweepGrace: -time.Second},
 		"run without day":      {Now: now, Policy: Policy{Failed: days(1)}, RunID: "r1"},
-		"run with day only":    {Now: now, Policy: Policy{Failed: days(1)}, RunID: "r1", Selector: reader.Selector{Day: "2026-10-01"}},
+		"run with day only":    {Now: now, Policy: Policy{Failed: days(1)}, RunID: "r1", Selector: reader.Selector{Day: oldDay}},
 		"no time":              {Policy: Policy{Failed: days(1)}},
 	}
 	for name, opts := range cases {
@@ -321,10 +350,10 @@ func TestPrune_RejectsUnsafeOptions(t *testing.T) {
 func TestPrune_SidecarListingStaysInsideTheRun(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.write(runSpec{source: "src", runID: "r", day: "2026-10-01", outcome: types.OutcomeScriptError})
+	f.write(runSpec{source: "src", runID: "r", day: oldDay, outcome: types.OutcomeScriptError})
 	// A run whose ID continues r's sidecar prefix.
-	nested := f.write(runSpec{source: "src", runID: "r/files/x", day: "2026-10-01", outcome: types.OutcomeSuccess, lateFile: true})
-	f.write(runSpec{source: "src", runID: "head", day: "2026-10-21", outcome: types.OutcomeSuccess})
+	nested := f.write(runSpec{source: "src", runID: "r/files/x", day: oldDay, outcome: types.OutcomeSuccess, lateFile: true})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
 	before := f.keys(nested)
 
 	if r := f.prune(Options{Policy: Policy{Failed: days(7)}}); r.RunsPruned != 1 || r.SidecarObjects != 2 {

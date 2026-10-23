@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pithecene/lode/lode"
@@ -14,11 +16,12 @@ import (
 
 // Reasons a run the policy selected is kept.
 const (
-	keptMismatch = "start record does not describe its key"
-	keptNoSince  = "no recorded time to measure its age from"
-	keptHead     = "holds the dataset head; a later prune removes it once another run commits"
-	keptMixed    = "has snapshots with files outside its partition"
-	keptPending  = "the dataset head is uncommitted or absent; rerun the prune"
+	keptMismatch  = "start record does not describe its key"
+	keptNoSince   = "no recorded time to measure its age from"
+	keptHead      = "holds the dataset head; a later prune removes it once another run commits"
+	keptMixed     = "has snapshots with files outside its partition"
+	keptPending   = "the dataset head is uncommitted or absent; rerun the prune"
+	keptNoInstant = "a snapshot ID carries no write instant"
 )
 
 // pruner removes one run at a time from one dataset.
@@ -108,17 +111,29 @@ func (p *pruner) prune(ctx context.Context, k reader.Key) (out Run, due bool, er
 		out.Kept = keptMismatch
 		return out, true, nil
 	}
-	return p.remove(ctx, k, out)
+	return p.remove(ctx, k, out, *threshold)
 }
 
 // remove deletes a selected run: a dry-run expiry first, so a run that
 // holds the head loses nothing; then its sidecar files, its snapshots, and
 // its records, in the order a rerun resumes.
-func (p *pruner) remove(ctx context.Context, k reader.Key, out Run) (Run, bool, error) {
+func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold time.Duration) (Run, bool, error) {
 	preview, kept, err := p.expire(ctx, out.Partition, true)
 	if kept != "" || err != nil {
 		out.Kept = kept
 		return out, true, err
+	}
+	// An unterminated run may be live although it started long ago, so its
+	// age runs from its last write when that is later than its start.
+	if out.State == reader.StateUnterminated {
+		last, ok := lastWrite(preview.Expired)
+		if !ok {
+			out.Kept = keptNoInstant
+			return out, true, nil
+		}
+		if p.opts.Now.Sub(last) < threshold {
+			return out, false, nil
+		}
 	}
 	cfg := qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
 	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition)
@@ -179,4 +194,23 @@ func (p *pruner) deleteAll(ctx context.Context, paths []string) error {
 		}
 	}
 	return nil
+}
+
+// lastWrite is the latest instant at which one of the snapshots began its
+// write, read from the generated snapshot ID form "<unix nanoseconds>-<nonce>"
+// (Lode CONTRACT_CORE §Snapshot ID). It is false if any ID lacks an instant.
+// A run with no snapshot has written nothing, so its start alone dates it.
+func lastWrite(ids []lode.DatasetSnapshotID) (time.Time, bool) {
+	var last time.Time
+	for _, id := range ids {
+		ns, _, found := strings.Cut(string(id), "-")
+		n, err := strconv.ParseInt(ns, 10, 64)
+		if !found || err != nil {
+			return time.Time{}, false
+		}
+		if t := time.Unix(0, n); t.After(last) {
+			last = t
+		}
+	}
+	return last, true
 }
