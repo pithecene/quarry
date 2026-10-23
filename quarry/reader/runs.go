@@ -330,35 +330,53 @@ type Key struct {
 	RunID    string
 }
 
-// ListRunKeys returns the keys of the runs under the selector's key prefix,
-// in key order, without reading any record. Start-record keys that the write
-// path could not have produced are returned separately as malformed, so a
-// caller never addresses a run through a key it cannot reproduce.
-func (r *Reader) ListRunKeys(ctx context.Context, sel Selector) (keys []Key, malformed []string, err error) {
+// RunKeys is a listing of run keys under a selector.
+type RunKeys struct {
+	// Runs are the keys of runs with a start record, in key order.
+	Runs []Key
+	// Malformed are start-record keys the write path could not have
+	// produced, so no caller addresses a run through them.
+	Malformed []string
+	// OrphanEnds are end-record keys without a start record beside them.
+	// Readers ignore such records (CONTRACT_RUN.md §Reading Run Records).
+	OrphanEnds []string
+}
+
+// ListRunKeys lists the run-record keys under the selector's key prefix,
+// in key order, without reading any record.
+func (r *Reader) ListRunKeys(ctx context.Context, sel Selector) (RunKeys, error) {
+	var out RunKeys
 	prefix, err := r.prefix(sel)
 	if err != nil {
-		return nil, nil, err
+		return out, err
 	}
 	listed, err := r.store.List(ctx, prefix)
 	if errors.Is(err, lode.ErrNotFound) {
-		return nil, nil, nil
+		return out, nil
 	}
 	if err != nil {
-		return nil, nil, qlode.WrapReadError(err, prefix)
+		return out, qlode.WrapReadError(err, prefix)
 	}
 	sort.Strings(listed)
+	present := make(map[string]bool, len(listed))
+	for _, k := range listed {
+		present[k] = true
+	}
 	root := qlode.RunRecordPrefix(r.dataset)
 	for _, k := range listed {
-		if !strings.HasSuffix(k, "/"+qlode.StartRecordName) {
-			continue
+		switch {
+		case strings.HasSuffix(k, "/"+qlode.EndRecordName):
+			if !present[strings.TrimSuffix(k, qlode.EndRecordName)+qlode.StartRecordName] {
+				out.OrphanEnds = append(out.OrphanEnds, k)
+			}
+		case !strings.HasSuffix(k, "/"+qlode.StartRecordName):
+		case !r.isStartKeyUnder(k, prefix):
+			out.Malformed = append(out.Malformed, k)
+		default:
+			out.Runs = append(out.Runs, decodeKey(strings.Split(strings.TrimPrefix(k, root), "/")))
 		}
-		if !r.isStartKeyUnder(k, prefix) {
-			malformed = append(malformed, k)
-			continue
-		}
-		keys = append(keys, decodeKey(strings.Split(strings.TrimPrefix(k, root), "/")))
 	}
-	return keys, malformed, nil
+	return out, nil
 }
 
 // decodeKey decodes the four components of a start-record key that

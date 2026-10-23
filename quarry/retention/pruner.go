@@ -32,9 +32,8 @@ type pruner struct {
 }
 
 func newPruner(dataset string, factory lode.StoreFactory, opts Options) (*pruner, error) {
-	runs, err := reader.New(dataset, factory)
-	if err != nil {
-		return nil, err
+	if factory == nil {
+		return nil, errors.New("prune: nil store factory")
 	}
 	store, err := factory()
 	if err != nil {
@@ -43,8 +42,13 @@ func newPruner(dataset string, factory lode.StoreFactory, opts Options) (*pruner
 	if store == nil {
 		return nil, errors.New("prune: store factory returned a nil store")
 	}
-	// The dataset and reader share the store, so every call sees one view.
+	// Every component uses this one store: a factory may return a separate
+	// store per call, and the records read must be the ones deleted.
 	shared := func() (lode.Store, error) { return store, nil }
+	runs, err := reader.New(dataset, shared)
+	if err != nil {
+		return nil, err
+	}
 	ds, err := qlode.NewReadDataset(dataset, shared)
 	if err != nil {
 		return nil, qlode.WrapInitError(err, dataset)
@@ -56,13 +60,26 @@ func newPruner(dataset string, factory lode.StoreFactory, opts Options) (*pruner
 	return &pruner{dataset: dataset, opts: opts, runs: runs, store: store, ds: ds, dr: dr}, nil
 }
 
-// keys lists the runs to consider, or names the one run Options selects.
-func (p *pruner) keys(ctx context.Context) ([]reader.Key, []string, error) {
+// keys lists the runs to consider, or names the one run Options selects,
+// with the orphaned end records under the same selectors.
+func (p *pruner) keys(ctx context.Context) (reader.RunKeys, error) {
 	sel := p.opts.Selector
 	if p.opts.RunID == "" {
 		return p.runs.ListRunKeys(ctx, sel)
 	}
-	return []reader.Key{{Source: sel.Source, Category: sel.Category, Day: sel.Day, RunID: p.opts.RunID}}, nil, nil
+	key := reader.Key{Source: sel.Source, Category: sel.Category, Day: sel.Day, RunID: p.opts.RunID}
+	dir := qlode.RunRecordPrefix(p.dataset, key.Source, key.Category, key.Day, key.RunID)
+	listed, err := p.runs.ListRunKeys(ctx, sel)
+	if err != nil {
+		return reader.RunKeys{}, err
+	}
+	out := reader.RunKeys{Runs: []reader.Key{key}}
+	for _, k := range listed.OrphanEnds {
+		if k == dir+qlode.EndRecordName {
+			out.OrphanEnds = append(out.OrphanEnds, k)
+		}
+	}
+	return out, nil
 }
 
 // prune removes the run at k if the policy selects it. due reports whether

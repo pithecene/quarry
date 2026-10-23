@@ -422,16 +422,23 @@ implements it.
 2. Delete the run's sidecar files and their `.meta.json` companions
    (§Sidecar File Inventory): every path that the run's snapshots record,
    and, when Hive encoding leaves the run's source, category, day, and
-   run ID unchanged, every object listed under its sidecar prefix. Without
-   that condition, the unencoded prefix could also be a prefix of another
-   run's files, so it is not listed, and a file written after the run's
-   last commit remains. A recorded path outside the run's sidecar prefix
+   run ID unchanged, every direct child of its sidecar prefix. A deeper
+   path can belong to a run whose ID continues the prefix, such as
+   `r/files/x` beneath run `r`, so it is never listed. Without that
+   condition, a direct child could also belong to another run, so the
+   prefix is not listed, and a file written after the run's last commit
+   remains. A recorded path outside the run's sidecar prefix
    is reported and left in place.
 3. Expire the run's snapshots with `Dataset.Expire` on the partition
    prefix.
 4. Delete the start record, and then the end record. A run without a
    start record is never listed, and an end record without one is
    ignored by readers.
+
+An end record without a start record names no run: an earlier prune
+stopped between the two deletions, or the run's start record was never
+persisted. Every prune deletes such end records under its selectors, and
+the report counts them.
 
 Each step is idempotent, and a run is listed until step 4. A prune that is
 interrupted, or that fails with a store error, is therefore completed by

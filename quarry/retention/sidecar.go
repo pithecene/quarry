@@ -38,15 +38,19 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 		set[path], set[path+metaSuffix] = true, true
 	}
 	// A file written after the run's last commit is recorded nowhere, so the
-	// prefix is listed too, but only when it cannot also be a prefix of
-	// another run's files: sidecar paths are built from unencoded values.
+	// prefix is listed too, but only when its direct children can belong to
+	// no other run: sidecar paths are built from unencoded values.
 	if unambiguous(cfg) {
 		listed, err := p.store.List(ctx, prefix)
 		if err != nil && !errors.Is(err, lode.ErrNotFound) {
 			return nil, nil, qlode.WrapReadError(err, prefix)
 		}
+		// Only direct children: a deeper path belongs to a run whose ID
+		// continues this prefix, such as "r/files/x" beneath run "r".
 		for _, path := range listed {
-			set[path] = true
+			if !strings.Contains(strings.TrimPrefix(path, prefix), "/") {
+				set[path] = true
+			}
 		}
 	}
 	for path := range set {
@@ -57,8 +61,10 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 }
 
 // unambiguous reports whether Hive encoding leaves every component of the
-// run's key unchanged. An encoded value contains no "/", so the sidecar
-// prefix then names this run's directory and nothing beneath another run's.
+// run's key unchanged. An encoded value contains no "/", so a direct child
+// of the sidecar prefix then has exactly as many path segments as this
+// run's sidecar paths, which another run's paths match only if all of its
+// components are the same.
 func unambiguous(cfg qlode.Config) bool {
 	for _, v := range []string{cfg.Source, cfg.Category, cfg.Day, cfg.RunID} {
 		if url.PathEscape(v) != v {

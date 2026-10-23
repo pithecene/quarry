@@ -73,7 +73,7 @@ func (o Options) validate() error {
 		return fmt.Errorf("%w: the unterminated age must be at least %s", ErrInvalidOptions, MinUnterminatedAge)
 	case o.SweepGrace < 0:
 		return fmt.Errorf("%w: the sweep grace period must not be negative", ErrInvalidOptions)
-	case o.RunID != "" && o.Selector.Day == "":
+	case o.RunID != "" && (o.Selector.Source == "" || o.Selector.Category == "" || o.Selector.Day == ""):
 		return fmt.Errorf("%w: a run ID requires its source, category, and day", ErrInvalidOptions)
 	case o.Now.IsZero():
 		return fmt.Errorf("%w: no current time", ErrInvalidOptions)
@@ -132,6 +132,9 @@ type Report struct {
 	Bytes          int64  `json:"bytes" yaml:"bytes"`
 	SidecarObjects int    `json:"sidecar_objects" yaml:"sidecar_objects"`
 	Runs           []Run  `json:"runs" yaml:"runs"`
+	// OrphanEndRecords counts end records without a start record that the
+	// prune deleted (in a dry run, would delete).
+	OrphanEndRecords int `json:"orphan_end_records" yaml:"orphan_end_records"`
 	// Unparseable lists start-record keys the write path could not have
 	// produced. Such runs are not addressed.
 	Unparseable []string     `json:"unparseable,omitempty" yaml:"unparseable,omitempty"`
@@ -165,12 +168,12 @@ func Prune(ctx context.Context, dataset string, factory lode.StoreFactory, opts 
 	if err != nil {
 		return report, err
 	}
-	keys, malformed, err := p.keys(ctx)
+	keys, err := p.keys(ctx)
 	if err != nil {
 		return report, err
 	}
-	report.Unparseable = malformed
-	for _, k := range keys {
+	report.Unparseable = keys.Malformed
+	for _, k := range keys.Runs {
 		run, due, err := p.prune(ctx, k)
 		switch {
 		case errors.Is(err, reader.ErrRunNotFound):
@@ -188,6 +191,14 @@ func Prune(ctx context.Context, dataset string, factory lode.StoreFactory, opts 
 			return report, err
 		}
 	}
+	// An end record whose start record is gone names no run: an earlier
+	// prune stopped between deleting the two, or the run never started.
+	if !opts.DryRun {
+		if err := p.deleteAll(ctx, keys.OrphanEnds); err != nil {
+			return report, err
+		}
+	}
+	report.OrphanEndRecords = len(keys.OrphanEnds)
 	if opts.SweepGrace > 0 {
 		sweep, err := p.ds.Sweep(ctx, lode.SweepRequest{Grace: opts.SweepGrace, DryRun: opts.DryRun})
 		report.Sweep = sweepSummary(sweep)

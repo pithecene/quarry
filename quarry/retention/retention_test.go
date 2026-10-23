@@ -304,6 +304,7 @@ func TestPrune_RejectsUnsafeOptions(t *testing.T) {
 		"unterminated too new": {Now: now, Policy: Policy{Unterminated: days(0)}},
 		"negative grace":       {Now: now, Policy: Policy{Failed: days(1)}, SweepGrace: -time.Second},
 		"run without day":      {Now: now, Policy: Policy{Failed: days(1)}, RunID: "r1"},
+		"run with day only":    {Now: now, Policy: Policy{Failed: days(1)}, RunID: "r1", Selector: reader.Selector{Day: "2026-10-01"}},
 		"no time":              {Policy: Policy{Failed: days(1)}},
 	}
 	for name, opts := range cases {
@@ -314,5 +315,61 @@ func TestPrune_RejectsUnsafeOptions(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidOptions", err)
 			}
 		})
+	}
+}
+
+func TestPrune_SidecarListingStaysInsideTheRun(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.write(runSpec{source: "src", runID: "r", day: "2026-10-01", outcome: types.OutcomeScriptError})
+	// A run whose ID continues r's sidecar prefix.
+	nested := f.write(runSpec{source: "src", runID: "r/files/x", day: "2026-10-01", outcome: types.OutcomeSuccess, lateFile: true})
+	f.write(runSpec{source: "src", runID: "head", day: "2026-10-21", outcome: types.OutcomeSuccess})
+	before := f.keys(nested)
+
+	if r := f.prune(Options{Policy: Policy{Failed: days(7)}}); r.RunsPruned != 1 || r.SidecarObjects != 2 {
+		t.Fatalf("report = %+v", r)
+	}
+	all, err := f.store.List(t.Context(), qlode.SidecarFilesPrefix(nested))
+	if err != nil || len(all) != 4 {
+		t.Fatalf("nested run's sidecars = %v, %v; keys before %v", all, err, before)
+	}
+}
+
+func TestPrune_DeletesOrphanedEndRecords(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	start := qlode.RunRecordDir(cfgs["failed"]) + qlode.StartRecordName
+	if err := f.store.Delete(t.Context(), start); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if r := f.prune(Options{Policy: Policy{Failed: days(7)}, DryRun: true}); r.OrphanEndRecords != 1 {
+		t.Fatalf("dry run = %+v", r)
+	}
+	if r := f.prune(Options{Policy: Policy{Failed: days(7)}}); r.OrphanEndRecords != 1 {
+		t.Fatalf("prune = %+v", r)
+	}
+	end := qlode.RunRecordDir(cfgs["failed"]) + qlode.EndRecordName
+	if _, err := f.store.Get(t.Context(), end); !errors.Is(err, lode.ErrNotFound) {
+		t.Fatalf("end record remains: %v", err)
+	}
+}
+
+func TestPrune_UsesOneStore(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	calls := 0
+	factory := func() (lode.Store, error) {
+		calls++
+		if calls > 1 {
+			return lode.NewMemory(), nil // a separate, empty store per call
+		}
+		return f.store, nil
+	}
+	if _, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now}); err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if left := f.keys(cfgs["failed"]); len(left) != 0 {
+		t.Fatalf("run left in the listed store: %v", left)
 	}
 }

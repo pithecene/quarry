@@ -438,7 +438,7 @@ func TestEndState(t *testing.T) {
 	}
 }
 
-func TestListRunKeys_DecodesKeysAndSeparatesMalformed(t *testing.T) {
+func TestListRunKeys_DecodesKeysAndSeparatesOthers(t *testing.T) {
 	t.Parallel()
 	f := seedRuns(t)
 	// A start record at a key the write path never produces.
@@ -446,7 +446,13 @@ func TestListRunKeys_DecodesKeysAndSeparatesMalformed(t *testing.T) {
 	if err := f.store.Put(t.Context(), bad, strings.NewReader("{}")); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	keys, malformed, err := f.reader().ListRunKeys(t.Context(), Selector{})
+	// An end record whose start record is gone.
+	orphan := "datasets/quarry/runs/src/cat/2026-10-21/gone/end.json"
+	if err := f.store.Put(t.Context(), orphan, strings.NewReader("{}")); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	got, err := f.reader().ListRunKeys(t.Context(), Selector{})
+	keys, malformed := got.Runs, got.Malformed
 	if err != nil {
 		t.Fatalf("ListRunKeys: %v", err)
 	}
@@ -462,5 +468,8 @@ func TestListRunKeys_DecodesKeysAndSeparatesMalformed(t *testing.T) {
 	}
 	if fmt.Sprint(malformed) != fmt.Sprint([]string{bad}) {
 		t.Fatalf("malformed = %v", malformed)
+	}
+	if fmt.Sprint(got.OrphanEnds) != fmt.Sprint([]string{orphan}) {
+		t.Fatalf("orphan ends = %v", got.OrphanEnds)
 	}
 }
