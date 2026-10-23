@@ -8,8 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/pithecene-io/lode/lode"
-	lodes3 "github.com/pithecene-io/lode/lode/s3"
+	"github.com/pithecene/lode/lode"
+	lodes3 "github.com/pithecene/lode/lode/s3"
 )
 
 // S3Config holds configuration for S3 storage backend.

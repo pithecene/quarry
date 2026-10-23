@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 
 	qlode "github.com/pithecene/quarry/lode"
 )

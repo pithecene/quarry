@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	lodelibrary "github.com/pithecene-io/lode/lode"
+	lodelibrary "github.com/pithecene/lode/lode"
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/cli/reader"

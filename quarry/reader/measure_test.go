@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/types"
 )

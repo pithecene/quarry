@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	lodepkg "github.com/pithecene-io/lode/lode"
+	lodepkg "github.com/pithecene/lode/lode"
 	"github.com/vmihailenco/msgpack/v5"
 
 	"github.com/pithecene/quarry/lode"

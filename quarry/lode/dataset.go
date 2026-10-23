@@ -3,7 +3,7 @@ package lode
 import (
 	"strings"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 )
 
 // NewReadDataset creates a Lode Dataset for reading.

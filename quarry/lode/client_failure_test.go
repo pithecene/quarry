@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pithecene-io/lode/lode"
+	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
@@ -46,7 +46,7 @@ func (s *FailingStore) Get(_ context.Context, _ string) (io.ReadCloser, error) {
 	// FailingStore never stores data; return not-found so callers
 	// (e.g. Lode's readLatestPointer) handle the absence gracefully
 	// instead of receiving a nil reader with a nil error.
-	return nil, os.ErrNotExist
+	return nil, lode.ErrNotFound
 }
 
 func (s *FailingStore) Exists(_ context.Context, _ string) (bool, error) {
@@ -67,6 +67,21 @@ func (s *FailingStore) ReadRange(_ context.Context, _ string, _, _ int64) ([]byt
 
 func (s *FailingStore) ReaderAt(_ context.Context, _ string) (io.ReaderAt, error) {
 	return nil, errors.New("not implemented")
+}
+
+// CompareAndSwap is a write: it records the path like Put and returns PutErr,
+// so an injected write failure also fails the commit's latest-pointer swap.
+// FailingStore never stores data, so only an empty expected value matches.
+func (s *FailingStore) CompareAndSwap(_ context.Context, path, expected, _ string) error {
+	s.PutCalls++
+	s.PutPaths = append(s.PutPaths, path)
+	if s.PutErr != nil {
+		return s.PutErr
+	}
+	if expected != "" {
+		return lode.ErrSnapshotConflict
+	}
+	return nil
 }
 
 var _ lode.Store = (*FailingStore)(nil)
