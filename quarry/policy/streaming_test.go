@@ -23,6 +23,8 @@ func mustNewStreamingPolicy(t *testing.T, sink policy.Sink, config policy.Stream
 }
 
 func TestStreamingPolicy_InvalidConfig_BothZero(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	_, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{
 		FlushCount:    0,
@@ -34,6 +36,8 @@ func TestStreamingPolicy_InvalidConfig_BothZero(t *testing.T) {
 }
 
 func TestStreamingPolicy_ValidConfig_OnlyCount(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{FlushCount: 5})
 	if err != nil {
@@ -43,6 +47,8 @@ func TestStreamingPolicy_ValidConfig_OnlyCount(t *testing.T) {
 }
 
 func TestStreamingPolicy_ValidConfig_OnlyInterval(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{FlushInterval: time.Second})
 	if err != nil {
@@ -52,6 +58,8 @@ func TestStreamingPolicy_ValidConfig_OnlyInterval(t *testing.T) {
 }
 
 func TestStreamingPolicy_ValidConfig_Both(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{
 		FlushCount:    10,
@@ -64,6 +72,8 @@ func TestStreamingPolicy_ValidConfig_Both(t *testing.T) {
 }
 
 func TestStreamingPolicy_CountTrigger_FlushesAtThreshold(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 3})
 
@@ -97,6 +107,8 @@ func TestStreamingPolicy_CountTrigger_FlushesAtThreshold(t *testing.T) {
 }
 
 func TestStreamingPolicy_NoDrops_AllEventTypes(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -135,6 +147,8 @@ func TestStreamingPolicy_NoDrops_AllEventTypes(t *testing.T) {
 }
 
 func TestStreamingPolicy_OrderingPreserved(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -162,6 +176,8 @@ func TestStreamingPolicy_OrderingPreserved(t *testing.T) {
 }
 
 func TestStreamingPolicy_ArtifactChunks_Buffered(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -200,6 +216,8 @@ func TestStreamingPolicy_ArtifactChunks_Buffered(t *testing.T) {
 }
 
 func TestStreamingPolicy_ChunksFirstOrdering(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -228,6 +246,8 @@ func TestStreamingPolicy_ChunksFirstOrdering(t *testing.T) {
 }
 
 func TestStreamingPolicy_FlushFailure_PreservesBuffers(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -269,6 +289,8 @@ func TestStreamingPolicy_FlushFailure_PreservesBuffers(t *testing.T) {
 }
 
 func TestStreamingPolicy_ChunkWriteFailure_PreservesBothBuffers(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -314,6 +336,8 @@ func TestStreamingPolicy_ChunkWriteFailure_PreservesBothBuffers(t *testing.T) {
 }
 
 func TestStreamingPolicy_EventWriteFailure_ChunksAlreadySucceeded(t *testing.T) {
+	t.Parallel()
+
 	// Use a selective fail sink to fail only on events
 	baseSink := policy.NewStubSink()
 	failingSink := &streamingSelectiveFailSink{
@@ -363,6 +387,8 @@ func TestStreamingPolicy_EventWriteFailure_ChunksAlreadySucceeded(t *testing.T) 
 }
 
 func TestStreamingPolicy_EmptyFlush_NoWriteCalls(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 10})
 
@@ -381,6 +407,8 @@ func TestStreamingPolicy_EmptyFlush_NoWriteCalls(t *testing.T) {
 }
 
 func TestStreamingPolicy_BufferSize_TracksCorrectly(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -417,6 +445,8 @@ func TestStreamingPolicy_BufferSize_TracksCorrectly(t *testing.T) {
 }
 
 func TestStreamingPolicy_Stats_CountersAccurate(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -467,6 +497,8 @@ func TestStreamingPolicy_Stats_CountersAccurate(t *testing.T) {
 }
 
 func TestStreamingPolicy_FlushTriggerStats(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 2})
 
@@ -491,6 +523,8 @@ func TestStreamingPolicy_FlushTriggerStats(t *testing.T) {
 }
 
 func TestStreamingPolicy_IntervalTrigger(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{
 		FlushInterval: 50 * time.Millisecond,
@@ -516,6 +550,8 @@ func TestStreamingPolicy_IntervalTrigger(t *testing.T) {
 }
 
 func TestStreamingPolicy_IntervalSkipsEmptyBuffer(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	_ = mustNewStreamingPolicy(t, sink, policy.StreamingConfig{
 		FlushInterval: 50 * time.Millisecond,
@@ -531,6 +567,8 @@ func TestStreamingPolicy_IntervalSkipsEmptyBuffer(t *testing.T) {
 }
 
 func TestStreamingPolicy_Close_FlushesAndStops(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{
 		FlushCount:    100,
@@ -559,6 +597,8 @@ func TestStreamingPolicy_Close_FlushesAndStops(t *testing.T) {
 }
 
 func TestStreamingPolicy_Close_Idempotent(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{FlushCount: 10})
 	if err != nil {
@@ -575,6 +615,8 @@ func TestStreamingPolicy_Close_Idempotent(t *testing.T) {
 }
 
 func TestStreamingPolicy_CountTrigger_MultipleCycles(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 2})
 
@@ -599,6 +641,8 @@ func TestStreamingPolicy_CountTrigger_MultipleCycles(t *testing.T) {
 }
 
 func TestStreamingPolicy_MixedEventsAndChunks_CountTrigger(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 2})
 
@@ -640,6 +684,8 @@ func TestStreamingPolicy_MixedEventsAndChunks_CountTrigger(t *testing.T) {
 }
 
 func TestStreamingPolicy_FlushFailure_NewEventsPreservedWithOld(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
@@ -699,6 +745,8 @@ func (s *streamingSelectiveFailSink) WriteChunks(ctx context.Context, chunks []*
 }
 
 func TestStreamingPolicy_Backpressure_BlocksWhenFull(t *testing.T) {
+	t.Parallel()
+
 	// Use a slow sink so flush takes time, allowing buffer to fill
 	baseSink := policy.NewStubSink()
 	slowSink := &streamingSlowSink{
@@ -756,6 +804,8 @@ func TestStreamingPolicy_Backpressure_BlocksWhenFull(t *testing.T) {
 }
 
 func TestStreamingPolicy_Stats_FlushTriggers_InStats(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 2})
 
@@ -783,6 +833,8 @@ func TestStreamingPolicy_Stats_FlushTriggers_InStats(t *testing.T) {
 }
 
 func TestStreamingPolicy_Stats_FlushTriggers_NilForOtherPolicies(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 
@@ -793,6 +845,8 @@ func TestStreamingPolicy_Stats_FlushTriggers_NilForOtherPolicies(t *testing.T) {
 }
 
 func TestStreamingPolicy_ChunkOnlyCountMode_NoDeadlock(t *testing.T) {
+	t.Parallel()
+
 	// Regression test: in count-only mode (no FlushInterval), chunks alone
 	// would fill the buffer and block forever since only events contribute
 	// to the count threshold. After the fix, IngestArtifactChunk triggers
@@ -857,6 +911,8 @@ func TestStreamingPolicy_ChunkOnlyCountMode_NoDeadlock(t *testing.T) {
 }
 
 func TestStreamingPolicy_EventOnlyCapacity_NoDeadlock(t *testing.T) {
+	t.Parallel()
+
 	// Regression test: when flush_count is set above streamingMaxBufferEvents
 	// and no interval is configured, events fill the buffer and block forever.
 	// After the fix, IngestEvent triggers a capacity flush when the buffer is full.
@@ -916,6 +972,8 @@ func TestStreamingPolicy_EventOnlyCapacity_NoDeadlock(t *testing.T) {
 }
 
 func TestStreamingPolicy_OversizedEntry_AcceptedWhenBufferEmpty(t *testing.T) {
+	t.Parallel()
+
 	// A single entry larger than streamingMaxBufferBytes should be accepted
 	// when the buffer is empty (not deadlock), and flushed normally.
 	sink := policy.NewStubSink()

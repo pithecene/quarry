@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/pithecene/quarry/internal/testutil"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -65,6 +66,8 @@ func newTestSnapshot() metrics.Snapshot {
 }
 
 func TestBuildRunReport_Success(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	snap := newTestSnapshot()
 
@@ -112,6 +115,8 @@ func TestBuildRunReport_Success(t *testing.T) {
 }
 
 func TestBuildRunReport_ScriptError(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	errType := "TypeError"
 	stack := "Error: oops\n  at script.ts:10"
@@ -138,6 +143,8 @@ func TestBuildRunReport_ScriptError(t *testing.T) {
 }
 
 func TestBuildRunReport_NoJobID(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	result.RunMeta.JobID = nil
 
@@ -163,6 +170,8 @@ func TestBuildRunReport_NoJobID(t *testing.T) {
 }
 
 func TestBuildRunReport_ProxyUsed(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	username := "user1"
 	result.ProxyUsed = &types.ProxyEndpointRedacted{
@@ -187,6 +196,8 @@ func TestBuildRunReport_ProxyUsed(t *testing.T) {
 }
 
 func TestWriteRunReport_File(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	snap := newTestSnapshot()
 	report := BuildRunReport(result, snap, "strict", 0)
@@ -217,6 +228,8 @@ func TestWriteRunReport_File(t *testing.T) {
 }
 
 func TestWriteRunReport_EmptyPath(t *testing.T) {
+	t.Parallel()
+
 	report := &RunReport{}
 	err := WriteRunReport(report, "")
 	if err == nil {
@@ -225,6 +238,8 @@ func TestWriteRunReport_EmptyPath(t *testing.T) {
 }
 
 func TestWriteRunReportTo_Writer(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	snap := newTestSnapshot()
 	report := BuildRunReport(result, snap, "strict", 0)
@@ -245,6 +260,8 @@ func TestWriteRunReportTo_Writer(t *testing.T) {
 }
 
 func TestRunReport_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	result := newTestRunResult()
 	snap := newTestSnapshot()
 	report := BuildRunReport(result, snap, "streaming", 0)
@@ -296,6 +313,8 @@ func TestRunReport_JSONRoundTrip(t *testing.T) {
 }
 
 func TestBuildRunReport_EmptyTerminalPayload(t *testing.T) {
+	t.Parallel()
+
 	// A terminal event with an empty payload ({}) must produce
 	// "terminal_summary": {} in JSON, not omit the field.
 	result := newTestRunResult()
@@ -332,6 +351,8 @@ func TestBuildRunReport_EmptyTerminalPayload(t *testing.T) {
 }
 
 func TestBuildRunReport_NoTerminalEvent(t *testing.T) {
+	t.Parallel()
+
 	// When no terminal event was received, terminal_summary must be omitted.
 	result := newTestRunResult()
 	result.TerminalSummary = nil
@@ -359,6 +380,7 @@ func TestBuildRunReport_NoTerminalEvent(t *testing.T) {
 }
 
 func TestWriteRunReport_Stderr(t *testing.T) {
+	testutil.Serial(t, "swaps the process-wide os.Stderr")
 	// Verify the "--report -" code path writes to stderr without error.
 	// Redirect os.Stderr to a pipe so we can capture and verify output.
 	origStderr := os.Stderr

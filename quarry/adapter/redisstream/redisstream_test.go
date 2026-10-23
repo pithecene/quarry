@@ -48,6 +48,8 @@ func streamValues(entry miniredis.StreamEntry) map[string]string {
 }
 
 func TestWriteEvents_Success(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{
@@ -113,6 +115,8 @@ func TestWriteEvents_Success(t *testing.T) {
 }
 
 func TestWriteEvents_EmptyBatch(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{URL: "redis://" + mr.Addr(), Retries: 0})
@@ -131,6 +135,8 @@ func TestWriteEvents_EmptyBatch(t *testing.T) {
 }
 
 func TestWriteEvents_CustomStreamKey(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	customKey := "myapp:events"
@@ -158,6 +164,8 @@ func TestWriteEvents_CustomStreamKey(t *testing.T) {
 }
 
 func TestWriteEvents_ExhaustsRetries(t *testing.T) {
+	t.Parallel()
+
 	s, err := New(Config{
 		URL:     "redis://127.0.0.1:1",
 		Retries: 1,
@@ -175,6 +183,8 @@ func TestWriteEvents_ExhaustsRetries(t *testing.T) {
 }
 
 func TestWriteEvents_ContextCanceled(t *testing.T) {
+	t.Parallel()
+
 	s, err := New(Config{
 		URL:     "redis://127.0.0.1:1",
 		Retries: 5,
@@ -195,6 +205,8 @@ func TestWriteEvents_ContextCanceled(t *testing.T) {
 }
 
 func TestNew_RequiresURL(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(Config{})
 	if err == nil {
 		t.Fatal("expected error for empty URL")
@@ -202,6 +214,8 @@ func TestNew_RequiresURL(t *testing.T) {
 }
 
 func TestNew_InvalidURL(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(Config{URL: "not-a-redis-url"})
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
@@ -209,6 +223,8 @@ func TestNew_InvalidURL(t *testing.T) {
 }
 
 func TestNew_RejectsNegativeRetries(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(Config{URL: "redis://localhost:6379", Retries: -1})
 	if err == nil {
 		t.Fatal("expected error for negative retries")
@@ -216,6 +232,8 @@ func TestNew_RejectsNegativeRetries(t *testing.T) {
 }
 
 func TestNew_DefaultsApplied(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{URL: "redis://" + mr.Addr()})
@@ -239,6 +257,8 @@ func TestNew_DefaultsApplied(t *testing.T) {
 }
 
 func TestClose_ClosesConnection(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{URL: "redis://" + mr.Addr()})
@@ -258,6 +278,8 @@ func TestClose_ClosesConnection(t *testing.T) {
 }
 
 func TestWriteEvents_AppliesTTL(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{
@@ -282,6 +304,8 @@ func TestWriteEvents_AppliesTTL(t *testing.T) {
 }
 
 func TestWriteEvents_TTLDisabled(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{
@@ -306,6 +330,8 @@ func TestWriteEvents_TTLDisabled(t *testing.T) {
 }
 
 func TestWriteEvents_MaxLenDisabled(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{
@@ -334,6 +360,8 @@ func TestWriteEvents_MaxLenDisabled(t *testing.T) {
 }
 
 func TestWriteEvents_TTLAppliedOnce(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{
@@ -371,6 +399,8 @@ func TestWriteEvents_TTLAppliedOnce(t *testing.T) {
 }
 
 func TestWriteEvents_MaxLenEnabled(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{
@@ -403,6 +433,8 @@ func TestWriteEvents_MaxLenEnabled(t *testing.T) {
 }
 
 func TestWriteEvents_StreamEntryFields(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	s, err := New(Config{

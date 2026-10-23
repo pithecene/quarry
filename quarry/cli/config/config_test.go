@@ -7,10 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/internal/testutil"
+
 	"github.com/pithecene/quarry/types"
 )
 
 func TestLoad_FullConfig(t *testing.T) {
+	t.Parallel()
+
 	yaml := `source: my-source
 category: production
 executor: ./executor.js
@@ -98,6 +102,8 @@ adapter:
 }
 
 func TestLoad_EmptyConfig(t *testing.T) {
+	t.Parallel()
+
 	path := writeTemp(t, "")
 	cfg, err := Load(path)
 	if err != nil {
@@ -109,6 +115,8 @@ func TestLoad_EmptyConfig(t *testing.T) {
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
+	t.Parallel()
+
 	_, err := Load("/nonexistent/quarry.yaml")
 	if err == nil {
 		t.Fatal("expected error for missing file")
@@ -116,6 +124,8 @@ func TestLoad_FileNotFound(t *testing.T) {
 }
 
 func TestLoad_InvalidYAML(t *testing.T) {
+	t.Parallel()
+
 	path := writeTemp(t, "{{invalid yaml")
 	_, err := Load(path)
 	if err == nil {
@@ -124,6 +134,7 @@ func TestLoad_InvalidYAML(t *testing.T) {
 }
 
 func TestLoad_EnvExpansion(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("TEST_SOURCE", "expanded-source")
 
 	yaml := `source: ${TEST_SOURCE}`
@@ -136,6 +147,8 @@ func TestLoad_EnvExpansion(t *testing.T) {
 }
 
 func TestProxyPools_Conversion(t *testing.T) {
+	t.Parallel()
+
 	cfg := &Config{
 		Proxies: map[string]ProxyPoolConfig{
 			"beta_pool": {
@@ -172,6 +185,8 @@ func TestProxyPools_Conversion(t *testing.T) {
 }
 
 func TestProxyPools_Empty(t *testing.T) {
+	t.Parallel()
+
 	cfg := &Config{}
 	pools := cfg.ProxyPools()
 	if pools != nil {
@@ -180,6 +195,8 @@ func TestProxyPools_Empty(t *testing.T) {
 }
 
 func TestProxyPools_WithSticky(t *testing.T) {
+	t.Parallel()
+
 	ttl := int64(3600000)
 	cfg := &Config{
 		Proxies: map[string]ProxyPoolConfig{
@@ -212,6 +229,8 @@ func TestProxyPools_WithSticky(t *testing.T) {
 }
 
 func TestProxyPools_WithRecencyWindow(t *testing.T) {
+	t.Parallel()
+
 	w := 3
 	cfg := &Config{
 		Proxies: map[string]ProxyPoolConfig{
@@ -238,6 +257,8 @@ func TestProxyPools_WithRecencyWindow(t *testing.T) {
 }
 
 func TestLoad_UnknownKeyRejected(t *testing.T) {
+	t.Parallel()
+
 	yaml := `source: my-source
 bogus_key: should_fail
 `
@@ -252,6 +273,8 @@ bogus_key: should_fail
 }
 
 func TestLoad_UnknownNestedKeyRejected(t *testing.T) {
+	t.Parallel()
+
 	yaml := `storage:
   backend: fs
   path: ./data
@@ -268,6 +291,8 @@ func TestLoad_UnknownNestedKeyRejected(t *testing.T) {
 }
 
 func TestLoad_WhitespaceOnlyConfig(t *testing.T) {
+	t.Parallel()
+
 	path := writeTemp(t, "   \n  \n  \n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -279,6 +304,8 @@ func TestLoad_WhitespaceOnlyConfig(t *testing.T) {
 }
 
 func TestLoad_CommentsOnlyConfig(t *testing.T) {
+	t.Parallel()
+
 	path := writeTemp(t, "# This is a comment\n# Another comment\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -290,6 +317,8 @@ func TestLoad_CommentsOnlyConfig(t *testing.T) {
 }
 
 func TestLoad_RetriesZeroDistinctFromNil(t *testing.T) {
+	t.Parallel()
+
 	// retries: 0 should parse as *int(0), not nil.
 	yaml := `adapter:
   type: webhook
@@ -310,6 +339,8 @@ func TestLoad_RetriesZeroDistinctFromNil(t *testing.T) {
 }
 
 func TestLoad_RetriesOmittedIsNil(t *testing.T) {
+	t.Parallel()
+
 	// Omitting retries should leave the pointer nil.
 	yaml := `adapter:
   type: webhook
@@ -326,6 +357,8 @@ func TestLoad_RetriesOmittedIsNil(t *testing.T) {
 }
 
 func TestDuration_InvalidFormat(t *testing.T) {
+	t.Parallel()
+
 	yaml := `adapter:
   timeout: not-a-duration
 `
@@ -340,6 +373,8 @@ func TestDuration_InvalidFormat(t *testing.T) {
 }
 
 func TestDuration_EmptyIsZero(t *testing.T) {
+	t.Parallel()
+
 	yaml := `adapter:
   type: webhook
   url: https://example.com
@@ -356,6 +391,8 @@ func TestDuration_EmptyIsZero(t *testing.T) {
 }
 
 func TestDuration_UnmarshalYAML(t *testing.T) {
+	t.Parallel()
+
 	yaml := `timeout: 30s`
 	path := writeTemp(t, "adapter:\n  "+yaml)
 	cfg, err := Load(path)
@@ -368,6 +405,8 @@ func TestDuration_UnmarshalYAML(t *testing.T) {
 }
 
 func TestLoad_RedisAdapterConfig(t *testing.T) {
+	t.Parallel()
+
 	yaml := `adapter:
   type: redis
   url: redis://localhost:6379/0
@@ -392,6 +431,8 @@ func TestLoad_RedisAdapterConfig(t *testing.T) {
 }
 
 func TestLoad_RedisAdapterChannelOmitted(t *testing.T) {
+	t.Parallel()
+
 	yaml := `adapter:
   type: redis
   url: redis://localhost:6379/0
@@ -406,6 +447,8 @@ func TestLoad_RedisAdapterChannelOmitted(t *testing.T) {
 }
 
 func TestLoad_BrowserWSEndpoint(t *testing.T) {
+	t.Parallel()
+
 	yaml := `source: my-source
 browser_ws_endpoint: ws://127.0.0.1:9222/devtools/browser/abc-123
 `
@@ -418,6 +461,8 @@ browser_ws_endpoint: ws://127.0.0.1:9222/devtools/browser/abc-123
 }
 
 func TestLoad_BrowserWSEndpointOmitted(t *testing.T) {
+	t.Parallel()
+
 	yaml := `source: my-source`
 	path := writeTemp(t, yaml)
 	cfg, err := Load(path)
@@ -428,6 +473,8 @@ func TestLoad_BrowserWSEndpointOmitted(t *testing.T) {
 }
 
 func TestLoad_EventSinksConfig(t *testing.T) {
+	t.Parallel()
+
 	yaml := `events:
   sinks:
     - type: lode
@@ -475,6 +522,8 @@ func TestLoad_EventSinksConfig(t *testing.T) {
 }
 
 func TestLoad_EventSinksNoConfig(t *testing.T) {
+	t.Parallel()
+
 	yaml := `source: test
 `
 	path := writeTemp(t, yaml)

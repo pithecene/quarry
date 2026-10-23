@@ -5,6 +5,8 @@ import (
 )
 
 func TestEventType_IsTerminal(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		eventType EventType
 		want      bool

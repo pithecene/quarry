@@ -91,6 +91,8 @@ func extractFlags(cmd *cli.Command) map[string]cli.Flag {
 
 // TestCLIParityRunCommand validates the run command flags against the parity artifact.
 func TestCLIParityRunCommand(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 	runCmd := RunCommand()
 	actualFlags := extractFlags(runCmd)
@@ -141,6 +143,8 @@ func TestCLIParityRunCommand(t *testing.T) {
 
 // TestCLIParityListCommand validates the list command flags against the parity artifact.
 func TestCLIParityListCommand(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 	listCmd := ListCommand()
 
@@ -225,6 +229,8 @@ func TestCLIParityPruneCommand(t *testing.T) {
 
 // TestCLIParityDebugCommand validates the debug command flags against the parity artifact.
 func TestCLIParityDebugCommand(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 	debugCmd := DebugCommand()
 
@@ -287,6 +293,8 @@ func TestCLIParityDebugCommand(t *testing.T) {
 
 // TestCLIParityInspectCommand validates the inspect command flags against the parity artifact.
 func TestCLIParityInspectCommand(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 	inspectCmd := InspectCommand()
 
@@ -322,6 +330,8 @@ func TestCLIParityInspectCommand(t *testing.T) {
 
 // TestCLIParityStatsCommand validates the stats command flags against the parity artifact.
 func TestCLIParityStatsCommand(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 	statsCmd := StatsCommand()
 
@@ -357,6 +367,8 @@ func TestCLIParityStatsCommand(t *testing.T) {
 
 // TestCLIParityVersionCommand validates the version command flags against the parity artifact.
 func TestCLIParityVersionCommand(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 	versionCmd := VersionCommand("", "test-commit")
 	actualFlags := extractFlags(versionCmd)
@@ -383,6 +395,8 @@ func TestCLIParityVersionCommand(t *testing.T) {
 
 // TestCLIParityJobPayloadContract validates the job payload contract is correctly documented.
 func TestCLIParityJobPayloadContract(t *testing.T) {
+	t.Parallel()
+
 	artifact := loadParityArtifact(t)
 
 	parityRun, ok := artifact.Commands["run"]

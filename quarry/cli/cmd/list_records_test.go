@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
 	"io"
 	"os"
@@ -64,6 +65,7 @@ func writeFSRun(t *testing.T, root, runID string) {
 }
 
 func TestListRuns_FromRecords(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 	writeFSRun(t, root, "run-b")
@@ -96,6 +98,7 @@ func TestListRuns_FromRecords(t *testing.T) {
 }
 
 func TestListRuns_StorageFlagPairRequired(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	_, err := runListCLI(t, "runs", "--storage-backend", "fs")
 	if err == nil || !strings.Contains(err.Error(), "both --storage-backend and --storage-path") {
 		t.Fatalf("err = %v", err)
@@ -103,6 +106,7 @@ func TestListRuns_StorageFlagPairRequired(t *testing.T) {
 }
 
 func TestListEvents_FromStorage(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 	out, err := runListCLI(t, "events", "--format", "json", "--storage-backend", "fs", "--storage-path", root,
@@ -131,6 +135,7 @@ func TestListEvents_FromStorage(t *testing.T) {
 }
 
 func TestListRuns_StorageOnlyFlagsRejectedOnStub(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	for _, flag := range []string{"--after", "--source", "--category", "--day"} {
 		_, err := runListCLI(t, "runs", flag, "x")
 		if err == nil || !strings.Contains(err.Error(), "requires --storage-backend") {
@@ -140,12 +145,14 @@ func TestListRuns_StorageOnlyFlagsRejectedOnStub(t *testing.T) {
 }
 
 func TestListRuns_StubRejectsStorageOnlyState(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	if _, err := runListCLI(t, "runs", "--state", "unterminated"); err == nil || !strings.Contains(err.Error(), "requires storage") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestListEvents_TableSummaryRows(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 	out, err := runListCLI(t, "events", "--format", "table", "--no-color", "--storage-backend", "fs", "--storage-path", root,
@@ -162,6 +169,7 @@ func TestListEvents_TableSummaryRows(t *testing.T) {
 
 // An optional storage flag alone is an error, never stub data.
 func TestListRuns_OptionalStorageFlagWithoutPairFails(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	for _, args := range [][]string{
 		{"runs", "--storage-dataset", "other"},
 		{"runs", "--storage-region", "us-east-1"},
@@ -175,6 +183,7 @@ func TestListRuns_OptionalStorageFlagWithoutPairFails(t *testing.T) {
 
 // YAML uses the documented field names, and omits what JSON omits.
 func TestListRuns_YAMLFieldNames(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 	out, err := runListCLI(t, "runs", "--format", "yaml", "--storage-backend", "fs", "--storage-path", root, "--source", "demo")
@@ -194,6 +203,8 @@ func TestListRuns_YAMLFieldNames(t *testing.T) {
 }
 
 func TestEventSummaries_ArtifactCommitType(t *testing.T) {
+	t.Parallel()
+
 	got := eventSummaries([]map[string]any{
 		{"seq": 1, "type": "item", "record_kind": "event"},
 		{"seq": 2, "event_type": "artifact", "record_kind": "artifact_event"},

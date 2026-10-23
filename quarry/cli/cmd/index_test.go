@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -28,6 +29,7 @@ func writeLegacyFSRun(t *testing.T, root, runID string) {
 
 // Stdout capture swaps os.Stdout: these tests stay serial.
 func TestIndexRebuild_DryRunThenWrite(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeLegacyFSRun(t, root, "legacy-1")
 	writeFSRun(t, root, "native-1")
@@ -68,6 +70,7 @@ func TestIndexRebuild_DryRunThenWrite(t *testing.T) {
 }
 
 func TestIndexRebuild_RequiresStorage(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	if _, err := runCLI(t, "index", "rebuild"); err == nil || !strings.Contains(err.Error(), "required") {
 		t.Fatalf("err = %v, want storage required", err)
 	}
@@ -75,6 +78,7 @@ func TestIndexRebuild_RequiresStorage(t *testing.T) {
 
 // YAML uses the documented field names.
 func TestIndexRebuild_YAMLFieldNames(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeLegacyFSRun(t, root, "legacy-1")
 	out, err := runCLI(t, "index", "rebuild", "--dry-run", "--format", "yaml", "--storage-backend", "fs", "--storage-path", root)

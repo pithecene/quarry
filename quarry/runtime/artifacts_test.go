@@ -7,6 +7,8 @@ import (
 )
 
 func TestArtifactManager_MaxArtifactSize(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Try to commit an artifact that exceeds max size
@@ -17,6 +19,8 @@ func TestArtifactManager_MaxArtifactSize(t *testing.T) {
 }
 
 func TestArtifactManager_ChunkExceedsMaxChunkSize(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Chunk data exceeds max chunk size (8 MiB)
@@ -33,6 +37,8 @@ func TestArtifactManager_ChunkExceedsMaxChunkSize(t *testing.T) {
 }
 
 func TestArtifactManager_CommitBeforeChunks_SizeMismatch(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Commit arrives before chunks with declared size
@@ -68,6 +74,8 @@ func TestArtifactManager_CommitBeforeChunks_SizeMismatch(t *testing.T) {
 }
 
 func TestArtifactManager_CommitBeforeChunks_SizeMatch(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Commit arrives before chunks with declared size
@@ -94,6 +102,8 @@ func TestArtifactManager_CommitBeforeChunks_SizeMatch(t *testing.T) {
 }
 
 func TestArtifactManager_SequenceViolation(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Add chunk with seq 1
@@ -120,6 +130,8 @@ func TestArtifactManager_SequenceViolation(t *testing.T) {
 }
 
 func TestArtifactManager_ChunkAfterIsLast(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Add final chunk
@@ -146,6 +158,8 @@ func TestArtifactManager_ChunkAfterIsLast(t *testing.T) {
 }
 
 func TestArtifactManager_OrphanTracking(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Add chunks without committing
@@ -177,6 +191,8 @@ func TestArtifactManager_OrphanTracking(t *testing.T) {
 }
 
 func TestArtifactManager_CommitBeforeChunks_NotOrphan(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Commit arrives before chunks
@@ -212,6 +228,8 @@ func TestArtifactManager_CommitBeforeChunks_NotOrphan(t *testing.T) {
 }
 
 func TestArtifactManager_CommitAfterChunks_SizeMismatch_SetsErrorState(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Add chunks first (complete)
@@ -245,6 +263,8 @@ func TestArtifactManager_CommitAfterChunks_SizeMismatch_SetsErrorState(t *testin
 }
 
 func TestArtifactManager_ErrorState_RejectsOperations(t *testing.T) {
+	t.Parallel()
+
 	m := NewArtifactManager()
 
 	// Commit arrives before chunks with declared size

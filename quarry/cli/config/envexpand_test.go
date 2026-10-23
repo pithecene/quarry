@@ -2,9 +2,12 @@ package config
 
 import (
 	"testing"
+
+	"github.com/pithecene/quarry/internal/testutil"
 )
 
 func TestExpandEnv_SetVar(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("TEST_VAR", "hello")
 
 	got := ExpandEnv("value: ${TEST_VAR}")
@@ -15,6 +18,8 @@ func TestExpandEnv_SetVar(t *testing.T) {
 }
 
 func TestExpandEnv_UnsetVar(t *testing.T) {
+	t.Parallel()
+
 	got := ExpandEnv("value: ${UNSET_VAR_12345}")
 	want := "value: "
 	if got != want {
@@ -23,6 +28,8 @@ func TestExpandEnv_UnsetVar(t *testing.T) {
 }
 
 func TestExpandEnv_DefaultUsedWhenUnset(t *testing.T) {
+	t.Parallel()
+
 	got := ExpandEnv("value: ${UNSET_VAR_12345:-fallback}")
 	want := "value: fallback"
 	if got != want {
@@ -31,6 +38,7 @@ func TestExpandEnv_DefaultUsedWhenUnset(t *testing.T) {
 }
 
 func TestExpandEnv_DefaultIgnoredWhenSet(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("TEST_VAR", "real")
 
 	got := ExpandEnv("value: ${TEST_VAR:-fallback}")
@@ -41,6 +49,7 @@ func TestExpandEnv_DefaultIgnoredWhenSet(t *testing.T) {
 }
 
 func TestExpandEnv_DefaultUsedWhenEmpty(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("TEST_VAR", "")
 
 	got := ExpandEnv("value: ${TEST_VAR:-fallback}")
@@ -51,6 +60,7 @@ func TestExpandEnv_DefaultUsedWhenEmpty(t *testing.T) {
 }
 
 func TestExpandEnv_MultipleVars(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("USER_A", "alice")
 	t.Setenv("USER_B", "bob")
 
@@ -62,6 +72,8 @@ func TestExpandEnv_MultipleVars(t *testing.T) {
 }
 
 func TestExpandEnv_NoVars(t *testing.T) {
+	t.Parallel()
+
 	input := "no variables here"
 	got := ExpandEnv(input)
 	if got != input {
@@ -70,6 +82,7 @@ func TestExpandEnv_NoVars(t *testing.T) {
 }
 
 func TestExpandEnv_DollarWithoutBraces(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("SOME_VAR", "value")
 
 	// $VAR (no braces) must not be expanded — only ${VAR} is supported.
@@ -81,6 +94,8 @@ func TestExpandEnv_DollarWithoutBraces(t *testing.T) {
 }
 
 func TestExpandEnv_EmptyDefault(t *testing.T) {
+	t.Parallel()
+
 	// ${VAR:-} with empty default expands to empty string when unset.
 	got := ExpandEnv("value: ${UNSET_VAR_99999:-}")
 	want := "value: "
@@ -90,6 +105,8 @@ func TestExpandEnv_EmptyDefault(t *testing.T) {
 }
 
 func TestExpandEnv_DefaultWithSpecialChars(t *testing.T) {
+	t.Parallel()
+
 	// Default value containing colons, slashes, and port numbers.
 	got := ExpandEnv("url: ${UNSET_VAR_99999:-http://localhost:8080/path}")
 	want := "url: http://localhost:8080/path"
@@ -99,6 +116,7 @@ func TestExpandEnv_DefaultWithSpecialChars(t *testing.T) {
 }
 
 func TestExpandEnv_NestedInYAML(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("PROXY_USER", "admin")
 	t.Setenv("PROXY_PASS", "secret")
 

@@ -6,6 +6,8 @@ import (
 )
 
 func TestCollector_IncrementMethods(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "job-001")
 
 	c.IncRunStarted()
@@ -62,6 +64,8 @@ func TestCollector_IncrementMethods(t *testing.T) {
 }
 
 func TestCollector_Dimensions(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("buffered", "node", "s3", "run-42", "job-7")
 	s := c.Snapshot()
 
@@ -83,6 +87,8 @@ func TestCollector_Dimensions(t *testing.T) {
 }
 
 func TestCollector_AbsorbPolicyStats(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "")
 
 	droppedByType := map[string]int64{
@@ -121,6 +127,8 @@ func TestCollector_AbsorbPolicyStats(t *testing.T) {
 }
 
 func TestCollector_AbsorbPolicyStats_FlushTriggers(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("streaming", "node", "fs", "run-001", "")
 
 	triggers := map[string]int64{"count": 3, "interval": 7, "termination": 1}
@@ -149,6 +157,8 @@ func TestCollector_AbsorbPolicyStats_FlushTriggers(t *testing.T) {
 }
 
 func TestCollector_AbsorbPolicyStats_MapIsolation(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "")
 
 	original := map[string]int64{"log": 5}
@@ -168,6 +178,8 @@ func TestCollector_AbsorbPolicyStats_MapIsolation(t *testing.T) {
 }
 
 func TestCollector_SnapshotImmutability(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "")
 	c.IncRunStarted()
 	c.IncLodeWriteSuccess()
@@ -198,6 +210,8 @@ func TestCollector_SnapshotImmutability(t *testing.T) {
 }
 
 func TestCollector_SnapshotDroppedByTypeIsolation(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "")
 	c.AbsorbPolicyStats(10, 5, 5, map[string]int64{"log": 3}, nil)
 
@@ -218,6 +232,8 @@ func TestCollector_SnapshotDroppedByTypeIsolation(t *testing.T) {
 }
 
 func TestCollector_NilReceiverSafety(t *testing.T) {
+	t.Parallel()
+
 	var c *Collector
 
 	// None of these should panic
@@ -243,6 +259,8 @@ func TestCollector_NilReceiverSafety(t *testing.T) {
 }
 
 func TestCollector_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "")
 	const goroutines = 10
 	const iterations = 1000
@@ -278,6 +296,8 @@ func TestCollector_ConcurrentAccess(t *testing.T) {
 }
 
 func TestCollector_ZeroValueSnapshot(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "node", "fs", "run-001", "")
 	s := c.Snapshot()
 
@@ -300,6 +320,8 @@ func TestCollector_ZeroValueSnapshot(t *testing.T) {
 }
 
 func TestCollector_IncLodeWriteRetry(t *testing.T) {
+	t.Parallel()
+
 	c := NewCollector("strict", "test", "fs", "run-1", "")
 	c.IncLodeWriteRetry()
 	c.IncLodeWriteRetry()

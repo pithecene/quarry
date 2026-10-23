@@ -114,6 +114,8 @@ func executeRun(t *testing.T, config *RunConfig) *RunResult {
 }
 
 func TestExecute_FinalizationOrder(t *testing.T) {
+	t.Parallel()
+
 	storage := &recordingStorage{}
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 	config := finalizeConfig(t, storage, exec)
@@ -145,6 +147,8 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 }
 
 func TestExecute_StartRecordFailure_RunNeverStarts(t *testing.T) {
+	t.Parallel()
+
 	storage := &recordingStorage{startErr: errors.New("store unavailable")}
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 
@@ -167,6 +171,8 @@ func TestExecute_StartRecordFailure_RunNeverStarts(t *testing.T) {
 }
 
 func TestExecute_EndRecordFailure_ReportedOutcomeUnchanged(t *testing.T) {
+	t.Parallel()
+
 	storage := &recordingStorage{endErr: errors.New("put failed")}
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 
@@ -181,6 +187,8 @@ func TestExecute_EndRecordFailure_ReportedOutcomeUnchanged(t *testing.T) {
 }
 
 func TestExecute_MetricsFailure_RecordedInEndRecord(t *testing.T) {
+	t.Parallel()
+
 	storage := &recordingStorage{metricErr: errors.New("metrics write failed")}
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 
@@ -195,6 +203,8 @@ func TestExecute_MetricsFailure_RecordedInEndRecord(t *testing.T) {
 }
 
 func TestExecute_NoStorage_WritesNothing(t *testing.T) {
+	t.Parallel()
+
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 	config := finalizeConfig(t, &recordingStorage{}, exec)
 	config.Storage = nil
@@ -208,6 +218,8 @@ func TestExecute_NoStorage_WritesNothing(t *testing.T) {
 // A run ID that already has a start record belongs to another execution:
 // nothing at all may be written for it.
 func TestExecute_DuplicateRunID_WritesNothingElse(t *testing.T) {
+	t.Parallel()
+
 	storage := &recordingStorage{startErr: fmt.Errorf("write failed: %w", lode.ErrPathExists)}
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 
@@ -222,6 +234,8 @@ func TestExecute_DuplicateRunID_WritesNothingElse(t *testing.T) {
 }
 
 func TestNewRunOrchestrator_RejectsUnsafeStorageKey(t *testing.T) {
+	t.Parallel()
+
 	config := finalizeConfig(t, &recordingStorage{}, newMockExecutor(nil, 0))
 	config.StorageDataset = "../other"
 	if _, err := NewRunOrchestrator(config); !errors.Is(err, lode.ErrInvalidRunKey) {
@@ -241,6 +255,8 @@ func (p *unflushedClosePolicy) Close() error {
 // Data left unpersisted at close fails the run before the end record is
 // written, rather than being reported after a "success" outcome.
 func TestExecute_UnflushedCloseFailsRun(t *testing.T) {
+	t.Parallel()
+
 	storage := &recordingStorage{}
 	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
 	config := finalizeConfig(t, storage, exec)
@@ -257,6 +273,8 @@ func TestExecute_UnflushedCloseFailsRun(t *testing.T) {
 }
 
 func TestNewRunOrchestrator_StartedAtMustMatchDay(t *testing.T) {
+	t.Parallel()
+
 	config := finalizeConfig(t, &recordingStorage{}, newMockExecutor(nil, 0))
 	config.StartedAt = time.Time{}
 	if _, err := NewRunOrchestrator(config); err == nil {

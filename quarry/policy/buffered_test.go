@@ -20,6 +20,8 @@ func mustNewBufferedPolicy(t *testing.T, sink policy.Sink, config policy.Buffere
 }
 
 func TestBufferedPolicy_BuffersEvents(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -52,6 +54,8 @@ func TestBufferedPolicy_BuffersEvents(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushWritesBatch(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -89,6 +93,8 @@ func TestBufferedPolicy_FlushWritesBatch(t *testing.T) {
 }
 
 func TestBufferedPolicy_DropsDroppableWhenFull(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 3}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -125,6 +131,8 @@ func TestBufferedPolicy_DropsDroppableWhenFull(t *testing.T) {
 }
 
 func TestBufferedPolicy_EvictsDroppableForNonDroppable(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 3}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -173,6 +181,8 @@ func TestBufferedPolicy_EvictsDroppableForNonDroppable(t *testing.T) {
 }
 
 func TestBufferedPolicy_ErrorsOnNonDroppableWhenNoDroppable(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 2}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -203,6 +213,8 @@ func TestBufferedPolicy_ErrorsOnNonDroppableWhenNoDroppable(t *testing.T) {
 }
 
 func TestBufferedPolicy_OrderingPreserved(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -232,6 +244,8 @@ func TestBufferedPolicy_OrderingPreserved(t *testing.T) {
 }
 
 func TestBufferedPolicy_ArtifactChunksBuffered(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1024} // Use byte limit
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -266,6 +280,8 @@ func TestBufferedPolicy_ArtifactChunksBuffered(t *testing.T) {
 }
 
 func TestBufferedPolicy_SinkError(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -291,6 +307,8 @@ func TestBufferedPolicy_SinkError(t *testing.T) {
 }
 
 func TestBufferedPolicy_Close_FlushesAndCloses(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -317,6 +335,8 @@ func TestBufferedPolicy_Close_FlushesAndCloses(t *testing.T) {
 }
 
 func TestBufferedPolicy_DropsOnlyAllowedTypes(t *testing.T) {
+	t.Parallel()
+
 	// Per CONTRACT_POLICY.md: may drop log, enqueue, rotate_proxy
 	droppableTypes := []types.EventType{
 		types.EventTypeLog,
@@ -352,6 +372,8 @@ func TestBufferedPolicy_DropsOnlyAllowedTypes(t *testing.T) {
 }
 
 func TestBufferedPolicy_NeverDropsNonDroppable(t *testing.T) {
+	t.Parallel()
+
 	// Per CONTRACT_POLICY.md: must NOT drop item, artifact, checkpoint, run_error, run_complete
 	nonDroppableTypes := []types.EventType{
 		types.EventTypeItem,
@@ -389,6 +411,8 @@ func TestBufferedPolicy_NeverDropsNonDroppable(t *testing.T) {
 }
 
 func TestBufferedPolicy_InvalidConfig_BothLimitsZero(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{
 		MaxBufferEvents: 0,
@@ -402,6 +426,8 @@ func TestBufferedPolicy_InvalidConfig_BothLimitsZero(t *testing.T) {
 }
 
 func TestBufferedPolicy_ValidConfig_OnlyEventLimit(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 0}
 
@@ -415,6 +441,8 @@ func TestBufferedPolicy_ValidConfig_OnlyEventLimit(t *testing.T) {
 }
 
 func TestBufferedPolicy_ValidConfig_OnlyByteLimit(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 0, MaxBufferBytes: 1024}
 
@@ -428,6 +456,8 @@ func TestBufferedPolicy_ValidConfig_OnlyByteLimit(t *testing.T) {
 }
 
 func TestBufferedPolicy_ChunkBuffering_RespectsMaxBufferBytes(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 100} // Small limit
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -470,6 +500,8 @@ func TestBufferedPolicy_ChunkBuffering_RespectsMaxBufferBytes(t *testing.T) {
 }
 
 func TestBufferedPolicy_ChunkBuffering_SharedWithEvents(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 500} // Shared limit
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -508,6 +540,8 @@ func TestBufferedPolicy_ChunkBuffering_SharedWithEvents(t *testing.T) {
 }
 
 func TestBufferedPolicy_BufferSize_AccurateAfterChunkBuffering(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -529,6 +563,8 @@ func TestBufferedPolicy_BufferSize_AccurateAfterChunkBuffering(t *testing.T) {
 }
 
 func TestBufferedPolicy_BufferSize_AccurateAfterEviction(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 2}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -558,6 +594,8 @@ func TestBufferedPolicy_BufferSize_AccurateAfterEviction(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushFailure_PreservesEventBuffer(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 10}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -599,6 +637,8 @@ func TestBufferedPolicy_FlushFailure_PreservesEventBuffer(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushFailure_PreservesChunkBuffer(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -640,6 +680,8 @@ func TestBufferedPolicy_FlushFailure_PreservesChunkBuffer(t *testing.T) {
 }
 
 func TestBufferedPolicy_BufferSize_ZeroAfterSuccessfulFlush(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -670,6 +712,8 @@ func TestBufferedPolicy_BufferSize_ZeroAfterSuccessfulFlush(t *testing.T) {
 }
 
 func TestBufferedPolicy_ChunksPersisted_IncrementedAfterFlush(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -702,6 +746,8 @@ func TestBufferedPolicy_ChunksPersisted_IncrementedAfterFlush(t *testing.T) {
 }
 
 func TestBufferedPolicy_EvictionRechecksByteLimit(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	// Small byte limit: can fit ~2 events at 200 bytes each
 	config := policy.BufferedConfig{MaxBufferEvents: 3, MaxBufferBytes: 450}
@@ -733,6 +779,8 @@ func TestBufferedPolicy_EvictionRechecksByteLimit(t *testing.T) {
 }
 
 func TestBufferedPolicy_EventExceedsByteLimitAlone(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	// Byte limit smaller than a single event (~200 bytes estimated)
 	config := policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 100}
@@ -748,6 +796,8 @@ func TestBufferedPolicy_EventExceedsByteLimitAlone(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushFailure_ChunkWriteFail_PreservesBothBuffers(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	pol := mustNewBufferedPolicy(t, sink, config)
@@ -794,6 +844,8 @@ func TestBufferedPolicy_FlushFailure_ChunkWriteFail_PreservesBothBuffers(t *test
 }
 
 func TestBufferedPolicy_ChunkBuffering_RequiresByteLimit(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	// Only event limit, no byte limit
 	config := policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 0}
@@ -817,6 +869,8 @@ func TestBufferedPolicy_ChunkBuffering_RequiresByteLimit(t *testing.T) {
 }
 
 func TestBufferedPolicy_InvalidFlushMode(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{
 		MaxBufferBytes: 1000,
@@ -830,6 +884,8 @@ func TestBufferedPolicy_InvalidFlushMode(t *testing.T) {
 }
 
 func TestBufferedPolicy_DefaultFlushMode(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	// FlushMode not set - should default to AtLeastOnce
@@ -844,6 +900,8 @@ func TestBufferedPolicy_DefaultFlushMode(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushAtLeastOnce_PreservesBuffersOnChunkFailure(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{
 		MaxBufferBytes: 1000,
@@ -890,6 +948,8 @@ func TestBufferedPolicy_FlushAtLeastOnce_PreservesBuffersOnChunkFailure(t *testi
 }
 
 func TestBufferedPolicy_FlushChunksFirst_NoEventsOnChunkFailure(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{
 		MaxBufferBytes: 1000,
@@ -927,6 +987,8 @@ func TestBufferedPolicy_FlushChunksFirst_NoEventsOnChunkFailure(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushTwoPhase_NoEventDuplicatesOnRetry(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{
 		MaxBufferBytes: 1000,
@@ -972,6 +1034,8 @@ func TestBufferedPolicy_FlushTwoPhase_NoEventDuplicatesOnRetry(t *testing.T) {
 }
 
 func TestBufferedPolicy_FlushTwoPhase_ChunksNotRewrittenOnEventFailure(t *testing.T) {
+	t.Parallel()
+
 	// TwoPhase now writes chunks first, then events.
 	// This test verifies chunks aren't duplicated if events fail.
 	baseSink := policy.NewStubSink()
@@ -1055,6 +1119,8 @@ func (s *selectiveFailSink) WriteChunks(ctx context.Context, chunks []*types.Art
 }
 
 func TestBufferedPolicy_FlushTwoPhase_NewEventsAfterEventFailureAreWritten(t *testing.T) {
+	t.Parallel()
+
 	// TwoPhase now writes chunks first, then events.
 	// This test verifies new events added after a partial flush are written.
 	baseSink := policy.NewStubSink()
@@ -1129,6 +1195,8 @@ func TestBufferedPolicy_FlushTwoPhase_NewEventsAfterEventFailureAreWritten(t *te
 }
 
 func TestBufferedPolicy_FlushTwoPhase_NewChunksAfterEventFailureAreWritten(t *testing.T) {
+	t.Parallel()
+
 	// TwoPhase writes chunks first. This test verifies new chunks added
 	// after a partial flush are written without duplicating old chunks.
 	baseSink := policy.NewStubSink()
@@ -1200,6 +1268,8 @@ func TestBufferedPolicy_FlushTwoPhase_NewChunksAfterEventFailureAreWritten(t *te
 }
 
 func TestBufferedPolicy_BufferSize_UpdatedWhenEventBufferNextCleared(t *testing.T) {
+	t.Parallel()
+
 	baseSink := policy.NewStubSink()
 	failingSink := &selectiveFailSink{
 		StubSink:     baseSink,
@@ -1245,6 +1315,8 @@ func TestBufferedPolicy_BufferSize_UpdatedWhenEventBufferNextCleared(t *testing.
 }
 
 func TestBufferedPolicy_Eviction_ConsidersEventBufferNext(t *testing.T) {
+	t.Parallel()
+
 	baseSink := policy.NewStubSink()
 	failingSink := &selectiveFailSink{
 		StubSink:     baseSink,
@@ -1325,6 +1397,8 @@ func TestBufferedPolicy_Eviction_ConsidersEventBufferNext(t *testing.T) {
 // The "chunks before commit" invariant is enforced by the Lode client,
 // not by reordering events in the policy.
 func TestBufferedPolicy_EventsWrittenInSequenceOrder(t *testing.T) {
+	t.Parallel()
+
 	flushModes := []policy.FlushMode{
 		policy.FlushAtLeastOnce,
 		policy.FlushChunksFirst,
@@ -1395,6 +1469,8 @@ func TestBufferedPolicy_EventsWrittenInSequenceOrder(t *testing.T) {
 // TestBufferedPolicy_AllEventsWrittenTogether verifies that all events
 // (including artifact commits) are written in the same batch, preserving order.
 func TestBufferedPolicy_AllEventsWrittenTogether(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 100}
 	pol := mustNewBufferedPolicy(t, sink, config)

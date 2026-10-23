@@ -10,6 +10,7 @@
 package runtime
 
 import (
+	"github.com/pithecene/quarry/internal/testutil"
 	"context"
 	"encoding/json"
 	"flag"
@@ -128,6 +129,7 @@ func readDiscoveryPID(t *testing.T, path string) int {
 }
 
 func TestE2E_BrowserReuse_SequentialAcquire(t *testing.T) {
+	testutil.Serial(t, "setupE2E calls t.Setenv")
 	h := setupE2E(t)
 
 	ws1, err := AcquireReusableBrowser(h.ctx, h.cfg)
@@ -152,6 +154,7 @@ func TestE2E_BrowserReuse_SequentialAcquire(t *testing.T) {
 }
 
 func TestE2E_BrowserReuse_ProxyMismatch(t *testing.T) {
+	testutil.Serial(t, "setupE2E calls t.Setenv")
 	h := setupE2E(t)
 
 	if _, err := AcquireReusableBrowser(h.ctx, h.cfg); err != nil {
@@ -175,6 +178,7 @@ func TestE2E_BrowserReuse_ProxyMismatch(t *testing.T) {
 }
 
 func TestE2E_BrowserReuse_StaleRecovery(t *testing.T) {
+	testutil.Serial(t, "setupE2E calls t.Setenv")
 	h := setupE2E(t)
 
 	ws1, err := AcquireReusableBrowser(h.ctx, h.cfg)
@@ -196,6 +200,7 @@ func TestE2E_BrowserReuse_StaleRecovery(t *testing.T) {
 }
 
 func TestE2E_BrowserReuse_HealthCheck(t *testing.T) {
+	testutil.Serial(t, "setupE2E calls t.Setenv")
 	h := setupE2E(t)
 
 	ws, err := AcquireReusableBrowser(h.ctx, h.cfg)
@@ -223,6 +228,7 @@ func TestE2E_BrowserReuse_HealthCheck(t *testing.T) {
 }
 
 func TestE2E_BrowserReuse_IdleShutdown(t *testing.T) {
+	testutil.Serial(t, "setupE2E calls t.Setenv")
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}

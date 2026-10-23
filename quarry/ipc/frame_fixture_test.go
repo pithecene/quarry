@@ -86,6 +86,8 @@ func loadE2EManifest(t *testing.T) *e2eManifest {
 
 // TestE2EFixture_FrameCount validates the fixture has the expected frame count.
 func TestE2EFixture_FrameCount(t *testing.T) {
+	t.Parallel()
+
 	data := loadE2EFixture(t)
 	manifest := loadE2EManifest(t)
 
@@ -111,6 +113,8 @@ func TestE2EFixture_FrameCount(t *testing.T) {
 // TestE2EFixture_EventSequence validates event types and ordering.
 // Per CONTRACT_IPC.md, the terminal event must be last.
 func TestE2EFixture_EventSequence(t *testing.T) {
+	t.Parallel()
+
 	data := loadE2EFixture(t)
 	manifest := loadE2EManifest(t)
 
@@ -210,6 +214,8 @@ func TestE2EFixture_EventSequence(t *testing.T) {
 //   - Seq starts at 1
 //   - Final chunk has is_last: true
 func TestE2EFixture_ArtifactChunks(t *testing.T) {
+	t.Parallel()
+
 	data := loadE2EFixture(t)
 
 	decoder := NewFrameDecoder(bytes.NewReader(data))
@@ -281,6 +287,8 @@ func TestE2EFixture_ArtifactChunks(t *testing.T) {
 
 // TestE2EFixture_RunMetadata validates run metadata is consistent.
 func TestE2EFixture_RunMetadata(t *testing.T) {
+	t.Parallel()
+
 	data := loadE2EFixture(t)
 	manifest := loadE2EManifest(t)
 
@@ -326,6 +334,8 @@ func TestE2EFixture_RunMetadata(t *testing.T) {
 // TestE2EFixture_SeqMonotonicity validates seq numbers are monotonically increasing.
 // Per CONTRACT_EMIT.md, seq starts at 1 and increases by 1 for each event.
 func TestE2EFixture_SeqMonotonicity(t *testing.T) {
+	t.Parallel()
+
 	data := loadE2EFixture(t)
 
 	decoder := NewFrameDecoder(bytes.NewReader(data))

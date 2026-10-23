@@ -11,6 +11,8 @@ import (
 )
 
 func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -82,6 +84,8 @@ func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
 }
 
 func TestQuerySidecarFiles_NoFiles(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -100,6 +104,8 @@ func TestQuerySidecarFiles_NoFiles(t *testing.T) {
 }
 
 func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -153,6 +159,8 @@ func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
 }
 
 func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 

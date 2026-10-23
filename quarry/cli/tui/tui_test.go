@@ -5,6 +5,8 @@ import (
 )
 
 func TestIsTUISupported(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		viewType string
 		want     bool
@@ -55,6 +57,8 @@ func TestIsTUISupported(t *testing.T) {
 }
 
 func TestSupportedTUIViews(t *testing.T) {
+	t.Parallel()
+
 	views := SupportedTUIViews()
 
 	// Should have exactly 10 supported views (5 inspect + 5 stats)
@@ -71,6 +75,8 @@ func TestSupportedTUIViews(t *testing.T) {
 }
 
 func TestRun_UnsupportedViewType(t *testing.T) {
+	t.Parallel()
+
 	err := Run("list_runs", nil)
 	if err == nil {
 		t.Error("Expected error for unsupported view type")

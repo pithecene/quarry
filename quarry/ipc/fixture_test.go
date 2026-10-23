@@ -28,6 +28,8 @@ func loadFixture(t *testing.T, name string) []byte {
 }
 
 func TestFixture_ItemEvent(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "item_event.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -71,6 +73,8 @@ func TestFixture_ItemEvent(t *testing.T) {
 }
 
 func TestFixture_LogEvent(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "log_event.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -101,6 +105,8 @@ func TestFixture_LogEvent(t *testing.T) {
 }
 
 func TestFixture_RunComplete(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "run_complete.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -155,6 +161,8 @@ func TestFixture_RunComplete(t *testing.T) {
 }
 
 func TestFixture_RunError(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "run_error.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -188,6 +196,8 @@ func TestFixture_RunError(t *testing.T) {
 }
 
 func TestFixture_ArtifactEvent(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "artifact_event.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -218,6 +228,8 @@ func TestFixture_ArtifactEvent(t *testing.T) {
 }
 
 func TestFixture_ArtifactChunk(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "artifact_chunk.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -255,6 +267,8 @@ func TestFixture_ArtifactChunk(t *testing.T) {
 }
 
 func TestFixture_EventWithLineage(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "event_with_lineage.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
@@ -285,6 +299,8 @@ func TestFixture_EventWithLineage(t *testing.T) {
 }
 
 func TestFixture_EventSequence(t *testing.T) {
+	t.Parallel()
+
 	data := loadFixture(t, "event_sequence.bin")
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
