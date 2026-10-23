@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.14.0] - 2026-10-23
+
 ### Breaking Changes
 
 - **Go module path**: The Go module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`. The CLI, the SDK, the container images, and stored data are unchanged.
@@ -21,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Run listing**: With `--storage-backend` and `--storage-path`, `quarry list runs` lists the runs in storage from their run records, filtered by `--source`, `--category`, `--day`, and `--state` and paged with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
 - **Run record backfill**: `quarry index rebuild` writes run records for runs stored before v0.14.0, from what the stored data shows, and marks them `backfilled: true`. A backfilled run's state follows its terminal event. `--dry-run` reports without writing, and a rerun writes only missing records.
 - **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events by calling the `quarry` executable, which must be installed. A failure rejects with `QuarryReadError`.
+- **Security policy**: `SECURITY.md` states how to report a vulnerability privately and which releases receive security fixes.
 - **Run retention** ([#239](https://github.com/pithecene/quarry/issues/239)): `quarry prune` removes whole runs by state and age with `--succeeded-days`, `--failed-days`, and `--unterminated-days`, or one run with `--run-id`, including its sidecar files and run records. A prune keeps the run that committed last until another run commits. `--sweep-grace` also reclaims data from writes that never committed, `--dry-run` reports without removing, and a rerun resumes an interrupted prune. The `quarry/retention` package offers the same operation to Go programs.
 
 ### Changed
@@ -671,7 +676,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.13.7...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/pithecene/quarry/compare/v0.13.7...v0.14.0
 [0.13.7]: https://github.com/pithecene/quarry/compare/v0.13.6...v0.13.7
 [0.13.6]: https://github.com/pithecene/quarry/compare/v0.13.5...v0.13.6
 [0.13.5]: https://github.com/pithecene/quarry/compare/v0.13.4...v0.13.5

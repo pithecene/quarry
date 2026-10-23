@@ -15,7 +15,7 @@ import (
 func testEvents() []*types.EventEnvelope {
 	return []*types.EventEnvelope{
 		{
-			ContractVersion: "0.13.7",
+			ContractVersion: "0.14.0",
 			EventID:         "evt-001",
 			RunID:           "run-001",
 			Seq:             1,
@@ -25,7 +25,7 @@ func testEvents() []*types.EventEnvelope {
 			Attempt:         1,
 		},
 		{
-			ContractVersion: "0.13.7",
+			ContractVersion: "0.14.0",
 			EventID:         "evt-002",
 			RunID:           "run-001",
 			Seq:             2,
@@ -450,7 +450,7 @@ func TestWriteEvents_StreamEntryFields(t *testing.T) {
 	defer iox.DiscardClose(s)
 
 	events := []*types.EventEnvelope{{
-		ContractVersion: "0.13.7",
+		ContractVersion: "0.14.0",
 		EventID:         "evt-golden",
 		RunID:           "run-golden",
 		Seq:             7,
