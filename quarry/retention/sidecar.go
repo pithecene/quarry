@@ -3,6 +3,7 @@ package retention
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"sort"
 	"strings"
@@ -104,22 +105,41 @@ func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]stri
 			if err != nil {
 				return nil, qlode.WrapReadError(err, part.Path)
 			}
-			out = append(out, sidecarRefPaths(m.Metadata[qlode.MetadataKeySidecarFiles])...)
+			paths, ok := sidecarRefPaths(m.Metadata[qlode.MetadataKeySidecarFiles])
+			if !ok {
+				return nil, fmt.Errorf("%w: snapshot %s", errMalformedInventory, ref.ID)
+			}
+			out = append(out, paths...)
 		}
 	}
 	return out, nil
 }
 
+// errMalformedInventory reports a sidecar_files value that names no paths in
+// the recorded form. The files it was meant to name cannot be found, so the
+// run is kept rather than losing them.
+var errMalformedInventory = errors.New("malformed sidecar inventory")
+
 // sidecarRefPaths extracts the paths from a sidecar_files metadata value,
-// which a JSON round trip turns into []any of map[string]any.
-func sidecarRefPaths(raw any) []string {
-	refs, _ := raw.([]any)
+// which a JSON round trip turns into []any of map[string]any. An absent
+// value records no files. It is false when the value or an entry has
+// another shape, or an entry lacks a path.
+func sidecarRefPaths(raw any) ([]string, bool) {
+	if raw == nil {
+		return nil, true
+	}
+	refs, ok := raw.([]any)
+	if !ok {
+		return nil, false
+	}
 	out := make([]string, 0, len(refs))
 	for _, r := range refs {
 		m, _ := r.(map[string]any)
-		if path, ok := m["path"].(string); ok && path != "" {
-			out = append(out, path)
+		path, ok := m["path"].(string)
+		if !ok || path == "" {
+			return nil, false
 		}
+		out = append(out, path)
 	}
-	return out
+	return out, true
 }
