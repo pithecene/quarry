@@ -1,8 +1,10 @@
 package retention
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -43,6 +45,9 @@ type runSpec struct {
 	// lateFile is written after the run's last commit, so no snapshot
 	// records it.
 	lateFile bool
+	// again writes another snapshot for a run that already started, without
+	// a second start record or sidecar file.
+	again bool
 }
 
 func (f *fixture) write(spec runSpec) qlode.Config {
@@ -56,6 +61,16 @@ func (f *fixture) write(spec runSpec) qlode.Config {
 	day, err := time.Parse(time.DateOnly, spec.day)
 	if err != nil {
 		f.t.Fatalf("day: %v", err)
+	}
+	if spec.again {
+		ev := &types.EventEnvelope{
+			ContractVersion: types.ContractVersion, EventID: "e2", RunID: spec.runID,
+			Seq: 2, Type: types.EventTypeItem, Ts: spec.day + "T01:30:00Z", Payload: map[string]any{"n": 2}, Attempt: 1,
+		}
+		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
+			f.t.Fatalf("events: %v", err)
+		}
+		return cfg
 	}
 	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, day.Add(time.Hour)); err != nil {
 		f.t.Fatalf("start: %v", err)
@@ -435,5 +450,106 @@ func TestPrune_OneRunReportsItsMalformedKey(t *testing.T) {
 	report := f.prune(Options{Selector: reader.Selector{Source: "src", Category: "cat", Day: oldDay}, RunID: "a b", Policy: Policy{Failed: days(0)}})
 	if fmt.Sprint(report.Unparseable) != fmt.Sprint([]string{bad}) || report.RunsScanned != 0 {
 		t.Fatalf("report = %+v", report)
+	}
+}
+
+// commitDuring is a store that runs commit once, the first time the prune
+// lists a sidecar prefix: after the preview expiry and before the real one.
+type commitDuring struct {
+	lode.Store
+	commit func()
+	done   bool
+}
+
+func (s *commitDuring) List(ctx context.Context, prefix string) ([]string, error) {
+	if !s.done && strings.HasSuffix(prefix, "/files/") {
+		s.done = true
+		s.commit()
+	}
+	return s.Store.List(ctx, prefix)
+}
+
+// A run that commits after the preview keeps that snapshot and its records,
+// even when another run then takes the head.
+func TestPrune_KeepsASnapshotCommittedAfterThePreview(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	store := &commitDuring{Store: f.store}
+	store.commit = func() {
+		f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, again: true})
+		f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
+	}
+	factory := func() (lode.Store, error) { return store, nil }
+	report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now})
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if got, want := outcomes(report), "[r1:kept]"; got != want || report.Runs[0].Kept != keptCommitted {
+		t.Fatalf("runs = %s (%+v), want %s", got, report.Runs, want)
+	}
+	start := qlode.RunRecordDir(cfgs["failed"]) + qlode.StartRecordName
+	if _, err := f.store.Get(t.Context(), start); err != nil {
+		t.Fatalf("start record removed: %v", err)
+	}
+}
+
+// A sidecar inventory in another shape names files that cannot be found, so
+// the run is kept rather than losing them.
+func TestPrune_KeepsARunWithAMalformedSidecarInventory(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	ctx := t.Context()
+	var manifest string
+	for _, k := range f.keys(cfgs["failed"]) {
+		if strings.HasSuffix(k, "/manifest.json") {
+			manifest = k
+		}
+	}
+	rc, err := f.store.Get(ctx, manifest)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if err := f.store.Delete(ctx, manifest); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	broken := strings.Replace(string(body), `"path"`, `"location"`, 1)
+	if err := f.store.Put(ctx, manifest, strings.NewReader(broken)); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:kept]"; got != want || report.Runs[0].Kept != keptInventory {
+		t.Fatalf("runs = %s (%+v), want %s", got, report.Runs, want)
+	}
+	if len(f.keys(cfgs["failed"])) == 0 {
+		t.Fatal("run removed")
+	}
+}
+
+func TestSidecarRefPaths(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		raw  any
+		want []string
+		ok   bool
+	}{
+		"null":          {nil, nil, false},
+		"empty":         {[]any{}, []string{}, true},
+		"paths":         {[]any{map[string]any{"path": "a"}, map[string]any{"path": "b"}}, []string{"a", "b"}, true},
+		"not a list":    {"a", nil, false},
+		"entry not map": {[]any{"a"}, nil, false},
+		"no path":       {[]any{map[string]any{"filename": "a"}}, nil, false},
+		"empty path":    {[]any{map[string]any{"path": ""}}, nil, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, ok := sidecarRefPaths(tc.raw)
+			if ok != tc.ok || !slices.Equal(got, tc.want) {
+				t.Fatalf("got %v, %v; want %v, %v", got, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }
