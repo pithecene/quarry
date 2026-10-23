@@ -141,6 +141,11 @@ Quarry is **TypeScript-first, ESM-only, modern by default**.
 
 - Use `t.Context()` instead of `context.Background()` in tests
 - Use `errors.Is()` for error comparisons, not `==`
+- Group related cases of one behavior as subtests of a single table-driven test
+- Call `t.Parallel()` as the first statement of every top-level test
+- Never call `t.Parallel()` inside a subtest (`t.Run`); subtests run serially in table order
+- A test that must run serially (it swaps `os.Stdout`, changes a package-level variable, or calls `t.Setenv`) calls `testutil.Serial(t, "<reason>")` from `quarry/internal/testutil` first, with the reason as a string literal
+- Enforced by Bosun's `testparallel` analyzer through `task lint:bosun`, which needs read access to Bosun; run it before pushing a change to tests
 
 ---
 
