@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Go module path**: Replace `github.com/pithecene-io/quarry` with `github.com/pithecene/quarry` in `go.mod` and in imports. Releases through v0.13.7 remain available under the former path.
 - **Go version**: Build Go programs that import Quarry with Go 1.27.3 or later.
-- **Run finalization**: Remove any metrics write that follows `RunOrchestrator.Execute`, including calls to `LodeClient.WriteMetrics`.
+- **Run finalization**: Set `RunConfig.Storage`, `StartedAt`, and `StorageDay`, so that `RunOrchestrator.Execute` writes the metrics and the run records. Without `Storage`, it writes neither. Then remove any metrics write that follows `Execute`, including calls to `LodeClient.WriteMetrics`.
 - **Existing runs**: Once no writer older than v0.14.0 is still writing to a dataset, run `quarry index rebuild` once, so that `quarry list runs` and `quarry prune` find the runs stored before v0.14.0.
 
 ---
