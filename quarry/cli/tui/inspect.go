@@ -112,7 +112,7 @@ func (m InspectModel) renderInspectRun() string {
 		} else {
 			value = ValueStyle.Render(value)
 		}
-		b.WriteString(fmt.Sprintf("%s %s\n", label, value))
+		fmt.Fprintf(&b, "%s %s\n", label, value)
 	}
 
 	return BoxStyle.Render(b.String())
@@ -128,21 +128,21 @@ func (m InspectModel) renderInspectJob() string {
 	b.WriteString(TitleStyle.Render("Job Details"))
 	b.WriteString("\n\n")
 
-	b.WriteString(fmt.Sprintf("%s %s\n",
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Job ID:"),
-		ValueStyle.Render(data.JobID)))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		ValueStyle.Render(data.JobID))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("State:"),
-		StateStyle(data.State).Render(data.State)))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		StateStyle(data.State).Render(data.State))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Runs:"),
-		ValueStyle.Render(fmt.Sprintf("%d", len(data.RunIDs)))))
+		ValueStyle.Render(fmt.Sprintf("%d", len(data.RunIDs))))
 
 	if len(data.RunIDs) > 0 {
 		b.WriteString("\n")
 		b.WriteString(LabelStyle.Render("Run IDs:\n"))
 		for _, runID := range data.RunIDs {
-			b.WriteString(fmt.Sprintf("  • %s\n", ValueStyle.Render(runID)))
+			fmt.Fprintf(&b, "  • %s\n", ValueStyle.Render(runID))
 		}
 	}
 
@@ -159,17 +159,17 @@ func (m InspectModel) renderInspectTask() string {
 	b.WriteString(TitleStyle.Render("Task Details"))
 	b.WriteString("\n\n")
 
-	b.WriteString(fmt.Sprintf("%s %s\n",
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Task ID:"),
-		ValueStyle.Render(data.TaskID)))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		ValueStyle.Render(data.TaskID))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("State:"),
-		StateStyle(data.State).Render(data.State)))
+		StateStyle(data.State).Render(data.State))
 
 	if data.RunID != nil {
-		b.WriteString(fmt.Sprintf("%s %s\n",
+		fmt.Fprintf(&b, "%s %s\n",
 			LabelStyle.Render("Run ID:"),
-			ValueStyle.Render(*data.RunID)))
+			ValueStyle.Render(*data.RunID))
 	}
 
 	return BoxStyle.Render(b.String())
@@ -185,43 +185,43 @@ func (m InspectModel) renderInspectProxy() string {
 	b.WriteString(TitleStyle.Render("Proxy Pool Details"))
 	b.WriteString("\n\n")
 
-	b.WriteString(fmt.Sprintf("%s %s\n",
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Name:"),
-		ValueStyle.Render(data.Name)))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		ValueStyle.Render(data.Name))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Strategy:"),
-		ValueStyle.Render(data.Strategy)))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		ValueStyle.Render(data.Strategy))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Endpoints:"),
-		ValueStyle.Render(fmt.Sprintf("%d", data.EndpointCnt))))
+		ValueStyle.Render(fmt.Sprintf("%d", data.EndpointCnt)))
 
 	if data.Sticky != nil {
 		b.WriteString("\n")
 		b.WriteString(TitleStyle.Render("Sticky Config"))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("%s %s\n",
+		fmt.Fprintf(&b, "%s %s\n",
 			LabelStyle.Render("  Scope:"),
-			ValueStyle.Render(data.Sticky.Scope)))
+			ValueStyle.Render(data.Sticky.Scope))
 		if data.Sticky.TTLMs != nil {
-			b.WriteString(fmt.Sprintf("%s %s\n",
+			fmt.Fprintf(&b, "%s %s\n",
 				LabelStyle.Render("  TTL:"),
-				ValueStyle.Render(fmt.Sprintf("%dms", *data.Sticky.TTLMs))))
+				ValueStyle.Render(fmt.Sprintf("%dms", *data.Sticky.TTLMs)))
 		}
 	}
 
 	b.WriteString("\n")
 	b.WriteString(TitleStyle.Render("Runtime State"))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("%s %s\n",
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("  RR Index:"),
-		ValueStyle.Render(fmt.Sprintf("%d", data.Runtime.RoundRobinIndex))))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		ValueStyle.Render(fmt.Sprintf("%d", data.Runtime.RoundRobinIndex)))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("  Sticky:"),
-		ValueStyle.Render(fmt.Sprintf("%d entries", data.Runtime.StickyEntries))))
+		ValueStyle.Render(fmt.Sprintf("%d entries", data.Runtime.StickyEntries)))
 	if data.Runtime.LastUsedAt != nil {
-		b.WriteString(fmt.Sprintf("%s %s\n",
+		fmt.Fprintf(&b, "%s %s\n",
 			LabelStyle.Render("  Last Used:"),
-			ValueStyle.Render(data.Runtime.LastUsedAt.Format("2006-01-02 15:04:05"))))
+			ValueStyle.Render(data.Runtime.LastUsedAt.Format("2006-01-02 15:04:05")))
 	}
 
 	return BoxStyle.Render(b.String())
@@ -237,17 +237,17 @@ func (m InspectModel) renderInspectExecutor() string {
 	b.WriteString(TitleStyle.Render("Executor Details"))
 	b.WriteString("\n\n")
 
-	b.WriteString(fmt.Sprintf("%s %s\n",
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("Executor ID:"),
-		ValueStyle.Render(data.ExecutorID)))
-	b.WriteString(fmt.Sprintf("%s %s\n",
+		ValueStyle.Render(data.ExecutorID))
+	fmt.Fprintf(&b, "%s %s\n",
 		LabelStyle.Render("State:"),
-		StateStyle(data.State).Render(data.State)))
+		StateStyle(data.State).Render(data.State))
 
 	if data.LastSeenAt != nil {
-		b.WriteString(fmt.Sprintf("%s %s\n",
+		fmt.Fprintf(&b, "%s %s\n",
 			LabelStyle.Render("Last Seen:"),
-			ValueStyle.Render(data.LastSeenAt.Format("2006-01-02 15:04:05"))))
+			ValueStyle.Render(data.LastSeenAt.Format("2006-01-02 15:04:05")))
 	}
 
 	return BoxStyle.Render(b.String())

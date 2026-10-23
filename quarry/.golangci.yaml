@@ -1,10 +1,11 @@
 version: "2"
 
-linters-settings:
-  revive:
-    rules:
-      # Disable var-naming for "types" package - it's a valid package name
-      - name: var-naming
-        disabled: false
-        exclude:
-          - types
+linters:
+  settings:
+    revive:
+      rules:
+        # Disable var-naming for "types" package - it's a valid package name
+        - name: var-naming
+          disabled: false
+          exclude:
+            - types

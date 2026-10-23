@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking Changes
 
 - **Go module path**: The module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`, matching the renamed GitHub organization. Go consumers must update `require` directives and imports; releases up to v0.13.7 remain available under the former path. The CLI, SDK, container images and on-disk format are unchanged
+- **Go version**: The module requires Go 1.27.3 (was 1.25.6), the version that Lode v0.11.0 requires. Go consumers and source builds need Go 1.27.3 or later; release binaries and container images are unaffected
 
 ### Added
 

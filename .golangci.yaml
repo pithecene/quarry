@@ -1,12 +1,12 @@
 version: "2"
 
 run:
-  go: "1.25"
+  go: "1.27"
   timeout: 5m
   tests: true
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - whitespace
 
@@ -31,6 +31,18 @@ linters:
     - gocritic
     - misspell
 
+  settings:
+    gocyclo:
+      min-complexity: 12
+
+    revive:
+      severity: error
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-strings
+        - name: error-return
+
 formatters:
   enable:
     - gofumpt
@@ -39,22 +51,8 @@ formatters:
     gofumpt:
       extra-rules: true
     goimports:
-      local-prefixes: github.com/pithecene/quarry
-
-linters-settings:
-  contextcheck:
-    check-typed-errors: true
-
-  gocyclo:
-    min-complexity: 12
-
-  revive:
-    severity: error
-    rules:
-      - name: exported
-      - name: package-comments
-      - name: error-strings
-      - name: error-return
+      local-prefixes:
+        - github.com/pithecene/quarry
 
 issues:
   max-issues-per-linter: 0

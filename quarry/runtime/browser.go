@@ -102,9 +102,12 @@ func (mb *ManagedBrowser) Close() error {
 	iox.DiscardClose(mb.stdin)
 
 	// Give the browser server a few seconds to shut down gracefully
-	done := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
-		done <- mb.cmd.Wait()
+		// Shutdown reports no exit status: the server exits non-zero when
+		// stdin closes or when it is killed below, and neither is a failure.
+		_ = mb.cmd.Wait()
+		close(done)
 	}()
 
 	select {
