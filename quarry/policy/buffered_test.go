@@ -425,33 +425,24 @@ func TestBufferedPolicy_InvalidConfig_BothLimitsZero(t *testing.T) {
 	}
 }
 
-func TestBufferedPolicy_ValidConfig_OnlyEventLimit(t *testing.T) {
+func TestBufferedPolicy_ValidConfig_OneLimit(t *testing.T) {
 	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 0}
-
-	pol, err := policy.NewBufferedPolicy(sink, config)
-	if err != nil {
-		t.Fatalf("expected success, got %v", err)
-	}
-	if pol == nil {
-		t.Fatal("expected non-nil policy")
-	}
-}
-
-func TestBufferedPolicy_ValidConfig_OnlyByteLimit(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferEvents: 0, MaxBufferBytes: 1024}
-
-	pol, err := policy.NewBufferedPolicy(sink, config)
-	if err != nil {
-		t.Fatalf("expected success, got %v", err)
-	}
-	if pol == nil {
-		t.Fatal("expected non-nil policy")
+	for _, tc := range []struct {
+		name   string
+		config policy.BufferedConfig
+	}{
+		{"event limit only", policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 0}},
+		{"byte limit only", policy.BufferedConfig{MaxBufferEvents: 0, MaxBufferBytes: 1024}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pol, err := policy.NewBufferedPolicy(policy.NewStubSink(), tc.config)
+			if err != nil {
+				t.Fatalf("expected success, got %v", err)
+			}
+			if pol == nil {
+				t.Fatal("expected non-nil policy")
+			}
+		})
 	}
 }
 

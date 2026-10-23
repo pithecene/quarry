@@ -101,59 +101,34 @@ func TestArtifactManager_CommitBeforeChunks_SizeMatch(t *testing.T) {
 	}
 }
 
-func TestArtifactManager_SequenceViolation(t *testing.T) {
+// AddChunk rejects a second chunk that breaks the sequence: one that skips
+// a sequence number, or one that follows the final chunk.
+func TestArtifactManager_RejectsOutOfSequenceChunk(t *testing.T) {
 	t.Parallel()
-
-	m := NewArtifactManager()
-
-	// Add chunk with seq 1
-	err := m.AddChunk(&types.ArtifactChunk{
-		ArtifactID: "test",
-		Seq:        1,
-		IsLast:     false,
-		Data:       []byte("chunk1"),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Try to add chunk with seq 3 (should be 2)
-	err = m.AddChunk(&types.ArtifactChunk{
-		ArtifactID: "test",
-		Seq:        3,
-		IsLast:     true,
-		Data:       []byte("chunk3"),
-	})
-	if err == nil {
-		t.Fatal("expected error for sequence violation")
-	}
-}
-
-func TestArtifactManager_ChunkAfterIsLast(t *testing.T) {
-	t.Parallel()
-
-	m := NewArtifactManager()
-
-	// Add final chunk
-	err := m.AddChunk(&types.ArtifactChunk{
-		ArtifactID: "test",
-		Seq:        1,
-		IsLast:     true,
-		Data:       []byte("final"),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Try to add another chunk after is_last
-	err = m.AddChunk(&types.ArtifactChunk{
-		ArtifactID: "test",
-		Seq:        2,
-		IsLast:     false,
-		Data:       []byte("extra"),
-	})
-	if err == nil {
-		t.Fatal("expected error for chunk after is_last")
+	for _, tc := range []struct {
+		name          string
+		first, second types.ArtifactChunk
+	}{
+		{
+			"skipped sequence number",
+			types.ArtifactChunk{ArtifactID: "test", Seq: 1, IsLast: false, Data: []byte("chunk1")},
+			types.ArtifactChunk{ArtifactID: "test", Seq: 3, IsLast: true, Data: []byte("chunk3")},
+		},
+		{
+			"chunk after is_last",
+			types.ArtifactChunk{ArtifactID: "test", Seq: 1, IsLast: true, Data: []byte("final")},
+			types.ArtifactChunk{ArtifactID: "test", Seq: 2, IsLast: false, Data: []byte("extra")},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewArtifactManager()
+			if err := m.AddChunk(&tc.first); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err := m.AddChunk(&tc.second); err == nil {
+				t.Fatal("expected an error for the second chunk")
+			}
+		})
 	}
 }
 

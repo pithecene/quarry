@@ -10,6 +10,7 @@ linters:
     - useany
     - errjoin
     - responseclose
+    - testtable
   settings:
     custom:
       testparallel:
@@ -21,6 +22,11 @@ linters:
         type: module
       errjoin:
         type: module
+      testtable:
+        type: module
+        settings:
+          serial-helper-packages:
+            - github.com/pithecene/quarry/internal/testutil
       responseclose:
         type: module
         settings:

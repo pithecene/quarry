@@ -70,71 +70,40 @@ func TestIngestionEngine_EnvelopeValidation_ContractVersionMismatch(t *testing.T
 	}
 }
 
-func TestIngestionEngine_EnvelopeValidation_RunIDMismatch(t *testing.T) {
+// An envelope whose run_id or attempt differs from the run is a stream
+// error, not a policy error.
+func TestIngestionEngine_EnvelopeValidation_LineageMismatch(t *testing.T) {
 	t.Parallel()
-
-	runMeta := &types.RunMeta{
-		RunID:   "run-123",
-		Attempt: 1,
-	}
-
-	envelope := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-1",
-		RunID:           "run-WRONG", // Wrong run_id
-		Seq:             1,
-		Type:            types.EventTypeLog,
-		Ts:              "2024-01-01T00:00:00Z",
-		Payload:         map[string]any{"level": "info", "message": "test"},
-		Attempt:         1,
-	}
-
-	data := encodeEventFrame(envelope)
-	reader := bytes.NewReader(data)
-
-	logger := log.NewLogger(runMeta)
-	engine := NewIngestionEngine(reader, policy.NewNoopPolicy(), NewArtifactManager(), nil, logger, runMeta, nil, nil, nil)
-
-	err := engine.Run(t.Context())
-	if err == nil {
-		t.Fatal("expected error for run_id mismatch")
-	}
-	if IsPolicyError(err) {
-		t.Error("run_id mismatch should be stream error, not policy error")
-	}
-}
-
-func TestIngestionEngine_EnvelopeValidation_AttemptMismatch(t *testing.T) {
-	t.Parallel()
-
-	runMeta := &types.RunMeta{
-		RunID:   "run-123",
-		Attempt: 1,
-	}
-
-	envelope := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-1",
-		RunID:           "run-123",
-		Seq:             1,
-		Type:            types.EventTypeLog,
-		Ts:              "2024-01-01T00:00:00Z",
-		Payload:         map[string]any{"level": "info", "message": "test"},
-		Attempt:         2, // Wrong attempt
-	}
-
-	data := encodeEventFrame(envelope)
-	reader := bytes.NewReader(data)
-
-	logger := log.NewLogger(runMeta)
-	engine := NewIngestionEngine(reader, policy.NewNoopPolicy(), NewArtifactManager(), nil, logger, runMeta, nil, nil, nil)
-
-	err := engine.Run(t.Context())
-	if err == nil {
-		t.Fatal("expected error for attempt mismatch")
-	}
-	if IsPolicyError(err) {
-		t.Error("attempt mismatch should be stream error, not policy error")
+	runMeta := &types.RunMeta{RunID: "run-123", Attempt: 1}
+	for _, tc := range []struct {
+		name    string
+		runID   string
+		attempt int
+	}{
+		{"run_id", "run-WRONG", 1},
+		{"attempt", "run-123", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			envelope := &types.EventEnvelope{
+				ContractVersion: types.ContractVersion,
+				EventID:         "evt-1",
+				RunID:           tc.runID,
+				Seq:             1,
+				Type:            types.EventTypeLog,
+				Ts:              "2024-01-01T00:00:00Z",
+				Payload:         map[string]any{"level": "info", "message": "test"},
+				Attempt:         tc.attempt,
+			}
+			reader := bytes.NewReader(encodeEventFrame(envelope))
+			engine := NewIngestionEngine(reader, policy.NewNoopPolicy(), NewArtifactManager(), nil, log.NewLogger(runMeta), runMeta, nil, nil, nil)
+			err := engine.Run(t.Context())
+			if err == nil {
+				t.Fatalf("expected error for %s mismatch", tc.name)
+			}
+			if IsPolicyError(err) {
+				t.Errorf("%s mismatch should be stream error, not policy error", tc.name)
+			}
+		})
 	}
 }
 
@@ -705,7 +674,6 @@ func TestIngestionEngine_PipeCloseAfterTerminal(t *testing.T) {
 	engine := NewIngestionEngine(reader, policy.NewNoopPolicy(), NewArtifactManager(), nil, logger, runMeta, nil, nil, nil)
 
 	err := engine.Run(t.Context())
-
 	// Should NOT error - pipe closure after terminal is acceptable
 	if err != nil {
 		t.Fatalf("expected no error after pipe close following terminal, got: %v", err)

@@ -51,19 +51,19 @@ func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:          1,
-		RunsCompleted:        1,
-		EventsReceived:       42,
-		EventsPersisted:      40,
-		EventsDropped:        2,
-		DroppedByType:        map[string]int64{"debug": 2},
+		RunsStarted:           1,
+		RunsCompleted:         1,
+		EventsReceived:        42,
+		EventsPersisted:       40,
+		EventsDropped:         2,
+		DroppedByType:         map[string]int64{"debug": 2},
 		ExecutorLaunchSuccess: 1,
-		LodeWriteSuccess:     10,
-		Policy:               "strict",
-		Executor:             "executor.js",
-		StorageBackend:       "fs",
-		RunID:                "run-001",
-		JobID:                "job-xyz",
+		LodeWriteSuccess:      10,
+		Policy:                "strict",
+		Executor:              "executor.js",
+		StorageBackend:        "fs",
+		RunID:                 "run-001",
+		JobID:                 "job-xyz",
 	}
 
 	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
@@ -124,165 +124,55 @@ func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
 	}
 }
 
-func TestQueryLatestMetrics_MultipleRuns(t *testing.T) {
+// QueryLatestMetrics returns the latest metrics record that matches its
+// run ID and source filters. Each write i records RunsStarted i+1, one
+// minute after the previous write.
+func TestQueryLatestMetrics_Filters(t *testing.T) {
 	t.Parallel()
-
-	store := lode.NewMemory()
-	factory := sharedFactory(store)
-
+	type write struct{ source, runID string }
+	cases := []struct {
+		name          string
+		writes        []write
+		runID, source string
+		wantRunID     string
+		wantStarted   int64
+	}{
+		{"latest of several runs", []write{{"test-source", "run-001"}, {"test-source", "run-002"}, {"test-source", "run-003"}}, "", "", "run-003", 3},
+		{"by run ID", []write{{"test-source", "run-001"}, {"test-source", "run-002"}, {"test-source", "run-003"}}, "run-002", "", "run-002", 2},
+		{"by source", []write{{"alpha", "run-001"}, {"beta", "run-001"}}, "", "alpha", "run-001", 1},
+		// source=alpha must not match source=alphabet.
+		{"source is not a substring match", []write{{"alpha", "run-001"}, {"alphabet", "run-001"}}, "", "alpha", "run-001", 1},
+	}
 	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-
-	// Write metrics for 3 different runs
-	for i, runID := range []string{"run-001", "run-002", "run-003"} {
-		cfg := Config{
-			Dataset:  "quarry",
-			Source:   "test-source",
-			Category: "test-category",
-			Day:      "2026-02-03",
-			RunID:    runID,
-		}
-
-		client, err := NewLodeClientWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-		}
-
-		snap := metrics.Snapshot{
-			RunsStarted: int64(i + 1),
-			RunID:        runID,
-			Policy:       "strict",
-			Executor:     "executor.js",
-			StorageBackend: "fs",
-		}
-
-		if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
-			t.Fatalf("WriteMetrics for %s failed: %v", runID, err)
-		}
-	}
-
-	// Read without filter — should get latest (run-003)
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	record, err := QueryLatestMetrics(t.Context(), ds, "", "")
-	if err != nil {
-		t.Fatalf("QueryLatestMetrics failed: %v", err)
-	}
-
-	if v := toString(record["run_id"]); v != "run-003" {
-		t.Errorf("run_id = %q, want %q (latest)", v, "run-003")
-	}
-	if v := toInt64(record["runs_started_total"]); v != 3 {
-		t.Errorf("runs_started_total = %d, want 3", v)
-	}
-}
-
-func TestQueryLatestMetrics_FilterByRunID(t *testing.T) {
-	t.Parallel()
-
-	store := lode.NewMemory()
-	factory := sharedFactory(store)
-
-	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-
-	// Write metrics for 3 runs
-	for i, runID := range []string{"run-001", "run-002", "run-003"} {
-		cfg := Config{
-			Dataset:  "quarry",
-			Source:   "test-source",
-			Category: "test-category",
-			Day:      "2026-02-03",
-			RunID:    runID,
-		}
-
-		client, err := NewLodeClientWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-		}
-
-		snap := metrics.Snapshot{
-			RunsStarted:   int64(i + 1),
-			RunID:          runID,
-			Policy:         "strict",
-			Executor:       "executor.js",
-			StorageBackend: "fs",
-		}
-
-		if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
-			t.Fatalf("WriteMetrics for %s failed: %v", runID, err)
-		}
-	}
-
-	// Filter by specific run-id
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	record, err := QueryLatestMetrics(t.Context(), ds, "run-002", "")
-	if err != nil {
-		t.Fatalf("QueryLatestMetrics failed: %v", err)
-	}
-
-	if v := toString(record["run_id"]); v != "run-002" {
-		t.Errorf("run_id = %q, want %q", v, "run-002")
-	}
-	if v := toInt64(record["runs_started_total"]); v != 2 {
-		t.Errorf("runs_started_total = %d, want 2", v)
-	}
-}
-
-func TestQueryLatestMetrics_FilterBySource(t *testing.T) {
-	t.Parallel()
-
-	store := lode.NewMemory()
-	factory := sharedFactory(store)
-
-	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-
-	// Write metrics with different sources
-	for i, source := range []string{"alpha", "beta"} {
-		cfg := Config{
-			Dataset:  "quarry",
-			Source:   source,
-			Category: "test-category",
-			Day:      "2026-02-03",
-			RunID:    "run-001",
-		}
-
-		client, err := NewLodeClientWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-		}
-
-		snap := metrics.Snapshot{
-			RunsStarted:   int64(i + 1),
-			RunID:          "run-001",
-			Policy:         "strict",
-			Executor:       "executor.js",
-			StorageBackend: "fs",
-		}
-
-		if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
-			t.Fatalf("WriteMetrics for source %s failed: %v", source, err)
-		}
-	}
-
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	// Filter by source=alpha
-	record, err := QueryLatestMetrics(t.Context(), ds, "", "alpha")
-	if err != nil {
-		t.Fatalf("QueryLatestMetrics failed: %v", err)
-	}
-
-	if v := toInt64(record["runs_started_total"]); v != 1 {
-		t.Errorf("runs_started_total = %d, want 1 (alpha source)", v)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			factory := sharedFactory(lode.NewMemory())
+			for i, w := range tc.writes {
+				cfg := Config{Dataset: "quarry", Source: w.source, Category: "test-category", Day: "2026-02-03", RunID: w.runID}
+				client, err := NewLodeClientWithFactory(cfg, factory)
+				if err != nil {
+					t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+				}
+				snap := metrics.Snapshot{RunsStarted: int64(i + 1), RunID: w.runID, Policy: "strict", Executor: "executor.js", StorageBackend: "fs"}
+				if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
+					t.Fatalf("WriteMetrics for %+v failed: %v", w, err)
+				}
+			}
+			ds, err := NewReadDataset("quarry", factory)
+			if err != nil {
+				t.Fatalf("NewReadDataset failed: %v", err)
+			}
+			record, err := QueryLatestMetrics(t.Context(), ds, tc.runID, tc.source)
+			if err != nil {
+				t.Fatalf("QueryLatestMetrics failed: %v", err)
+			}
+			if v := toString(record["run_id"]); v != tc.wantRunID {
+				t.Errorf("run_id = %q, want %q", v, tc.wantRunID)
+			}
+			if v := toInt64(record["runs_started_total"]); v != tc.wantStarted {
+				t.Errorf("runs_started_total = %d, want %d", v, tc.wantStarted)
+			}
+		})
 	}
 }
 
@@ -332,7 +222,7 @@ func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
 		}
 
 		snap := metrics.Snapshot{
-			RunsStarted:   int64(i + 1),
+			RunsStarted:    int64(i + 1),
 			RunID:          runID,
 			Policy:         "strict",
 			Executor:       "executor.js",
@@ -363,60 +253,6 @@ func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
 	}
 }
 
-// TestQueryLatestMetrics_SourceSubstringNoCollision verifies that filtering
-// by source=alpha does not match source=alphabet.
-func TestQueryLatestMetrics_SourceSubstringNoCollision(t *testing.T) {
-	t.Parallel()
-
-	store := lode.NewMemory()
-	factory := sharedFactory(store)
-
-	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-
-	// Write metrics for source=alpha and source=alphabet
-	for i, source := range []string{"alpha", "alphabet"} {
-		cfg := Config{
-			Dataset:  "quarry",
-			Source:   source,
-			Category: "test-category",
-			Day:      "2026-02-03",
-			RunID:    "run-001",
-		}
-
-		client, err := NewLodeClientWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-		}
-
-		snap := metrics.Snapshot{
-			RunsStarted:   int64(i + 1),
-			RunID:          "run-001",
-			Policy:         "strict",
-			Executor:       "executor.js",
-			StorageBackend: "fs",
-		}
-
-		if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
-			t.Fatalf("WriteMetrics for source %s failed: %v", source, err)
-		}
-	}
-
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	// Filter by source=alpha — must NOT match source=alphabet
-	record, err := QueryLatestMetrics(t.Context(), ds, "", "alpha")
-	if err != nil {
-		t.Fatalf("QueryLatestMetrics failed: %v", err)
-	}
-
-	if v := toInt64(record["runs_started_total"]); v != 1 {
-		t.Errorf("runs_started_total = %d, want 1 (alpha source, not alphabet)", v)
-	}
-}
-
 // TestQueryLatestMetrics_RecordLevelFiltering verifies that record-level
 // run_id filtering works when manifest paths might match broadly.
 func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
@@ -442,7 +278,7 @@ func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:   5,
+		RunsStarted:    5,
 		RunID:          "run-abc",
 		Policy:         "strict",
 		Executor:       "executor.js",
@@ -490,7 +326,7 @@ func TestQueryLatestMetrics_TsRoundTrip(t *testing.T) {
 
 	completedAt := time.Date(2026, 2, 3, 15, 30, 0, 0, time.UTC)
 	snap := metrics.Snapshot{
-		RunsStarted:   1,
+		RunsStarted:    1,
 		RunID:          "run-001",
 		Policy:         "strict",
 		Executor:       "executor.js",

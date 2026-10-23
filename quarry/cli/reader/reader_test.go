@@ -150,28 +150,22 @@ func TestStatsMetricsResponse(t *testing.T) {
 	}
 }
 
-// TestListRunsNoLimit verifies that limit=0 returns all results.
-func TestListRunsNoLimit(t *testing.T) {
+// TestListRunsLimit verifies that a limit is applied and that limit=0
+// returns every stub item.
+func TestListRunsLimit(t *testing.T) {
 	t.Parallel()
-
-	opts := ListRunsOptions{Limit: 0}
-	results := ListRuns(opts)
-
-	// Stub returns 4 items; with limit=0 we should get all
-	if len(results) != 4 {
-		t.Errorf("ListRuns with limit=0 returned %d items, expected 4", len(results))
-	}
-}
-
-// TestListRunsWithLimit verifies that limit is applied.
-func TestListRunsWithLimit(t *testing.T) {
-	t.Parallel()
-
-	opts := ListRunsOptions{Limit: 2}
-	results := ListRuns(opts)
-
-	if len(results) != 2 {
-		t.Errorf("ListRuns with limit=2 returned %d items, expected 2", len(results))
+	for _, tc := range []struct {
+		name         string
+		limit, count int
+	}{
+		{"no limit", 0, 4},
+		{"limit", 2, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := len(ListRuns(ListRunsOptions{Limit: tc.limit})); got != tc.count {
+				t.Errorf("ListRuns with limit=%d returned %d items, expected %d", tc.limit, got, tc.count)
+			}
+		})
 	}
 }
 

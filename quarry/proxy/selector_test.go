@@ -400,85 +400,50 @@ func TestSelector_Stats(t *testing.T) {
 	}
 }
 
-func TestSelector_RecencyWindow_AvoidRecentEndpoints(t *testing.T) {
+// A recency window keeps consecutive selections from repeating an
+// endpoint. A window smaller than the pool avoids the recent endpoints; a
+// window that covers the pool falls back to the least recently used one,
+// which rotates once the ring is full.
+func TestSelector_RecencyWindow(t *testing.T) {
 	t.Parallel()
-
-	s := NewSelector()
-
-	window := 2
-	pool := &types.ProxyPool{
-		Name:     "test",
-		Strategy: types.ProxyStrategyRandom,
-		Endpoints: []types.ProxyEndpoint{
-			{Protocol: types.ProxyProtocolHTTP, Host: "p1.example.com", Port: 8080},
-			{Protocol: types.ProxyProtocolHTTP, Host: "p2.example.com", Port: 8080},
-			{Protocol: types.ProxyProtocolHTTP, Host: "p3.example.com", Port: 8080},
-		},
-		RecencyWindow: &window,
-	}
-
-	if err := s.RegisterPool(pool); err != nil {
-		t.Fatalf("RegisterPool failed: %v", err)
-	}
-
-	// With 3 endpoints and window=2, each selection should avoid
-	// the last 2 used endpoints, forcing rotation.
-	seen := make([]string, 0, 9)
-	for i := 0; i < 9; i++ {
-		ep, err := s.Select(SelectRequest{Pool: "test", Commit: true})
-		if err != nil {
-			t.Fatalf("Select failed: %v", err)
-		}
-		seen = append(seen, ep.Host)
-	}
-
-	// No two consecutive selections should be the same
-	for i := 1; i < len(seen); i++ {
-		if seen[i] == seen[i-1] {
-			t.Errorf("consecutive selections should differ: index %d and %d both got %q", i-1, i, seen[i])
-		}
-	}
-}
-
-func TestSelector_RecencyWindow_LRUFallback(t *testing.T) {
-	t.Parallel()
-
-	s := NewSelector()
-
-	// Window >= endpoints: all endpoints excluded, LRU fallback
-	window := 3
-	pool := &types.ProxyPool{
-		Name:     "test",
-		Strategy: types.ProxyStrategyRandom,
-		Endpoints: []types.ProxyEndpoint{
-			{Protocol: types.ProxyProtocolHTTP, Host: "p1.example.com", Port: 8080},
-			{Protocol: types.ProxyProtocolHTTP, Host: "p2.example.com", Port: 8080},
-			{Protocol: types.ProxyProtocolHTTP, Host: "p3.example.com", Port: 8080},
-		},
-		RecencyWindow: &window,
-	}
-
-	if err := s.RegisterPool(pool); err != nil {
-		t.Fatalf("RegisterPool failed: %v", err)
-	}
-
-	// Once ring is full (3 entries), LRU always returns the oldest
-	seen := make([]string, 0, 6)
-	for i := 0; i < 6; i++ {
-		ep, err := s.Select(SelectRequest{Pool: "test", Commit: true})
-		if err != nil {
-			t.Fatalf("Select failed: %v", err)
-		}
-		seen = append(seen, ep.Host)
-	}
-
-	// After ring is full (3 selections), subsequent selections should rotate
-	// through all endpoints since LRU returns the oldest each time.
-	// No two consecutive should be the same once the ring is full.
-	for i := 4; i < len(seen); i++ {
-		if seen[i] == seen[i-1] {
-			t.Errorf("LRU fallback: consecutive selections at %d and %d both got %q", i-1, i, seen[i])
-		}
+	for _, tc := range []struct {
+		name               string
+		window, selections int
+		checkFrom          int // first index compared with its predecessor
+	}{
+		{"avoids recent endpoints", 2, 9, 1},
+		{"least recently used fallback", 3, 6, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewSelector()
+			window := tc.window
+			pool := &types.ProxyPool{
+				Name:     "test",
+				Strategy: types.ProxyStrategyRandom,
+				Endpoints: []types.ProxyEndpoint{
+					{Protocol: types.ProxyProtocolHTTP, Host: "p1.example.com", Port: 8080},
+					{Protocol: types.ProxyProtocolHTTP, Host: "p2.example.com", Port: 8080},
+					{Protocol: types.ProxyProtocolHTTP, Host: "p3.example.com", Port: 8080},
+				},
+				RecencyWindow: &window,
+			}
+			if err := s.RegisterPool(pool); err != nil {
+				t.Fatalf("RegisterPool failed: %v", err)
+			}
+			seen := make([]string, 0, tc.selections)
+			for range tc.selections {
+				ep, err := s.Select(SelectRequest{Pool: "test", Commit: true})
+				if err != nil {
+					t.Fatalf("Select failed: %v", err)
+				}
+				seen = append(seen, ep.Host)
+			}
+			for i := tc.checkFrom; i < len(seen); i++ {
+				if seen[i] == seen[i-1] {
+					t.Errorf("consecutive selections at %d and %d both got %q", i-1, i, seen[i])
+				}
+			}
+		})
 	}
 }
 
