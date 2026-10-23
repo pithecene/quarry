@@ -24,6 +24,9 @@ linters:
         type: module
       testtable:
         type: module
+        settings:
+          serial-helper-packages:
+            - github.com/pithecene/quarry/internal/testutil
       responseclose:
         type: module
         settings:
