@@ -768,8 +768,11 @@ Flags:
   `--day`. A run that no longer exists is not an error
 - `--succeeded-days=<n>`, `--failed-days=<n>`: prune runs in that state
   whose end record is at least `n` days old; `0` prunes every such run
-- `--unterminated-days=<n>`: prune unterminated runs that started at least
-  `n` days ago; `n` must be at least 1 and should exceed the longest run
+- `--unterminated-days=<n>`: prune unterminated runs that started, and
+  last wrote, at least `n` days ago; `n` must be at least 1 and should
+  exceed the longest run
+- A day count must lie between 0 and the largest count a duration holds
+  (106751); any other value is an error
 - `--sweep-grace=<duration>`: after the runs, sweep the whole dataset,
   reclaiming data of writes that never committed once it is older than the
   duration; `0` (the default) skips the sweep

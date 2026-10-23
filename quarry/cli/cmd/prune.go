@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 var pruneAgeFlags = []struct{ name, usage string }{
 	{"succeeded-days", "Prune succeeded runs that ended at least this many days ago (0 prunes them all)"},
 	{"failed-days", "Prune failed runs that ended at least this many days ago (0 prunes them all)"},
-	{"unterminated-days", "Prune unterminated runs that started at least this many days ago (at least 1; must exceed the longest run)"},
+	{"unterminated-days", "Prune unterminated runs that started and last wrote at least this many days ago (at least 1; must exceed the longest run)"},
 }
 
 // PruneCommand returns the prune command, which removes whole runs by state
@@ -55,6 +56,10 @@ func pruneAction(c *cli.Context) error {
 	if err := rejectEmptySelectors(c); err != nil {
 		return cli.Exit(err.Error(), 1)
 	}
+	policy, err := policyFrom(c)
+	if err != nil {
+		return cli.Exit(err.Error(), 1)
+	}
 	factory, err := storeFactoryFrom(c)
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("failed to initialize storage: %v", err), 1)
@@ -62,7 +67,7 @@ func pruneAction(c *cli.Context) error {
 	opts := retention.Options{
 		Selector:   reader.Selector{Source: c.String("source"), Category: c.String("category"), Day: c.String("day")},
 		RunID:      c.String("run-id"),
-		Policy:     policyFrom(c),
+		Policy:     policy,
 		SweepGrace: c.Duration("sweep-grace"),
 		DryRun:     c.Bool("dry-run"),
 		Now:        time.Now(),
@@ -92,16 +97,29 @@ func rejectEmptySelectors(c *cli.Context) error {
 	return nil
 }
 
+// maxDays is the largest day count a time.Duration holds.
+const maxDays = math.MaxInt64 / int64(24*time.Hour)
+
 // policyFrom reads the age flags; a flag that is not set selects nothing.
-func policyFrom(c *cli.Context) retention.Policy {
-	age := func(name string) *time.Duration {
-		if !c.IsSet(name) {
-			return nil
+// A count outside [0, maxDays] is refused before conversion, since an
+// overflowing duration could wrap to a small or zero age.
+func policyFrom(c *cli.Context) (retention.Policy, error) {
+	var policy retention.Policy
+	for _, f := range []struct {
+		name string
+		dst  **time.Duration
+	}{{"succeeded-days", &policy.Succeeded}, {"failed-days", &policy.Failed}, {"unterminated-days", &policy.Unterminated}} {
+		if !c.IsSet(f.name) {
+			continue
 		}
-		d := time.Duration(c.Int(name)) * 24 * time.Hour
-		return &d
+		n := int64(c.Int(f.name))
+		if n < 0 || n > maxDays {
+			return policy, fmt.Errorf("--%s must be between 0 and %d", f.name, maxDays)
+		}
+		d := time.Duration(n) * 24 * time.Hour
+		*f.dst = &d
 	}
-	return retention.Policy{Succeeded: age("succeeded-days"), Failed: age("failed-days"), Unterminated: age("unterminated-days")}
+	return policy, nil
 }
 
 // renderPrune renders the report; the table shows the selected runs and

@@ -402,7 +402,7 @@ quarry index rebuild --storage-backend fs --storage-path ./quarry-data
 runs: their partitions, sidecar files, and run records. Each age flag
 selects runs in one state by age in days: `--succeeded-days` and
 `--failed-days` count from the run's end, and `--unterminated-days` counts
-from its start. A state without a flag is kept. An unterminated run may
+from its start or its last write, whichever is later. A state without a flag is kept. An unterminated run may
 still be running, so `--unterminated-days` must be at least 1 and should
 exceed the longest run. `--run-id`, with `--source`, `--category`, and
 `--day`, prunes one run, for example once a consumer has imported it.

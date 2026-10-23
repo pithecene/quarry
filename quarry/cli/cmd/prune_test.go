@@ -62,6 +62,8 @@ func TestPrune_Errors(t *testing.T) {
 		"unterminated too young": {"prune", "--storage-backend", "fs", "--storage-path", root, "--unterminated-days", "0"},
 		"run without day":        {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--run-id", "r"},
 		"empty run id":           {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--source", "demo", "--category", "default", "--day", "2026-10-22", "--run-id", ""},
+		"negative days":          {"prune", "--storage-backend", "fs", "--storage-path", root, "--succeeded-days", "-9223372036854775808"},
+		"overflowing days":       {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "9223372036854775807"},
 		"empty source":           {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--source", ""},
 	}
 	for name, args := range cases {

@@ -948,7 +948,7 @@
         "unterminated-days": {
           "type": "int",
           "required": false,
-          "description": "Prune unterminated runs that started at least this many days ago (at least 1; must exceed the longest run)",
+          "description": "Prune unterminated runs that started and last wrote at least this many days ago (at least 1; must exceed the longest run)",
           "notes": "Unset keeps unterminated runs"
         },
         "storage-dataset": {
