@@ -431,15 +431,18 @@ implements it, and `quarry prune` (CONTRACT_CLI.md §prune) exposes it.
    condition, a direct child could also belong to another run, so the
    prefix is not listed, and a file written after the run's last commit
    remains. A recorded path outside the run's sidecar prefix is reported
-   and left in place. The paths are gathered first because the recorded
-   ones are in the manifests that step 3 deletes.
-3. Expire the run's snapshots with `Dataset.Expire` on the partition
-   prefix, and then list the partition again. A snapshot that committed
-   after the expiry's listing is not in its selection; if one remains,
-   the run is kept with its sidecar files and records. A run with no
-   snapshot (one that committed nothing) has nothing to expire, and Lode
-   requires no head for a dataset without snapshots, so such a run loses
-   only its sidecar files and records.
+   and left in place. A recorded inventory in any other form names files
+   that cannot be found, so the run is kept, nothing of it is deleted,
+   and the report gives the reason. The paths are gathered first because
+   the recorded ones are in the manifests that step 3 deletes.
+3. Expire the snapshots that the preview selected with `Dataset.Expire`,
+   naming their IDs and the partition prefix, and then list the partition
+   again. A snapshot that committed after the preview was not judged by
+   it, so it is never expired; if one remains, the run is kept with its
+   sidecar files and records. A run with no snapshot in the preview (one
+   that committed nothing) has nothing to expire, and Lode requires no
+   head for a dataset without snapshots, so such a run loses only its
+   sidecar files and records.
 4. Delete the gathered sidecar objects.
 5. Delete the start record, and then the end record. A run without a
    start record is never listed, and an end record without one is

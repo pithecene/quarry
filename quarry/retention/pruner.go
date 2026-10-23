@@ -23,6 +23,7 @@ const (
 	keptPending   = "the dataset head is uncommitted or absent; rerun the prune"
 	keptNoInstant = "a snapshot ID carries no write instant"
 	keptCommitted = "committed during the prune; its records remain"
+	keptInventory = "a snapshot's sidecar inventory is malformed"
 )
 
 // pruner removes one run at a time from one dataset.
@@ -119,12 +120,12 @@ func (p *pruner) prune(ctx context.Context, k reader.Key) (out Run, due bool, er
 }
 
 // remove deletes a selected run: a dry-run expiry first, so a run that
-// holds the head loses nothing; then its snapshots, and, once a fresh
+// holds the head loses nothing; then the previewed snapshots, and, once a fresh
 // listing shows none remain, its sidecar files and records. The sidecar
 // paths are gathered before the expiry, because the paths a run records
 // live in the manifests the expiry deletes.
 func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold time.Duration) (Run, bool, error) {
-	preview, kept, err := p.expire(ctx, out.Partition, true)
+	preview, kept, err := p.expire(ctx, out.Partition, nil, true)
 	if kept != "" || err != nil {
 		out.Kept = kept
 		return out, true, err
@@ -138,6 +139,10 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	cfg := qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
 	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition)
 	out.Skipped = skipped
+	if errors.Is(err, errMalformedInventory) {
+		out.Kept = keptInventory
+		return out, true, nil
+	}
 	if err != nil {
 		return out, true, err
 	}
@@ -147,14 +152,20 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		out.Snapshots, out.Objects, out.Bytes = len(preview.Expired), preview.Objects, preview.Bytes
 		return out, true, nil
 	}
-	report, kept, err := p.expire(ctx, out.Partition, false)
-	out.Snapshots, out.Objects, out.Bytes = len(report.Expired), report.Objects, report.Bytes
-	if kept != "" || err != nil {
-		out.Kept = kept
-		return out, true, err
+	// Only the previewed snapshots are expired: one that committed since the
+	// preview was not judged by it, so it must survive. A run with none has
+	// nothing to expire, and a partition-only request would select a late
+	// commit.
+	if len(preview.Expired) > 0 {
+		report, kept, err := p.expire(ctx, out.Partition, preview.Expired, false)
+		out.Snapshots, out.Objects, out.Bytes = len(report.Expired), report.Objects, report.Bytes
+		if kept != "" || err != nil {
+			out.Kept = kept
+			return out, true, err
+		}
 	}
-	// A commit that landed after Expire's listing is not in its selection,
-	// so the partition is listed again; a snapshot there keeps the records.
+	// A snapshot that committed after the preview remains, so the partition
+	// is listed again; a snapshot there keeps the records.
 	live, err := p.hasSnapshots(ctx, out.Partition)
 	if err != nil {
 		return out, true, err
@@ -196,11 +207,12 @@ func (p *pruner) lastWriteDue(out *Run, ids []lode.DatasetSnapshotID, threshold 
 	return true
 }
 
-// expire expires every snapshot of the run's partition. It returns a reason
-// when the run must be kept: Lode retains the head and mixed snapshots, and
-// refuses while the head is uncommitted.
-func (p *pruner) expire(ctx context.Context, partition string, dryRun bool) (*lode.ExpireReport, string, error) {
-	report, err := p.ds.Expire(ctx, lode.ExpireRequest{Partition: partition, DryRun: dryRun})
+// expire expires the snapshots of the run's partition, narrowed to ids when
+// they are given. It returns a reason when the run must be kept: Lode
+// retains the head and mixed snapshots, and refuses while the head is
+// uncommitted.
+func (p *pruner) expire(ctx context.Context, partition string, ids []lode.DatasetSnapshotID, dryRun bool) (*lode.ExpireReport, string, error) {
+	report, err := p.ds.Expire(ctx, lode.ExpireRequest{IDs: ids, Partition: partition, DryRun: dryRun})
 	if report == nil {
 		report = &lode.ExpireReport{}
 	}
