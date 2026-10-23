@@ -31,6 +31,8 @@ func encodeEventFrame(envelope *types.EventEnvelope) []byte {
 }
 
 func TestIngestionEngine_EnvelopeValidation_ContractVersionMismatch(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -69,6 +71,8 @@ func TestIngestionEngine_EnvelopeValidation_ContractVersionMismatch(t *testing.T
 }
 
 func TestIngestionEngine_EnvelopeValidation_RunIDMismatch(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -101,6 +105,8 @@ func TestIngestionEngine_EnvelopeValidation_RunIDMismatch(t *testing.T) {
 }
 
 func TestIngestionEngine_EnvelopeValidation_AttemptMismatch(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -133,6 +139,8 @@ func TestIngestionEngine_EnvelopeValidation_AttemptMismatch(t *testing.T) {
 }
 
 func TestIngestionEngine_SequenceViolation(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -177,6 +185,8 @@ func TestIngestionEngine_SequenceViolation(t *testing.T) {
 }
 
 func TestIngestionEngine_FrameDecodeError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -230,6 +240,8 @@ func (p *trackingPolicy) Flush(ctx context.Context) error {
 
 // TestIngestionEngine_PolicyFlushAfterError verifies that policy tracking works
 func TestIngestionEngine_PolicyFlushAfterError(t *testing.T) {
+	t.Parallel()
+
 	// This test verifies that the trackingPolicy works correctly
 	// The actual flush-on-error behavior is tested at the RunOrchestrator level
 	pol := newTrackingPolicy()
@@ -245,6 +257,8 @@ func TestIngestionEngine_PolicyFlushAfterError(t *testing.T) {
 }
 
 func TestIngestionEngine_PolicyFailure(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -282,6 +296,8 @@ func TestIngestionEngine_PolicyFailure(t *testing.T) {
 }
 
 func TestIngestionEngine_ValidEvent(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -325,6 +341,8 @@ func encodeRunResultFrame(frame *types.RunResultFrame) []byte {
 }
 
 func TestIngestionEngine_RunResult_Completed(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -384,6 +402,8 @@ func TestIngestionEngine_RunResult_Completed(t *testing.T) {
 }
 
 func TestIngestionEngine_RunResult_WithProxy(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -444,6 +464,8 @@ func TestIngestionEngine_RunResult_WithProxy(t *testing.T) {
 }
 
 func TestIngestionEngine_RunResult_DuplicateIgnored(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -508,6 +530,8 @@ func TestIngestionEngine_RunResult_DuplicateIgnored(t *testing.T) {
 }
 
 func TestIngestionEngine_RunResult_NotCountedInSeq(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -575,6 +599,8 @@ func encodeFileWriteFrame(frame *types.FileWriteFrame) []byte {
 }
 
 func TestIngestionEngine_FileWrite_NoFileWriter_FailsFast(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -651,6 +677,8 @@ func (r *pipeCloseReader) Read(p []byte) (n int, err error) {
 // after a terminal event are treated as acceptable completion, not crashes.
 // This tests the fix for issue #56 (IPC race condition).
 func TestIngestionEngine_PipeCloseAfterTerminal(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -703,6 +731,8 @@ func (w *failingFileWriter) PutFile(_ context.Context, _, _ string, _ []byte) er
 }
 
 func TestIngestionEngine_FileWrite_SuccessAck(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -786,6 +816,8 @@ func TestIngestionEngine_FileWrite_SuccessAck(t *testing.T) {
 }
 
 func TestIngestionEngine_FileWrite_ErrorAck_NoStreamError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -874,6 +906,8 @@ func TestIngestionEngine_FileWrite_ErrorAck_NoStreamError(t *testing.T) {
 }
 
 func TestIngestionEngine_FileWrite_NilAckWriter_BackwardCompat(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -933,6 +967,8 @@ func (epipeWriter) Write(_ []byte) (int, error) {
 }
 
 func TestIngestionEngine_FileWrite_AckWriteEPIPE_NonFatal(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -988,6 +1024,8 @@ func TestIngestionEngine_FileWrite_AckWriteEPIPE_NonFatal(t *testing.T) {
 // received after a terminal event sends an error ack to guarantee executor-side
 // promise settlement. Per CONTRACT_IPC.md §Terminal boundary.
 func TestIngestionEngine_FileWrite_PostTerminal_ErrorAck(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -1056,6 +1094,8 @@ func TestIngestionEngine_FileWrite_PostTerminal_ErrorAck(t *testing.T) {
 // TestIngestionEngine_FileWrite_PostTerminal_NoAckWriter verifies that a
 // post-terminal file_write with nil ackWriter does not panic (backward compat).
 func TestIngestionEngine_FileWrite_PostTerminal_NoAckWriter(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -1098,6 +1138,8 @@ func TestIngestionEngine_FileWrite_PostTerminal_NoAckWriter(t *testing.T) {
 // TestIngestionEngine_PipeCloseBeforeTerminal verifies that pipe closure errors
 // BEFORE a terminal event are still treated as stream errors (executor crash).
 func TestIngestionEngine_PipeCloseBeforeTerminal(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-123",
 		Attempt: 1,
@@ -1144,6 +1186,8 @@ func TestIngestionEngine_PipeCloseBeforeTerminal(t *testing.T) {
 // =============================================================================
 
 func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-e2e",
 		Attempt: 1,

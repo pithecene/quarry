@@ -10,6 +10,8 @@ import (
 )
 
 func TestComputeDedupKey_Deterministic(t *testing.T) {
+	t.Parallel()
+
 	params := map[string]any{"url": "https://example.com", "page": float64(1)}
 
 	key1 := computeDedupKey("script.ts", params)
@@ -21,6 +23,8 @@ func TestComputeDedupKey_Deterministic(t *testing.T) {
 }
 
 func TestComputeDedupKey_DifferentTarget(t *testing.T) {
+	t.Parallel()
+
 	params := map[string]any{"url": "https://example.com"}
 
 	key1 := computeDedupKey("script-a.ts", params)
@@ -32,6 +36,8 @@ func TestComputeDedupKey_DifferentTarget(t *testing.T) {
 }
 
 func TestComputeDedupKey_DifferentParams(t *testing.T) {
+	t.Parallel()
+
 	key1 := computeDedupKey("script.ts", map[string]any{"page": float64(1)})
 	key2 := computeDedupKey("script.ts", map[string]any{"page": float64(2)})
 
@@ -41,6 +47,8 @@ func TestComputeDedupKey_DifferentParams(t *testing.T) {
 }
 
 func TestComputeDedupKey_MapKeyOrdering(t *testing.T) {
+	t.Parallel()
+
 	// json.Marshal sorts map keys; verify ordering doesn't affect key
 	params1 := map[string]any{"a": "1", "b": "2", "c": "3"}
 	params2 := map[string]any{"c": "3", "a": "1", "b": "2"}
@@ -54,6 +62,8 @@ func TestComputeDedupKey_MapKeyOrdering(t *testing.T) {
 }
 
 func TestComputeDedupKey_NilParams(t *testing.T) {
+	t.Parallel()
+
 	key1 := computeDedupKey("script.ts", nil)
 	key2 := computeDedupKey("script.ts", map[string]any{})
 
@@ -75,6 +85,8 @@ func successFactory(calls *atomic.Int64) ChildRunFactory {
 }
 
 func TestOperator_DepthLimit(t *testing.T) {
+	t.Parallel()
+
 	var calls atomic.Int64
 	operator := NewOperator(FanOutConfig{
 		MaxDepth: 1,
@@ -105,6 +117,8 @@ func TestOperator_DepthLimit(t *testing.T) {
 }
 
 func TestOperator_MaxRunsCap(t *testing.T) {
+	t.Parallel()
+
 	var calls atomic.Int64
 	operator := NewOperator(FanOutConfig{
 		MaxDepth: 5,
@@ -139,6 +153,8 @@ func TestOperator_MaxRunsCap(t *testing.T) {
 }
 
 func TestOperator_DedupSkips(t *testing.T) {
+	t.Parallel()
+
 	var calls atomic.Int64
 	operator := NewOperator(FanOutConfig{
 		MaxDepth: 3,
@@ -173,6 +189,8 @@ func TestOperator_DedupSkips(t *testing.T) {
 }
 
 func TestOperator_MissingTarget(t *testing.T) {
+	t.Parallel()
+
 	var calls atomic.Int64
 	operator := NewOperator(FanOutConfig{
 		MaxDepth: 3,
@@ -208,6 +226,8 @@ func TestOperator_MissingTarget(t *testing.T) {
 }
 
 func TestOperator_Concurrency(t *testing.T) {
+	t.Parallel()
+
 	var maxConcurrent atomic.Int64
 	var currentConcurrent atomic.Int64
 
@@ -261,6 +281,8 @@ func TestOperator_Concurrency(t *testing.T) {
 }
 
 func TestOperator_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	factory := func(ctx context.Context, item WorkItem, observer EnqueueObserver) (*RunResult, error) {
 		// Block until context canceled
 		<-ctx.Done()
@@ -305,6 +327,8 @@ func TestOperator_ContextCancellation(t *testing.T) {
 }
 
 func TestOperator_RecursiveFanOut(t *testing.T) {
+	t.Parallel()
+
 	// Level 0 observer enqueues targets at depth 1.
 	// The factory, when running a depth-1 item, uses its observer to enqueue depth-2 items.
 	// With MaxDepth=2, depth-2 items should execute. Depth-3 should be skipped.
@@ -381,6 +405,8 @@ func TestOperator_RecursiveFanOut(t *testing.T) {
 }
 
 func TestOperator_NoEnqueueEvents(t *testing.T) {
+	t.Parallel()
+
 	var calls atomic.Int64
 	operator := NewOperator(FanOutConfig{
 		MaxDepth: 3,
@@ -404,6 +430,8 @@ func TestOperator_NoEnqueueEvents(t *testing.T) {
 }
 
 func TestOperator_EnqueueSourceCategoryOverride(t *testing.T) {
+	t.Parallel()
+
 	var capturedItems []WorkItem
 
 	factory := func(ctx context.Context, item WorkItem, observer EnqueueObserver) (*RunResult, error) {
@@ -468,6 +496,8 @@ func TestOperator_EnqueueSourceCategoryOverride(t *testing.T) {
 }
 
 func TestOperator_FailedChildRun(t *testing.T) {
+	t.Parallel()
+
 	factory := func(ctx context.Context, item WorkItem, observer EnqueueObserver) (*RunResult, error) {
 		return &RunResult{
 			RunMeta: &types.RunMeta{RunID: item.RunID, Attempt: 1},

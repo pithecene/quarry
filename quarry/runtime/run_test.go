@@ -189,6 +189,8 @@ func makeInvalidFrame() []byte {
 }
 
 func TestRunOrchestrator_FlushCalledOnStreamError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-flush-stream",
 		Attempt: 1,
@@ -233,6 +235,8 @@ func TestRunOrchestrator_FlushCalledOnStreamError(t *testing.T) {
 }
 
 func TestRunOrchestrator_FlushCalledOnPolicyError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-flush-policy",
 		Attempt: 1,
@@ -297,6 +301,8 @@ func (e *policyError) Error() string {
 }
 
 func TestRunOrchestrator_ExecutorKilledOnStreamError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-kill-stream",
 		Attempt: 1,
@@ -334,6 +340,8 @@ func TestRunOrchestrator_ExecutorKilledOnStreamError(t *testing.T) {
 }
 
 func TestRunOrchestrator_ExecutorKilledOnPolicyError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-kill-policy",
 		Attempt: 1,
@@ -377,6 +385,8 @@ func TestRunOrchestrator_ExecutorKilledOnPolicyError(t *testing.T) {
 }
 
 func TestRunOrchestrator_SuccessfulRun(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-success",
 		Attempt: 1,
@@ -426,6 +436,8 @@ func TestRunOrchestrator_SuccessfulRun(t *testing.T) {
 }
 
 func TestRunOrchestrator_FlushCalledOnExecutorWaitError(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-flush-wait-err",
 		Attempt: 1,
@@ -472,6 +484,8 @@ func TestRunOrchestrator_FlushCalledOnExecutorWaitError(t *testing.T) {
 }
 
 func TestIsStreamError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		err      error
@@ -520,6 +534,8 @@ func TestIsStreamError(t *testing.T) {
 }
 
 func TestIsVersionMismatchError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		err      error
@@ -583,6 +599,8 @@ func makeVersionMismatchStream(runMeta *types.RunMeta) []byte {
 }
 
 func TestRunOrchestrator_VersionMismatch_OutcomeMapping(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-version-mismatch",
 		Attempt: 1,
@@ -670,6 +688,8 @@ func makeEventStreamWithRunResultMessage(runMeta *types.RunMeta, status types.Ru
 }
 
 func TestRunOrchestrator_ExitCodeConflictWithRunResult(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-exit-conflict",
 		Attempt: 1,
@@ -714,6 +734,8 @@ func TestRunOrchestrator_ExitCodeConflictWithRunResult(t *testing.T) {
 }
 
 func TestRunOrchestrator_ExitCodeCrashOverridesRunResult(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-exit-crash",
 		Attempt: 1,
@@ -758,6 +780,8 @@ func TestRunOrchestrator_ExitCodeCrashOverridesRunResult(t *testing.T) {
 }
 
 func TestRunOrchestrator_RunResultContextPreserved(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-result-context",
 		Attempt: 1,
@@ -859,6 +883,8 @@ func makeEventStreamWithTruncatedLength(runMeta *types.RunMeta) []byte {
 }
 
 func TestRunOrchestrator_ExecutorCrashMidStream(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-crash-midstream",
 		Attempt: 1,
@@ -911,6 +937,8 @@ func TestRunOrchestrator_ExecutorCrashMidStream(t *testing.T) {
 }
 
 func TestRunOrchestrator_ExecutorCrashTruncatedFrame(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-crash-truncated",
 		Attempt: 1,
@@ -955,6 +983,8 @@ func TestRunOrchestrator_ExecutorCrashTruncatedFrame(t *testing.T) {
 }
 
 func TestRunOrchestrator_PolicyFlushFailure_OutcomeMapping(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-flush-fail-outcome",
 		Attempt: 1,
@@ -996,6 +1026,8 @@ func TestRunOrchestrator_PolicyFlushFailure_OutcomeMapping(t *testing.T) {
 }
 
 func TestRunOrchestrator_ExecutorStartFailure(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-start-fail",
 		Attempt: 1,
@@ -1044,6 +1076,8 @@ func TestRunOrchestrator_ExecutorStartFailure(t *testing.T) {
 // =============================================================================
 
 func TestOutcomeMapping_ExitCodes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		exitCode       int
@@ -1069,6 +1103,8 @@ func TestOutcomeMapping_ExitCodes(t *testing.T) {
 }
 
 func TestOutcomeMapping_DetermineOutcome(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		exitCode       int
@@ -1172,6 +1208,8 @@ func (p *sinkFailingPolicy) IngestArtifactChunk(ctx context.Context, chunk *type
 }
 
 func TestRunOrchestrator_SinkWriteFailure_BeforeChunks(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-sink-fail-event",
 		Attempt: 1,
@@ -1256,6 +1294,8 @@ func makeEventStreamWithArtifactChunk(runMeta *types.RunMeta) []byte {
 }
 
 func TestRunOrchestrator_SinkWriteFailure_OnChunks(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-sink-fail-chunk",
 		Attempt: 1,
@@ -1328,6 +1368,8 @@ func (p *eventCountingPolicy) Stats() policy.Stats {
 }
 
 func TestRunOrchestrator_NoSilentDataLoss_AllEventsIngested(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-no-silent-loss",
 		Attempt: 1,
@@ -1407,6 +1449,8 @@ func TestRunOrchestrator_NoSilentDataLoss_AllEventsIngested(t *testing.T) {
 }
 
 func TestRunOrchestrator_NoSilentDataLoss_ErrorSurfaced(t *testing.T) {
+	t.Parallel()
+
 	runMeta := &types.RunMeta{
 		RunID:   "run-error-surfaced",
 		Attempt: 1,
