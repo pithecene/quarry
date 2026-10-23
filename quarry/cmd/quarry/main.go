@@ -40,6 +40,7 @@ func main() {
 			cmd.StatsCommand(),
 			cmd.ListCommand(),
 			cmd.IndexCommand(),
+			cmd.PruneCommand(),
 			cmd.DebugCommand(),
 			cmd.VersionCommand("", commit),
 		},

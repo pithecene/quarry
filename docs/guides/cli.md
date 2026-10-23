@@ -52,6 +52,7 @@ quarry inspect run run-001 --tui
 - `stats`: aggregated facts (runs, jobs, tasks, proxies, executors)
 - `list`: thin enumerations (runs, jobs, pools, executors)
 - `index`: maintain the run records `list runs` reads (`index rebuild`)
+- `prune`: remove whole runs by state and age
 - `debug`: opt-in diagnostics (read-only by default)
 - `version`: CLI and contract versions
 
@@ -393,6 +394,33 @@ the dataset.
 ```
 quarry index rebuild --storage-backend fs --storage-path ./quarry-data --dry-run
 quarry index rebuild --storage-backend fs --storage-path ./quarry-data
+```
+
+### `prune`
+
+`prune <storage flags> [selectors] <age flags> [--dry-run]` removes whole
+runs: their partitions, sidecar files, and run records. Each age flag
+selects runs in one state by age in days: `--succeeded-days` and
+`--failed-days` count from the run's end, and `--unterminated-days` counts
+from its start. A state without a flag is kept. An unterminated run may
+still be running, so `--unterminated-days` must be at least 1 and should
+exceed the longest run. `--run-id`, with `--source`, `--category`, and
+`--day`, prunes one run, for example once a consumer has imported it.
+
+The run that committed most recently holds the dataset's head, which Lode
+never removes; the report lists it as kept, and a later prune removes it.
+`--sweep-grace` also reclaims the data of writes that never committed,
+such as the last batch of a killed run. A rerun resumes an interrupted
+prune. Runs written before v0.14.0 are pruned only after `quarry index
+rebuild` has indexed them.
+
+```
+quarry prune --storage-backend fs --storage-path ./quarry-data \
+  --failed-days 30 --unterminated-days 7 --dry-run
+quarry prune --storage-backend fs --storage-path ./quarry-data \
+  --failed-days 30 --unterminated-days 7 --sweep-grace 24h
+quarry prune --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day 2026-10-22 --run-id run-001 --succeeded-days 0
 ```
 
 ### `debug`

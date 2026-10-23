@@ -913,6 +913,106 @@
         }
       }
     },
+    "prune": {
+      "description": "Remove whole runs by state and age (writes storage)",
+      "flags": {
+        "dry-run": {
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "description": "Report the runs that would be removed, without removing anything"
+        },
+        "run-id": {
+          "type": "string",
+          "required": false,
+          "description": "Prune only this run (requires --source, --category, and --day)"
+        },
+        "sweep-grace": {
+          "type": "duration",
+          "required": false,
+          "default": "0s",
+          "description": "Then sweep the whole dataset, reclaiming uncommitted data older than this (e.g. 24h); 0 skips the sweep"
+        },
+        "succeeded-days": {
+          "type": "int",
+          "required": false,
+          "description": "Prune succeeded runs that ended at least this many days ago (0 prunes them all)",
+          "notes": "Unset keeps succeeded runs"
+        },
+        "failed-days": {
+          "type": "int",
+          "required": false,
+          "description": "Prune failed runs that ended at least this many days ago (0 prunes them all)",
+          "notes": "Unset keeps failed runs"
+        },
+        "unterminated-days": {
+          "type": "int",
+          "required": false,
+          "description": "Prune unterminated runs that started at least this many days ago (at least 1; must exceed the longest run)",
+          "notes": "Unset keeps unterminated runs"
+        },
+        "storage-dataset": {
+          "type": "string",
+          "required": false,
+          "default": "quarry",
+          "description": "Lode dataset ID (default: \"quarry\")"
+        },
+        "storage-backend": {
+          "type": "string",
+          "required": true,
+          "description": "Storage backend: fs or s3",
+          "validation": "Must be one of: fs, s3"
+        },
+        "storage-path": {
+          "type": "string",
+          "required": true,
+          "description": "Storage path (fs: directory, s3: bucket/prefix)"
+        },
+        "storage-region": {
+          "type": "string",
+          "required": false,
+          "description": "AWS region for S3 backend"
+        },
+        "storage-endpoint": {
+          "type": "string",
+          "required": false,
+          "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+          "dependsOn": ["storage-backend=s3"]
+        },
+        "storage-s3-path-style": {
+          "type": "bool",
+          "required": false,
+          "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+          "dependsOn": ["storage-backend=s3"]
+        },
+        "source": {
+          "type": "string",
+          "required": false,
+          "description": "Source selector (storage only)"
+        },
+        "category": {
+          "type": "string",
+          "required": false,
+          "description": "Category selector (requires --source)"
+        },
+        "day": {
+          "type": "string",
+          "required": false,
+          "description": "Partition day selector, YYYY-MM-DD (requires --category)"
+        },
+        "format": {
+          "type": "string",
+          "aliases": ["f"],
+          "required": false,
+          "description": "Output format: json, table, yaml"
+        },
+        "no-color": {
+          "type": "bool",
+          "required": false,
+          "description": "Disable colored output (table format only)"
+        }
+      }
+    },
     "debug": {
       "description": "Diagnostic tools (resolve proxy, ipc)",
       "subcommands": {
