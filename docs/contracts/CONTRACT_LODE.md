@@ -433,7 +433,12 @@ implements it.
    remains. A recorded path outside the run's sidecar prefix
    is reported and left in place.
 3. Expire the run's snapshots with `Dataset.Expire` on the partition
-   prefix.
+   prefix, and then list the partition again. A snapshot that committed
+   after the expiry's listing is not in its selection; if one remains,
+   the run is kept with its records. A run with no snapshot (one that
+   committed nothing) has nothing to expire, and Lode requires no head
+   for a dataset without snapshots, so such a run loses only its sidecar
+   files and records.
 4. Delete the start record, and then the end record. A run without a
    start record is never listed, and an end record without one is
    ignored by readers.
@@ -464,6 +469,6 @@ A prune can run while runs are written to the dataset. A run that the
 policy selects is presumed final: a terminated run is final by
 CONTRACT_RUN.md §Run Finalization, and an unterminated run has written
 nothing for at least its age. If such a run nevertheless commits during
-the prune and takes the head, step 3 keeps its snapshots and the run's
-records remain. A prune does not coordinate with readers of the run.
+the prune, step 3 keeps its new snapshot and the run's records remain;
+only a commit after that final listing is not detected. A prune does not coordinate with readers of the run.
 

@@ -22,6 +22,7 @@ const (
 	keptMixed     = "has snapshots with files outside its partition"
 	keptPending   = "the dataset head is uncommitted or absent; rerun the prune"
 	keptNoInstant = "a snapshot ID carries no write instant"
+	keptCommitted = "committed during the prune; its records remain"
 )
 
 // pruner removes one run at a time from one dataset.
@@ -76,7 +77,10 @@ func (p *pruner) keys(ctx context.Context) (reader.RunKeys, error) {
 	if err != nil {
 		return reader.RunKeys{}, err
 	}
-	out := reader.RunKeys{Runs: []reader.Key{key}}
+	// Malformed keys under the selectors are reported as in a wide prune: a
+	// requested run ID that the write path would encode differently, such
+	// as "a b", appears among them unencoded, never under the run's key.
+	out := reader.RunKeys{Runs: []reader.Key{key}, Malformed: listed.Malformed}
 	for _, k := range listed.OrphanEnds {
 		if k == dir+qlode.EndRecordName {
 			out.OrphanEnds = append(out.OrphanEnds, k)
@@ -156,6 +160,14 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		out.Kept = kept
 		return out, true, err
 	}
+	// A commit that landed after Expire's listing is not in its selection,
+	// so the partition is listed again; a snapshot there keeps the records.
+	if live, err := p.hasSnapshots(ctx, out.Partition); live || err != nil {
+		if live {
+			out.Kept = keptCommitted
+		}
+		return out, true, err
+	}
 	// The start record goes first: a run without one is never listed, and
 	// an end record left by an interruption here is ignored by readers.
 	dir := qlode.RunRecordDir(cfg)
@@ -198,14 +210,14 @@ func (p *pruner) deleteAll(ctx context.Context, paths []string) error {
 
 // lastWrite is the latest instant at which one of the snapshots began its
 // write, read from the generated snapshot ID form "<unix nanoseconds>-<nonce>"
-// (Lode CONTRACT_CORE §Snapshot ID). It is false if any ID lacks an instant.
+// or the legacy form "<unix nanoseconds>" (Lode CONTRACT_CORE §Snapshot ID). It is false if any ID lacks an instant.
 // A run with no snapshot has written nothing, so its start alone dates it.
 func lastWrite(ids []lode.DatasetSnapshotID) (time.Time, bool) {
 	var last time.Time
 	for _, id := range ids {
-		ns, _, found := strings.Cut(string(id), "-")
+		ns, _, _ := strings.Cut(string(id), "-") // a legacy ID is the instant alone
 		n, err := strconv.ParseInt(ns, 10, 64)
-		if !found || err != nil {
+		if err != nil {
 			return time.Time{}, false
 		}
 		if t := time.Unix(0, n); t.After(last) {
@@ -213,4 +225,27 @@ func lastWrite(ids []lode.DatasetSnapshotID) (time.Time, bool) {
 		}
 	}
 	return last, true
+}
+
+// hasSnapshots reports whether any snapshot still has a manifest under the
+// run's partition.
+func (p *pruner) hasSnapshots(ctx context.Context, partition string) (bool, error) {
+	ds := lode.DatasetID(p.dataset)
+	parts, err := p.dr.ListPartitions(ctx, ds, lode.PartitionListOptions{Prefix: partition})
+	if errors.Is(err, lode.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, qlode.WrapReadError(err, partition)
+	}
+	for _, part := range parts {
+		refs, err := p.dr.ListManifests(ctx, ds, part.Path, lode.ManifestListOptions{Limit: 1})
+		if err != nil {
+			return false, qlode.WrapReadError(err, part.Path)
+		}
+		if len(refs) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }

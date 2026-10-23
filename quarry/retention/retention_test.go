@@ -402,3 +402,36 @@ func TestPrune_UsesOneStore(t *testing.T) {
 		t.Fatalf("run left in the listed store: %v", left)
 	}
 }
+
+func TestLastWrite(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		ids  []lode.DatasetSnapshotID
+		want int64
+		ok   bool
+	}{
+		{nil, 0, true},
+		{[]lode.DatasetSnapshotID{"100-0123456789abcdef", "300-0123456789abcdef", "200"}, 300, true},
+		{[]lode.DatasetSnapshotID{"100", "x-1"}, 0, false},
+	}
+	for _, tc := range cases {
+		got, ok := lastWrite(tc.ids)
+		if ok != tc.ok || (ok && len(tc.ids) > 0 && got.UnixNano() != tc.want) {
+			t.Errorf("lastWrite(%v) = %v, %v; want %d, %v", tc.ids, got.UnixNano(), ok, tc.want, tc.ok)
+		}
+	}
+}
+
+func TestPrune_OneRunReportsItsMalformedKey(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	dir := qlode.RunRecordPrefix("quarry", "src", "cat", oldDay)
+	bad := dir + "a b/start.json" // a run ID the write path would encode
+	if err := f.store.Put(t.Context(), bad, strings.NewReader("{}")); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	report := f.prune(Options{Selector: reader.Selector{Source: "src", Category: "cat", Day: oldDay}, RunID: "a b", Policy: Policy{Failed: days(0)}})
+	if fmt.Sprint(report.Unparseable) != fmt.Sprint([]string{bad}) || report.RunsScanned != 0 {
+		t.Fatalf("report = %+v", report)
+	}
+}
