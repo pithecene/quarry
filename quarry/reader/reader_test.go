@@ -3,6 +3,7 @@ package reader
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -434,5 +435,44 @@ func TestEndState(t *testing.T) {
 		if got := endState(qlode.EndRecord{Outcome: tc.outcome, Terminal: tc.terminal}); got != tc.want {
 			t.Errorf("%s: state = %s, want %s", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestListRunKeys_DecodesKeysAndSeparatesOthers(t *testing.T) {
+	t.Parallel()
+	f := seedRuns(t)
+	// A start record at a key the write path never produces.
+	bad := "datasets/quarry/runs/src/cat/2026-10-21/a b/start.json"
+	notDay := "datasets/quarry/runs/src/cat/not-a-day/r1/start.json"
+	for _, k := range []string{bad, notDay} {
+		if err := f.store.Put(t.Context(), k, strings.NewReader("{}")); err != nil {
+			t.Fatalf("put: %v", err)
+		}
+	}
+	// An end record whose start record is gone.
+	orphan := "datasets/quarry/runs/src/cat/2026-10-21/gone/end.json"
+	if err := f.store.Put(t.Context(), orphan, strings.NewReader("{}")); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	got, err := f.reader().ListRunKeys(t.Context(), Selector{})
+	keys, malformed := got.Runs, got.Malformed
+	if err != nil {
+		t.Fatalf("ListRunKeys: %v", err)
+	}
+	want := []Key{
+		{"a/b", "cat", "2026-10-21", "r5"},
+		{"src", "cat", "2026-10-21", "r1"},
+		{"src", "cat", "2026-10-21", "r2"},
+		{"src", "cat", "2026-10-22", "r3"},
+		{"src", "other", "2026-10-21", "r4"},
+	}
+	if fmt.Sprint(keys) != fmt.Sprint(want) {
+		t.Fatalf("keys = %v, want %v", keys, want)
+	}
+	if fmt.Sprint(malformed) != fmt.Sprint([]string{bad, notDay}) {
+		t.Fatalf("malformed = %v", malformed)
+	}
+	if fmt.Sprint(got.OrphanEnds) != fmt.Sprint([]string{orphan}) {
+		t.Fatalf("orphan ends = %v", got.OrphanEnds)
 	}
 }

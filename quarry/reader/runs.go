@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pithecene/lode/lode"
 
@@ -320,6 +321,79 @@ func (r *Reader) getJSON(ctx context.Context, key string, v any) error {
 		return fmt.Errorf("run record %s: %w", key, err)
 	}
 	return nil
+}
+
+// Key locates one run's records by its decoded key components.
+type Key struct {
+	Source   string
+	Category string
+	Day      string
+	RunID    string
+}
+
+// RunKeys is a listing of run keys under a selector.
+type RunKeys struct {
+	// Runs are the keys of runs with a start record, in key order.
+	Runs []Key
+	// Malformed are start-record keys the write path could not have
+	// produced, so no caller addresses a run through them.
+	Malformed []string
+	// OrphanEnds are end-record keys without a start record beside them.
+	// Readers ignore such records (CONTRACT_RUN.md §Reading Run Records).
+	OrphanEnds []string
+}
+
+// ListRunKeys lists the run-record keys under the selector's key prefix,
+// in key order, without reading any record.
+func (r *Reader) ListRunKeys(ctx context.Context, sel Selector) (RunKeys, error) {
+	var out RunKeys
+	prefix, err := r.prefix(sel)
+	if err != nil {
+		return out, err
+	}
+	listed, err := r.store.List(ctx, prefix)
+	if errors.Is(err, lode.ErrNotFound) {
+		return out, nil
+	}
+	if err != nil {
+		return out, qlode.WrapReadError(err, prefix)
+	}
+	sort.Strings(listed)
+	present := make(map[string]bool, len(listed))
+	for _, k := range listed {
+		present[k] = true
+	}
+	root := qlode.RunRecordPrefix(r.dataset)
+	for _, k := range listed {
+		switch {
+		case strings.HasSuffix(k, "/"+qlode.EndRecordName):
+			if !present[strings.TrimSuffix(k, qlode.EndRecordName)+qlode.StartRecordName] {
+				out.OrphanEnds = append(out.OrphanEnds, k)
+			}
+		case !strings.HasSuffix(k, "/"+qlode.StartRecordName):
+			// Neither run record; nothing to list.
+		case !r.isStartKeyUnder(k, prefix):
+			out.Malformed = append(out.Malformed, k)
+		default:
+			key := decodeKey(strings.Split(strings.TrimPrefix(k, root), "/"))
+			if _, err := time.Parse(time.DateOnly, key.Day); err != nil {
+				out.Malformed = append(out.Malformed, k) // the write path writes only YYYY-MM-DD
+				continue
+			}
+			out.Runs = append(out.Runs, key)
+		}
+	}
+	return out, nil
+}
+
+// decodeKey decodes the four components of a start-record key that
+// isStartKeyUnder accepted, so unescaping cannot fail.
+func decodeKey(parts []string) Key {
+	dec := func(p string) string {
+		v, _ := url.PathUnescape(p) // isStartKeyUnder checked that p round-trips
+		return v
+	}
+	return Key{Source: dec(parts[0]), Category: dec(parts[1]), Day: dec(parts[2]), RunID: dec(parts[3])}
 }
 
 // ErrRunNotFound is returned when no start record exists for a run.

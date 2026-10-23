@@ -58,7 +58,8 @@ For Hive-style layouts, the preferred order is:
 ## Append-Only Semantics
 
 - Events are **append-only**.
-- No updates or deletes are required or expected.
+- No updates are required or expected. A run is deleted only as a whole,
+  by retention (§Run Retention), never record by record.
 - Event order within a run must be preserved.
 
 ---
@@ -376,3 +377,105 @@ snapshot.Manifest.Metadata["sidecar_files"]
 File refs may be spread across multiple snapshots within a run. To
 reconstruct the full inventory, union `sidecar_files` from all snapshots
 for the run.
+
+---
+
+## Run Retention (v0.14.0+)
+
+Retention removes whole runs, chosen by their state and age. Quarry
+chooses the runs, because only Quarry knows a run's outcome. Lode's
+`Dataset.Expire` removes their snapshots (Lode CONTRACT_RETENTION.md), and
+Quarry deletes the objects it owns. The `quarry/retention` package
+implements it.
+
+### Selection
+
+- Runs are found from their start records (CONTRACT_RUN.md §Reading Run
+  Records), under the leading selectors `source`, `category`, and `day`,
+  or one run named by all three and its run ID. A run without a start
+  record is not found, so `quarry index rebuild` must index older runs
+  first.
+- A run's state is the state that `list runs` reports: `succeeded`,
+  `failed`, or `unterminated`. The policy gives each state an age at
+  which its runs are removed. A state without an age is kept.
+- A terminated run's age is measured from its end record's `ended_at`.
+  An unterminated run's age is measured from the later of its start
+  record's `started_at` and the instant its most recent snapshot began
+  (read from the snapshot ID), so a run that started long ago and is
+  still writing is not selected. A backfilled start record has no
+  `started_at`, so the end of its partition day stands in.
+- An unterminated run cannot be told apart from a live one, so its age
+  must be at least 24 hours and must exceed the longest run. A
+  terminated run is final (CONTRACT_RUN.md §Run Finalization), so any age,
+  including zero, is safe.
+- A start-record key that the write path could not have produced
+  (including a day that is not `YYYY-MM-DD`), and a
+  start record whose fields do not describe the key it is stored at, are
+  reported and never acted on. A record therefore cannot direct deletion
+  at another run.
+
+### Order of Operations (per Run)
+
+1. Preview the expiry of the run's partition prefix (the start record's
+   `partition`) as a dry run. If the run holds the dataset's head, has a
+   snapshot with files outside its partition, or the head is uncommitted
+   or absent, the run is kept, nothing of it is deleted, and the report
+   gives the reason. Lode never expires the head, so the run that
+   committed most recently is removed only by a later prune.
+2. Gather the run's sidecar files and their `.meta.json` companions
+   (§Sidecar File Inventory): every path that the run's snapshots record,
+   and, when Hive encoding leaves the run's source, category, day, and
+   run ID unchanged, every direct child of its sidecar prefix. A deeper
+   path can belong to a run whose ID continues the prefix, such as
+   `r/files/x` beneath run `r`, so it is never listed. Without that
+   condition, a direct child could also belong to another run, so the
+   prefix is not listed, and a file written after the run's last commit
+   remains. A recorded path outside the run's sidecar prefix is reported
+   and left in place. A recorded inventory in any other form names files
+   that cannot be found, so the run is kept, nothing of it is deleted,
+   and the report gives the reason. The paths are gathered first because
+   the recorded ones are in the manifests that step 3 deletes.
+3. Expire the snapshots that the preview selected with `Dataset.Expire`,
+   naming their IDs and the partition prefix, and then list the partition
+   again. A snapshot that committed after the preview was not judged by
+   it, so it is never expired; if one remains, the run is kept with its
+   sidecar files and records. A run with no snapshot in the preview (one
+   that committed nothing) has nothing to expire, and Lode requires no
+   head for a dataset without snapshots, so such a run loses only its
+   sidecar files and records.
+4. Delete the gathered sidecar objects.
+5. Delete the start record, and then the end record. A run without a
+   start record is never listed, and an end record without one is
+   ignored by readers.
+
+An end record without a start record names no run: an earlier prune
+stopped between the two deletions, or the run's start record was never
+persisted. Every prune deletes such end records under its selectors, and
+the report counts them.
+
+Each step is idempotent, and a run is listed until step 5. A prune that is
+interrupted, or that fails with a store error, is therefore completed by
+the next prune that selects the run, with one exception: if it stops
+after step 3 for a run whose key Hive encoding changes, the recorded
+sidecar paths are gone with the manifests, and those files remain. If step 3 is interrupted after Lode
+deleted the run's last manifest, the next prune no longer finds the
+snapshot's residual data; `Dataset.Sweep` removes it.
+
+### Sweep
+
+When a grace period is given, a prune ends with `Dataset.Sweep` over the
+whole dataset, whatever the selectors. It completes interrupted expiries
+and removes the data of writes that never committed, such as the last
+batch of a killed run, once that data is older than the grace period.
+The grace period must exceed the longest single write; it never removes
+data that a manifest describes.
+
+### Concurrency
+
+A prune can run while runs are written to the dataset. A run that the
+policy selects is presumed final: a terminated run is final by
+CONTRACT_RUN.md §Run Finalization, and an unterminated run has written
+nothing for at least its age. If such a run nevertheless commits during
+the prune, step 3 keeps its new snapshot and the run's records remain;
+only a commit after that final listing is not detected. A prune does not coordinate with readers of the run.
+
