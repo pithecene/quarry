@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Run key validation**: `quarry run` refuses a dataset ID, source, category, or run ID that cannot form a safe storage key, such as an empty value, `.`, or `..`. It also refuses a run ID that already has a start record, because run IDs must be unique.
+- **Run key validation**: `quarry run` refuses a dataset ID, source, category, or run ID that cannot form a safe storage key, such as an empty value, `.`, or `..`. It also refuses a run whose source, category, day, and run ID already have a start record.
 - **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. A program that wrote metrics after `Execute` no longer needs to.
 - **Lode v0.11.0**: Quarry depends on Lode v0.11.0 at `github.com/pithecene/lode`. Snapshot IDs written from this release carry a random suffix. The storage layout is unchanged.
 - **Packaging**: The npm package and the container images declare their license, homepage, and source repository.
