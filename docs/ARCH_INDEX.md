@@ -27,6 +27,7 @@ Do not update for internal refactors.
 - [`package.json`](../package.json) — monorepo root metadata
 - [`pnpm-workspace.yaml`](../pnpm-workspace.yaml) — monorepo layout
 - `.grove.yaml` — grove stewardship declaration (intent, horizon, phase)
+- `.bosun-version` — Bosun commit whose Go analyzers `task lint:bosun` runs
 
 ---
 
@@ -183,6 +184,10 @@ Go module root. Contains runtime, CLI, and core types.
 - `adapter/redisstream/` — Redis Streams event sink for real-time event publishing during runs
 - `adapter/webhook/` — HTTP POST adapter with retryable and non-retriable error handling
 
+### quarry/internal/testutil/
+
+- `internal/testutil/` — test helpers internal to the module: `Serial` declares a test that must run serially
+
 ### quarry/iox/
 
 - `iox/` — I/O helpers: deferred close with cleanup registration for resource lifecycle management
@@ -206,6 +211,7 @@ Go module root. Contains runtime, CLI, and core types.
 Developer tooling and test harnesses.
 
 - [`run-examples.ts`](../scripts/run-examples.ts) — manifest-driven example runner
+- [`lint-bosun.sh`](../scripts/lint-bosun.sh) — runs Bosun's Go analyzers at the commit [`.bosun-version`](../.bosun-version) pins (`task lint:bosun`)
 - [`version-targets.txt`](../scripts/version-targets.txt) — single list of every place the product version is written
 - [`version-bump.sh`](../scripts/version-bump.sh), [`version-check.sh`](../scripts/version-check.sh), [`version-targets.sh`](../scripts/version-targets.sh) — lockstep bump and drift check over that list
 - [`release/`](../scripts/release/) — release-workflow steps (monotonic tag check, idempotent npm and JSR publishing, convergence of the npm `latest` and GHCR `:latest`/`:slim` pointers) with stubbed-registry tests in [`release/test.sh`](../scripts/release/test.sh)

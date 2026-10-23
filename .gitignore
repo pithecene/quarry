@@ -35,3 +35,6 @@ ai/out/
 # Go build output
 quarry/quarry
 
+
+# Bosun checkout and analysis runner (scripts/lint-bosun.sh)
+.bosun/
