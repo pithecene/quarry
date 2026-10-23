@@ -207,6 +207,26 @@ func TestCLIParityIndexCommand(t *testing.T) {
 	}
 }
 
+// TestCLIParityPruneCommand validates the prune command flags against the parity artifact.
+func TestCLIParityPruneCommand(t *testing.T) {
+	t.Parallel()
+	parityPrune, ok := loadParityArtifact(t).Commands["prune"]
+	if !ok {
+		t.Fatal("parity artifact missing 'prune' command")
+	}
+	actualFlags := extractFlags(PruneCommand())
+	for flagName := range parityPrune.Flags {
+		if _, exists := actualFlags[flagName]; !exists {
+			t.Errorf("parity artifact declares flag --%s for 'prune' but it does not exist", flagName)
+		}
+	}
+	for flagName := range actualFlags {
+		if _, exists := parityPrune.Flags[flagName]; !exists {
+			t.Errorf("CLI 'prune' has flag --%s but it is not in parity artifact", flagName)
+		}
+	}
+}
+
 // TestCLIParityDebugCommand validates the debug command flags against the parity artifact.
 func TestCLIParityDebugCommand(t *testing.T) {
 	t.Parallel()

@@ -25,10 +25,12 @@ Non-goals:
 ## Invariants
 
 - The CLI is the **only execution entrypoint**.
-- All commands except `run` and `index rebuild` are **read-only** with
-  respect to execution, datasets, and persisted state. `index rebuild`
-  only creates backfilled run records: it never overwrites a record and
-  never writes or deletes partition data (§index rebuild).
+- All commands except `run`, `index rebuild`, and `prune` are
+  **read-only** with respect to execution, datasets, and persisted state.
+  `index rebuild` only creates backfilled run records: it never
+  overwrites a record and never writes or deletes partition data
+  (§index rebuild). `prune` only deletes whole runs that its flags select
+  (§prune).
 - A small set of `debug` commands may mutate **ephemeral runtime mechanics**
   only when explicitly requested and documented.
 - The CLI talks **only** to the Go runtime.
@@ -64,6 +66,7 @@ quarry
 │  └─ executors
 ├─ index
 │  └─ rebuild
+├─ prune
 ├─ debug
 │  ├─ resolve proxy <pool>
 │  └─ ipc
@@ -749,6 +752,84 @@ RebuiltRun:
 `table` renders `runs` and prints the totals to stderr. A store error
 terminates the rebuild with exit code 1 after the partial report is
 rendered.
+
+---
+
+## `prune` (run retention, v0.14.0+)
+
+Removes whole runs, chosen by state and age, as CONTRACT_LODE.md §Run
+Retention defines: the run's snapshots, sidecar files, and run records.
+
+Flags:
+- `--storage-backend`, `--storage-path` (required) and the other storage
+  flags as on `list runs`
+- `--source`, `--category`, `--day`: leading selectors, as on `list runs`
+- `--run-id`: prune only this run; requires `--source`, `--category`, and
+  `--day`. A run that no longer exists is not an error
+- `--succeeded-days=<n>`, `--failed-days=<n>`: prune runs in that state
+  whose end record is at least `n` days old; `0` prunes every such run
+- `--unterminated-days=<n>`: prune unterminated runs that started, and
+  last wrote, at least `n` days ago; `n` must be at least 1 and should
+  exceed the longest run
+- A day count must lie between 0 and the largest count a duration holds
+  (106751); any other value is an error
+- `--sweep-grace=<duration>`: after the runs, sweep the whole dataset,
+  reclaiming data of writes that never committed once it is older than the
+  duration; `0` (the default) skips the sweep
+- `--dry-run`: report what would be removed, without removing anything
+- `--format`, `--no-color`
+
+At least one age flag is required; a state whose flag is not set is kept.
+A selector or `--run-id` given with an empty value is an error, because
+an empty selector would widen the prune instead of narrowing it.
+
+Response (`json`, `yaml`):
+```
+PruneReport:
+  dataset: string
+  dry_run: bool
+  runs_scanned: number
+  not_due: number          # runs the ages do not select; not listed in runs
+  runs_pruned: number      # in a dry run: would be pruned
+  runs_kept: number        # selected, but kept for the reason in kept
+  snapshots: number
+  objects: number
+  bytes: number
+  sidecar_objects: number
+  runs: PrunedRun[]
+  orphan_end_records: number # end records without a start record; deleted
+  unparseable: string[]    # malformed start-record keys; omitted when none
+  sweep: SweepReport       # omitted when no sweep ran
+
+PrunedRun:
+  source: string
+  category: string
+  day: string
+  run_id: string
+  partition: string
+  state: succeeded | failed | unterminated
+  since: time              # the instant the age is measured from
+  pruned: bool
+  snapshots: number
+  objects: number
+  bytes: number
+  sidecar_objects: number  # sidecar files and their .meta.json companions
+  kept: string             # why a selected run was kept; omitted otherwise
+  skipped: string[]        # recorded sidecar paths left in place; omitted when none
+
+SweepReport:
+  settled: number
+  objects: number
+  bytes: number
+  unsized: number
+  orphans: number
+  unparseable: string[]    # omitted when none
+```
+
+The run that holds the dataset's head is kept (`kept` gives the reason)
+and is removed by a later prune once another run commits. `table` renders
+`runs` and prints the totals to stderr. A store error terminates the prune
+with exit code 1 after the partial report is rendered; a rerun resumes it.
 
 ---
 
