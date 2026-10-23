@@ -777,6 +777,8 @@ Flags:
 - `--format`, `--no-color`
 
 At least one age flag is required; a state whose flag is not set is kept.
+A selector or `--run-id` given with an empty value is an error, because
+an empty selector would widen the prune instead of narrowing it.
 
 Response (`json`, `yaml`):
 ```
@@ -792,6 +794,7 @@ PruneReport:
   bytes: number
   sidecar_objects: number
   runs: PrunedRun[]
+  orphan_end_records: number # end records without a start record; deleted
   unparseable: string[]    # malformed start-record keys; omitted when none
   sweep: SweepReport       # omitted when no sweep ran
 

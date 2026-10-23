@@ -61,10 +61,21 @@ func TestPrune_Errors(t *testing.T) {
 		"no state":               {"prune", "--storage-backend", "fs", "--storage-path", root},
 		"unterminated too young": {"prune", "--storage-backend", "fs", "--storage-path", root, "--unterminated-days", "0"},
 		"run without day":        {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--run-id", "r"},
+		"empty run id":           {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--source", "demo", "--category", "default", "--day", "2026-10-22", "--run-id", ""},
+		"empty source":           {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--source", ""},
 	}
 	for name, args := range cases {
 		if _, err := runCLI(t, args...); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+	// An empty run ID is refused before anything is read, so the run remains.
+	writeFSRun(t, root, "run-a")
+	writeFSRun(t, root, "run-b")
+	if _, err := runCLI(t, "prune", "--storage-backend", "fs", "--storage-path", root, "--succeeded-days", "0", "--source", "demo", "--category", "default", "--day", "2026-10-22", "--run-id", ""); err == nil || !strings.Contains(err.Error(), "--run-id must not be empty") {
+		t.Fatalf("err = %v", err)
+	}
+	if listed, err := runListCLI(t, "runs", "--format", "json", "--storage-backend", "fs", "--storage-path", root); err != nil || !strings.Contains(listed, `"run-a"`) {
+		t.Fatalf("run removed: %v %s", err, listed)
 	}
 }
