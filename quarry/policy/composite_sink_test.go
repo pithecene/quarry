@@ -8,6 +8,8 @@ import (
 )
 
 func TestCompositeSink_RoutesEventsToEventSink(t *testing.T) {
+	t.Parallel()
+
 	eventSink := &stubEventSink{}
 	chunkSink := NewStubSink()
 
@@ -29,6 +31,8 @@ func TestCompositeSink_RoutesEventsToEventSink(t *testing.T) {
 }
 
 func TestCompositeSink_RoutesChunksToChunkSink(t *testing.T) {
+	t.Parallel()
+
 	eventSink := &stubEventSink{}
 	chunkSink := NewStubSink()
 
@@ -52,6 +56,8 @@ func TestCompositeSink_RoutesChunksToChunkSink(t *testing.T) {
 }
 
 func TestCompositeSink_EventErrorPropagates(t *testing.T) {
+	t.Parallel()
+
 	eventSink := &stubEventSink{writeErr: errors.New("event write failed")}
 	chunkSink := NewStubSink()
 
@@ -64,6 +70,8 @@ func TestCompositeSink_EventErrorPropagates(t *testing.T) {
 }
 
 func TestCompositeSink_ChunkErrorPropagates(t *testing.T) {
+	t.Parallel()
+
 	eventSink := &stubEventSink{}
 	chunkSink := NewStubSink()
 	chunkSink.ErrorOnWrite = errors.New("chunk write failed")
@@ -78,6 +86,8 @@ func TestCompositeSink_ChunkErrorPropagates(t *testing.T) {
 }
 
 func TestCompositeSink_ClosesBoth(t *testing.T) {
+	t.Parallel()
+
 	eventSink := &stubEventSink{}
 	chunkSink := NewStubSink()
 
@@ -95,6 +105,8 @@ func TestCompositeSink_ClosesBoth(t *testing.T) {
 }
 
 func TestCompositeSink_PanicsOnNilEventSink(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected panic on nil event sink")
@@ -104,6 +116,8 @@ func TestCompositeSink_PanicsOnNilEventSink(t *testing.T) {
 }
 
 func TestCompositeSink_SharedLodeSinkClosedOnce(t *testing.T) {
+	t.Parallel()
+
 	// When Lode is both the chunk sink and an event sink (via fanout),
 	// CompositeSink.Close() calls close on both paths. The underlying Lode
 	// sink must tolerate being closed through both the event and chunk paths.
@@ -128,6 +142,8 @@ func TestCompositeSink_SharedLodeSinkClosedOnce(t *testing.T) {
 }
 
 func TestCompositeSink_PanicsOnNilChunkSink(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected panic on nil chunk sink")

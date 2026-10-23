@@ -10,6 +10,8 @@ type spyCloser struct{ closed bool }
 func (s *spyCloser) Close() error { s.closed = true; return errors.New("ignored") }
 
 func TestDiscardClose(t *testing.T) {
+	t.Parallel()
+
 	s := &spyCloser{}
 	DiscardClose(s)
 	if !s.closed {
@@ -18,6 +20,8 @@ func TestDiscardClose(t *testing.T) {
 }
 
 func TestCloseFunc(t *testing.T) {
+	t.Parallel()
+
 	s := &spyCloser{}
 	fn := CloseFunc(s)
 	if s.closed {
@@ -30,6 +34,8 @@ func TestCloseFunc(t *testing.T) {
 }
 
 func TestDiscardErr(t *testing.T) {
+	t.Parallel()
+
 	called := false
 	DiscardErr(func() error {
 		called = true

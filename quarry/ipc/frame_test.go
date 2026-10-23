@@ -39,6 +39,8 @@ func encodeArtifactChunkFrame(chunk *types.ArtifactChunkFrame) ([]byte, error) {
 }
 
 func TestFrameDecoder_SingleEvent(t *testing.T) {
+	t.Parallel()
+
 	envelope := &types.EventEnvelope{
 		ContractVersion: types.Version,
 		EventID:         "evt-001",
@@ -81,6 +83,8 @@ func TestFrameDecoder_SingleEvent(t *testing.T) {
 }
 
 func TestFrameDecoder_MultipleEvents(t *testing.T) {
+	t.Parallel()
+
 	events := []*types.EventEnvelope{
 		{
 			ContractVersion: types.Version,
@@ -162,6 +166,8 @@ func TestFrameDecoder_MultipleEvents(t *testing.T) {
 }
 
 func TestFrameDecoder_TerminalEvents(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		envelope *types.EventEnvelope
@@ -254,6 +260,8 @@ func TestFrameDecoder_TerminalEvents(t *testing.T) {
 }
 
 func TestFrameDecoder_ArtifactChunk(t *testing.T) {
+	t.Parallel()
+
 	chunk := &types.ArtifactChunkFrame{
 		Type:       "artifact_chunk",
 		ArtifactID: "art-001",
@@ -299,6 +307,8 @@ func TestFrameDecoder_ArtifactChunk(t *testing.T) {
 }
 
 func TestFrameDecoder_MixedEventsAndChunks(t *testing.T) {
+	t.Parallel()
+
 	// Simulate a typical run: item event, artifact event, artifact chunks, run_complete
 	var buf bytes.Buffer
 
@@ -426,6 +436,8 @@ func TestFrameDecoder_MixedEventsAndChunks(t *testing.T) {
 // Per CONTRACT_IPC.md: "If a frame is truncated or malformed, the runtime must
 // treat it as a fatal stream error and terminate the run."
 func TestFrameDecoder_PartialFrame(t *testing.T) {
+	t.Parallel()
+
 	// Create a valid frame but truncate it
 	envelope := &types.EventEnvelope{
 		ContractVersion: types.Version,
@@ -473,6 +485,8 @@ func TestFrameDecoder_PartialFrame(t *testing.T) {
 // Per CONTRACT_IPC.md: "Maximum frame size: 16 MiB. Frames exceeding this limit
 // are invalid and must be rejected."
 func TestFrameDecoder_OversizedFrame(t *testing.T) {
+	t.Parallel()
+
 	// Create a length prefix claiming a payload larger than MaxPayloadSize
 	var buf bytes.Buffer
 	_ = binary.Write(&buf, binary.BigEndian, uint32(MaxPayloadSize+1))
@@ -504,6 +518,8 @@ func TestFrameDecoder_OversizedFrame(t *testing.T) {
 }
 
 func TestFrameDecoder_EmptyStream(t *testing.T) {
+	t.Parallel()
+
 	decoder := NewFrameDecoder(bytes.NewReader(nil))
 	_, err := decoder.ReadFrame()
 
@@ -515,6 +531,8 @@ func TestFrameDecoder_EmptyStream(t *testing.T) {
 // TestFrameDecoder_TruncatedLengthPrefix validates fatal error when length prefix is incomplete.
 // Per CONTRACT_IPC.md: partial frames are fatal.
 func TestFrameDecoder_TruncatedLengthPrefix(t *testing.T) {
+	t.Parallel()
+
 	// Only 2 bytes instead of 4
 	partial := []byte{0x00, 0x00}
 
@@ -542,6 +560,8 @@ func TestFrameDecoder_TruncatedLengthPrefix(t *testing.T) {
 // TestFrameDecoder_MalformedMsgpack validates decode error for invalid msgpack.
 // Decode errors are non-fatal (the frame was read correctly, just couldn't decode).
 func TestFrameDecoder_MalformedMsgpack(t *testing.T) {
+	t.Parallel()
+
 	// Valid frame length prefix but garbage msgpack payload
 	garbage := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	frame := encodeFrame(garbage)
@@ -575,6 +595,8 @@ func TestFrameDecoder_MalformedMsgpack(t *testing.T) {
 
 // TestFrameError_ErrorMessage validates error message formatting.
 func TestFrameError_ErrorMessage(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		err      *FrameError
@@ -613,6 +635,8 @@ func TestFrameError_ErrorMessage(t *testing.T) {
 
 // TestFrameError_Unwrap validates error unwrapping.
 func TestFrameError_Unwrap(t *testing.T) {
+	t.Parallel()
+
 	underlying := io.ErrUnexpectedEOF
 	err := &FrameError{
 		Kind: FrameErrorPartial,
@@ -636,6 +660,8 @@ func encodeFileWriteFrame(fw *types.FileWriteFrame) ([]byte, error) {
 
 // TestDecodeFrame_FileWrite validates file_write frame decoding with write_id.
 func TestDecodeFrame_FileWrite(t *testing.T) {
+	t.Parallel()
+
 	fw := &types.FileWriteFrame{
 		Type:        "file_write",
 		WriteID:     42,
@@ -681,6 +707,8 @@ func TestDecodeFrame_FileWrite(t *testing.T) {
 
 // TestDecodeFrame_FileWrite_ZeroWriteID validates backward compat with write_id=0.
 func TestDecodeFrame_FileWrite_ZeroWriteID(t *testing.T) {
+	t.Parallel()
+
 	fw := &types.FileWriteFrame{
 		Type:        "file_write",
 		WriteID:     0,
@@ -712,6 +740,8 @@ func TestDecodeFrame_FileWrite_ZeroWriteID(t *testing.T) {
 
 // TestEncodeDecodeFileWriteAck_Success validates roundtrip for success ack.
 func TestEncodeDecodeFileWriteAck_Success(t *testing.T) {
+	t.Parallel()
+
 	ack := &types.FileWriteAckFrame{
 		Type:    "file_write_ack",
 		WriteID: 7,
@@ -750,6 +780,8 @@ func TestEncodeDecodeFileWriteAck_Success(t *testing.T) {
 
 // TestEncodeDecodeFileWriteAck_Error validates roundtrip for error ack.
 func TestEncodeDecodeFileWriteAck_Error(t *testing.T) {
+	t.Parallel()
+
 	errMsg := "S3 PutObject failed: 500 Internal Server Error"
 	ack := &types.FileWriteAckFrame{
 		Type:    "file_write_ack",
@@ -790,6 +822,8 @@ func TestEncodeDecodeFileWriteAck_Error(t *testing.T) {
 
 // TestDecodeFrame_FileWriteAck validates DecodeFrame routes file_write_ack correctly.
 func TestDecodeFrame_FileWriteAck(t *testing.T) {
+	t.Parallel()
+
 	ack := &types.FileWriteAckFrame{
 		Type:    "file_write_ack",
 		WriteID: 1,
@@ -827,6 +861,8 @@ func TestDecodeFrame_FileWriteAck(t *testing.T) {
 
 // TestIsFatalFrameError_NonFrameError validates IsFatalFrameError with non-FrameError.
 func TestIsFatalFrameError_NonFrameError(t *testing.T) {
+	t.Parallel()
+
 	regularErr := errors.New("regular error")
 	if IsFatalFrameError(regularErr) {
 		t.Error("regular errors should not be fatal frame errors")
@@ -852,6 +888,8 @@ func encodeRunResultFrame(result *types.RunResultFrame) ([]byte, error) {
 
 // TestDecodeFrame_RunResult validates run_result frame decoding.
 func TestDecodeFrame_RunResult(t *testing.T) {
+	t.Parallel()
+
 	message := "run completed successfully"
 	result := &types.RunResultFrame{
 		Type: "run_result",
@@ -897,6 +935,8 @@ func TestDecodeFrame_RunResult(t *testing.T) {
 
 // TestDecodeFrame_RunResult_WithProxy validates run_result frame with proxy_used.
 func TestDecodeFrame_RunResult_WithProxy(t *testing.T) {
+	t.Parallel()
+
 	username := "user"
 	result := &types.RunResultFrame{
 		Type: "run_result",
@@ -955,6 +995,8 @@ func TestDecodeFrame_RunResult_WithProxy(t *testing.T) {
 
 // TestDecodeFrame_RunResult_Error validates run_result frame with error status.
 func TestDecodeFrame_RunResult_Error(t *testing.T) {
+	t.Parallel()
+
 	message := "Something went wrong"
 	errorType := "script_error"
 	stack := "Error: something failed\n  at main.ts:42"
@@ -1004,6 +1046,8 @@ func TestDecodeFrame_RunResult_Error(t *testing.T) {
 
 // TestDecodeFrame_RunResult_Crash validates run_result frame with crash status.
 func TestDecodeFrame_RunResult_Crash(t *testing.T) {
+	t.Parallel()
+
 	message := "executor crashed"
 	result := &types.RunResultFrame{
 		Type: "run_result",
@@ -1042,6 +1086,8 @@ func TestDecodeFrame_RunResult_Crash(t *testing.T) {
 // TestDecodeFrame_MixedWithRunResult validates mixed stream with run_result.
 // Per CONTRACT_IPC.md, run_result is a control frame that does not affect seq.
 func TestDecodeFrame_MixedWithRunResult(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 
 	// 1. Item event

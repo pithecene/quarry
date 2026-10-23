@@ -13,6 +13,8 @@ import (
 // TestBufferedPolicy_Stats_ConcurrentAccess verifies that Stats() is safe
 // under concurrent ingestion and flush operations. Run with -race.
 func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{
 		MaxBufferEvents: 1000,
@@ -120,6 +122,8 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 // TestBufferedPolicy_Stats_BufferSizeZeroAfterFlush verifies that BufferSize
 // is zero after a successful flush when all ingestion has completed.
 func TestBufferedPolicy_Stats_BufferSizeZeroAfterFlush(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 10000}
 	pol, _ := policy.NewBufferedPolicy(sink, config)
@@ -161,6 +165,8 @@ func TestBufferedPolicy_Stats_BufferSizeZeroAfterFlush(t *testing.T) {
 // TestPolicy_Stats_CrossPolicyConsistency verifies that stats semantics are
 // uniform across policy implementations (interface-level contract).
 func TestPolicy_Stats_CrossPolicyConsistency(t *testing.T) {
+	t.Parallel()
+
 	type policyFactory func(policy.Sink) policy.Policy
 
 	factories := map[string]policyFactory{
@@ -245,6 +251,8 @@ func TestPolicy_Stats_CrossPolicyConsistency(t *testing.T) {
 // TestPolicy_Stats_ErrorsOnSinkFailure verifies that Errors counter increments
 // on sink failures across policy implementations.
 func TestPolicy_Stats_ErrorsOnSinkFailure(t *testing.T) {
+	t.Parallel()
+
 	type policyFactory func(policy.Sink) policy.Policy
 
 	factories := map[string]policyFactory{
@@ -286,6 +294,8 @@ func TestPolicy_Stats_ErrorsOnSinkFailure(t *testing.T) {
 // TestStats_DroppedByType_SnapshotIsolation verifies that the DroppedByType map
 // in Stats is a deep copy, not a reference to internal state.
 func TestStats_DroppedByType_SnapshotIsolation(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferEvents: 1}
 	pol, _ := policy.NewBufferedPolicy(sink, config)
@@ -334,6 +344,8 @@ func TestStats_DroppedByType_SnapshotIsolation(t *testing.T) {
 // TestStats_FlushCount_IncrementsOnEachFlush verifies FlushCount increments
 // exactly once per Flush call.
 func TestStats_FlushCount_IncrementsOnEachFlush(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 10000}
 	pol, _ := policy.NewBufferedPolicy(sink, config)
@@ -354,6 +366,8 @@ func TestStats_FlushCount_IncrementsOnEachFlush(t *testing.T) {
 // TestStats_FlushCount_IncrementsEvenOnFailure verifies that FlushCount
 // increments even when the flush operation fails.
 func TestStats_FlushCount_IncrementsEvenOnFailure(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 10000}
 	pol, _ := policy.NewBufferedPolicy(sink, config)
@@ -382,6 +396,8 @@ func TestStats_FlushCount_IncrementsEvenOnFailure(t *testing.T) {
 // TestStats_EventsPersisted_OnlyOnSuccess verifies that EventsPersisted
 // only increments after successful writes.
 func TestStats_EventsPersisted_OnlyOnSuccess(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	config := policy.BufferedConfig{MaxBufferBytes: 10000}
 	pol, _ := policy.NewBufferedPolicy(sink, config)

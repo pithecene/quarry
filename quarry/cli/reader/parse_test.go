@@ -6,6 +6,8 @@ import (
 )
 
 func TestParseMetricsRecord(t *testing.T) {
+	t.Parallel()
+
 	// Simulate a JSON-round-tripped record (float64 values)
 	record := map[string]any{
 		"record_kind":                   "metrics",
@@ -91,6 +93,8 @@ func TestParseMetricsRecord(t *testing.T) {
 }
 
 func TestParseMetricsRecord_NilRecord(t *testing.T) {
+	t.Parallel()
+
 	_, err := ParseMetricsRecord(nil)
 	if err == nil {
 		t.Error("expected error for nil record")
@@ -98,6 +102,8 @@ func TestParseMetricsRecord_NilRecord(t *testing.T) {
 }
 
 func TestParseMetricsRecord_MissingRequiredFields(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		record map[string]any
@@ -149,6 +155,8 @@ func TestParseMetricsRecord_MissingRequiredFields(t *testing.T) {
 }
 
 func TestParseMetricsRecord_Ts(t *testing.T) {
+	t.Parallel()
+
 	record := map[string]any{
 		"record_kind":     "metrics",
 		"ts":              "2026-02-03T15:30:00Z",

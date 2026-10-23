@@ -28,6 +28,8 @@ import (
 // This is the first test that exercises the two-phase stdin protocol with
 // real subprocess pipes per CONTRACT_IPC.md.
 func TestE2E_FileWriteAck_Roundtrip(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("QUARRY_E2E") != "1" {
 		t.Skip("QUARRY_E2E=1 not set, skipping live E2E test")
 	}

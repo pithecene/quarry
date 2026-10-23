@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/internal/testutil"
+
 	"github.com/pithecene/quarry/types"
 )
 
@@ -66,6 +68,8 @@ func newStalledStreamingPolicy(t *testing.T, honorCtx bool) (*StreamingPolicy, *
 
 // A stalled interval flush that honors its context is canceled by Close.
 func TestStreamingPolicy_CloseCancelsStalledIntervalFlush(t *testing.T) {
+	t.Parallel()
+
 	pol, _ := newStalledStreamingPolicy(t, true)
 	done := make(chan struct{})
 	go func() { _ = pol.Close(); close(done) }()
@@ -79,6 +83,8 @@ func TestStreamingPolicy_CloseCancelsStalledIntervalFlush(t *testing.T) {
 // An interval flush that ignores its context is joined, never abandoned:
 // Close does not return while that write is still in progress.
 func TestStreamingPolicy_CloseJoinsUncancellableIntervalFlush(t *testing.T) {
+	t.Parallel()
+
 	pol, sink := newStalledStreamingPolicy(t, false)
 	done := make(chan struct{})
 	go func() { _ = pol.Close(); close(done) }()
@@ -98,6 +104,8 @@ func TestStreamingPolicy_CloseJoinsUncancellableIntervalFlush(t *testing.T) {
 // A flush with an already-canceled context does nothing, even when the
 // flush lock is free.
 func TestStreamingPolicy_CanceledFlushWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	sink := NewStubSink()
 	pol, err := NewStreamingPolicy(sink, StreamingConfig{FlushCount: 100})
 	if err != nil {
@@ -121,6 +129,7 @@ func TestStreamingPolicy_CanceledFlushWritesNothing(t *testing.T) {
 // A count-triggered flush still writing when Close's own flush times out is
 // joined before the sink closes, never abandoned.
 func TestStreamingPolicy_CloseJoinsInProgressCountFlush(t *testing.T) {
+	testutil.Serial(t, "shortens the package-level closeFlushTimeout")
 	prev := closeFlushTimeout
 	closeFlushTimeout = 50 * time.Millisecond
 	t.Cleanup(func() { closeFlushTimeout = prev })
@@ -178,6 +187,7 @@ func (s *closeTrackingSink) closed() bool {
 // accepted meanwhile are not persisted; Close reports them instead of
 // returning nil.
 func TestStreamingPolicy_CloseReportsUnflushedData(t *testing.T) {
+	testutil.Serial(t, "shortens the package-level closeFlushTimeout")
 	prev := closeFlushTimeout
 	closeFlushTimeout = 50 * time.Millisecond
 	t.Cleanup(func() { closeFlushTimeout = prev })
@@ -219,6 +229,8 @@ func TestStreamingPolicy_CloseReportsUnflushedData(t *testing.T) {
 // An ingest blocked on a full buffer wakes when Close begins and refuses its
 // data instead of appending after the final flush's snapshot.
 func TestStreamingPolicy_BlockedIngestRefusedOnClose(t *testing.T) {
+	t.Parallel()
+
 	pol, err := NewStreamingPolicy(NewStubSink(), StreamingConfig{FlushCount: streamingMaxBufferEvents * 10})
 	if err != nil {
 		t.Fatalf("NewStreamingPolicy: %v", err)

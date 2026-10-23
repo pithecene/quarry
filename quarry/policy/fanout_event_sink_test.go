@@ -60,6 +60,8 @@ func testEnvelopes(n int) []*types.EventEnvelope {
 }
 
 func TestFanout_SingleSink(t *testing.T) {
+	t.Parallel()
+
 	sink := &stubEventSink{}
 	fanout := NewFanoutEventSink([]SinkEntry{
 		{Sink: sink, Delivery: DeliveryMandatory, Label: "test"},
@@ -75,6 +77,8 @@ func TestFanout_SingleSink(t *testing.T) {
 }
 
 func TestFanout_MultipleSinks(t *testing.T) {
+	t.Parallel()
+
 	s1 := &stubEventSink{}
 	s2 := &stubEventSink{}
 	fanout := NewFanoutEventSink([]SinkEntry{
@@ -95,6 +99,8 @@ func TestFanout_MultipleSinks(t *testing.T) {
 }
 
 func TestFanout_MandatoryFailurePropagates(t *testing.T) {
+	t.Parallel()
+
 	s1 := &stubEventSink{writeErr: errors.New("disk full")}
 	s2 := &stubEventSink{}
 	fanout := NewFanoutEventSink([]SinkEntry{
@@ -113,6 +119,8 @@ func TestFanout_MandatoryFailurePropagates(t *testing.T) {
 }
 
 func TestFanout_BestEffortFailureSwallowed(t *testing.T) {
+	t.Parallel()
+
 	s1 := &stubEventSink{}
 	s2 := &stubEventSink{writeErr: errors.New("redis down")}
 	fanout := NewFanoutEventSink([]SinkEntry{
@@ -130,6 +138,8 @@ func TestFanout_BestEffortFailureSwallowed(t *testing.T) {
 }
 
 func TestFanout_AllBestEffortFailures(t *testing.T) {
+	t.Parallel()
+
 	s1 := &stubEventSink{writeErr: errors.New("fail 1")}
 	s2 := &stubEventSink{writeErr: errors.New("fail 2")}
 	fanout := NewFanoutEventSink([]SinkEntry{
@@ -145,6 +155,8 @@ func TestFanout_AllBestEffortFailures(t *testing.T) {
 }
 
 func TestFanout_CloseAll(t *testing.T) {
+	t.Parallel()
+
 	s1 := &stubEventSink{}
 	s2 := &stubEventSink{}
 	fanout := NewFanoutEventSink([]SinkEntry{
@@ -164,6 +176,8 @@ func TestFanout_CloseAll(t *testing.T) {
 }
 
 func TestFanout_ClosePartialFailure(t *testing.T) {
+	t.Parallel()
+
 	s1 := &stubEventSink{} // close succeeds
 	s2 := &closerFailSink{closeErr: errors.New("close failed")}
 	s3 := &stubEventSink{} // should still be closed
@@ -187,6 +201,8 @@ func TestFanout_ClosePartialFailure(t *testing.T) {
 }
 
 func TestFanout_BestEffortDoesNotFailPolicy(t *testing.T) {
+	t.Parallel()
+
 	// Simulate: Lode mandatory + Redis best-effort through a StrictPolicy.
 	// Redis fails → policy write should still succeed.
 	lodeSink := NewStubSink()
@@ -217,6 +233,8 @@ func TestFanout_BestEffortDoesNotFailPolicy(t *testing.T) {
 }
 
 func TestFanout_MandatoryFailureFailsPolicy(t *testing.T) {
+	t.Parallel()
+
 	// Mandatory Redis failure should propagate through the policy.
 	lodeSink := NewStubSink()
 	redisSink := &stubEventSink{writeErr: errors.New("redis down")}
@@ -237,6 +255,8 @@ func TestFanout_MandatoryFailureFailsPolicy(t *testing.T) {
 }
 
 func TestFanout_PanicsOnEmpty(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected panic on empty sinks")

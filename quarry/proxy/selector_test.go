@@ -8,6 +8,8 @@ import (
 )
 
 func TestSelector_RoundRobin(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -52,6 +54,8 @@ func TestSelector_RoundRobin(t *testing.T) {
 }
 
 func TestSelector_Random(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -85,6 +89,8 @@ func TestSelector_Random(t *testing.T) {
 }
 
 func TestSelector_Sticky_Job(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -127,6 +133,8 @@ func TestSelector_Sticky_Job(t *testing.T) {
 }
 
 func TestSelector_Sticky_WithTTL(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	ttl := int64(50) // 50ms TTL
@@ -169,6 +177,8 @@ func TestSelector_Sticky_WithTTL(t *testing.T) {
 }
 
 func TestSelector_Sticky_ExplicitKey(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -214,6 +224,8 @@ func TestSelector_Sticky_ExplicitKey(t *testing.T) {
 }
 
 func TestSelector_StrategyOverride(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -241,6 +253,8 @@ func TestSelector_StrategyOverride(t *testing.T) {
 }
 
 func TestSelector_PoolNotFound(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	_, err := s.Select(SelectRequest{Pool: "nonexistent"})
@@ -250,6 +264,8 @@ func TestSelector_PoolNotFound(t *testing.T) {
 }
 
 func TestSelector_ValidationFailure(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -265,6 +281,8 @@ func TestSelector_ValidationFailure(t *testing.T) {
 }
 
 func TestSelector_Commit_RoundRobin(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -304,6 +322,8 @@ func TestSelector_Commit_RoundRobin(t *testing.T) {
 }
 
 func TestSelector_Commit_Sticky(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -347,6 +367,8 @@ func TestSelector_Commit_Sticky(t *testing.T) {
 }
 
 func TestSelector_Stats(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	pool := &types.ProxyPool{
@@ -379,6 +401,8 @@ func TestSelector_Stats(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_AvoidRecentEndpoints(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	window := 2
@@ -417,6 +441,8 @@ func TestSelector_RecencyWindow_AvoidRecentEndpoints(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_LRUFallback(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	// Window >= endpoints: all endpoints excluded, LRU fallback
@@ -457,6 +483,8 @@ func TestSelector_RecencyWindow_LRUFallback(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_PeekDoesNotAdvanceRing(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	window := 2
@@ -495,6 +523,8 @@ func TestSelector_RecencyWindow_PeekDoesNotAdvanceRing(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_Stats(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	window := 3
@@ -543,6 +573,8 @@ func TestSelector_RecencyWindow_Stats(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_NoRecencyWithoutConfig(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	// Pool without recency window
@@ -577,6 +609,8 @@ func TestSelector_RecencyWindow_NoRecencyWithoutConfig(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_SingleEndpoint(t *testing.T) {
+	t.Parallel()
+
 	s := NewSelector()
 
 	window := 1
@@ -606,6 +640,8 @@ func TestSelector_RecencyWindow_SingleEndpoint(t *testing.T) {
 }
 
 func TestSelector_RecencyWindow_StickyIgnoresRecency(t *testing.T) {
+	t.Parallel()
+
 	// Per CONTRACT_PROXY.md, recency_window is only meaningful for random.
 	// A sticky pool with recency_window set should NOT have recency applied.
 	w := 2

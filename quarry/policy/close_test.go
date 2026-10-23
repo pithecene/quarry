@@ -11,6 +11,8 @@ import (
 // Close is one-shot: a later Close (a deferred one) must write nothing,
 // even when events are still buffered after a failed flush.
 func TestBufferedPolicy_SecondCloseWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := mustNewBufferedPolicy(t, sink, policy.BufferedConfig{MaxBufferEvents: 10})
 
@@ -35,6 +37,8 @@ func TestBufferedPolicy_SecondCloseWritesNothing(t *testing.T) {
 }
 
 func TestStrictPolicy_CloseIsOneShot(t *testing.T) {
+	t.Parallel()
+
 	sink := &countingCloseSink{StubSink: policy.NewStubSink()}
 	pol := policy.NewStrictPolicy(sink)
 	_ = pol.Close()
@@ -57,6 +61,8 @@ func (s *countingCloseSink) Close() error {
 // Data offered after Close began is refused, not accepted and lost behind
 // the final flush.
 func TestPolicies_RefuseIngestAfterClose(t *testing.T) {
+	t.Parallel()
+
 	ev := &types.EventEnvelope{RunID: "run-001", Seq: 1, Type: types.EventTypeItem}
 	buffered := mustNewBufferedPolicy(t, policy.NewStubSink(), policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 1 << 20})
 	streaming, err := policy.NewStreamingPolicy(policy.NewStubSink(), policy.StreamingConfig{FlushCount: 10})

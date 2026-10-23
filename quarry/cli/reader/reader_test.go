@@ -6,6 +6,8 @@ import (
 
 // TestInspectRunResponse verifies the response shape matches CONTRACT_CLI.md.
 func TestInspectRunResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := InspectRun("test-run")
 
 	if resp.RunID != "test-run" {
@@ -30,6 +32,8 @@ func TestInspectRunResponse(t *testing.T) {
 
 // TestInspectJobResponse verifies the response shape.
 func TestInspectJobResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := InspectJob("test-job")
 
 	if resp.JobID != "test-job" {
@@ -46,6 +50,8 @@ func TestInspectJobResponse(t *testing.T) {
 
 // TestInspectProxyResponse verifies proxy pool response shape.
 func TestInspectProxyResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := InspectProxy("test-pool")
 
 	if resp.Name != "test-pool" {
@@ -61,6 +67,8 @@ func TestInspectProxyResponse(t *testing.T) {
 
 // TestStatsRunsResponse verifies stats response shape.
 func TestStatsRunsResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := StatsRuns()
 
 	if resp.Total < 0 {
@@ -79,6 +87,8 @@ func TestStatsRunsResponse(t *testing.T) {
 
 // TestStatsMetricsResponse verifies metrics snapshot response shape.
 func TestStatsMetricsResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := StatsMetrics()
 
 	if resp == nil {
@@ -142,6 +152,8 @@ func TestStatsMetricsResponse(t *testing.T) {
 
 // TestListRunsNoLimit verifies that limit=0 returns all results.
 func TestListRunsNoLimit(t *testing.T) {
+	t.Parallel()
+
 	opts := ListRunsOptions{Limit: 0}
 	results := ListRuns(opts)
 
@@ -153,6 +165,8 @@ func TestListRunsNoLimit(t *testing.T) {
 
 // TestListRunsWithLimit verifies that limit is applied.
 func TestListRunsWithLimit(t *testing.T) {
+	t.Parallel()
+
 	opts := ListRunsOptions{Limit: 2}
 	results := ListRuns(opts)
 
@@ -163,6 +177,8 @@ func TestListRunsWithLimit(t *testing.T) {
 
 // TestListRunsWithStateFilter verifies state filtering.
 func TestListRunsWithStateFilter(t *testing.T) {
+	t.Parallel()
+
 	opts := ListRunsOptions{State: "succeeded"}
 	results := ListRuns(opts)
 
@@ -175,6 +191,8 @@ func TestListRunsWithStateFilter(t *testing.T) {
 
 // TestListRunItemShape verifies list item response shape.
 func TestListRunItemShape(t *testing.T) {
+	t.Parallel()
+
 	results := ListRuns(ListRunsOptions{})
 
 	if len(results) == 0 {
@@ -195,6 +213,8 @@ func TestListRunItemShape(t *testing.T) {
 
 // TestDebugResolveProxyCommitted verifies committed flag is set.
 func TestDebugResolveProxyCommitted(t *testing.T) {
+	t.Parallel()
+
 	// Without commit
 	resp, err := DebugResolveProxy("test-pool", false)
 	if err != nil {
@@ -216,6 +236,8 @@ func TestDebugResolveProxyCommitted(t *testing.T) {
 
 // TestDebugResolveProxyRequiresPool verifies pool validation.
 func TestDebugResolveProxyRequiresPool(t *testing.T) {
+	t.Parallel()
+
 	_, err := DebugResolveProxy("", false)
 	if err == nil {
 		t.Error("Expected error for empty pool name")
@@ -224,6 +246,8 @@ func TestDebugResolveProxyRequiresPool(t *testing.T) {
 
 // TestDebugIPCResponse verifies IPC debug response shape.
 func TestDebugIPCResponse(t *testing.T) {
+	t.Parallel()
+
 	resp := DebugIPC(false)
 
 	if resp.Transport == "" {
