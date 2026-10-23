@@ -1,5 +1,5 @@
 {
-  "version": "0.13.7",
+  "version": "0.14.0",
   "description": "CLI flag/config parity artifact. Machine-checkable source of truth for CLI flags.",
   "commands": {
     "run": {
