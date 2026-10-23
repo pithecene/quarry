@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/retention"
 )
 
@@ -20,8 +21,8 @@ func runPrune(t *testing.T, root string, args ...string) (retention.Report, erro
 	return report, err
 }
 
-// Stdout capture swaps os.Stdout: these tests stay serial.
 func TestPrune_DryRunThenRemove(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 	writeFSRun(t, root, "run-b") // commits last and holds the head
@@ -46,6 +47,7 @@ func TestPrune_DryRunThenRemove(t *testing.T) {
 }
 
 func TestPrune_UnsetAgeKeepsRuns(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 	got, err := runPrune(t, root, "--failed-days", "0", "--dry-run")
@@ -55,6 +57,7 @@ func TestPrune_UnsetAgeKeepsRuns(t *testing.T) {
 }
 
 func TestPrune_Errors(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	cases := map[string][]string{
 		"no storage":             {"prune", "--succeeded-days", "1"},

@@ -27,7 +27,7 @@ func PruneCommand() *cli.Command {
 	flags := []cli.Flag{FormatFlag, NoColorFlag,
 		&cli.BoolFlag{Name: "dry-run", Usage: "Report the runs that would be removed, without removing anything"},
 		&cli.StringFlag{Name: "run-id", Usage: "Prune only this run (requires --source, --category, and --day)"},
-		&cli.DurationFlag{Name: "sweep-grace", Usage: "Then sweep the whole dataset, reclaiming uncommitted data older than this (e.g. 24h); 0 skips the sweep"},
+		&cli.DurationFlag{Name: "sweep-grace", Usage: "Then sweep the whole dataset, reclaiming uncommitted data older than this, such as 24h; 0 skips the sweep"},
 	}
 	for _, f := range pruneAgeFlags {
 		flags = append(flags, &cli.IntFlag{Name: f.name, Usage: f.usage, DefaultText: "unset: keep them"})

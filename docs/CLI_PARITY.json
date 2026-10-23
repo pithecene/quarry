@@ -931,7 +931,7 @@
           "type": "duration",
           "required": false,
           "default": "0s",
-          "description": "Then sweep the whole dataset, reclaiming uncommitted data older than this (e.g. 24h); 0 skips the sweep"
+          "description": "Then sweep the whole dataset, reclaiming uncommitted data older than this, such as 24h; 0 skips the sweep"
         },
         "succeeded-days": {
           "type": "int",
