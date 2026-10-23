@@ -11,28 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **Go module path**: The module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`, matching the renamed GitHub organization. Go consumers must update `require` directives and imports; releases up to v0.13.7 remain available under the former path. The CLI, SDK, container images and on-disk format are unchanged
-- **Go version**: The module requires Go 1.27.3 (was 1.25.6), the version that Lode v0.11.0 requires. Go consumers and source builds need Go 1.27.3 or later; release binaries and container images are unaffected
+- **Go module path**: The Go module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`. The CLI, the SDK, the container images, and stored data are unchanged.
+- **Go version**: The Go module requires Go 1.27.3 or later, the version that Lode v0.11.0 requires. Release binaries and container images are unaffected.
 
 ### Added
 
-- **Run records**: Every run writes a start record before anything else and an end record after everything else, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/` (`start.json`, `end.json`). They carry the run's lineage, partition prefix, start and end times, outcome, and terminal event, so a reader can find runs and their outcomes without enumerating partitions. The exit report gains `run_record_error` when the end record could not be written
-- **Run reader**: `quarry list runs` with `--storage-backend` and `--storage-path` lists runs from their run records (selectors `--source`, `--category`, `--day`; `--state succeeded|failed|unterminated`; `--limit` and an `--after` cursor), and the new `quarry list events` returns one run's events in sequence order. The `quarry/reader` package provides the same reads to Go programs. Runs are never found by enumerating partitions, and a run without an end record is reported as `unterminated`, never as running
-- **Run record backfill**: `quarry index rebuild` writes run records for runs written before v0.14.0, so `list runs` finds them. It records only what the stored data shows: start records have a null `started_at`, and an end record (written only for a run with exactly one terminal event) has a null `outcome` and `event_count`. Both carry `backfilled: true`, and a backfilled run's state follows its terminal event (`run_complete` is `succeeded`, `run_error` is `failed`). `--dry-run` reports without writing. A rerun writes only missing records, and runs that the runtime recorded are never modified
-- **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events from Node.js by running `quarry list runs` and `quarry list events` and returning their JSON (the `quarry` executable must be installed). CLI failures reject with `QuarryReadError`
-- **Run retention**: `quarry prune` removes whole runs by state and age (`--succeeded-days`, `--failed-days`, `--unterminated-days`), or one run named by `--run-id`, through Lode's `Dataset.Expire`, and then deletes the run's sidecar files and run records. The run holding the dataset's head is kept until another run commits. `--sweep-grace` also reclaims data of writes that never committed, `--dry-run` reports without removing, and a rerun resumes an interrupted prune. The `quarry/retention` package provides the same operation to Go programs ([#239](https://github.com/pithecene/quarry/issues/239))
-- **Run key validation**: `run` rejects a dataset ID, source, category, or run ID that cannot form a safe storage key (empty, `.`, `..`, and for the dataset ID any `/` or `\`), and refuses a run ID that already has a start record instead of writing into another run's partitions
-
-### Fixed
-
-- **Policy close**: `Close` on the buffered, streaming, and strict policies is one-shot, so a second close no longer flushes again. Its best-effort flush has a 30-second deadline; sinks must honor cancellation, and a write is never abandoned. The streaming policy cancels an interval flush in progress and waits for it instead of racing it. If the close-time flush leaves accepted data unpersisted, `Close` returns `ErrCloseUnflushed` instead of nil (the streaming policy includes the event and chunk counts). Data offered after `Close` begins is refused with `ErrPolicyClosed`. A streaming flush that times out while waiting for another flush is counted and logged
+- **Run records**: Each run writes a start record when it begins and an end record when it finishes, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/`. The records hold the run's lineage, partition, times, and outcome. The exit report gains `run_record_error` when the end record cannot be written.
+- **Run listing**: `quarry list runs` lists the runs in storage from their run records, filtered by `--source`, `--category`, `--day`, and `--state` and paged with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
+- **Run record backfill**: `quarry index rebuild` writes run records for runs stored before v0.14.0, from what the stored data shows, and marks them `backfilled: true`. A backfilled run's state follows its terminal event. `--dry-run` reports without writing, and a rerun writes only missing records.
+- **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events by calling the `quarry` executable, which must be installed. A failure rejects with `QuarryReadError`.
+- **Run retention** ([#239](https://github.com/pithecene/quarry/issues/239)): `quarry prune` removes whole runs by state and age with `--succeeded-days`, `--failed-days`, and `--unterminated-days`, or one run with `--run-id`, including its sidecar files and run records. A prune keeps the run that committed last until another run commits. `--sweep-grace` also reclaims data from writes that never committed, `--dry-run` reports without removing, and a rerun resumes an interrupted prune. The `quarry/retention` package offers the same operation to Go programs.
 
 ### Changed
 
-- **Lode v0.11.0**: Quarry depends on Lode v0.11.0 under its new module path, `github.com/pithecene/lode`. Lode now advances a dataset's latest snapshot with a compare-and-swap and gives snapshot IDs a random suffix; Quarry treats snapshot IDs as opaque strings, and its bundled filesystem and S3 stores support the swap, so the storage layout and the CLI are unchanged
-- **Run finalization**: `Execute` closes the policy and then persists the metrics record and the run records itself, so nothing is written for a run after its end record, and embedding hosts and fan-out child runs receive the same storage contents as the CLI without persisting anything
-- **Packaging**: The npm package `@pithecene/quarry-sdk` declares its license (Apache-2.0), author, homepage, repository and issue tracker, and the container images carry OCI labels (source, license, vendor, contact), so registry pages link back to this repository
-- **License**: The copyright holder is Pithecene LLC (was Andrew Hu), matching Lode; the license itself (Apache-2.0) is unchanged
+- **Run key validation**: `quarry run` refuses a dataset ID, source, category, or run ID that cannot form a safe storage key, such as an empty value, `.`, or `..`. It also refuses a run ID that already has a start record, because run IDs must be unique.
+- **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. A program that wrote metrics after `Execute` no longer needs to.
+- **Lode v0.11.0**: Quarry depends on Lode v0.11.0 at `github.com/pithecene/lode`. Snapshot IDs written from this release carry a random suffix. The storage layout is unchanged.
+- **Packaging**: The npm package and the container images declare their license, homepage, and source repository.
+- **License**: The copyright holder is Pithecene LLC. The license, Apache-2.0, is unchanged.
+
+### Fixed
+
+- **Policy close**: `Close` on the buffered, streaming, and strict policies runs once, so a second call no longer flushes again. Its flush has a 30-second deadline, and a custom sink must honor context cancellation. `Close` returns `ErrCloseUnflushed` when accepted data remains unwritten, and data offered after `Close` begins is refused with `ErrPolicyClosed`.
+
+### Upgrade Notes
+
+- **Go module path**: Replace `github.com/pithecene-io/quarry` with `github.com/pithecene/quarry` in `go.mod` and in imports. Releases through v0.13.7 remain available under the former path.
+- **Go version**: Build Go programs that import Quarry with Go 1.27.3 or later.
+- **Existing runs**: Run `quarry index rebuild` once, so that `quarry list runs` and `quarry prune` find the runs stored before v0.14.0.
 
 ---
 
