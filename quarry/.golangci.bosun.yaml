@@ -26,12 +26,6 @@ linters:
         settings:
           close-helper-packages:
             - github.com/pithecene/quarry/iox
-  exclusions:
-    rules:
-      # Packages not yet moved to the test convention. Each rollout change
-      # removes its packages from this pattern.
-      - path: ^(cli/cmd|cmd)/
-        linters: [testparallel]
 
 issues:
   max-issues-per-linter: 0

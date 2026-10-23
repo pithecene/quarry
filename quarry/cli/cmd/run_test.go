@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/pithecene/quarry/internal/testutil"
 	"flag"
 	"os"
 	"path/filepath"
@@ -20,6 +21,8 @@ import (
 )
 
 func TestValidatePolicyConfig(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		choice      policyChoice
@@ -88,6 +91,8 @@ func TestValidatePolicyConfig(t *testing.T) {
 }
 
 func TestValidateStorageConfig(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		config      storageChoice
@@ -147,6 +152,8 @@ func TestValidateStorageConfig(t *testing.T) {
 }
 
 func TestErrorMessagesAreActionable(t *testing.T) {
+	t.Parallel()
+
 	// Test that error messages include actionable guidance
 	tests := []struct {
 		name           string
@@ -192,6 +199,8 @@ func TestErrorMessagesAreActionable(t *testing.T) {
 }
 
 func TestPolicyErrorMessagesAreActionable(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		choice      policyChoice
@@ -236,6 +245,8 @@ func TestPolicyErrorMessagesAreActionable(t *testing.T) {
 }
 
 func TestResolveExecutor(t *testing.T) {
+	t.Parallel()
+
 	// Create a temp file to use as mock executor
 	tmpDir := t.TempDir()
 	mockExecutor := filepath.Join(tmpDir, "mock-executor.js")
@@ -284,6 +295,8 @@ func TestResolveExecutor(t *testing.T) {
 }
 
 func TestResolveExecutorErrorIsActionable(t *testing.T) {
+	t.Parallel()
+
 	// Test that executor not found error includes actionable guidance
 	_, err := resolveExecutor("")
 	if err == nil {
@@ -305,6 +318,8 @@ func TestResolveExecutorErrorIsActionable(t *testing.T) {
 }
 
 func TestParseJobPayload(t *testing.T) {
+	t.Parallel()
+
 	t.Run("neither flag returns empty object", func(t *testing.T) {
 		job, err := parseJobPayload("", "")
 		if err != nil {
@@ -492,6 +507,8 @@ func TestParseJobPayload(t *testing.T) {
 }
 
 func TestParseJobPayloadErrorsAreActionable(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		jobInline   string
@@ -553,6 +570,8 @@ func TestParseJobPayloadErrorsAreActionable(t *testing.T) {
 }
 
 func TestDescribeJSONType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input    any
 		contains string
@@ -576,6 +595,8 @@ func TestDescribeJSONType(t *testing.T) {
 }
 
 func TestExitCodeConstants(t *testing.T) {
+	t.Parallel()
+
 	// Verify exit code semantics
 	if exitConfigError != exitExecutorCrash {
 		t.Error("exitConfigError should map to exitExecutorCrash (non-script error)")
@@ -627,6 +648,7 @@ func newTestCLIContext(t *testing.T, flagValues map[string]string, defaultFlags 
 }
 
 func TestResolveString_CLIWins(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newTestCLIContext(t, map[string]string{"source": "cli-val"}, nil)
 	got := resolveString(c, "source", "config-val")
 	if got != "cli-val" {
@@ -635,6 +657,7 @@ func TestResolveString_CLIWins(t *testing.T) {
 }
 
 func TestResolveString_ConfigFallback(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newTestCLIContext(t, nil, map[string]string{"source": ""})
 	got := resolveString(c, "source", "config-val")
 	if got != "config-val" {
@@ -643,6 +666,7 @@ func TestResolveString_ConfigFallback(t *testing.T) {
 }
 
 func TestResolveString_UfaveDefault(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newTestCLIContext(t, nil, map[string]string{"category": "default"})
 	got := resolveString(c, "category", "")
 	if got != "default" {
@@ -651,6 +675,8 @@ func TestResolveString_UfaveDefault(t *testing.T) {
 }
 
 func TestConfigVal_NilConfig(t *testing.T) {
+	t.Parallel()
+
 	got := configVal(nil, func(c *quarryconfig.Config) string { return c.Source })
 	if got != "" {
 		t.Errorf("expected empty for nil config, got %q", got)
@@ -658,6 +684,8 @@ func TestConfigVal_NilConfig(t *testing.T) {
 }
 
 func TestConfigVal_NonNil(t *testing.T) {
+	t.Parallel()
+
 	cfg := &quarryconfig.Config{Source: "from-config"}
 	got := configVal(cfg, func(c *quarryconfig.Config) string { return c.Source })
 	if got != "from-config" {
@@ -666,6 +694,8 @@ func TestConfigVal_NonNil(t *testing.T) {
 }
 
 func TestResolveInt_CLIWins(t *testing.T) {
+	t.Parallel()
+
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{&cli.IntFlag{Name: "buffer-events"}}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -680,6 +710,8 @@ func TestResolveInt_CLIWins(t *testing.T) {
 }
 
 func TestResolveInt_ConfigFallback(t *testing.T) {
+	t.Parallel()
+
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{&cli.IntFlag{Name: "buffer-events"}}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -693,6 +725,8 @@ func TestResolveInt_ConfigFallback(t *testing.T) {
 }
 
 func TestResolveBool_CLIWins(t *testing.T) {
+	t.Parallel()
+
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{&cli.BoolFlag{Name: "storage-s3-path-style"}}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -707,6 +741,8 @@ func TestResolveBool_CLIWins(t *testing.T) {
 }
 
 func TestResolveDuration_CLIWins(t *testing.T) {
+	t.Parallel()
+
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{&cli.DurationFlag{Name: "adapter-timeout"}}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -721,6 +757,8 @@ func TestResolveDuration_CLIWins(t *testing.T) {
 }
 
 func TestResolveDuration_ConfigFallback(t *testing.T) {
+	t.Parallel()
+
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{&cli.DurationFlag{Name: "adapter-timeout"}}
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -746,6 +784,7 @@ func newTestApp() *cli.App {
 // TestRunAction_MissingSource validates that runAction returns actionable error
 // when source is missing from both CLI and config.
 func TestRunAction_MissingSource(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	// Invoke with script and run-id but no source, no config
@@ -764,6 +803,7 @@ func TestRunAction_MissingSource(t *testing.T) {
 // TestRunAction_MissingStorageBackend validates that runAction returns
 // actionable error when storage-backend is missing.
 func TestRunAction_MissingStorageBackend(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	err := app.Run([]string{"quarry", "run",
@@ -782,6 +822,7 @@ func TestRunAction_MissingStorageBackend(t *testing.T) {
 // TestRunAction_MissingStoragePath validates that runAction returns
 // actionable error when storage-path is missing.
 func TestRunAction_MissingStoragePath(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	err := app.Run([]string{"quarry", "run",
@@ -801,6 +842,7 @@ func TestRunAction_MissingStoragePath(t *testing.T) {
 // TestRunAction_ConfigProvidesRequiredFields validates that a config file
 // can satisfy source, storage-backend, storage-path requirements.
 func TestRunAction_ConfigProvidesRequiredFields(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	// Create a config file with required fields
 	dir := t.TempDir()
 	storageDir := filepath.Join(dir, "data")
@@ -841,6 +883,7 @@ func TestRunAction_ConfigProvidesRequiredFields(t *testing.T) {
 // TestRunAction_CLIOverridesConfig validates that CLI flags take precedence
 // over config file values.
 func TestRunAction_CLIOverridesConfig(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	dir := t.TempDir()
 	storageDir := filepath.Join(dir, "data")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
@@ -873,6 +916,7 @@ func TestRunAction_CLIOverridesConfig(t *testing.T) {
 
 // TestRunAction_ConfigFileNotFound validates actionable error for bad --config path.
 func TestRunAction_ConfigFileNotFound(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	err := app.Run([]string{"quarry", "run",
@@ -891,6 +935,7 @@ func TestRunAction_ConfigFileNotFound(t *testing.T) {
 // TestRunAction_ProxyConflict validates that --proxy-config and config
 // proxies: together is an error.
 func TestRunAction_ProxyConflict(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	dir := t.TempDir()
 	storageDir := filepath.Join(dir, "data")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
@@ -941,6 +986,8 @@ proxy:
 // --- outcomeToExitCode ---
 
 func TestOutcomeToExitCode(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		status types.OutcomeStatus
 		want   int
@@ -960,6 +1007,8 @@ func TestOutcomeToExitCode(t *testing.T) {
 }
 
 func TestOutcomeToExitCode_UnknownDefaultsToScriptError(t *testing.T) {
+	t.Parallel()
+
 	got := outcomeToExitCode(types.OutcomeStatus("unknown_status"))
 	if got != exitScriptError {
 		t.Errorf("unknown status should map to exitScriptError (%d), got %d", exitScriptError, got)
@@ -967,6 +1016,8 @@ func TestOutcomeToExitCode_UnknownDefaultsToScriptError(t *testing.T) {
 }
 
 func TestOutcomeToExitCode_ContractValues(t *testing.T) {
+	t.Parallel()
+
 	// Verify the actual numeric values per CONTRACT_RUN.md
 	if exitSuccess != 0 {
 		t.Errorf("exitSuccess should be 0, got %d", exitSuccess)
@@ -985,6 +1036,8 @@ func TestOutcomeToExitCode_ContractValues(t *testing.T) {
 // --- buildStoragePath ---
 
 func TestBuildStoragePath_FS(t *testing.T) {
+	t.Parallel()
+
 	sc := storageChoice{backend: "fs", path: "/var/quarry/data"}
 	got := buildStoragePath(sc, "quarry", "my-source", "default", "2026-02-08", "run-001")
 
@@ -1007,6 +1060,8 @@ func TestBuildStoragePath_FS(t *testing.T) {
 }
 
 func TestBuildStoragePath_S3WithPrefix(t *testing.T) {
+	t.Parallel()
+
 	sc := storageChoice{backend: "s3", path: "my-bucket/quarry-data"}
 	got := buildStoragePath(sc, "quarry", "src", "cat", "2026-01-01", "run-x")
 
@@ -1017,6 +1072,8 @@ func TestBuildStoragePath_S3WithPrefix(t *testing.T) {
 }
 
 func TestBuildStoragePath_S3BucketOnly(t *testing.T) {
+	t.Parallel()
+
 	sc := storageChoice{backend: "s3", path: "my-bucket"}
 	got := buildStoragePath(sc, "quarry", "src", "cat", "2026-01-01", "run-x")
 
@@ -1027,6 +1084,8 @@ func TestBuildStoragePath_S3BucketOnly(t *testing.T) {
 }
 
 func TestBuildStoragePath_UnknownBackend(t *testing.T) {
+	t.Parallel()
+
 	sc := storageChoice{backend: "gcs", path: "/tmp"}
 	got := buildStoragePath(sc, "quarry", "src", "cat", "2026-01-01", "run-x")
 
@@ -1042,6 +1101,8 @@ func TestBuildStoragePath_UnknownBackend(t *testing.T) {
 // --- buildRunCompletedEvent ---
 
 func TestBuildRunCompletedEvent_BasicFields(t *testing.T) {
+	t.Parallel()
+
 	result := &runtime.RunResult{
 		RunMeta: &types.RunMeta{
 			RunID:   "run-001",
@@ -1094,6 +1155,8 @@ func TestBuildRunCompletedEvent_BasicFields(t *testing.T) {
 }
 
 func TestBuildRunCompletedEvent_WithJobID(t *testing.T) {
+	t.Parallel()
+
 	jobID := "job-abc"
 	result := &runtime.RunResult{
 		RunMeta: &types.RunMeta{
@@ -1112,6 +1175,8 @@ func TestBuildRunCompletedEvent_WithJobID(t *testing.T) {
 }
 
 func TestBuildRunCompletedEvent_WithoutJobID(t *testing.T) {
+	t.Parallel()
+
 	result := &runtime.RunResult{
 		RunMeta: &types.RunMeta{
 			RunID:   "run-001",
@@ -1128,6 +1193,8 @@ func TestBuildRunCompletedEvent_WithoutJobID(t *testing.T) {
 }
 
 func TestBuildRunCompletedEvent_OutcomeMapsCorrectly(t *testing.T) {
+	t.Parallel()
+
 	for _, status := range []types.OutcomeStatus{
 		types.OutcomeSuccess,
 		types.OutcomeScriptError,
@@ -1152,6 +1219,8 @@ func TestBuildRunCompletedEvent_OutcomeMapsCorrectly(t *testing.T) {
 // --- validateFanOutConfig ---
 
 func TestValidateFanOutConfig(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		choice      fanOutChoice
@@ -1259,6 +1328,7 @@ func newAdapterTestContext(t *testing.T, flags map[string]string, sliceFlags map
 }
 
 func TestParseAdapterConfig_WebhookValid(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url": "https://hooks.example.com/quarry",
 	}, nil)
@@ -1276,6 +1346,7 @@ func TestParseAdapterConfig_WebhookValid(t *testing.T) {
 }
 
 func TestParseAdapterConfig_WebhookMissingURL(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, nil, nil)
 
 	_, err := parseAdapterConfigWithPrecedence(c, nil, "webhook")
@@ -1288,6 +1359,7 @@ func TestParseAdapterConfig_WebhookMissingURL(t *testing.T) {
 }
 
 func TestParseAdapterConfig_RedisValid(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url":     "redis://localhost:6379",
 		"adapter-channel": "my-channel",
@@ -1306,6 +1378,7 @@ func TestParseAdapterConfig_RedisValid(t *testing.T) {
 }
 
 func TestParseAdapterConfig_RedisMissingURL(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, nil, nil)
 
 	_, err := parseAdapterConfigWithPrecedence(c, nil, "redis")
@@ -1318,6 +1391,7 @@ func TestParseAdapterConfig_RedisMissingURL(t *testing.T) {
 }
 
 func TestParseAdapterConfig_UnknownType(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url": "https://example.com",
 	}, nil)
@@ -1335,6 +1409,7 @@ func TestParseAdapterConfig_UnknownType(t *testing.T) {
 }
 
 func TestParseAdapterConfig_ConfigProvidesURL(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	// CLI has no --adapter-url set; config provides it
 	c := newAdapterTestContext(t, nil, nil)
 	cfg := &quarryconfig.Config{
@@ -1353,6 +1428,7 @@ func TestParseAdapterConfig_ConfigProvidesURL(t *testing.T) {
 }
 
 func TestParseAdapterConfig_CLIOverridesConfigURL(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url": "https://cli-url.example.com",
 	}, nil)
@@ -1372,6 +1448,7 @@ func TestParseAdapterConfig_CLIOverridesConfigURL(t *testing.T) {
 }
 
 func TestParseAdapterConfig_ConfigProvidesRetries(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url": "https://example.com",
 	}, nil)
@@ -1393,6 +1470,7 @@ func TestParseAdapterConfig_ConfigProvidesRetries(t *testing.T) {
 }
 
 func TestParseAdapterConfig_ConfigHeadersMerged(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url": "https://example.com",
 	}, nil)
@@ -1419,6 +1497,7 @@ func TestParseAdapterConfig_ConfigHeadersMerged(t *testing.T) {
 }
 
 func TestParseAdapterConfig_MalformedHeader(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	// Build an app context with a malformed --adapter-header via app.Run
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{
@@ -1454,6 +1533,7 @@ func TestParseAdapterConfig_MalformedHeader(t *testing.T) {
 // --- --resolve-from validation ---
 
 func TestRunAction_ResolveFromNonexistentPath(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	dir := t.TempDir()
@@ -1479,6 +1559,7 @@ func TestRunAction_ResolveFromNonexistentPath(t *testing.T) {
 }
 
 func TestRunAction_ResolveFromNotADirectory(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	dir := t.TempDir()
@@ -1510,6 +1591,7 @@ func TestRunAction_ResolveFromNotADirectory(t *testing.T) {
 }
 
 func TestRunAction_ResolveFromValidDirectory(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	dir := t.TempDir()
@@ -1540,6 +1622,7 @@ func TestRunAction_ResolveFromValidDirectory(t *testing.T) {
 }
 
 func TestRunAction_ResolveFromConfigFile(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	dir := t.TempDir()
 	storageDir := filepath.Join(dir, "data")
 	nodeModulesDir := filepath.Join(dir, "node_modules")
@@ -1572,6 +1655,7 @@ func TestRunAction_ResolveFromConfigFile(t *testing.T) {
 }
 
 func TestParseAdapterConfig_RedisChannelFromConfig(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	c := newAdapterTestContext(t, map[string]string{
 		"adapter-url": "redis://localhost:6379",
 	}, nil)
@@ -1596,6 +1680,7 @@ func TestParseAdapterConfig_RedisChannelFromConfig(t *testing.T) {
 // TestRunAction_DryRun_SkipsSourceRequirement validates that --dry-run does
 // not require --source (script validation does not need partition keys).
 func TestRunAction_DryRun_SkipsSourceRequirement(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	// With --dry-run but no --source: should NOT get "--source is required"
@@ -1616,6 +1701,7 @@ func TestRunAction_DryRun_SkipsSourceRequirement(t *testing.T) {
 // TestRunAction_DryRun_SkipsStorageRequirement validates that --dry-run does
 // not require --storage-backend or --storage-path.
 func TestRunAction_DryRun_SkipsStorageRequirement(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	err := app.Run([]string{"quarry", "run",
@@ -1639,6 +1725,7 @@ func TestRunAction_DryRun_SkipsStorageRequirement(t *testing.T) {
 // --dry-run cannot resolve the executor, the exit code is 2 (exitConfigError
 // which maps to exitExecutorCrash).
 func TestRunAction_DryRun_ExecutorMissing_ExitCode2(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
 	err := app.Run([]string{"quarry", "run",
@@ -1663,6 +1750,7 @@ func TestRunAction_DryRun_ExecutorMissing_ExitCode2(t *testing.T) {
 // path: executor file exists (resolveExecutor passes) but the process fails to
 // execute (runtime.ValidateScript returns an error) → exit 2 (exitExecutorCrash).
 func TestRunAction_DryRun_ExecutorSpawnFailure_ExitCode2(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	// Create a temp file that exists on disk (passes os.Stat in resolveExecutor)
 	// but is not a valid executable, so exec.CommandContext will fail.
 	badExecutor := filepath.Join(t.TempDir(), "bad-executor")
@@ -1692,6 +1780,8 @@ func TestRunAction_DryRun_ExecutorSpawnFailure_ExitCode2(t *testing.T) {
 
 // TestRunDryRun_ExitCodes validates the exit code mapping for runDryRun.
 func TestRunDryRun_ExitCodes(t *testing.T) {
+	t.Parallel()
+
 	t.Run("valid result exits 0", func(t *testing.T) {
 		// runDryRun is not directly testable without an executor, but we can
 		// verify the exit code constants match the contract.
@@ -1727,6 +1817,8 @@ func TestRunDryRun_ExitCodes(t *testing.T) {
 // from the timestamp; StorageDay is what RunConfig would pass to the executor.
 // If someone reintroduces a second time.Now(), these would diverge.
 func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
+	t.Parallel()
+
 	// Use a timestamp at the UTC midnight boundary where the old bug would
 	// have been most likely to manifest (two time.Now() calls straddling midnight).
 	childStartTime := time.Date(2026, 2, 23, 23, 59, 59, 999_000_000, time.UTC)
@@ -1786,6 +1878,8 @@ func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
 // --- Event sink config parsing tests ---
 
 func TestParseEventSinkConfig_NoConfigDefaultsNil(t *testing.T) {
+	t.Parallel()
+
 	// No CLI flags, no config → nil (Lode-only default)
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{
@@ -1804,6 +1898,8 @@ func TestParseEventSinkConfig_NoConfigDefaultsNil(t *testing.T) {
 }
 
 func TestParseEventSinkConfig_ConfigFallback(t *testing.T) {
+	t.Parallel()
+
 	// No CLI flags, config has redis+lode → uses config
 	app := cli.NewApp()
 	app.Flags = []cli.Flag{
@@ -1837,6 +1933,8 @@ func TestParseEventSinkConfig_ConfigFallback(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_DuplicateTypeRejected(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
 		{Type: "redis", URL: "redis://localhost:6379"},
 		{Type: "redis", URL: "redis://localhost:6380"},
@@ -1850,6 +1948,8 @@ func TestParseEventSinkFromConfig_DuplicateTypeRejected(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_DuplicateLodeRejected(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
 		{Type: "lode"},
 		{Type: "lode"},
@@ -1860,6 +1960,8 @@ func TestParseEventSinkFromConfig_DuplicateLodeRejected(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_UnknownTypeRejected(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
 		{Type: "kafka"},
 	})
@@ -1872,6 +1974,8 @@ func TestParseEventSinkFromConfig_UnknownTypeRejected(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_RedisMissingURLRejected(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
 		{Type: "redis"},
 	})
@@ -1881,6 +1985,8 @@ func TestParseEventSinkFromConfig_RedisMissingURLRejected(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_InvalidDeliveryRejected(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
 		{Type: "lode", Delivery: "at_most_once"},
 	})
@@ -1890,6 +1996,8 @@ func TestParseEventSinkFromConfig_InvalidDeliveryRejected(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_RedisRetriesDefault(t *testing.T) {
+	t.Parallel()
+
 	// When retries is omitted from config, the default (2) should be applied,
 	// not the Go zero value (0 = no retries).
 	choices, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
@@ -1907,6 +2015,8 @@ func TestParseEventSinkFromConfig_RedisRetriesDefault(t *testing.T) {
 }
 
 func TestParseEventSinkFromConfig_RedisRetriesExplicitZero(t *testing.T) {
+	t.Parallel()
+
 	// Explicit retries: 0 means "no retries" — must not be overridden to default.
 	zero := 0
 	choices, err := parseEventSinkFromConfig([]quarryconfig.EventSinkConfig{
@@ -1921,6 +2031,8 @@ func TestParseEventSinkFromConfig_RedisRetriesExplicitZero(t *testing.T) {
 }
 
 func TestParseDeliveryMode(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input   string
 		want    policy.DeliveryMode
@@ -1943,6 +2055,8 @@ func TestParseDeliveryMode(t *testing.T) {
 }
 
 func TestChildFactory_InheritsEventSinks(t *testing.T) {
+	t.Parallel()
+
 	// Verify that childFactory stores event sink config and passes it
 	// to buildPolicy. We test this by checking the struct field directly
 	// since buildPolicy is the integration point already tested.
