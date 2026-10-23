@@ -58,7 +58,8 @@ For Hive-style layouts, the preferred order is:
 ## Append-Only Semantics
 
 - Events are **append-only**.
-- No updates or deletes are required or expected.
+- No updates are required or expected. A run is deleted only as a whole,
+  by retention (§Run Retention), never record by record.
 - Event order within a run must be preserved.
 
 ---
@@ -376,3 +377,81 @@ snapshot.Manifest.Metadata["sidecar_files"]
 File refs may be spread across multiple snapshots within a run. To
 reconstruct the full inventory, union `sidecar_files` from all snapshots
 for the run.
+
+---
+
+## Run Retention (v0.14.0+)
+
+Retention removes whole runs, chosen by their state and age. Quarry
+chooses the runs, because only Quarry knows a run's outcome. Lode's
+`Dataset.Expire` removes their snapshots (Lode CONTRACT_RETENTION.md), and
+Quarry deletes the objects it owns. The `quarry/retention` package
+implements it.
+
+### Selection
+
+- Runs are found from their start records (CONTRACT_RUN.md §Reading Run
+  Records), under the leading selectors `source`, `category`, and `day`,
+  or one run named by all three and its run ID. A run without a start
+  record is not found, so `quarry index rebuild` must index older runs
+  first.
+- A run's state is the state that `list runs` reports: `succeeded`,
+  `failed`, or `unterminated`. The policy gives each state an age at
+  which its runs are removed. A state without an age is kept.
+- A run's age is measured from its end record's `ended_at` when it has
+  one, and otherwise from its start record's `started_at`. A backfilled
+  start record has no `started_at`, so the end of its partition day
+  stands in.
+- An unterminated run cannot be told apart from a live one, so its age
+  must be at least 24 hours and must exceed the longest run. A
+  terminated run is final (CONTRACT_RUN.md §Run Finalization), so any age,
+  including zero, is safe.
+- A start-record key that the write path could not have produced, and a
+  start record whose fields do not describe the key it is stored at, are
+  reported and never acted on. A record therefore cannot direct deletion
+  at another run.
+
+### Order of Operations (per Run)
+
+1. Preview the expiry of the run's partition prefix (the start record's
+   `partition`) as a dry run. If the run holds the dataset's head, has a
+   snapshot with files outside its partition, or the head is uncommitted
+   or absent, the run is kept, nothing of it is deleted, and the report
+   gives the reason. Lode never expires the head, so the run that
+   committed most recently is removed only by a later prune.
+2. Delete the run's sidecar files and their `.meta.json` companions
+   (§Sidecar File Inventory): every path that the run's snapshots record,
+   and, when Hive encoding leaves the run's source, category, day, and
+   run ID unchanged, every object listed under its sidecar prefix. Without
+   that condition, the unencoded prefix could also be a prefix of another
+   run's files, so it is not listed, and a file written after the run's
+   last commit remains. A recorded path outside the run's sidecar prefix
+   is reported and left in place.
+3. Expire the run's snapshots with `Dataset.Expire` on the partition
+   prefix.
+4. Delete the start record, and then the end record. A run without a
+   start record is never listed, and an end record without one is
+   ignored by readers.
+
+Each step is idempotent, and a run is listed until step 4. A prune that is
+interrupted, or that fails with a store error, is therefore completed by
+the next prune that selects the run. If step 3 is interrupted after Lode
+deleted the run's last manifest, the next prune no longer finds the
+snapshot's residual data; `Dataset.Sweep` removes it.
+
+### Sweep
+
+When a grace period is given, a prune ends with `Dataset.Sweep` over the
+whole dataset, whatever the selectors. It completes interrupted expiries
+and removes the data of writes that never committed, such as the last
+batch of a killed run, once that data is older than the grace period.
+The grace period must exceed the longest single write; it never removes
+data that a manifest describes.
+
+### Concurrency
+
+A prune can run while runs are written to the dataset. Lode re-checks the
+head before each expiry, so a run that commits during the prune is never
+removed. A run that the policy selects is presumed final; a prune does not
+coordinate with readers of that run.
+

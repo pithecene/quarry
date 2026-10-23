@@ -322,6 +322,55 @@ func (r *Reader) getJSON(ctx context.Context, key string, v any) error {
 	return nil
 }
 
+// Key locates one run's records by its decoded key components.
+type Key struct {
+	Source   string
+	Category string
+	Day      string
+	RunID    string
+}
+
+// ListRunKeys returns the keys of the runs under the selector's key prefix,
+// in key order, without reading any record. Start-record keys that the write
+// path could not have produced are returned separately as malformed, so a
+// caller never addresses a run through a key it cannot reproduce.
+func (r *Reader) ListRunKeys(ctx context.Context, sel Selector) (keys []Key, malformed []string, err error) {
+	prefix, err := r.prefix(sel)
+	if err != nil {
+		return nil, nil, err
+	}
+	listed, err := r.store.List(ctx, prefix)
+	if errors.Is(err, lode.ErrNotFound) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, qlode.WrapReadError(err, prefix)
+	}
+	sort.Strings(listed)
+	root := qlode.RunRecordPrefix(r.dataset)
+	for _, k := range listed {
+		if !strings.HasSuffix(k, "/"+qlode.StartRecordName) {
+			continue
+		}
+		if !r.isStartKeyUnder(k, prefix) {
+			malformed = append(malformed, k)
+			continue
+		}
+		keys = append(keys, decodeKey(strings.Split(strings.TrimPrefix(k, root), "/")))
+	}
+	return keys, malformed, nil
+}
+
+// decodeKey decodes the four components of a start-record key that
+// isStartKeyUnder accepted, so unescaping cannot fail.
+func decodeKey(parts []string) Key {
+	dec := func(p string) string {
+		v, _ := url.PathUnescape(p) // isStartKeyUnder checked that p round-trips
+		return v
+	}
+	return Key{Source: dec(parts[0]), Category: dec(parts[1]), Day: dec(parts[2]), RunID: dec(parts[3])}
+}
+
 // ErrRunNotFound is returned when no start record exists for a run.
 var ErrRunNotFound = errors.New("run not found")
 

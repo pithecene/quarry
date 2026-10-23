@@ -87,14 +87,16 @@ func (c *LodeClient) getOrCreateStore() (lode.Store, error) {
 // buildFilePath computes the Hive-partitioned path for a sidecar file.
 // Format: datasets/<dataset>/partitions/source=<s>/category=<c>/day=<d>/run_id=<r>/files/<filename>
 func (c *LodeClient) buildFilePath(filename string) string {
-	return fmt.Sprintf("datasets/%s/partitions/source=%s/category=%s/day=%s/run_id=%s/files/%s",
-		c.config.Dataset,
-		c.config.Source,
-		c.config.Category,
-		c.config.Day,
-		c.config.RunID,
-		filename,
-	)
+	return SidecarFilesPrefix(c.config) + filename
+}
+
+// SidecarFilesPrefix is the key prefix of the run's sidecar files. Its
+// components are interpolated unencoded (CONTRACT_LODE.md §Key Encoding,
+// known limitation), so it equals the run's encoded partition prefix only
+// when Hive encoding leaves every component unchanged.
+func SidecarFilesPrefix(cfg Config) string {
+	return fmt.Sprintf("datasets/%s/partitions/source=%s/category=%s/day=%s/run_id=%s/files/",
+		cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
 }
 
 // StubFileWriter records PutFile calls for testing.

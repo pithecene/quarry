@@ -156,6 +156,10 @@ Go module root. Contains runtime, CLI, and core types.
 
 - `policy/` — ingestion policy interface: event buffering, drop rules, flush behavior, and observability stats
 
+### quarry/retention/
+
+- `retention/` — run retention: removes whole runs by state and age through Lode expiry, then their sidecar files and run records
+
 ### quarry/proxy/
 
 - `proxy/` — proxy pool selector: round-robin, random, and sticky strategies with recency windows
