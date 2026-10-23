@@ -105,7 +105,11 @@ func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]stri
 			if err != nil {
 				return nil, qlode.WrapReadError(err, part.Path)
 			}
-			paths, ok := sidecarRefPaths(m.Metadata[qlode.MetadataKeySidecarFiles])
+			raw, recorded := m.Metadata[qlode.MetadataKeySidecarFiles]
+			if !recorded {
+				continue // the writer omits the key when a snapshot adds no file
+			}
+			paths, ok := sidecarRefPaths(raw)
 			if !ok {
 				return nil, fmt.Errorf("%w: snapshot %s", errMalformedInventory, ref.ID)
 			}
@@ -121,13 +125,10 @@ func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]stri
 var errMalformedInventory = errors.New("malformed sidecar inventory")
 
 // sidecarRefPaths extracts the paths from a sidecar_files metadata value,
-// which a JSON round trip turns into []any of map[string]any. An absent
-// value records no files. It is false when the value or an entry has
-// another shape, or an entry lacks a path.
+// which a JSON round trip turns into []any of map[string]any. It is false
+// when the value, including null, or an entry has another shape, or an entry
+// lacks a path.
 func sidecarRefPaths(raw any) ([]string, bool) {
-	if raw == nil {
-		return nil, true
-	}
 	refs, ok := raw.([]any)
 	if !ok {
 		return nil, false

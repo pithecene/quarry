@@ -536,7 +536,8 @@ func TestSidecarRefPaths(t *testing.T) {
 		want []string
 		ok   bool
 	}{
-		"absent":        {nil, nil, true},
+		"null":          {nil, nil, false},
+		"empty":         {[]any{}, []string{}, true},
 		"paths":         {[]any{map[string]any{"path": "a"}, map[string]any{"path": "b"}}, []string{"a", "b"}, true},
 		"not a list":    {"a", nil, false},
 		"entry not map": {[]any{"a"}, nil, false},
