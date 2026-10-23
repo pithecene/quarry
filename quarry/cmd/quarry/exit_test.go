@@ -7,12 +7,16 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func TestExitErrHandler_NilError(_ *testing.T) {
+func TestExitErrHandler_NilError(t *testing.T) {
+	t.Parallel()
+
 	// Should not panic or exit on nil error
 	exitErrHandler(nil, nil)
 }
 
 func TestExitErrHandler_ExitCoder(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		err      error
@@ -62,6 +66,8 @@ func TestExitErrHandler_ExitCoder(t *testing.T) {
 }
 
 func TestExitErrHandler_WrappedExitCoder(t *testing.T) {
+	t.Parallel()
+
 	// Test that wrapped errors still extract the exit code
 	wrapped := errors.Join(errors.New("context"), cli.Exit("inner error", 42))
 
@@ -76,6 +82,8 @@ func TestExitErrHandler_WrappedExitCoder(t *testing.T) {
 }
 
 func TestExitErrHandler_RegularError(t *testing.T) {
+	t.Parallel()
+
 	// Regular errors should result in exit code 1 (tested via behavior)
 	err := errors.New("regular error")
 
@@ -87,6 +95,8 @@ func TestExitErrHandler_RegularError(t *testing.T) {
 
 // TestRunExitCodes documents the expected exit codes per CONTRACT_RUN.md.
 func TestRunExitCodes_Documentation(t *testing.T) {
+	t.Parallel()
+
 	// This test documents the exit code contract:
 	// - 0: success (run_complete)
 	// - 1: script error (run_error)
@@ -118,6 +128,8 @@ func TestRunExitCodes_Documentation(t *testing.T) {
 // TestExitErrHandler_PreservesExitCode verifies that cli.Exit codes pass through.
 // This is critical for CONTRACT_RUN.md compliance.
 func TestExitErrHandler_PreservesExitCode(t *testing.T) {
+	t.Parallel()
+
 	// Test each exit code defined in CONTRACT_RUN.md
 	testCases := []struct {
 		name string
@@ -147,6 +159,8 @@ func TestExitErrHandler_PreservesExitCode(t *testing.T) {
 
 // TestExitErrHandler_MessageSuppression verifies empty messages don't print.
 func TestExitErrHandler_MessageSuppression(t *testing.T) {
+	t.Parallel()
+
 	// cli.Exit("", N) with empty message should not print anything meaningful
 	err := cli.Exit("", 0)
 	msg := err.Error()
