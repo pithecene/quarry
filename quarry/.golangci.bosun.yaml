@@ -10,6 +10,7 @@ linters:
     - useany
     - errjoin
     - responseclose
+    - testtable
   settings:
     custom:
       testparallel:
@@ -20,6 +21,8 @@ linters:
       useany:
         type: module
       errjoin:
+        type: module
+      testtable:
         type: module
       responseclose:
         type: module

@@ -101,16 +101,22 @@ adapter:
 	}
 }
 
-func TestLoad_EmptyConfig(t *testing.T) {
+func TestLoad_BlankConfig(t *testing.T) {
 	t.Parallel()
-
-	path := writeTemp(t, "")
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	if cfg.Source != "" {
-		t.Errorf("expected empty source, got %q", cfg.Source)
+	for _, tc := range []struct{ name, content string }{
+		{"empty", ""},
+		{"whitespace only", "   \n  \n  \n"},
+		{"comments only", "# This is a comment\n# Another comment\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeTemp(t, tc.content))
+			if err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			if cfg.Source != "" {
+				t.Errorf("expected empty source, got %q", cfg.Source)
+			}
+		})
 	}
 }
 
@@ -256,63 +262,22 @@ func TestProxyPools_WithRecencyWindow(t *testing.T) {
 	}
 }
 
-func TestLoad_UnknownKeyRejected(t *testing.T) {
+func TestLoad_Rejects(t *testing.T) {
 	t.Parallel()
-
-	yaml := `source: my-source
-bogus_key: should_fail
-`
-	path := writeTemp(t, yaml)
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for unknown key, got nil")
-	}
-	if !strings.Contains(err.Error(), "bogus_key") {
-		t.Errorf("error should mention the unknown key, got: %v", err)
-	}
-}
-
-func TestLoad_UnknownNestedKeyRejected(t *testing.T) {
-	t.Parallel()
-
-	yaml := `storage:
-  backend: fs
-  path: ./data
-  unknown_field: bad
-`
-	path := writeTemp(t, yaml)
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for unknown nested key, got nil")
-	}
-	if !strings.Contains(err.Error(), "unknown_field") {
-		t.Errorf("error should mention the unknown key, got: %v", err)
-	}
-}
-
-func TestLoad_WhitespaceOnlyConfig(t *testing.T) {
-	t.Parallel()
-
-	path := writeTemp(t, "   \n  \n  \n")
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load failed for whitespace-only config: %v", err)
-	}
-	if cfg.Source != "" {
-		t.Errorf("expected empty source, got %q", cfg.Source)
-	}
-}
-
-func TestLoad_CommentsOnlyConfig(t *testing.T) {
-	t.Parallel()
-
-	path := writeTemp(t, "# This is a comment\n# Another comment\n")
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load failed for comments-only config: %v", err)
-	}
-	if cfg.Source != "" {
-		t.Errorf("expected empty source, got %q", cfg.Source)
+	for _, tc := range []struct{ name, yaml, mention string }{
+		{"unknown key", "source: my-source\nbogus_key: should_fail\n", "bogus_key"},
+		{"unknown nested key", "storage:\n  backend: fs\n  path: ./data\n  unknown_field: bad\n", "unknown_field"},
+		{"invalid duration", "adapter:\n  timeout: not-a-duration\n", "invalid duration"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(writeTemp(t, tc.yaml))
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.mention) {
+				t.Errorf("error should mention %q, got: %v", tc.mention, err)
+			}
+		})
 	}
 }
 
@@ -353,22 +318,6 @@ func TestLoad_RetriesOmittedIsNil(t *testing.T) {
 	}
 	if cfg.Adapter.Retries != nil {
 		t.Errorf("expected retries to be nil, got %d", *cfg.Adapter.Retries)
-	}
-}
-
-func TestDuration_InvalidFormat(t *testing.T) {
-	t.Parallel()
-
-	yaml := `adapter:
-  timeout: not-a-duration
-`
-	path := writeTemp(t, yaml)
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for invalid duration")
-	}
-	if !strings.Contains(err.Error(), "invalid duration") {
-		t.Errorf("error should mention invalid duration, got: %v", err)
 	}
 }
 
@@ -448,28 +397,18 @@ func TestLoad_RedisAdapterChannelOmitted(t *testing.T) {
 
 func TestLoad_BrowserWSEndpoint(t *testing.T) {
 	t.Parallel()
-
-	yaml := `source: my-source
-browser_ws_endpoint: ws://127.0.0.1:9222/devtools/browser/abc-123
-`
-	path := writeTemp(t, yaml)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
+	for _, tc := range []struct{ name, yaml, want string }{
+		{"set", "source: my-source\nbrowser_ws_endpoint: ws://127.0.0.1:9222/devtools/browser/abc-123\n", "ws://127.0.0.1:9222/devtools/browser/abc-123"},
+		{"omitted", "source: my-source", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeTemp(t, tc.yaml))
+			if err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			assertEqual(t, "browser_ws_endpoint", cfg.BrowserWSEndpoint, tc.want)
+		})
 	}
-	assertEqual(t, "browser_ws_endpoint", cfg.BrowserWSEndpoint, "ws://127.0.0.1:9222/devtools/browser/abc-123")
-}
-
-func TestLoad_BrowserWSEndpointOmitted(t *testing.T) {
-	t.Parallel()
-
-	yaml := `source: my-source`
-	path := writeTemp(t, yaml)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	assertEqual(t, "browser_ws_endpoint", cfg.BrowserWSEndpoint, "")
 }
 
 func TestLoad_EventSinksConfig(t *testing.T) {

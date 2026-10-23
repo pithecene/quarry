@@ -39,27 +39,23 @@ func TestExecutorInputJSON_IncludesBrowserWSEndpoint(t *testing.T) {
 	}
 }
 
-func TestExecutorInputJSON_OmitsBrowserWSEndpointWhenEmpty(t *testing.T) {
+// Optional executor input fields are omitted from the JSON when unset.
+func TestExecutorInputJSON_OmitsUnsetFields(t *testing.T) {
 	t.Parallel()
-
-	input := executorInput{
-		RunID:   "run-001",
-		Attempt: 1,
-		Job:     map[string]any{},
-	}
-
-	data, err := json.Marshal(input)
+	data, err := json.Marshal(executorInput{RunID: "run-001", Attempt: 1, Job: map[string]any{}})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-
 	var decoded map[string]any
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-
-	if _, exists := decoded["browser_ws_endpoint"]; exists {
-		t.Error("browser_ws_endpoint should be omitted when empty")
+	for _, field := range []string{"browser_ws_endpoint", "storage"} {
+		t.Run(field, func(t *testing.T) {
+			if _, exists := decoded[field]; exists {
+				t.Errorf("%s should be omitted when unset", field)
+			}
+		})
 	}
 }
 
@@ -207,30 +203,6 @@ func TestExecutorInputJSON_IncludesStoragePartition(t *testing.T) {
 		} else if got != want {
 			t.Errorf("storage.%s = %q, want %q", key, got, want)
 		}
-	}
-}
-
-func TestExecutorInputJSON_OmitsStorageWhenNil(t *testing.T) {
-	t.Parallel()
-
-	input := executorInput{
-		RunID:   "run-001",
-		Attempt: 1,
-		Job:     map[string]any{},
-	}
-
-	data, err := json.Marshal(input)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	var decoded map[string]any
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if _, exists := decoded["storage"]; exists {
-		t.Error("storage should be omitted when nil")
 	}
 }
 

@@ -1,13 +1,16 @@
 package cmd
 
 import (
-	"github.com/pithecene/quarry/internal/testutil"
 	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pithecene/quarry/internal/testutil"
+
+	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/adapter/redisstream"
 	quarryconfig "github.com/pithecene/quarry/cli/config"
@@ -17,7 +20,6 @@ import (
 	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/runtime"
 	"github.com/pithecene/quarry/types"
-	"github.com/urfave/cli/v2"
 )
 
 func TestValidatePolicyConfig(t *testing.T) {
@@ -156,10 +158,10 @@ func TestErrorMessagesAreActionable(t *testing.T) {
 
 	// Test that error messages include actionable guidance
 	tests := []struct {
-		name           string
-		config         storageChoice
-		mustContain    []string
-		description    string
+		name        string
+		config      storageChoice
+		mustContain []string
+		description string
 	}{
 		{
 			name:        "nonexistent path suggests mkdir",
@@ -250,7 +252,7 @@ func TestResolveExecutor(t *testing.T) {
 	// Create a temp file to use as mock executor
 	tmpDir := t.TempDir()
 	mockExecutor := filepath.Join(tmpDir, "mock-executor.js")
-	if err := os.WriteFile(mockExecutor, []byte("// mock"), 0755); err != nil {
+	if err := os.WriteFile(mockExecutor, []byte("// mock"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -306,8 +308,8 @@ func TestResolveExecutorErrorIsActionable(t *testing.T) {
 	errMsg := err.Error()
 	mustContain := []string{
 		"executor not found",
-		"pnpm",        // build instruction
-		"--executor",  // manual override option
+		"pnpm",       // build instruction
+		"--executor", // manual override option
 	}
 
 	for _, must := range mustContain {
@@ -342,7 +344,7 @@ func TestParseJobPayload(t *testing.T) {
 
 	t.Run("file object accepted", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "job.json")
-		if err := os.WriteFile(tmpFile, []byte(`{"target": "test"}`), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(`{"target": "test"}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -370,7 +372,7 @@ func TestParseJobPayload(t *testing.T) {
 
 	t.Run("file array rejected", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "array.json")
-		if err := os.WriteFile(tmpFile, []byte(`["item1", "item2"]`), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(`["item1", "item2"]`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -414,7 +416,7 @@ func TestParseJobPayload(t *testing.T) {
 
 	t.Run("file primitive rejected", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "primitive.json")
-		if err := os.WriteFile(tmpFile, []byte(`"hello"`), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(`"hello"`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -442,7 +444,7 @@ func TestParseJobPayload(t *testing.T) {
 
 	t.Run("file null rejected", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "null.json")
-		if err := os.WriteFile(tmpFile, []byte(`null`), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(`null`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -467,7 +469,7 @@ func TestParseJobPayload(t *testing.T) {
 
 	t.Run("malformed file JSON rejected", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "bad.json")
-		if err := os.WriteFile(tmpFile, []byte(`{not valid json}`), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(`{not valid json}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -492,7 +494,7 @@ func TestParseJobPayload(t *testing.T) {
 
 	t.Run("both flags set rejected", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "job.json")
-		if err := os.WriteFile(tmpFile, []byte(`{}`), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(`{}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -612,7 +614,7 @@ func TestExitCodeConstants(t *testing.T) {
 // flagValues maps flag names to their string values. All listed flags are
 // registered and marked as explicitly set (c.IsSet returns true).
 // defaultFlags maps flag names to default values (not explicitly set).
-func newTestCLIContext(t *testing.T, flagValues map[string]string, defaultFlags map[string]string) *cli.Context {
+func newTestCLIContext(t *testing.T, flagValues, defaultFlags map[string]string) *cli.Context {
 	t.Helper()
 	app := cli.NewApp()
 
@@ -656,21 +658,20 @@ func TestResolveString_CLIWins(t *testing.T) {
 	}
 }
 
-func TestResolveString_ConfigFallback(t *testing.T) {
+// When the CLI flag is unset, resolveString falls back to the config value,
+// then to the urfave default.
+func TestResolveString_Fallback(t *testing.T) {
 	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newTestCLIContext(t, nil, map[string]string{"source": ""})
-	got := resolveString(c, "source", "config-val")
-	if got != "config-val" {
-		t.Errorf("expected config fallback, got %q", got)
-	}
-}
-
-func TestResolveString_UfaveDefault(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newTestCLIContext(t, nil, map[string]string{"category": "default"})
-	got := resolveString(c, "category", "")
-	if got != "default" {
-		t.Errorf("expected urfave default, got %q", got)
+	for _, tc := range []struct{ name, flag, flagDefault, config, want string }{
+		{"config value", "source", "", "config-val", "config-val"},
+		{"urfave default", "category", "default", "", "default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestCLIContext(t, nil, map[string]string{tc.flag: tc.flagDefault})
+			if got := resolveString(c, tc.flag, tc.config); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -788,7 +789,8 @@ func TestRunAction_MissingSource(t *testing.T) {
 	app := newTestApp()
 
 	// Invoke with script and run-id but no source, no config
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 	})
@@ -800,42 +802,28 @@ func TestRunAction_MissingSource(t *testing.T) {
 	}
 }
 
-// TestRunAction_MissingStorageBackend validates that runAction returns
-// actionable error when storage-backend is missing.
-func TestRunAction_MissingStorageBackend(t *testing.T) {
+// runAction rejects incomplete arguments with an actionable error.
+func TestRunAction_RejectsIncompleteArguments(t *testing.T) {
 	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	app := newTestApp()
-
-	err := app.Run([]string{"quarry", "run",
-		"--script", "./test.ts",
-		"--run-id", "run-001",
-		"--source", "test",
-	})
-	if err == nil {
-		t.Fatal("expected error for missing storage-backend")
-	}
-	if !strings.Contains(err.Error(), "--storage-backend is required") {
-		t.Errorf("error should mention --storage-backend is required, got: %v", err)
-	}
-}
-
-// TestRunAction_MissingStoragePath validates that runAction returns
-// actionable error when storage-path is missing.
-func TestRunAction_MissingStoragePath(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	app := newTestApp()
-
-	err := app.Run([]string{"quarry", "run",
-		"--script", "./test.ts",
-		"--run-id", "run-001",
-		"--source", "test",
-		"--storage-backend", "fs",
-	})
-	if err == nil {
-		t.Fatal("expected error for missing storage-path")
-	}
-	if !strings.Contains(err.Error(), "--storage-path is required") {
-		t.Errorf("error should mention --storage-path is required, got: %v", err)
+	base := []string{"quarry", "run", "--script", "./test.ts", "--run-id", "run-001"}
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		mention string
+	}{
+		{"missing storage backend", []string{"--source", "test"}, "--storage-backend is required"},
+		{"missing storage path", []string{"--source", "test", "--storage-backend", "fs"}, "--storage-path is required"},
+		{"config file not found", []string{"--config", "/nonexistent/quarry.yaml"}, "config file not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := newTestApp().Run(append(append([]string{}, base...), tc.args...))
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.mention) {
+				t.Errorf("error should mention %q, got: %v", tc.mention, err)
+			}
+		})
 	}
 }
 
@@ -859,7 +847,8 @@ func TestRunAction_ConfigProvidesRequiredFields(t *testing.T) {
 
 	// Run with --config providing the required fields. Execution will fail
 	// at executor resolution but that's past the validation we're testing.
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
@@ -899,7 +888,8 @@ func TestRunAction_CLIOverridesConfig(t *testing.T) {
 
 	// Pass --source on CLI (should override config-source).
 	// The run will fail at executor resolution but that's past the validation gate.
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
@@ -911,24 +901,6 @@ func TestRunAction_CLIOverridesConfig(t *testing.T) {
 	// Should NOT fail on source validation
 	if strings.Contains(err.Error(), "--source is required") {
 		t.Error("CLI --source should override config")
-	}
-}
-
-// TestRunAction_ConfigFileNotFound validates actionable error for bad --config path.
-func TestRunAction_ConfigFileNotFound(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	app := newTestApp()
-
-	err := app.Run([]string{"quarry", "run",
-		"--config", "/nonexistent/quarry.yaml",
-		"--script", "./test.ts",
-		"--run-id", "run-001",
-	})
-	if err == nil {
-		t.Fatal("expected error for missing config file")
-	}
-	if !strings.Contains(err.Error(), "config file not found") {
-		t.Errorf("error should mention config file not found, got: %v", err)
 	}
 }
 
@@ -969,7 +941,8 @@ proxy:
 
 	app := newTestApp()
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
@@ -1059,27 +1032,18 @@ func TestBuildStoragePath_FS(t *testing.T) {
 	}
 }
 
-func TestBuildStoragePath_S3WithPrefix(t *testing.T) {
+func TestBuildStoragePath_S3(t *testing.T) {
 	t.Parallel()
-
-	sc := storageChoice{backend: "s3", path: "my-bucket/quarry-data"}
-	got := buildStoragePath(sc, "quarry", "src", "cat", "2026-01-01", "run-x")
-
-	want := "s3://my-bucket/quarry-data/datasets/quarry/partitions/source=src/category=cat/day=2026-01-01/run_id=run-x"
-	if got != want {
-		t.Errorf("s3 with prefix:\ngot  %q\nwant %q", got, want)
-	}
-}
-
-func TestBuildStoragePath_S3BucketOnly(t *testing.T) {
-	t.Parallel()
-
-	sc := storageChoice{backend: "s3", path: "my-bucket"}
-	got := buildStoragePath(sc, "quarry", "src", "cat", "2026-01-01", "run-x")
-
-	want := "s3://my-bucket/datasets/quarry/partitions/source=src/category=cat/day=2026-01-01/run_id=run-x"
-	if got != want {
-		t.Errorf("s3 bucket only:\ngot  %q\nwant %q", got, want)
+	for _, tc := range []struct{ name, path, want string }{
+		{"with prefix", "my-bucket/quarry-data", "s3://my-bucket/quarry-data/datasets/quarry/partitions/source=src/category=cat/day=2026-01-01/run_id=run-x"},
+		{"bucket only", "my-bucket", "s3://my-bucket/datasets/quarry/partitions/source=src/category=cat/day=2026-01-01/run_id=run-x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := storageChoice{backend: "s3", path: tc.path}
+			if got := buildStoragePath(sc, "quarry", "src", "cat", "2026-01-01", "run-x"); got != tc.want {
+				t.Errorf("got  %q\nwant %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -1345,16 +1309,22 @@ func TestParseAdapterConfig_WebhookValid(t *testing.T) {
 	}
 }
 
-func TestParseAdapterConfig_WebhookMissingURL(t *testing.T) {
+func TestParseAdapterConfig_MissingURL(t *testing.T) {
 	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newAdapterTestContext(t, nil, nil)
-
-	_, err := parseAdapterConfigWithPrecedence(c, nil, "webhook")
-	if err == nil {
-		t.Fatal("expected error for missing URL")
-	}
-	if !strings.Contains(err.Error(), "--adapter-url is required") {
-		t.Errorf("error should mention --adapter-url, got: %v", err)
+	for _, tc := range []struct{ adapter, mention string }{
+		{"webhook", "--adapter-url is required"},
+		{"redis", "--adapter-url is required when --adapter=redis"},
+	} {
+		t.Run(tc.adapter, func(t *testing.T) {
+			c := newAdapterTestContext(t, nil, nil)
+			_, err := parseAdapterConfigWithPrecedence(c, nil, tc.adapter)
+			if err == nil {
+				t.Fatal("expected error for missing URL")
+			}
+			if !strings.Contains(err.Error(), tc.mention) {
+				t.Errorf("error should mention %q, got: %v", tc.mention, err)
+			}
+		})
 	}
 }
 
@@ -1374,19 +1344,6 @@ func TestParseAdapterConfig_RedisValid(t *testing.T) {
 	}
 	if ac.channel != "my-channel" {
 		t.Errorf("channel = %q, want %q", ac.channel, "my-channel")
-	}
-}
-
-func TestParseAdapterConfig_RedisMissingURL(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newAdapterTestContext(t, nil, nil)
-
-	_, err := parseAdapterConfigWithPrecedence(c, nil, "redis")
-	if err == nil {
-		t.Fatal("expected error for missing URL")
-	}
-	if !strings.Contains(err.Error(), "--adapter-url is required when --adapter=redis") {
-		t.Errorf("error should mention redis URL requirement, got: %v", err)
 	}
 }
 
@@ -1514,7 +1471,8 @@ func TestParseAdapterConfig_MalformedHeader(t *testing.T) {
 		return nil
 	}
 
-	_ = app.Run([]string{"test",
+	_ = app.Run([]string{
+		"test",
 		"--adapter-url", "https://example.com",
 		"--adapter-header", "no-equals-sign",
 	})
@@ -1542,7 +1500,8 @@ func TestRunAction_ResolveFromNonexistentPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--source", "test",
@@ -1574,7 +1533,8 @@ func TestRunAction_ResolveFromNotADirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--source", "test",
@@ -1604,7 +1564,8 @@ func TestRunAction_ResolveFromValidDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--source", "test",
@@ -1640,7 +1601,8 @@ func TestRunAction_ResolveFromConfigFile(t *testing.T) {
 	}
 
 	app := newTestApp()
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
@@ -1684,7 +1646,8 @@ func TestRunAction_DryRun_SkipsSourceRequirement(t *testing.T) {
 	app := newTestApp()
 
 	// With --dry-run but no --source: should NOT get "--source is required"
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--dry-run",
@@ -1704,7 +1667,8 @@ func TestRunAction_DryRun_SkipsStorageRequirement(t *testing.T) {
 	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--dry-run",
@@ -1728,7 +1692,8 @@ func TestRunAction_DryRun_ExecutorMissing_ExitCode2(t *testing.T) {
 	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
 	app := newTestApp()
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--dry-run",
@@ -1760,7 +1725,8 @@ func TestRunAction_DryRun_ExecutorSpawnFailure_ExitCode2(t *testing.T) {
 
 	app := newTestApp()
 
-	err := app.Run([]string{"quarry", "run",
+	err := app.Run([]string{
+		"quarry", "run",
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--dry-run",
