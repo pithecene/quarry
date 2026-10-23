@@ -62,7 +62,7 @@ to avoid it.
 
 | Runtime | Version | Notes |
 |---------|---------|-------|
-| Go | 1.25.6 | Exact version |
+| Go | 1.27.3 | Exact version |
 | Node.js | 23+ | Native TS support |
 | Node.js | 22.6+ | Requires `--experimental-strip-types`; puppeteer 25 requires 22.12+ (stay on puppeteer 24 below that) |
 

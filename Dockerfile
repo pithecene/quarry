@@ -6,7 +6,7 @@
 FROM node:24.13.0-bookworm-slim AS build
 
 # Pin Go version to match go.mod
-ARG GO_VERSION=1.25.6
+ARG GO_VERSION=1.27.3
 # TARGETARCH is injected by BuildKit for multi-platform builds (e.g. amd64, arm64).
 ARG TARGETARCH
 # Commit SHA for version embedding (.git is excluded from Docker context).

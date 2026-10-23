@@ -177,9 +177,9 @@ func (m StatsModel) renderStatsProxies() string {
 
 		if proxy.LastUsedAt != nil {
 			b.WriteString("\n")
-			b.WriteString(fmt.Sprintf("%s %s",
+			fmt.Fprintf(&b, "%s %s",
 				LabelStyle.Render("Last Used:"),
-				ValueStyle.Render(proxy.LastUsedAt.Format("2006-01-02 15:04:05"))))
+				ValueStyle.Render(proxy.LastUsedAt.Format("2006-01-02 15:04:05")))
 		}
 	}
 

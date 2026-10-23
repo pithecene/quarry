@@ -178,7 +178,7 @@ func (r *Renderer) renderStructTable(data any) error {
 	defer iox.DiscardErr(w.Flush)
 
 	v := reflect.ValueOf(data)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -206,7 +206,7 @@ func (r *Renderer) renderStructTable(data any) error {
 }
 
 func (r *Renderer) getHeaders(v reflect.Value) []string {
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -227,7 +227,7 @@ func (r *Renderer) getHeaders(v reflect.Value) []string {
 }
 
 func (r *Renderer) getRowValues(v reflect.Value, headers []string) []string {
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -267,7 +267,7 @@ func (r *Renderer) formatValue(v reflect.Value) string {
 	}
 
 	// Handle pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return ""
 		}

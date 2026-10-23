@@ -9,7 +9,7 @@ Normative behavior is defined by contracts under [`docs/contracts/`](docs/contra
 
 | Tool | Version | Source |
 |------|---------|--------|
-| Go | 1.25.6 | [`quarry/go.mod`](quarry/go.mod) |
+| Go | 1.27.3 | [`quarry/go.mod`](quarry/go.mod) |
 | Node.js | 23+ or 22.6+ | Native TS support (see note) |
 | pnpm | 10.28.2 | `package.json#packageManager` |
 
