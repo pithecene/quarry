@@ -11,6 +11,8 @@ import (
 )
 
 func TestExecutorInputJSON_IncludesBrowserWSEndpoint(t *testing.T) {
+	t.Parallel()
+
 	input := executorInput{
 		RunID:             "run-001",
 		Attempt:           1,
@@ -38,6 +40,8 @@ func TestExecutorInputJSON_IncludesBrowserWSEndpoint(t *testing.T) {
 }
 
 func TestExecutorInputJSON_OmitsBrowserWSEndpointWhenEmpty(t *testing.T) {
+	t.Parallel()
+
 	input := executorInput{
 		RunID:   "run-001",
 		Attempt: 1,
@@ -60,6 +64,8 @@ func TestExecutorInputJSON_OmitsBrowserWSEndpointWhenEmpty(t *testing.T) {
 }
 
 func TestExecutorInputJSON_IncludesProxy(t *testing.T) {
+	t.Parallel()
+
 	proxy := &types.ProxyEndpoint{
 		Protocol: "http",
 		Host:     "proxy.example.com",
@@ -93,6 +99,8 @@ func TestExecutorInputJSON_IncludesProxy(t *testing.T) {
 }
 
 func TestDeduplicateEnv_LastWins(t *testing.T) {
+	t.Parallel()
+
 	env := []string{
 		"NODE_PATH=/old",
 		"HOME=/home/user",
@@ -113,6 +121,8 @@ func TestDeduplicateEnv_LastWins(t *testing.T) {
 }
 
 func TestDeduplicateEnv_NoDuplicates(t *testing.T) {
+	t.Parallel()
+
 	env := []string{
 		"HOME=/home/user",
 		"PATH=/usr/bin",
@@ -125,6 +135,8 @@ func TestDeduplicateEnv_NoDuplicates(t *testing.T) {
 }
 
 func TestDeduplicateEnv_Empty(t *testing.T) {
+	t.Parallel()
+
 	result := deduplicateEnv(nil)
 	if len(result) != 0 {
 		t.Errorf("expected 0 entries, got %d", len(result))
@@ -132,6 +144,8 @@ func TestDeduplicateEnv_Empty(t *testing.T) {
 }
 
 func TestExecutorConfig_ResolveFromEnvSetup(t *testing.T) {
+	t.Parallel()
+
 	// Verify that the config struct accepts ResolveFrom
 	config := &ExecutorConfig{
 		ExecutorPath: "/usr/bin/node",
@@ -149,6 +163,8 @@ func TestExecutorConfig_ResolveFromEnvSetup(t *testing.T) {
 }
 
 func TestExecutorInputJSON_IncludesStoragePartition(t *testing.T) {
+	t.Parallel()
+
 	input := executorInput{
 		RunID:   "run-001",
 		Attempt: 1,
@@ -195,6 +211,8 @@ func TestExecutorInputJSON_IncludesStoragePartition(t *testing.T) {
 }
 
 func TestExecutorInputJSON_OmitsStorageWhenNil(t *testing.T) {
+	t.Parallel()
+
 	input := executorInput{
 		RunID:   "run-001",
 		Attempt: 1,
@@ -217,6 +235,8 @@ func TestExecutorInputJSON_OmitsStorageWhenNil(t *testing.T) {
 }
 
 func TestScriptValidation_ValidJSON(t *testing.T) {
+	t.Parallel()
+
 	input := `{"valid":true,"exports":{"default":true,"hooks":["prepare","cleanup"]}}`
 
 	var result ScriptValidation
@@ -245,6 +265,8 @@ func TestScriptValidation_ValidJSON(t *testing.T) {
 }
 
 func TestScriptValidation_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
 	input := `{"valid":false,"error":"Failed to load script \"bad.ts\": missing default export"}`
 
 	var result ScriptValidation
@@ -264,6 +286,8 @@ func TestScriptValidation_InvalidJSON(t *testing.T) {
 }
 
 func TestScriptValidation_EmptyHooks(t *testing.T) {
+	t.Parallel()
+
 	input := `{"valid":true,"exports":{"default":true,"hooks":[]}}`
 
 	var result ScriptValidation
@@ -287,6 +311,8 @@ func TestScriptValidation_EmptyHooks(t *testing.T) {
 // the actual child-run wiring (where the day-drift bug lived) is in
 // cli/cmd/run_test.go:TestChildRun_StorageDayAlignedWithBuildPolicy.
 func TestDeriveDay_UTCMidnightBoundary(t *testing.T) {
+	t.Parallel()
+
 	// 2026-02-23T23:59:59.999Z — still Feb 23
 	ts := time.Date(2026, 2, 23, 23, 59, 59, 999_000_000, time.UTC)
 
@@ -309,6 +335,8 @@ func TestDeriveDay_UTCMidnightBoundary(t *testing.T) {
 }
 
 func TestStoragePartition_MatchesGoPathFormula(t *testing.T) {
+	t.Parallel()
+
 	// Verify StoragePartition fields produce a path matching
 	// the Go buildFilePath() formula in quarry/lode/file_writer.go:
 	// datasets/{dataset}/partitions/source={s}/category={c}/day={d}/run_id={r}/files/{filename}
