@@ -371,6 +371,7 @@ func (r *Reader) ListRunKeys(ctx context.Context, sel Selector) (RunKeys, error)
 				out.OrphanEnds = append(out.OrphanEnds, k)
 			}
 		case !strings.HasSuffix(k, "/"+qlode.StartRecordName):
+			// Neither run record; nothing to list.
 		case !r.isStartKeyUnder(k, prefix):
 			out.Malformed = append(out.Malformed, k)
 		default:

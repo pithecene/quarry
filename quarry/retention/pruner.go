@@ -129,19 +129,10 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		out.Kept = kept
 		return out, true, err
 	}
-	// An unterminated run may be live although it started long ago, so its
-	// age runs from its last write when that is later than its start.
 	if out.State == reader.StateUnterminated {
-		last, ok := lastWrite(preview.Expired)
-		if !ok {
-			out.Kept = keptNoInstant
-			return out, true, nil
-		}
-		if p.opts.Now.Sub(last) < threshold {
-			return out, false, nil
-		}
-		if since, _ := time.Parse(time.RFC3339Nano, out.Since); last.After(since) {
-			out.Since = last.UTC().Format(time.RFC3339Nano)
+		due := p.lastWriteDue(&out, preview.Expired, threshold)
+		if !due || out.Kept != "" {
+			return out, due, nil
 		}
 	}
 	cfg := qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
@@ -164,11 +155,13 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	// A commit that landed after Expire's listing is not in its selection,
 	// so the partition is listed again; a snapshot there keeps the records.
-	if live, err := p.hasSnapshots(ctx, out.Partition); live || err != nil {
-		if live {
-			out.Kept = keptCommitted
-		}
+	live, err := p.hasSnapshots(ctx, out.Partition)
+	if err != nil {
 		return out, true, err
+	}
+	if live {
+		out.Kept = keptCommitted
+		return out, true, nil
 	}
 	if err := p.deleteAll(ctx, sidecars); err != nil {
 		return out, true, err
@@ -182,6 +175,25 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	out.Pruned = true
 	return out, true, nil
+}
+
+// lastWriteDue reports whether an unterminated run is still due once its age
+// runs from its last write: such a run may be live although it started long
+// ago. It moves out.Since to the last write when that is later, and sets
+// out.Kept when a snapshot ID carries no write instant.
+func (p *pruner) lastWriteDue(out *Run, ids []lode.DatasetSnapshotID, threshold time.Duration) bool {
+	last, ok := lastWrite(ids)
+	if !ok {
+		out.Kept = keptNoInstant
+		return true
+	}
+	if p.opts.Now.Sub(last) < threshold {
+		return false
+	}
+	if since, _ := time.Parse(time.RFC3339Nano, out.Since); last.After(since) {
+		out.Since = last.UTC().Format(time.RFC3339Nano)
+	}
+	return true
 }
 
 // expire expires every snapshot of the run's partition. It returns a reason
@@ -249,15 +261,7 @@ func idInstant(id string) (time.Time, bool) {
 }
 
 func isNonce(s string) bool {
-	if len(s) != 16 {
-		return false
-	}
-	for _, r := range s {
-		if !strings.ContainsRune("0123456789abcdef", r) {
-			return false
-		}
-	}
-	return true
+	return len(s) == 16 && strings.Trim(s, "0123456789abcdef") == ""
 }
 
 // hasSnapshots reports whether any snapshot still has a manifest under the

@@ -145,10 +145,10 @@ type Report struct {
 
 func (r *Report) add(run Run) {
 	r.Runs = append(r.Runs, run)
-	if !run.Pruned {
-		r.RunsKept++
-	} else {
+	if run.Pruned {
 		r.RunsPruned++
+	} else {
+		r.RunsKept++
 	}
 	r.Snapshots += run.Snapshots
 	r.Objects += run.Objects
@@ -157,10 +157,10 @@ func (r *Report) add(run Run) {
 }
 
 // Prune removes the runs the policy selects, in key order, then sweeps when
-// asked. Each run is removed in an order that a
-// rerun resumes (CONTRACT_LODE.md §Run Retention): sidecar files, then the
-// run's snapshots, then its start record and its end record. A store error
-// terminates the prune and returns the partial report.
+// asked. Each run is removed in an order that a rerun resumes
+// (CONTRACT_LODE.md §Run Retention): the run's snapshots, then its sidecar
+// files, then its start record and its end record. A store error terminates
+// the prune and returns the partial report.
 func Prune(ctx context.Context, dataset string, factory lode.StoreFactory, opts Options) (Report, error) {
 	report := Report{Dataset: dataset, DryRun: opts.DryRun, Runs: []Run{}}
 	if err := opts.validate(); err != nil {
@@ -188,6 +188,8 @@ func Prune(ctx context.Context, dataset string, factory lode.StoreFactory, opts 
 			report.NotDue++
 			continue
 		}
+		// A selected run is reported even when its removal failed, so the
+		// partial report shows how far the removal got.
 		report.add(run)
 		if err != nil {
 			return report, err
