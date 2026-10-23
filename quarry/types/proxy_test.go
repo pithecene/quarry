@@ -6,6 +6,8 @@ import (
 )
 
 func TestProxyEndpoint_Validate_EmptyHost(t *testing.T) {
+	t.Parallel()
+
 	ep := &ProxyEndpoint{
 		Protocol: ProxyProtocolHTTP,
 		Host:     "",
@@ -22,6 +24,8 @@ func TestProxyEndpoint_Validate_EmptyHost(t *testing.T) {
 }
 
 func TestProxyEndpoint_Warnings_Socks5(t *testing.T) {
+	t.Parallel()
+
 	// socks5 should generate a warning
 	ep := &ProxyEndpoint{
 		Protocol: ProxyProtocolSOCKS5,
@@ -39,6 +43,8 @@ func TestProxyEndpoint_Warnings_Socks5(t *testing.T) {
 }
 
 func TestProxyEndpoint_Warnings_HTTP(t *testing.T) {
+	t.Parallel()
+
 	// http should not generate warnings
 	ep := &ProxyEndpoint{
 		Protocol: ProxyProtocolHTTP,
@@ -53,6 +59,8 @@ func TestProxyEndpoint_Warnings_HTTP(t *testing.T) {
 }
 
 func TestProxyPool_Warnings_LargeRoundRobin(t *testing.T) {
+	t.Parallel()
+
 	// Large pool with round_robin should generate a warning
 	endpoints := make([]ProxyEndpoint, LargePoolThreshold+1)
 	for i := range endpoints {
@@ -83,6 +91,8 @@ func TestProxyPool_Warnings_LargeRoundRobin(t *testing.T) {
 }
 
 func TestProxyPool_Warnings_LargeRandom(t *testing.T) {
+	t.Parallel()
+
 	// Large pool with random should NOT generate a warning
 	endpoints := make([]ProxyEndpoint, LargePoolThreshold+1)
 	for i := range endpoints {
@@ -106,6 +116,8 @@ func TestProxyPool_Warnings_LargeRandom(t *testing.T) {
 }
 
 func TestProxyPool_Warnings_Socks5Endpoint(t *testing.T) {
+	t.Parallel()
+
 	// Pool with socks5 endpoint should generate a warning
 	pool := &ProxyPool{
 		Name:     "socks-pool",
@@ -130,6 +142,8 @@ func TestProxyPool_Warnings_Socks5Endpoint(t *testing.T) {
 }
 
 func TestProxyPool_Warnings_NoWarnings(t *testing.T) {
+	t.Parallel()
+
 	// Normal pool should not generate warnings
 	pool := &ProxyPool{
 		Name:     "normal-pool",
@@ -146,6 +160,8 @@ func TestProxyPool_Warnings_NoWarnings(t *testing.T) {
 }
 
 func TestProxyPool_Validate_RecencyWindow_Positive(t *testing.T) {
+	t.Parallel()
+
 	w := 3
 	pool := &ProxyPool{
 		Name:     "recency-pool",
@@ -165,6 +181,8 @@ func TestProxyPool_Validate_RecencyWindow_Positive(t *testing.T) {
 }
 
 func TestProxyPool_Validate_RecencyWindow_Zero(t *testing.T) {
+	t.Parallel()
+
 	w := 0
 	pool := &ProxyPool{
 		Name:     "recency-pool",
@@ -181,6 +199,8 @@ func TestProxyPool_Validate_RecencyWindow_Zero(t *testing.T) {
 }
 
 func TestProxyPool_Validate_RecencyWindow_Negative(t *testing.T) {
+	t.Parallel()
+
 	w := -1
 	pool := &ProxyPool{
 		Name:     "recency-pool",
@@ -197,6 +217,8 @@ func TestProxyPool_Validate_RecencyWindow_Negative(t *testing.T) {
 }
 
 func TestProxyPool_Warnings_RecencyWindow_NonRandom(t *testing.T) {
+	t.Parallel()
+
 	w := 3
 	pool := &ProxyPool{
 		Name:     "recency-rr",
@@ -221,6 +243,8 @@ func TestProxyPool_Warnings_RecencyWindow_NonRandom(t *testing.T) {
 }
 
 func TestProxyPool_Warnings_RecencyWindow_Random_NoWarning(t *testing.T) {
+	t.Parallel()
+
 	w := 3
 	pool := &ProxyPool{
 		Name:     "recency-random",

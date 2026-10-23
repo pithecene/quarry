@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 )
 
 func TestProxyHash(t *testing.T) {
+	t.Parallel()
+
 	user := "admin"
 	pass1 := "secret1"
 	pass2 := "secret2"
@@ -68,6 +71,7 @@ func TestProxyHash(t *testing.T) {
 }
 
 func TestDiscoveryDir_Fallback(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("XDG_RUNTIME_DIR", "")
 
 	dir, err := discoveryDir()
@@ -88,6 +92,7 @@ func TestDiscoveryDir_Fallback(t *testing.T) {
 }
 
 func TestDiscoveryDir_XDG(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", tmpDir)
 
@@ -111,6 +116,8 @@ func TestDiscoveryDir_XDG(t *testing.T) {
 }
 
 func TestReadWriteDiscovery(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "browser.json")
 
@@ -145,6 +152,8 @@ func TestReadWriteDiscovery(t *testing.T) {
 }
 
 func TestReadDiscovery_Errors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		setup   func(t *testing.T) string
@@ -189,6 +198,8 @@ func TestReadDiscovery_Errors(t *testing.T) {
 }
 
 func TestWriteDiscovery_Atomic(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "browser.json")
 
@@ -211,6 +222,8 @@ func TestWriteDiscovery_Atomic(t *testing.T) {
 }
 
 func TestHealthCheck_Errors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		endpoint string
@@ -229,6 +242,8 @@ func TestHealthCheck_Errors(t *testing.T) {
 }
 
 func TestProcessStatus(t *testing.T) {
+	t.Parallel()
+
 	t.Run("self is healthy", func(t *testing.T) {
 		if s := processStatus(os.Getpid()); s != processHealthy {
 			t.Errorf("current process: got %d, want processHealthy", s)
@@ -266,6 +281,8 @@ func TestProcessStatus(t *testing.T) {
 }
 
 func TestIsBrowserServerProcess(t *testing.T) {
+	t.Parallel()
+
 	t.Run("self is not browser server", func(t *testing.T) {
 		if isBrowserServerProcess(os.Getpid()) {
 			t.Error("test process should not be identified as browser server")
@@ -280,6 +297,8 @@ func TestIsBrowserServerProcess(t *testing.T) {
 }
 
 func TestCleanupStaleProcess_SkipsNonOwned(t *testing.T) {
+	t.Parallel()
+
 	// Launch a non-browser-server process in its own session
 	cmd := exec.Command("sleep", "60")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -302,6 +321,8 @@ func TestCleanupStaleProcess_SkipsNonOwned(t *testing.T) {
 }
 
 func TestParseTimeOrZero(t *testing.T) {
+	t.Parallel()
+
 	t.Run("valid", func(t *testing.T) {
 		if parseTimeOrZero("2026-02-10T12:00:00Z").IsZero() {
 			t.Error("expected non-zero time")
@@ -315,6 +336,8 @@ func TestParseTimeOrZero(t *testing.T) {
 }
 
 func TestKillProcessGroup(t *testing.T) {
+	t.Parallel()
+
 	// Launch a child in its own session (matching browser server launch config)
 	cmd := exec.Command("sleep", "60")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -339,6 +362,7 @@ func TestKillProcessGroup(t *testing.T) {
 }
 
 func TestIdleTimeoutFromEnv(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	tests := []struct {
 		name     string
 		envVal   string

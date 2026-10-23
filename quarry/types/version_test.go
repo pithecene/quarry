@@ -6,6 +6,8 @@ import (
 )
 
 func TestVersion_Format(t *testing.T) {
+	t.Parallel()
+
 	// Version should be a valid semver
 	semverRegex := regexp.MustCompile(`^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$`)
 	if !semverRegex.MatchString(Version) {
@@ -14,6 +16,8 @@ func TestVersion_Format(t *testing.T) {
 }
 
 func TestContractVersion_MatchesVersion(t *testing.T) {
+	t.Parallel()
+
 	// Per lockstep versioning, ContractVersion must equal Version
 	if ContractVersion != Version {
 		t.Errorf("ContractVersion %q != Version %q (lockstep versioning violated)", ContractVersion, Version)

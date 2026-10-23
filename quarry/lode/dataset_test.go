@@ -10,6 +10,8 @@ import (
 )
 
 func TestNewReadDatasetFS(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	ds, err := NewReadDatasetFS("quarry", dir)
 	if err != nil {
@@ -21,6 +23,8 @@ func TestNewReadDatasetFS(t *testing.T) {
 }
 
 func TestNewReadDataset_WriteReadRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 

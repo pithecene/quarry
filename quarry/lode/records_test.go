@@ -7,6 +7,8 @@ import (
 )
 
 func TestToEventRecordMap_IncludesPolicy(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",
@@ -39,6 +41,8 @@ func TestToEventRecordMap_IncludesPolicy(t *testing.T) {
 }
 
 func TestToArtifactCommitRecordMap_IncludesPolicy(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test-source",

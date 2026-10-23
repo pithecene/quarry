@@ -26,6 +26,8 @@ import (
 // file twice returns lode.ErrPathExists, confirming Lode's immutability
 // enforcement from Quarry's PutFile code path.
 func TestPutFile_ErrPathExists_DoubleWrite(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -80,6 +82,8 @@ func TestPutFile_ErrPathExists_DoubleWrite(t *testing.T) {
 // file also enforces immutability. If the data file succeeds but the meta file
 // is a duplicate, ErrPathExists is returned.
 func TestPutFile_ErrPathExists_MetaSidecar(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -122,6 +126,8 @@ func TestPutFile_ErrPathExists_MetaSidecar(t *testing.T) {
 // ds.Read(snap.ID) could fail if a snapshot is removed between listing
 // and reading.
 func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -182,6 +188,8 @@ func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
 // TestPutFile_MetadataInventory_IncludedInWriteEvents verifies that sidecar
 // files written via PutFile appear in the next WriteEvents snapshot Metadata.
 func TestPutFile_MetadataInventory_IncludedInWriteEvents(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -266,6 +274,8 @@ func TestPutFile_MetadataInventory_IncludedInWriteEvents(t *testing.T) {
 // TestPutFile_MetadataInventory_DrainedAfterWrite verifies that pending files
 // are cleared after a successful write, so the next snapshot doesn't duplicate them.
 func TestPutFile_MetadataInventory_DrainedAfterWrite(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -341,6 +351,8 @@ func TestPutFile_MetadataInventory_DrainedAfterWrite(t *testing.T) {
 // files are NOT drained when a write fails, so they are included in the next
 // successful write.
 func TestPutFile_MetadataInventory_PreservedOnWriteFailure(t *testing.T) {
+	t.Parallel()
+
 	// Use FailingStore so the write fails but PutFile succeeds
 	failStore := &FailingStore{PutErr: nil}
 	cfg := Config{
@@ -387,6 +399,8 @@ func TestPutFile_MetadataInventory_PreservedOnWriteFailure(t *testing.T) {
 // TestPutFile_MetadataInventory_IncludedInWriteMetrics verifies that sidecar
 // files are also flushed when WriteMetrics is called (run completion path).
 func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -470,6 +484,8 @@ func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
 // PutFile before a chunk flush must survive to appear in the subsequent
 // event or metrics snapshot — the consumer-facing boundaries.
 func TestPutFile_MetadataInventory_SurvivesChunkWrite(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 

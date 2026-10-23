@@ -52,6 +52,8 @@ func waitMessage(t *testing.T, ch <-chan miniredis.PubsubMessage) miniredis.Pubs
 }
 
 func TestPublish_Success(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	a, err := New(Config{URL: "redis://" + mr.Addr(), Retries: 0})
@@ -88,6 +90,8 @@ func TestPublish_Success(t *testing.T) {
 }
 
 func TestPublish_DefaultChannel(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	a, err := New(Config{URL: "redis://" + mr.Addr()})
@@ -115,6 +119,8 @@ func TestPublish_DefaultChannel(t *testing.T) {
 }
 
 func TestPublish_CustomChannel(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	customChannel := "custom:notifications"
@@ -143,6 +149,8 @@ func TestPublish_CustomChannel(t *testing.T) {
 }
 
 func TestPublish_RetriesOnFailure(t *testing.T) {
+	t.Parallel()
+
 	// Verify a successful publish to a healthy server works with retries configured
 	mr := miniredis.RunT(t)
 
@@ -167,6 +175,8 @@ func TestPublish_RetriesOnFailure(t *testing.T) {
 }
 
 func TestPublish_ExhaustsRetries(t *testing.T) {
+	t.Parallel()
+
 	// Use an address that won't connect
 	a, err := New(Config{URL: "redis://127.0.0.1:1", Retries: 2, Timeout: 100 * time.Millisecond})
 	if err != nil {
@@ -181,6 +191,8 @@ func TestPublish_ExhaustsRetries(t *testing.T) {
 }
 
 func TestPublish_ContextCanceled(t *testing.T) {
+	t.Parallel()
+
 	// Use an address that won't connect — context cancellation should fire first
 	a, err := New(Config{URL: "redis://127.0.0.1:1", Retries: 5, Timeout: 10 * time.Second})
 	if err != nil {
@@ -198,6 +210,8 @@ func TestPublish_ContextCanceled(t *testing.T) {
 }
 
 func TestNew_RequiresURL(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(Config{})
 	if err == nil {
 		t.Fatal("expected error for empty URL")
@@ -205,6 +219,8 @@ func TestNew_RequiresURL(t *testing.T) {
 }
 
 func TestNew_InvalidURL(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(Config{URL: "not-a-redis-url"})
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
@@ -212,6 +228,8 @@ func TestNew_InvalidURL(t *testing.T) {
 }
 
 func TestNew_RejectsNegativeRetries(t *testing.T) {
+	t.Parallel()
+
 	_, err := New(Config{URL: "redis://localhost:6379", Retries: -1})
 	if err == nil {
 		t.Fatal("expected error for negative retries")
@@ -219,6 +237,8 @@ func TestNew_RejectsNegativeRetries(t *testing.T) {
 }
 
 func TestNew_DefaultsApplied(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	a, err := New(Config{URL: "redis://" + mr.Addr()})
@@ -236,6 +256,8 @@ func TestNew_DefaultsApplied(t *testing.T) {
 }
 
 func TestClose_ClosesConnection(t *testing.T) {
+	t.Parallel()
+
 	mr := miniredis.RunT(t)
 
 	a, err := New(Config{URL: "redis://" + mr.Addr()})

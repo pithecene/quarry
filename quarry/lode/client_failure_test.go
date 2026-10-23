@@ -105,6 +105,8 @@ func FailingFactoryFactory(err error) lode.StoreFactory {
 // =============================================================================
 
 func TestLodeClient_FSDirectoryCreationFailure_NonExistentParent(t *testing.T) {
+	t.Parallel()
+
 	// Use t.TempDir() for isolation, then reference a non-existent subdirectory
 	tmpDir := t.TempDir()
 	nonExistentPath := filepath.Join(tmpDir, "does-not-exist", "nested", "path")
@@ -158,6 +160,8 @@ func TestLodeClient_FSDirectoryCreationFailure_NonExistentParent(t *testing.T) {
 }
 
 func TestLodeClient_FSDirectoryCreationFailure_ReadOnlyParent(t *testing.T) {
+	t.Parallel()
+
 	if os.Getuid() == 0 {
 		t.Skip("skipping: test requires non-root user")
 	}
@@ -224,6 +228,8 @@ func TestLodeClient_FSDirectoryCreationFailure_ReadOnlyParent(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_WriteFailure_DiskFull(t *testing.T) {
+	t.Parallel()
+
 	// Inject a disk-full error via FailingStore
 	store := &FailingStore{
 		PutErr: errors.New("write /data/quarry/events.jsonl: no space left on device"),
@@ -273,6 +279,8 @@ func TestLodeClient_WriteFailure_DiskFull(t *testing.T) {
 }
 
 func TestLodeClient_WriteFailure_PermissionDenied(t *testing.T) {
+	t.Parallel()
+
 	store := &FailingStore{
 		PutErr: errors.New("write /data/quarry/events.jsonl: permission denied"),
 	}
@@ -307,6 +315,8 @@ func TestLodeClient_WriteFailure_PermissionDenied(t *testing.T) {
 }
 
 func TestLodeClient_ChunkWriteFailure_DiskFull(t *testing.T) {
+	t.Parallel()
+
 	store := &FailingStore{
 		PutErr: errors.New("write /data/quarry/chunks.jsonl: no space left on device"),
 	}
@@ -345,6 +355,8 @@ func TestLodeClient_ChunkWriteFailure_DiskFull(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_PartialWriteDetection_ChunksNotMarkedOnFailure(t *testing.T) {
+	t.Parallel()
+
 	// Verify that on write failure, chunks are not marked as seen
 	store := &FailingStore{
 		PutErr: errors.New("simulated write failure"),
@@ -386,6 +398,8 @@ func TestLodeClient_PartialWriteDetection_ChunksNotMarkedOnFailure(t *testing.T)
 }
 
 func TestLodeClient_PartialWriteDetection_OffsetsNotUpdatedOnFailure(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test",
@@ -436,6 +450,8 @@ func TestLodeClient_PartialWriteDetection_OffsetsNotUpdatedOnFailure(t *testing.
 // =============================================================================
 
 func TestLodeClient_S3AuthFailure(t *testing.T) {
+	t.Parallel()
+
 	store := &FailingStore{
 		PutErr: errors.New("NoCredentialProviders: no valid credentials found"),
 	}
@@ -474,6 +490,8 @@ func TestLodeClient_S3AuthFailure(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_S3AccessDenied(t *testing.T) {
+	t.Parallel()
+
 	store := &FailingStore{
 		PutErr: errors.New("AccessDenied: Access Denied for s3://my-bucket/quarry/data.jsonl"),
 	}
@@ -521,6 +539,8 @@ func (e *timeoutError) Timeout() bool   { return true }
 func (e *timeoutError) Temporary() bool { return true }
 
 func TestLodeClient_S3NetworkTimeout(t *testing.T) {
+	t.Parallel()
+
 	store := &FailingStore{
 		PutErr: &timeoutError{msg: "RequestTimeout: PutObject timed out after 30s"},
 	}
@@ -559,6 +579,8 @@ func TestLodeClient_S3NetworkTimeout(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_S3Throttling(t *testing.T) {
+	t.Parallel()
+
 	store := &FailingStore{
 		PutErr: errors.New("SlowDown: Rate exceeded, retry after 5s"),
 	}
@@ -597,6 +619,8 @@ func TestLodeClient_S3Throttling(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_StorageError_ContainsOperationAndPath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		err       error
@@ -689,6 +713,8 @@ func TestLodeClient_StorageError_ContainsOperationAndPath(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_ErrorPropagation_EventWrite(t *testing.T) {
+	t.Parallel()
+
 	originalErr := errors.New("storage backend unavailable")
 	store := &FailingStore{PutErr: originalErr}
 
@@ -733,6 +759,8 @@ func TestLodeClient_ErrorPropagation_EventWrite(t *testing.T) {
 }
 
 func TestLodeClient_ErrorPropagation_ChunkWrite(t *testing.T) {
+	t.Parallel()
+
 	originalErr := errors.New("storage backend unavailable")
 	store := &FailingStore{PutErr: originalErr}
 
@@ -773,6 +801,8 @@ func TestLodeClient_ErrorPropagation_ChunkWrite(t *testing.T) {
 // =============================================================================
 
 func TestLodeClient_NoSilentCorruption_FailedWritePreservesState(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test",
@@ -835,6 +865,8 @@ func TestLodeClient_NoSilentCorruption_FailedWritePreservesState(t *testing.T) {
 }
 
 func TestLodeClient_NoSilentCorruption_CommitFailurePreservesChunksState(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{
 		Dataset:  "quarry",
 		Source:   "test",
@@ -901,6 +933,8 @@ func TestLodeClient_NoSilentCorruption_CommitFailurePreservesChunksState(t *test
 // =============================================================================
 
 func TestLodeClient_ErrorChain_UnwrapPreservesOriginal(t *testing.T) {
+	t.Parallel()
+
 	// Create a specific error we can test for
 	originalErr := errors.New("original underlying error")
 	store := &FailingStore{PutErr: originalErr}

@@ -1,0 +1,32 @@
+version: "2"
+
+# Bosun's Go analyzers (scripts/lint-bosun.sh, task lint:bosun). The stock
+# linters stay in .golangci.yaml, which CI runs; Bosun is private, so these
+# run locally until its analyzers are published.
+linters:
+  default: none
+  enable:
+    - testparallel
+    - useany
+    - errjoin
+    - responseclose
+  settings:
+    custom:
+      testparallel:
+        type: module
+        settings:
+          serial-helper-packages:
+            - github.com/pithecene/quarry/internal/testutil
+      useany:
+        type: module
+      errjoin:
+        type: module
+      responseclose:
+        type: module
+        settings:
+          close-helper-packages:
+            - github.com/pithecene/quarry/iox
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

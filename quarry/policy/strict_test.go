@@ -9,6 +9,8 @@ import (
 )
 
 func TestStrictPolicy_IngestEvent_ImmediateWrite(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 
@@ -47,6 +49,8 @@ func TestStrictPolicy_IngestEvent_ImmediateWrite(t *testing.T) {
 }
 
 func TestStrictPolicy_NoDrops(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 
@@ -83,6 +87,8 @@ func TestStrictPolicy_NoDrops(t *testing.T) {
 }
 
 func TestStrictPolicy_IngestArtifactChunk(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 
@@ -114,6 +120,8 @@ func TestStrictPolicy_IngestArtifactChunk(t *testing.T) {
 }
 
 func TestStrictPolicy_SinkError(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	expectedErr := errors.New("sink failure")
 	sink.ErrorOnWrite = expectedErr
@@ -137,6 +145,8 @@ func TestStrictPolicy_SinkError(t *testing.T) {
 }
 
 func TestStrictPolicy_Flush_NoOp(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 
@@ -164,6 +174,8 @@ func TestStrictPolicy_Flush_NoOp(t *testing.T) {
 }
 
 func TestStrictPolicy_OrderingPreserved(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 
@@ -192,6 +204,8 @@ func TestStrictPolicy_OrderingPreserved(t *testing.T) {
 }
 
 func TestStrictPolicy_Close(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	pol := policy.NewStrictPolicy(sink)
 

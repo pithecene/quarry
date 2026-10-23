@@ -117,6 +117,8 @@ func spawnExecutor(t *testing.T, ctx context.Context, paths testPaths, scriptPat
 // TestE2E_WireHarness is Milestone 1: spawn executor and capture raw stdout.
 // This test validates the wire harness works without asserting decode correctness.
 func TestE2E_WireHarness(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("QUARRY_E2E") != "1" {
 		t.Skip("QUARRY_E2E=1 not set, skipping live E2E test")
 	}
@@ -180,6 +182,8 @@ func TestE2E_WireHarness(t *testing.T) {
 // TestE2E_LiveDecode is Milestone 5: decode live stdout stream with assertions.
 // This test validates the full decode path with ordering and terminal checks.
 func TestE2E_LiveDecode(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("QUARRY_E2E") != "1" {
 		t.Skip("QUARRY_E2E=1 not set, skipping live E2E test")
 	}
@@ -282,6 +286,8 @@ func TestE2E_LiveDecode(t *testing.T) {
 // This test is slow (requires spawning executor) and only runs when
 // QUARRY_REGEN_FIXTURES=1 is set.
 func TestE2E_FixtureDrift(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("QUARRY_REGEN_FIXTURES") != "1" {
 		t.Skip("QUARRY_REGEN_FIXTURES=1 not set, skipping drift check")
 	}

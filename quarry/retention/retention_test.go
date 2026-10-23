@@ -338,7 +338,6 @@ func TestPrune_RejectsUnsafeOptions(t *testing.T) {
 	}
 	for name, opts := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			_, err := Prune(t.Context(), "quarry", newFixture(t).factory, opts)
 			if !errors.Is(err, ErrInvalidOptions) {
 				t.Fatalf("err = %v, want ErrInvalidOptions", err)

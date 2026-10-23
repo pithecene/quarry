@@ -5,6 +5,8 @@ import (
 )
 
 func TestReadOnlyFlags_IncludesTUI(t *testing.T) {
+	t.Parallel()
+
 	flags := ReadOnlyFlags()
 
 	hasTUI := false
@@ -21,6 +23,8 @@ func TestReadOnlyFlags_IncludesTUI(t *testing.T) {
 }
 
 func TestTUIReadOnlyFlags_IncludesTUI(t *testing.T) {
+	t.Parallel()
+
 	flags := TUIReadOnlyFlags()
 
 	hasTUI := false
@@ -36,7 +40,9 @@ func TestTUIReadOnlyFlags_IncludesTUI(t *testing.T) {
 	}
 }
 
-func TestIsStderrTTY(_ *testing.T) {
+func TestIsStderrTTY(t *testing.T) {
+	t.Parallel()
+
 	// This test documents the function exists and can be called.
 	// Actual TTY behavior depends on runtime environment.
 	_ = isStderrTTY()

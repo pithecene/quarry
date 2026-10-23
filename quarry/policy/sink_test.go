@@ -9,6 +9,8 @@ import (
 )
 
 func TestStubSink_WriteEvents(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 
 	events := []*types.EventEnvelope{
@@ -34,6 +36,8 @@ func TestStubSink_WriteEvents(t *testing.T) {
 }
 
 func TestStubSink_WriteChunks(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 
 	chunks := []*types.ArtifactChunk{
@@ -56,6 +60,8 @@ func TestStubSink_WriteChunks(t *testing.T) {
 }
 
 func TestStubSink_ErrorOnWrite(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 	expectedErr := errors.New("write failed")
 	sink.ErrorOnWrite = expectedErr
@@ -72,6 +78,8 @@ func TestStubSink_ErrorOnWrite(t *testing.T) {
 }
 
 func TestStubSink_Close(t *testing.T) {
+	t.Parallel()
+
 	sink := policy.NewStubSink()
 
 	if sink.Stats().Closed {
