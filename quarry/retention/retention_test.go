@@ -413,6 +413,9 @@ func TestLastWrite(t *testing.T) {
 		{nil, 0, true},
 		{[]lode.DatasetSnapshotID{"100-0123456789abcdef", "300-0123456789abcdef", "200"}, 300, true},
 		{[]lode.DatasetSnapshotID{"100", "x-1"}, 0, false},
+		{[]lode.DatasetSnapshotID{"100-xyz"}, 0, false},
+		{[]lode.DatasetSnapshotID{"00100-0123456789abcdef"}, 0, false},
+		{[]lode.DatasetSnapshotID{"100-0123456789ABCDEF"}, 0, false},
 	}
 	for _, tc := range cases {
 		got, ok := lastWrite(tc.ids)

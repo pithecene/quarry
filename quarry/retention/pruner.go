@@ -119,8 +119,10 @@ func (p *pruner) prune(ctx context.Context, k reader.Key) (out Run, due bool, er
 }
 
 // remove deletes a selected run: a dry-run expiry first, so a run that
-// holds the head loses nothing; then its sidecar files, its snapshots, and
-// its records, in the order a rerun resumes.
+// holds the head loses nothing; then its snapshots, and, once a fresh
+// listing shows none remain, its sidecar files and records. The sidecar
+// paths are gathered before the expiry, because the paths a run records
+// live in the manifests the expiry deletes.
 func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold time.Duration) (Run, bool, error) {
 	preview, kept, err := p.expire(ctx, out.Partition, true)
 	if kept != "" || err != nil {
@@ -138,6 +140,9 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		if p.opts.Now.Sub(last) < threshold {
 			return out, false, nil
 		}
+		if since, _ := time.Parse(time.RFC3339Nano, out.Since); last.After(since) {
+			out.Since = last.UTC().Format(time.RFC3339Nano)
+		}
 	}
 	cfg := qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
 	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition)
@@ -151,9 +156,6 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		out.Snapshots, out.Objects, out.Bytes = len(preview.Expired), preview.Objects, preview.Bytes
 		return out, true, nil
 	}
-	if err := p.deleteAll(ctx, sidecars); err != nil {
-		return out, true, err
-	}
 	report, kept, err := p.expire(ctx, out.Partition, false)
 	out.Snapshots, out.Objects, out.Bytes = len(report.Expired), report.Objects, report.Bytes
 	if kept != "" || err != nil {
@@ -166,6 +168,9 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		if live {
 			out.Kept = keptCommitted
 		}
+		return out, true, err
+	}
+	if err := p.deleteAll(ctx, sidecars); err != nil {
 		return out, true, err
 	}
 	// The start record goes first: a run without one is never listed, and
@@ -210,21 +215,48 @@ func (p *pruner) deleteAll(ctx context.Context, paths []string) error {
 
 // lastWrite is the latest instant at which one of the snapshots began its
 // write, read from the generated snapshot ID form "<unix nanoseconds>-<nonce>"
-// or the legacy form "<unix nanoseconds>" (Lode CONTRACT_CORE §Snapshot ID). It is false if any ID lacks an instant.
-// A run with no snapshot has written nothing, so its start alone dates it.
+// or the legacy form "<unix nanoseconds>" (Lode CONTRACT_CORE §Snapshot ID).
+// It is false if any ID is in neither form. A run with no snapshot has
+// written nothing, so its start alone dates it.
 func lastWrite(ids []lode.DatasetSnapshotID) (time.Time, bool) {
 	var last time.Time
 	for _, id := range ids {
-		ns, _, _ := strings.Cut(string(id), "-") // a legacy ID is the instant alone
-		n, err := strconv.ParseInt(ns, 10, 64)
-		if err != nil {
+		t, ok := idInstant(string(id))
+		if !ok {
 			return time.Time{}, false
 		}
-		if t := time.Unix(0, n); t.After(last) {
+		if t.After(last) {
 			last = t
 		}
 	}
 	return last, true
+}
+
+// idInstant parses a snapshot ID in exactly the generated or legacy form:
+// a canonical decimal instant, optionally followed by "-" and a nonce of
+// 16 lowercase hexadecimal digits.
+func idInstant(id string) (time.Time, bool) {
+	ns, nonce, hasNonce := strings.Cut(id, "-")
+	n, err := strconv.ParseInt(ns, 10, 64)
+	switch {
+	case err != nil, n < 0, strconv.FormatInt(n, 10) != ns:
+		return time.Time{}, false
+	case hasNonce && !isNonce(nonce):
+		return time.Time{}, false
+	}
+	return time.Unix(0, n), true
+}
+
+func isNonce(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	return true
 }
 
 // hasSnapshots reports whether any snapshot still has a manifest under the

@@ -422,7 +422,7 @@ implements it.
    or absent, the run is kept, nothing of it is deleted, and the report
    gives the reason. Lode never expires the head, so the run that
    committed most recently is removed only by a later prune.
-2. Delete the run's sidecar files and their `.meta.json` companions
+2. Gather the run's sidecar files and their `.meta.json` companions
    (§Sidecar File Inventory): every path that the run's snapshots record,
    and, when Hive encoding leaves the run's source, category, day, and
    run ID unchanged, every direct child of its sidecar prefix. A deeper
@@ -430,16 +430,18 @@ implements it.
    `r/files/x` beneath run `r`, so it is never listed. Without that
    condition, a direct child could also belong to another run, so the
    prefix is not listed, and a file written after the run's last commit
-   remains. A recorded path outside the run's sidecar prefix
-   is reported and left in place.
+   remains. A recorded path outside the run's sidecar prefix is reported
+   and left in place. The paths are gathered first because the recorded
+   ones are in the manifests that step 3 deletes.
 3. Expire the run's snapshots with `Dataset.Expire` on the partition
    prefix, and then list the partition again. A snapshot that committed
    after the expiry's listing is not in its selection; if one remains,
-   the run is kept with its records. A run with no snapshot (one that
-   committed nothing) has nothing to expire, and Lode requires no head
-   for a dataset without snapshots, so such a run loses only its sidecar
-   files and records.
-4. Delete the start record, and then the end record. A run without a
+   the run is kept with its sidecar files and records. A run with no
+   snapshot (one that committed nothing) has nothing to expire, and Lode
+   requires no head for a dataset without snapshots, so such a run loses
+   only its sidecar files and records.
+4. Delete the gathered sidecar objects.
+5. Delete the start record, and then the end record. A run without a
    start record is never listed, and an end record without one is
    ignored by readers.
 
@@ -448,9 +450,11 @@ stopped between the two deletions, or the run's start record was never
 persisted. Every prune deletes such end records under its selectors, and
 the report counts them.
 
-Each step is idempotent, and a run is listed until step 4. A prune that is
+Each step is idempotent, and a run is listed until step 5. A prune that is
 interrupted, or that fails with a store error, is therefore completed by
-the next prune that selects the run. If step 3 is interrupted after Lode
+the next prune that selects the run, with one exception: if it stops
+after step 3 for a run whose key Hive encoding changes, the recorded
+sidecar paths are gone with the manifests, and those files remain. If step 3 is interrupted after Lode
 deleted the run's last manifest, the next prune no longer finds the
 snapshot's residual data; `Dataset.Sweep` removes it.
 
