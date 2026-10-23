@@ -13,11 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Go module path**: The Go module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`. The CLI, the SDK, the container images, and stored data are unchanged.
 - **Go version**: The Go module requires Go 1.27.3 or later, the version that Lode v0.11.0 requires. Release binaries and container images are unaffected.
+- **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. Nothing may be written for a run after its end record, so a program must no longer write metrics after `Execute`.
 
 ### Added
 
 - **Run records**: Each run writes a start record when it begins and an end record when it finishes, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/`. The records hold the run's lineage, partition, times, and outcome. The exit report gains `run_record_error` when the end record cannot be written.
-- **Run listing**: `quarry list runs` lists the runs in storage from their run records, filtered by `--source`, `--category`, `--day`, and `--state` and paged with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
+- **Run listing**: With `--storage-backend` and `--storage-path`, `quarry list runs` lists the runs in storage from their run records, filtered by `--source`, `--category`, `--day`, and `--state` and paged with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
 - **Run record backfill**: `quarry index rebuild` writes run records for runs stored before v0.14.0, from what the stored data shows, and marks them `backfilled: true`. A backfilled run's state follows its terminal event. `--dry-run` reports without writing, and a rerun writes only missing records.
 - **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events by calling the `quarry` executable, which must be installed. A failure rejects with `QuarryReadError`.
 - **Run retention** ([#239](https://github.com/pithecene/quarry/issues/239)): `quarry prune` removes whole runs by state and age with `--succeeded-days`, `--failed-days`, and `--unterminated-days`, or one run with `--run-id`, including its sidecar files and run records. A prune keeps the run that committed last until another run commits. `--sweep-grace` also reclaims data from writes that never committed, `--dry-run` reports without removing, and a rerun resumes an interrupted prune. The `quarry/retention` package offers the same operation to Go programs.
@@ -25,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Run key validation**: `quarry run` refuses a dataset ID, source, category, or run ID that cannot form a safe storage key, such as an empty value, `.`, or `..`. It also refuses a run whose source, category, day, and run ID already have a start record.
-- **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. A program that wrote metrics after `Execute` no longer needs to.
 - **Lode v0.11.0**: Quarry depends on Lode v0.11.0 at `github.com/pithecene/lode`. Snapshot IDs written from this release carry a random suffix. The storage layout is unchanged.
 - **Packaging**: The npm package and the container images declare their license, homepage, and source repository.
 - **License**: The copyright holder is Pithecene LLC. The license, Apache-2.0, is unchanged.
@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Go module path**: Replace `github.com/pithecene-io/quarry` with `github.com/pithecene/quarry` in `go.mod` and in imports. Releases through v0.13.7 remain available under the former path.
 - **Go version**: Build Go programs that import Quarry with Go 1.27.3 or later.
-- **Existing runs**: Run `quarry index rebuild` once, so that `quarry list runs` and `quarry prune` find the runs stored before v0.14.0.
+- **Run finalization**: Remove any metrics write that follows `RunOrchestrator.Execute`, including calls to `LodeClient.WriteMetrics`.
+- **Existing runs**: Once no writer older than v0.14.0 is still writing to a dataset, run `quarry index rebuild` once, so that `quarry list runs` and `quarry prune` find the runs stored before v0.14.0.
 
 ---
 
