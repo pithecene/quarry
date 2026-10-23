@@ -51,6 +51,8 @@ func (s *successSink) Close() error {
 }
 
 func TestInstrumentedSink_WriteEventsSuccess(t *testing.T) {
+	t.Parallel()
+
 	inner := &successSink{}
 	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
 	sink := NewInstrumentedSink(inner, collector)
@@ -75,6 +77,8 @@ func TestInstrumentedSink_WriteEventsSuccess(t *testing.T) {
 }
 
 func TestInstrumentedSink_WriteEventsFailure(t *testing.T) {
+	t.Parallel()
+
 	writeErr := errors.New("disk full")
 	inner := &failingSink{writeErr: writeErr}
 	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
@@ -98,6 +102,8 @@ func TestInstrumentedSink_WriteEventsFailure(t *testing.T) {
 }
 
 func TestInstrumentedSink_WriteChunksSuccess(t *testing.T) {
+	t.Parallel()
+
 	inner := &successSink{}
 	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
 	sink := NewInstrumentedSink(inner, collector)
@@ -122,6 +128,8 @@ func TestInstrumentedSink_WriteChunksSuccess(t *testing.T) {
 }
 
 func TestInstrumentedSink_WriteChunksFailure(t *testing.T) {
+	t.Parallel()
+
 	writeErr := errors.New("s3 timeout")
 	inner := &failingSink{writeErr: writeErr}
 	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
@@ -145,6 +153,8 @@ func TestInstrumentedSink_WriteChunksFailure(t *testing.T) {
 }
 
 func TestInstrumentedSink_CloseDelegate(t *testing.T) {
+	t.Parallel()
+
 	inner := &successSink{}
 	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
 	sink := NewInstrumentedSink(inner, collector)
@@ -158,6 +168,8 @@ func TestInstrumentedSink_CloseDelegate(t *testing.T) {
 }
 
 func TestInstrumentedSink_MultipleCalls(t *testing.T) {
+	t.Parallel()
+
 	inner := &successSink{}
 	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
 	sink := NewInstrumentedSink(inner, collector)

@@ -11,6 +11,8 @@ import (
 )
 
 func TestDeriveDay(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		startTime time.Time
@@ -44,6 +46,8 @@ func TestDeriveDay(t *testing.T) {
 }
 
 func TestSink_WriteEvents(t *testing.T) {
+	t.Parallel()
+
 	client := NewStubClient()
 	sink := NewSink(Config{
 		Dataset: "test-dataset",
@@ -77,6 +81,8 @@ func TestSink_WriteEvents(t *testing.T) {
 }
 
 func TestSink_WriteChunks(t *testing.T) {
+	t.Parallel()
+
 	client := NewStubClient()
 	sink := NewSink(Config{
 		Dataset: "test-dataset",
@@ -107,6 +113,8 @@ func TestSink_WriteChunks(t *testing.T) {
 }
 
 func TestSink_Close(t *testing.T) {
+	t.Parallel()
+
 	client := NewStubClient()
 	sink := NewSink(Config{
 		Dataset: "test-dataset",
@@ -167,6 +175,8 @@ func (c *FailingClient) Close() error {
 var _ Client = (*FailingClient)(nil)
 
 func TestSink_WriteEvents_DiskFullError(t *testing.T) {
+	t.Parallel()
+
 	diskFullErr := &diskFullError{msg: "no space left on device"}
 	client := &FailingClient{EventWriteErr: diskFullErr}
 	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
@@ -192,6 +202,8 @@ func TestSink_WriteEvents_DiskFullError(t *testing.T) {
 }
 
 func TestSink_WriteChunks_DiskFullError(t *testing.T) {
+	t.Parallel()
+
 	diskFullErr := &diskFullError{msg: "no space left on device"}
 	client := &FailingClient{ChunkWriteErr: diskFullErr}
 	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
@@ -215,6 +227,8 @@ func TestSink_WriteChunks_DiskFullError(t *testing.T) {
 }
 
 func TestSink_WriteEvents_PermissionError(t *testing.T) {
+	t.Parallel()
+
 	permErr := &permissionError{msg: "permission denied"}
 	client := &FailingClient{EventWriteErr: permErr}
 	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
@@ -234,6 +248,8 @@ func TestSink_WriteEvents_PermissionError(t *testing.T) {
 }
 
 func TestSink_WriteChunks_PermissionError(t *testing.T) {
+	t.Parallel()
+
 	permErr := &permissionError{msg: "permission denied"}
 	client := &FailingClient{ChunkWriteErr: permErr}
 	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
@@ -253,6 +269,8 @@ func TestSink_WriteChunks_PermissionError(t *testing.T) {
 }
 
 func TestSink_Close_Error(t *testing.T) {
+	t.Parallel()
+
 	closeErr := &closeError{msg: "failed to close storage"}
 	client := &FailingClient{CloseErr: closeErr}
 	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)

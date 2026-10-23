@@ -9,6 +9,8 @@ import (
 )
 
 func TestClassifyError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		errMsg   string
@@ -214,6 +216,8 @@ func (e statusError) HTTPStatusCode() int { return e.status }
 // Typed errors decide the kind even when the message (which embeds paths and
 // keys) matches a different pattern.
 func TestClassifyError_TypedBeforeMessage(t *testing.T) {
+	t.Parallel()
+
 	pathErr := func(op, path string, errno syscall.Errno) error {
 		return fmt.Errorf("lode: fs put: %w", &fs.PathError{Op: op, Path: path, Err: errno})
 	}
@@ -240,6 +244,8 @@ func TestClassifyError_TypedBeforeMessage(t *testing.T) {
 }
 
 func TestClassifyError_Nil(t *testing.T) {
+	t.Parallel()
+
 	got := classifyError(nil)
 	if got != nil {
 		t.Errorf("classifyError(nil) = %v, want nil", got)

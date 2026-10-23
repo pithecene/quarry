@@ -31,6 +31,8 @@ func sharedFactory(store lode.Store) lode.StoreFactory {
 }
 
 func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -123,6 +125,8 @@ func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
 }
 
 func TestQueryLatestMetrics_MultipleRuns(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -176,6 +180,8 @@ func TestQueryLatestMetrics_MultipleRuns(t *testing.T) {
 }
 
 func TestQueryLatestMetrics_FilterByRunID(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -229,6 +235,8 @@ func TestQueryLatestMetrics_FilterByRunID(t *testing.T) {
 }
 
 func TestQueryLatestMetrics_FilterBySource(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -279,6 +287,8 @@ func TestQueryLatestMetrics_FilterBySource(t *testing.T) {
 }
 
 func TestQueryLatestMetrics_NoMetrics(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -299,6 +309,8 @@ func TestQueryLatestMetrics_NoMetrics(t *testing.T) {
 // TestQueryLatestMetrics_RunIDSubstringNoCollision verifies that filtering
 // by run_id=run-1 does not match run_id=run-10 (substring false positive).
 func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -354,6 +366,8 @@ func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
 // TestQueryLatestMetrics_SourceSubstringNoCollision verifies that filtering
 // by source=alpha does not match source=alphabet.
 func TestQueryLatestMetrics_SourceSubstringNoCollision(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -406,6 +420,8 @@ func TestQueryLatestMetrics_SourceSubstringNoCollision(t *testing.T) {
 // TestQueryLatestMetrics_RecordLevelFiltering verifies that record-level
 // run_id filtering works when manifest paths might match broadly.
 func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
@@ -454,6 +470,8 @@ func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
 
 // TestQueryLatestMetrics_TsRoundTrip verifies ts survives write/read cycle.
 func TestQueryLatestMetrics_TsRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
