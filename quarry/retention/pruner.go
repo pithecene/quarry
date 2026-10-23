@@ -150,8 +150,8 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if err != nil {
 		return out, true, err
 	}
-	out.SidecarObjects = len(sidecars)
 	if p.opts.DryRun {
+		out.SidecarObjects = len(sidecars)
 		out.Pruned = true
 		out.Snapshots, out.Objects, out.Bytes = len(preview.Expired), preview.Objects, preview.Bytes
 		return out, true, nil
@@ -173,6 +173,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if err := p.deleteAll(ctx, sidecars); err != nil {
 		return out, true, err
 	}
+	out.SidecarObjects = len(sidecars) // counted once deleted, so a kept run reports none
 	// The start record goes first: a run without one is never listed, and
 	// an end record left by an interruption here is ignored by readers.
 	dir := qlode.RunRecordDir(cfg)
