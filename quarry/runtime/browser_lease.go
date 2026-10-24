@@ -59,7 +59,8 @@ type browserLease struct {
 // requestLease connects to the server at socketPath and asks for its
 // browser. On a grant, the connection stays open until ctx is done, which
 // is what keeps the server alive for the run; the operating system closes
-// it if the process ends first. Failures that show no server is listening
+// it if the process ends first. Cancelling ctx also ends a wait for the
+// reply. Failures that show no server is listening
 // wrap errNoServer.
 func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLease, error) {
 	if len(socketPath) > maxSocketPathLen {
@@ -75,12 +76,18 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 		return browserLease{}, fmt.Errorf("connect: %w", err)
 	}
 
+	// The connection lives exactly as long as ctx: closing it when ctx ends
+	// both releases a granted lease and cuts short a stalled exchange.
+	release := context.AfterFunc(ctx, func() { iox.DiscardClose(conn) })
 	lease, err := exchange(conn, proxyHash)
 	if err != nil {
+		release()
 		iox.DiscardClose(conn)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return browserLease{}, ctxErr
+		}
 		return browserLease{}, err
 	}
-	context.AfterFunc(ctx, func() { iox.DiscardClose(conn) })
 	return lease, nil
 }
 

@@ -148,6 +148,26 @@ func TestRequestLease(t *testing.T) {
 		}
 	})
 
+	t.Run("cancellation ends the wait for a reply", func(t *testing.T) {
+		hold := make(chan struct{})
+		t.Cleanup(func() { close(hold) })
+		path := fakeLeaseServer(t, func(conn net.Conn) {
+			<-hold
+			_ = conn.Close()
+		})
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+
+		start := time.Now()
+		_, err := requestLease(ctx, path, "")
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("err = %v, want the context's error", err)
+		}
+		if waited := time.Since(start); waited > 2*time.Second {
+			t.Errorf("waited %s after cancellation", waited)
+		}
+	})
+
 	t.Run("socket path over the limit", func(t *testing.T) {
 		long := "/" + strings.Repeat("x", maxSocketPathLen)
 		_, err := requestLease(t.Context(), long, "")
