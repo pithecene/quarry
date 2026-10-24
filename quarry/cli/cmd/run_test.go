@@ -849,6 +849,8 @@ func TestRunAction_ConfigProvidesRequiredFields(t *testing.T) {
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	if err == nil {
 		t.Skip("executor found; cannot test validation-only path")
@@ -891,6 +893,8 @@ func TestRunAction_CLIOverridesConfig(t *testing.T) {
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--source", "cli-source",
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	if err == nil {
 		t.Skip("executor found; cannot test validation-only path")
@@ -1569,6 +1573,8 @@ func TestRunAction_ResolveFromValidDirectory(t *testing.T) {
 		"--storage-backend", "fs",
 		"--storage-path", storageDir,
 		"--resolve-from", nodeModulesDir,
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	// Should pass resolve-from validation and fail later (executor resolution)
 	if err == nil {
@@ -1603,6 +1609,8 @@ func TestRunAction_ResolveFromConfigFile(t *testing.T) {
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	// Should pass resolve-from validation and fail later (executor resolution)
 	if err == nil {

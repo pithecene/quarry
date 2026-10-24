@@ -1,12 +1,12 @@
 package runtime
 
 import (
-	"github.com/pithecene/quarry/internal/testutil"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/pithecene/quarry/internal/testutil"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -103,7 +103,7 @@ func TestDiscoveryDir_XDG(t *testing.T) {
 		t.Fatalf("discoveryDir failed: %v", err)
 	}
 
-	expected := filepath.Join(tmpDir, "quarry")
+	expected := filepath.Join(tmpDir, "quarry", "browser-reuse")
 	if dir != expected {
 		t.Errorf("expected %q, got %q", expected, dir)
 	}
@@ -114,112 +114,6 @@ func TestDiscoveryDir_XDG(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Error("discovery dir is not a directory")
-	}
-}
-
-func TestReadWriteDiscovery(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "browser.json")
-
-	disc := &BrowserDiscovery{
-		WSEndpoint: "ws://127.0.0.1:9222/devtools/browser/abc123",
-		PID:        12345,
-		ProxyHash:  "sha256:deadbeef",
-		StartedAt:  time.Now().UTC().Format(time.RFC3339),
-	}
-
-	if err := writeDiscovery(path, disc); err != nil {
-		t.Fatalf("writeDiscovery: %v", err)
-	}
-
-	got, err := readDiscovery(path)
-	if err != nil {
-		t.Fatalf("readDiscovery: %v", err)
-	}
-
-	if got.WSEndpoint != disc.WSEndpoint {
-		t.Errorf("WSEndpoint: got %q, want %q", got.WSEndpoint, disc.WSEndpoint)
-	}
-	if got.PID != disc.PID {
-		t.Errorf("PID: got %d, want %d", got.PID, disc.PID)
-	}
-	if got.ProxyHash != disc.ProxyHash {
-		t.Errorf("ProxyHash: got %q, want %q", got.ProxyHash, disc.ProxyHash)
-	}
-	if got.StartedAt != disc.StartedAt {
-		t.Errorf("StartedAt: got %q, want %q", got.StartedAt, disc.StartedAt)
-	}
-}
-
-func TestReadDiscovery_Errors(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		setup   func(t *testing.T) string
-	}{
-		{
-			name: "missing file",
-			setup: func(t *testing.T) string {
-				return filepath.Join(t.TempDir(), "nonexistent.json")
-			},
-		},
-		{
-			name: "invalid JSON",
-			setup: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "browser.json")
-				if err := os.WriteFile(path, []byte("not json"), 0600); err != nil {
-					t.Fatal(err)
-				}
-				return path
-			},
-		},
-		{
-			name: "missing endpoint",
-			setup: func(t *testing.T) string {
-				path := filepath.Join(t.TempDir(), "browser.json")
-				data, _ := json.Marshal(BrowserDiscovery{PID: 1234})
-				if err := os.WriteFile(path, data, 0600); err != nil {
-					t.Fatal(err)
-				}
-				return path
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			path := tt.setup(t)
-			if _, err := readDiscovery(path); err == nil {
-				t.Error("expected error")
-			}
-		})
-	}
-}
-
-func TestWriteDiscovery_Atomic(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "browser.json")
-
-	disc := &BrowserDiscovery{
-		WSEndpoint: "ws://127.0.0.1:9222/devtools/browser/abc",
-		PID:        1,
-		StartedAt:  time.Now().UTC().Format(time.RFC3339),
-	}
-
-	if err := writeDiscovery(path, disc); err != nil {
-		t.Fatal(err)
-	}
-
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if e.Name() == "browser.json.tmp" {
-			t.Error("temp file should be renamed, not left behind")
-		}
 	}
 }
 
@@ -243,152 +137,24 @@ func TestHealthCheck_Errors(t *testing.T) {
 	}
 }
 
-func TestProcessStatus(t *testing.T) {
-	t.Parallel()
-
-	t.Run("self is healthy", func(t *testing.T) {
-		if s := processStatus(os.Getpid()); s != processHealthy {
-			t.Errorf("current process: got %d, want processHealthy", s)
-		}
-	})
-
-	t.Run("nonexistent is gone", func(t *testing.T) {
-		// PID 2^22-1 is extremely unlikely to exist
-		if s := processStatus(4194303); s != processGone {
-			t.Errorf("nonexistent PID: got %d, want processGone", s)
-		}
-	})
-
-	t.Run("zombie is detected", func(t *testing.T) {
-		// Fork a child that exits immediately — without Wait() it becomes a zombie
-		cmd := exec.Command("true")
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("start: %v", err)
-		}
-		pid := cmd.Process.Pid
-
-		// Give the child time to exit and become zombie
-		time.Sleep(100 * time.Millisecond)
-
-		s := processStatus(pid)
-
-		// Reap the zombie so we don't leak
-		_ = cmd.Wait()
-
-		if s != processZombie {
-			t.Errorf("zombie process: got %d, want processZombie", s)
-		}
-	})
-}
-
-func TestIsBrowserServerProcess(t *testing.T) {
-	t.Parallel()
-
-	t.Run("self is not browser server", func(t *testing.T) {
-		if isBrowserServerProcess(os.Getpid()) {
-			t.Error("test process should not be identified as browser server")
-		}
-	})
-
-	t.Run("nonexistent returns false", func(t *testing.T) {
-		if isBrowserServerProcess(4194303) {
-			t.Error("nonexistent PID should return false")
-		}
-	})
-}
-
-func TestCleanupStaleProcess_SkipsNonOwned(t *testing.T) {
-	t.Parallel()
-
-	// Launch a non-browser-server process in its own session
-	cmd := exec.Command("sleep", "60")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	pid := cmd.Process.Pid
-
-	// cleanupStaleProcess must NOT kill it — cmdline doesn't contain --browser-server
-	cleanupStaleProcess(pid)
-
-	// Verify it's still alive
-	if err := syscall.Kill(pid, 0); err != nil {
-		t.Errorf("non-owned process was killed by cleanupStaleProcess: %v", err)
-	}
-
-	// Clean up
-	killProcessGroup(pid)
-	_ = cmd.Wait()
-}
-
-func TestParseTimeOrZero(t *testing.T) {
-	t.Parallel()
-
-	t.Run("valid", func(t *testing.T) {
-		if parseTimeOrZero("2026-02-10T12:00:00Z").IsZero() {
-			t.Error("expected non-zero time")
-		}
-	})
-	t.Run("invalid", func(t *testing.T) {
-		if !parseTimeOrZero("not-a-time").IsZero() {
-			t.Error("expected zero time")
-		}
-	})
-}
-
-func TestKillProcessGroup(t *testing.T) {
-	t.Parallel()
-
-	// Launch a child in its own session (matching browser server launch config)
-	cmd := exec.Command("sleep", "60")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	pid := cmd.Process.Pid
-
-	// Verify it's alive
-	if err := syscall.Kill(pid, 0); err != nil {
-		t.Fatalf("process not alive after start: %v", err)
-	}
-
-	killProcessGroup(pid)
-	_ = cmd.Wait()
-
-	// Verify it's dead (signal 0 is a liveness probe)
-	if err := syscall.Kill(pid, 0); err == nil {
-		t.Error("process still alive after killProcessGroup")
-	}
-}
-
 // The browser server outlives the run that launches it, so its stderr must
 // be the log file, never the run's own stderr: a reader of the run's output
 // would otherwise wait for the server's idle shutdown to see end of file.
-func TestLaunchBrowserServerProcess_StderrGoesToLog(t *testing.T) {
+func TestStartBrowserServer_StderrGoesToLog(t *testing.T) {
 	testutil.Serial(t, "writes and executes a file, which a fork in a parallel test can hold open (ETXTBSY)")
 	if _, err := os.Stat("/proc/self/fd"); err != nil {
 		t.Skip("/proc unavailable")
 	}
 
 	dir := t.TempDir()
-	fake := filepath.Join(dir, "fake-executor")
-	script := "#!/bin/sh\necho 'browser server diagnostics' >&2\necho ws://127.0.0.1:1/devtools/browser/fake\nexec sleep 60\n"
-	if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
-		t.Fatalf("write fake executor: %v", err)
-	}
+	cfg := fakeExecutor(t, dir, "echo 'browser server diagnostics' >&2\necho ready\nexec sleep 60\n")
 	logPath := filepath.Join(dir, browserServerLogName)
 
-	ws, pid, err := launchBrowserServerProcess(t.Context(), fake, "script.ts",
-		filepath.Join(dir, "browser.json"), logPath, time.Minute, nil)
+	pid, err := startBrowserServer(t.Context(), cfg, dir, filepath.Join(dir, leaseSocketName), logPath)
 	if err != nil {
-		t.Fatalf("launch: %v", err)
+		t.Fatalf("start: %v", err)
 	}
-	t.Cleanup(func() { killProcessGroup(pid) })
-	if ws != "ws://127.0.0.1:1/devtools/browser/fake" {
-		t.Errorf("endpoint = %q", ws)
-	}
+	t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
 
 	stderrTarget, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/2", pid))
 	if err != nil {
@@ -404,6 +170,45 @@ func TestLaunchBrowserServerProcess_StderrGoesToLog(t *testing.T) {
 	if !strings.Contains(string(data), "browser server diagnostics") {
 		t.Errorf("log = %q, want the server's stderr", data)
 	}
+}
+
+// A server that fails to start is the runtime's own child, so the runtime
+// stops it; it must not be left running.
+func TestStartBrowserServer_StopsAServerThatFailsToListen(t *testing.T) {
+	testutil.Serial(t, "writes and executes a file, which a fork in a parallel test can hold open (ETXTBSY)")
+
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "pid")
+	cfg := fakeExecutor(t, dir, "echo $$ > "+pidFile+"\necho 'not ready'\nexec sleep 60\n")
+
+	_, err := startBrowserServer(t.Context(), cfg, dir, filepath.Join(dir, leaseSocketName), filepath.Join(dir, browserServerLogName))
+	if err == nil || !strings.Contains(err.Error(), "unexpected browser server output") {
+		t.Fatalf("err = %v, want unexpected output", err)
+	}
+
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("read pid: %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("parse pid: %v", err)
+	}
+	// startBrowserServer reaped it, so signal 0 finds no process.
+	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Errorf("server still running after a failed start: kill(0) = %v", err)
+	}
+}
+
+// fakeExecutor writes a shell script that stands in for the executor and
+// returns a config that runs it.
+func fakeExecutor(t *testing.T, dir, body string) ReusableBrowserConfig {
+	t.Helper()
+	fake := filepath.Join(dir, "fake-executor")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\n"+body), 0o700); err != nil {
+		t.Fatalf("write fake executor: %v", err)
+	}
+	return ReusableBrowserConfig{ExecutorPath: fake, ScriptPath: "script.ts", IdleTimeout: time.Minute}
 }
 
 func TestIdleTimeoutFromEnv(t *testing.T) {
@@ -428,5 +233,25 @@ func TestIdleTimeoutFromEnv(t *testing.T) {
 				t.Errorf("IdleTimeoutFromEnv() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+// A granted browser that does not answer is not shared, and its lease is
+// released at once, so that the server is left to idle out.
+func TestHealthy_ReleasesALeaseOnABrowserThatDoesNotAnswer(t *testing.T) {
+	t.Parallel()
+
+	released := 0
+	lease := browserLease{
+		WSEndpoint: "ws://127.0.0.1:19999/devtools/browser/x",
+		ServerPID:  1,
+		Release:    func() { released++ },
+	}
+
+	if _, err := healthy(lease); err == nil {
+		t.Fatal("expected an error for a browser that does not answer")
+	}
+	if released != 1 {
+		t.Errorf("released %d times, want 1", released)
 	}
 }
