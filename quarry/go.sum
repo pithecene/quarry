@@ -121,8 +121,6 @@ github.com/parquet-go/parquet-go v0.27.0 h1:vHWK2xaHbj+v1DYps03yDRpEsdtOeKbhiXUa
 github.com/parquet-go/parquet-go v0.27.0/go.mod h1:navtkAYr2LGoJVp141oXPlO/sxLvaOe3la2JEoD8+rg=
 github.com/pierrec/lz4/v4 v4.1.25 h1:kocOqRffaIbU5djlIBr7Wh+cx82C0vtFb0fOurZHqD0=
 github.com/pierrec/lz4/v4 v4.1.25/go.mod h1:EoQMVJgeeEOMsCqCzqFm2O0cJvljX2nGZjcRIPL34O4=
-github.com/pithecene/lode v0.11.0 h1:uC/GwC8lOL1I61eWU+12G29sLTmncLQZbytG1bZl+js=
-github.com/pithecene/lode v0.11.0/go.mod h1:a6EeobPRT+Vbd1VNoBbtA8n0nmxi+FVS5I3EdE1+P2M=
 github.com/pithecene/lode v0.12.0 h1:5FIdKckwKg1/S+/ZxZju58fAWFZLOxgfeyYGvspXEJw=
 github.com/pithecene/lode v0.12.0/go.mod h1:a6EeobPRT+Vbd1VNoBbtA8n0nmxi+FVS5I3EdE1+P2M=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
