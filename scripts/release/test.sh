@@ -348,6 +348,10 @@ printf '**Tagline**\n\n## Summary\n\nText.\n' >"$STATE/release_body"
 check "notes: a written body has notes" [ "$(state)" = "has_notes=true" ]
 
 new_case
+printf '<!-- comment -->\n**TODO: Add release notes before publishing**\n\n## Summary\n\nText.\n' >"$STATE/release_body"
+check "notes: written notes beside a leftover placeholder are kept" [ "$(state)" = "has_notes=true" ]
+
+new_case
 touch "$STATE/release_lookup_fails"
 expect "notes: an unreadable release fails the step" fail "$R" v1.2.3
 

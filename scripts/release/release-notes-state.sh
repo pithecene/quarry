@@ -3,9 +3,10 @@
 # GitHub Actions output line: has_notes=true or has_notes=false.
 # Usage: scripts/release/release-notes-state.sh <tag>
 #
-# has_notes=true: a release exists with notes, so the workflow uploads the
-# assets to it. has_notes=false: no release exists, or it holds only the
-# draft placeholder or nothing, so the workflow creates or fills the draft.
+# has_notes=true: a release exists with written notes, so the workflow
+# uploads the assets to it. has_notes=false: no release exists, or its body
+# is only the draft placeholder or empty, so the workflow creates or fills
+# the draft.
 # Any other lookup failure fails the step: a release that cannot be read is
 # neither uploaded to blindly nor replaced by a draft.
 
@@ -29,7 +30,12 @@ if ! BODY=$(gh release view "$TAG" --json body -q '.body' 2>"$ERR"); then
   exit 0
 fi
 
-if [[ -z "${BODY//[[:space:]]/}" ]] || grep -qF "$PLACEHOLDER" <<<"$BODY"; then
+# Notes are any line other than the draft's own: blank lines, the HTML
+# comment, and the placeholder line. A body that keeps the placeholder
+# beside written notes still has its notes, so they are never replaced.
+WRITTEN=$(grep -vE '^[[:space:]]*(<!--.*-->)?[[:space:]]*$' <<<"$BODY" | grep -vF "$PLACEHOLDER" || true)
+
+if [[ -z "$WRITTEN" ]]; then
   info "The release for ${TAG} has no notes yet"
   echo "has_notes=false"
 else
