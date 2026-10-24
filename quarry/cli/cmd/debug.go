@@ -127,7 +127,6 @@ func debugResolveProxyAction(c *cli.Context) error {
 	return r.Render(resp)
 }
 
-
 func debugIPCCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "ipc",

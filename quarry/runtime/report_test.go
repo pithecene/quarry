@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"github.com/pithecene/quarry/internal/testutil"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/policy"
@@ -27,8 +27,8 @@ func newTestRunResult() *RunResult {
 			Status:  types.OutcomeSuccess,
 			Message: "run completed successfully",
 		},
-		Duration:    5 * time.Second,
-		EventCount:  42,
+		Duration:   5 * time.Second,
+		EventCount: 42,
 		PolicyStats: policy.Stats{
 			TotalEvents:     42,
 			EventsPersisted: 42,
@@ -51,17 +51,17 @@ func newTestRunResult() *RunResult {
 
 func newTestSnapshot() metrics.Snapshot {
 	return metrics.Snapshot{
-		RunsStarted:          1,
-		RunsCompleted:        1,
-		EventsReceived:       42,
-		EventsPersisted:      42,
+		RunsStarted:           1,
+		RunsCompleted:         1,
+		EventsReceived:        42,
+		EventsPersisted:       42,
 		ExecutorLaunchSuccess: 1,
-		LodeWriteSuccess:     5,
-		Policy:               "streaming",
-		Executor:             "executor.mjs",
-		StorageBackend:       "fs",
-		RunID:                "run-001",
-		JobID:                "job-001",
+		LodeWriteSuccess:      5,
+		Policy:                "streaming",
+		Executor:              "executor.mjs",
+		StorageBackend:        "fs",
+		RunID:                 "run-001",
+		JobID:                 "job-001",
 	}
 }
 

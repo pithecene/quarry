@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/types"
 )

@@ -146,7 +146,7 @@ func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:   1,
+		RunsStarted:    1,
 		RunID:          "run-001",
 		Policy:         "strict",
 		Executor:       "executor.js",
@@ -426,7 +426,7 @@ func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
 
 	// Flush via WriteMetrics (run completion)
 	snap := metrics.Snapshot{
-		RunsStarted:   1,
+		RunsStarted:    1,
 		RunID:          "run-001",
 		Policy:         "strict",
 		Executor:       "executor.js",
