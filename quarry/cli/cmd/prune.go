@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -76,6 +77,11 @@ func pruneAction(c *cli.Context) error {
 	// No deadline, as for index rebuild: a prune may cover the whole
 	// dataset. It is interruptible, and a rerun resumes it.
 	report, pruneErr := retention.Prune(c.Context, c.String("storage-dataset"), factory, opts)
+	if errors.Is(pruneErr, retention.ErrInvalidOptions) {
+		// Refused before anything is read: there is no report to render,
+		// and a rerun with the same options is refused again.
+		return cli.Exit(pruneErr.Error(), 1)
+	}
 	if err := renderPrune(r, report); err != nil {
 		return err
 	}

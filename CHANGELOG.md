@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Browser server output**: The reusable browser server writes its diagnostics to `browser-server.log` in the discovery directory instead of the stderr of the run that launched it. A program that reads a run's output through a pipe no longer waits for the server's idle timeout to see end of file.
 - **Browser server lifetime**: The reusable browser server no longer shuts down under a run in progress. It counted only pages that had navigated, so a run whose page was still `about:blank`, or one that connected as the idle timeout expired, could lose its browser. Each run now holds a connection to the server, over a Unix socket in the discovery directory, until it ends. The server shuts down only after it has had no connection for the idle timeout.
 - **Orphaned browser**: A browser left running by a reusable browser server that was killed, as with `SIGKILL`, is closed by the next server to start.
+- **Prune option errors**: `quarry prune` refuses options it cannot act on, such as no age flag, with the plain reason and exit code 1. It no longer renders an empty report or advises a rerun that would be refused again.
 
 ### Upgrade Notes
 

@@ -84,3 +84,32 @@ func TestPrune_Errors(t *testing.T) {
 		t.Fatalf("run removed: %v %s", err, listed)
 	}
 }
+
+// Options the prune refuses before reading anything give the plain reason:
+// no report, and no advice to rerun, since a rerun is refused again.
+func TestPrune_InvalidOptionsGiveThePlainReason(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
+	root := t.TempDir()
+	cases := map[string]struct {
+		args []string
+		want string
+	}{
+		"no state":               {nil, "no run state is selected"},
+		"unterminated too young": {[]string{"--unterminated-days", "0"}, "the unterminated age must be at least"},
+		"run without day":        {[]string{"--failed-days", "1", "--run-id", "r"}, "a run ID requires its source, category, and day"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, err := runCLI(t, append([]string{"prune", "--format", "json", "--storage-backend", "fs", "--storage-path", root}, tc.args...)...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
+			}
+			if strings.Contains(err.Error(), "rerun") {
+				t.Errorf("err = %v, advises a rerun", err)
+			}
+			if out != "" {
+				t.Errorf("printed a report for refused options: %s", out)
+			}
+		})
+	}
+}
