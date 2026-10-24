@@ -1165,7 +1165,7 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 	// This is both the FileWriter (for PutFile) and the sink client
 	// (for WriteEvents), so pending file refs flow through correctly.
 	store := lodepkg.NewMemory()
-	factory := func() (lodepkg.Store, error) { return store, nil }
+	factory := lodepkg.Use(store)
 
 	cfg := lode.Config{
 		Dataset:  "quarry",
@@ -1176,7 +1176,7 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := lode.NewLodeClientWithFactory(cfg, factory)
+	client, err := lode.NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -1239,9 +1239,9 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 	}
 
 	// Read snapshots from the dataset and verify sidecar_files metadata
-	ds, err := lode.NewReadDataset("quarry", factory)
+	ds, err := lode.OpenView(t.Context(), "quarry", store)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("OpenView failed: %v", err)
 	}
 
 	snapshots, err := ds.Snapshots(t.Context())
@@ -1259,12 +1259,14 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 	// drain afterward" contract.
 	metadataCount := 0
 	for _, snap := range snapshots {
-		raw, ok := snap.Manifest.Metadata[lode.MetadataKeySidecarFiles]
-		if !ok {
-			continue
+		var meta struct {
+			SidecarFiles []lode.SidecarFileRef `json:"sidecar_files"`
 		}
-		files, ok := raw.([]any)
-		if !ok || len(files) == 0 {
+		if err := snap.Metadata.Decode(&meta); err != nil {
+			t.Fatalf("decode metadata of %s: %v", snap.ID, err)
+		}
+		files := meta.SidecarFiles
+		if len(files) == 0 {
 			continue
 		}
 		metadataCount++
@@ -1273,19 +1275,16 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 		if len(files) != 1 {
 			t.Fatalf("sidecar_files has %d entries, want 1", len(files))
 		}
-		ref, ok := files[0].(map[string]any)
-		if !ok {
-			t.Fatalf("file ref is %T, want map[string]any", files[0])
+		ref := files[0]
+		if ref.Filename != "product-image.png" {
+			t.Errorf("filename = %v, want product-image.png", ref.Filename)
 		}
-		if ref["filename"] != "product-image.png" {
-			t.Errorf("filename = %v, want product-image.png", ref["filename"])
-		}
-		if ref["content_type"] != "image/png" {
-			t.Errorf("content_type = %v, want image/png", ref["content_type"])
+		if ref.ContentType != "image/png" {
+			t.Errorf("content_type = %v, want image/png", ref.ContentType)
 		}
 		// Size should match len("fake-png-bytes") = 14
-		if size, ok := ref["size"].(float64); !ok || int64(size) != 14 {
-			t.Errorf("size = %v, want 14", ref["size"])
+		if ref.Size != 14 {
+			t.Errorf("size = %v, want 14", ref.Size)
 		}
 
 		// Verify this snapshot contains the item event (the first event
@@ -1298,10 +1297,7 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 		if len(data) != 1 {
 			t.Fatalf("snapshot has %d records, want 1", len(data))
 		}
-		record, ok := data[0].(map[string]any)
-		if !ok {
-			t.Fatalf("record is %T, want map[string]any", data[0])
-		}
+		record := data[0]
 		if record["event_type"] != "item" {
 			t.Errorf("snapshot with sidecar_files has event_type=%v, want item", record["event_type"])
 		}

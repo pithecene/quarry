@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-
-	"github.com/pithecene/lode/lode"
 )
 
 // SidecarFileRef describes a sidecar file written via PutFile.
@@ -33,16 +31,11 @@ type FileWriter interface {
 var _ FileWriter = (*LodeClient)(nil)
 
 // PutFile writes a sidecar file to Lode Store at the computed Hive path.
-// Writes the data file and a companion .meta.json with content type.
-// Uses lazy store initialization via storeFactory.
+// Writes the data file and a companion .meta.json with content type, to the
+// dataset's store.
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
-	store, err := c.getOrCreateStore()
-	if err != nil {
-		return fmt.Errorf("file write store init failed: %w", err)
-	}
-
 	path := c.buildFilePath(filename)
-	if err := store.Put(ctx, path, bytes.NewReader(data)); err != nil {
+	if err := c.store.Put(ctx, path, bytes.NewReader(data)); err != nil {
 		return WrapWriteError(err, path)
 	}
 
@@ -54,7 +47,7 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 		return fmt.Errorf("file write metadata marshal failed: %w", err)
 	}
 	metaPath := path + ".meta.json"
-	if err := store.Put(ctx, metaPath, bytes.NewReader(meta)); err != nil {
+	if err := c.store.Put(ctx, metaPath, bytes.NewReader(meta)); err != nil {
 		return WrapWriteError(err, metaPath)
 	}
 
@@ -74,14 +67,6 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 // fileMetadata is the companion metadata written alongside sidecar files.
 type fileMetadata struct {
 	ContentType string `json:"content_type"`
-}
-
-// getOrCreateStore lazily initializes the Store from the factory.
-func (c *LodeClient) getOrCreateStore() (lode.Store, error) {
-	c.storeOnce.Do(func() {
-		c.store, c.storeErr = c.storeFactory()
-	})
-	return c.store, c.storeErr
 }
 
 // buildFilePath computes the Hive-partitioned path for a sidecar file.

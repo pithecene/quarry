@@ -36,7 +36,7 @@ func (f *fakeS3) requests() []string {
 
 // The read path must reach the configured S3-compatible endpoint with
 // path-style addressing, exactly like the write path (issue #253).
-func TestNewReadDatasetS3_HonorsEndpointAndPathStyle(t *testing.T) {
+func TestNewStoreFactoryS3_ReadHonorsEndpointAndPathStyle(t *testing.T) {
 	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
@@ -49,19 +49,17 @@ func TestNewReadDatasetS3_HonorsEndpointAndPathStyle(t *testing.T) {
 	srv := httptest.NewServer(fake)
 	t.Cleanup(srv.Close)
 
-	ds, err := NewReadDatasetS3("quarry", S3Config{
-		Bucket:       "test-bucket",
-		Prefix:       "data",
+	factory, err := NewStoreFactory("s3", "test-bucket/data", S3Config{
 		Region:       "us-east-1",
 		Endpoint:     srv.URL,
 		UsePathStyle: true,
 	})
 	if err != nil {
-		t.Fatalf("NewReadDatasetS3: %v", err)
+		t.Fatalf("NewStoreFactory: %v", err)
 	}
 
-	// The listing result is irrelevant; only where the request went matters.
-	_, _ = ds.Snapshots(t.Context())
+	// The query result is irrelevant; only where the requests went matters.
+	_, _ = QueryLatestMetrics(t.Context(), factory, "quarry", "", "")
 
 	got := fake.requests()
 	if len(got) == 0 {

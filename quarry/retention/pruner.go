@@ -32,11 +32,12 @@ type pruner struct {
 	opts    Options
 	runs    *reader.Reader
 	store   lode.Store
-	ds      lode.Dataset
-	dr      lode.DatasetReader
+	// ds is a writer handle: Lode retains only through writers, and a writer
+	// opens on a dataset without snapshots, where a view would not.
+	ds lode.Records[lode.D]
 }
 
-func newPruner(dataset string, factory lode.StoreFactory, opts Options) (*pruner, error) {
+func newPruner(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore], opts Options) (*pruner, error) {
 	if factory == nil {
 		return nil, errors.New("prune: nil store factory")
 	}
@@ -49,20 +50,15 @@ func newPruner(dataset string, factory lode.StoreFactory, opts Options) (*pruner
 	}
 	// Every component uses this one store: a factory may return a separate
 	// store per call, and the records read must be the ones deleted.
-	shared := func() (lode.Store, error) { return store, nil }
-	runs, err := reader.New(dataset, shared)
+	runs, err := reader.New(dataset, lode.Use(store))
 	if err != nil {
 		return nil, err
 	}
-	ds, err := qlode.NewReadDataset(dataset, shared)
+	ds, err := qlode.OpenDataset(ctx, dataset, store)
 	if err != nil {
 		return nil, qlode.WrapInitError(err, dataset)
 	}
-	dr, err := qlode.NewPartitionReader(store)
-	if err != nil {
-		return nil, qlode.WrapInitError(err, dataset)
-	}
-	return &pruner{dataset: dataset, opts: opts, runs: runs, store: store, ds: ds, dr: dr}, nil
+	return &pruner{dataset: dataset, opts: opts, runs: runs, store: store, ds: ds}, nil
 }
 
 // keys lists the runs to consider, or names the one run Options selects,
@@ -279,8 +275,7 @@ func isNonce(s string) bool {
 // hasSnapshots reports whether any snapshot still has a manifest under the
 // run's partition.
 func (p *pruner) hasSnapshots(ctx context.Context, partition string) (bool, error) {
-	ds := lode.DatasetID(p.dataset)
-	parts, err := p.dr.ListPartitions(ctx, ds, lode.PartitionListOptions{Prefix: partition})
+	parts, err := p.ds.ListPartitions(ctx, lode.PartitionListOptions{Prefix: partition})
 	if errors.Is(err, lode.ErrNotFound) {
 		return false, nil
 	}
@@ -288,9 +283,9 @@ func (p *pruner) hasSnapshots(ctx context.Context, partition string) (bool, erro
 		return false, qlode.WrapReadError(err, partition)
 	}
 	for _, part := range parts {
-		refs, err := p.dr.ListManifests(ctx, ds, part.Path, lode.ManifestListOptions{Limit: 1})
+		refs, err := p.ds.ListManifests(ctx, part.Path, lode.ManifestListOptions{Limit: 1})
 		if err != nil {
-			return false, qlode.WrapReadError(err, part.Path)
+			return false, qlode.WrapReadError(err, part.Path.String())
 		}
 		if len(refs) > 0 {
 			return true, nil

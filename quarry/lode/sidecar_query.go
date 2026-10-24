@@ -7,11 +7,18 @@ import (
 )
 
 // QuerySidecarFiles collects all sidecar file refs from snapshot metadata
-// for a given run. Returns the union of sidecar_files across all snapshots
-// that match the runID filter.
+// for a given run of the dataset stored behind factory. Returns the union of
+// sidecar_files across all snapshots that match the runID filter.
 //
 // Returns nil (not an error) if no sidecar files are found.
-func QuerySidecarFiles(ctx context.Context, ds lode.Dataset, runID string) ([]SidecarFileRef, error) {
+func QuerySidecarFiles(ctx context.Context, factory lode.Factory[lode.RangeStore], dataset, runID string) ([]SidecarFileRef, error) {
+	ds, ok, err := openReadView(ctx, dataset, factory)
+	if err != nil {
+		return nil, WrapReadError(err, "datasets/"+dataset)
+	}
+	if !ok {
+		return nil, nil
+	}
 	snapshots, err := ds.Snapshots(ctx)
 	if err != nil {
 		return nil, WrapReadError(err, "quarry/snapshots")
@@ -24,7 +31,11 @@ func QuerySidecarFiles(ctx context.Context, ds lode.Dataset, runID string) ([]Si
 			continue
 		}
 
-		raw, ok := snap.Manifest.Metadata[MetadataKeySidecarFiles]
+		var meta map[string]any
+		if err := snap.Metadata.Decode(&meta); err != nil {
+			return nil, WrapReadError(err, "quarry/snapshot/"+string(snap.ID))
+		}
+		raw, ok := meta[MetadataKeySidecarFiles]
 		if !ok {
 			continue
 		}

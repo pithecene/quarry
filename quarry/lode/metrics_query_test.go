@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -26,8 +27,29 @@ func toInt64(v any) int64 {
 
 // sharedFactory returns a StoreFactory that always returns the given store.
 // This allows write and read datasets to share the same in-memory state.
-func sharedFactory(store lode.Store) lode.StoreFactory {
-	return func() (lode.Store, error) { return store, nil }
+func sharedFactory(store lode.RangeStore) lode.Factory[lode.RangeStore] {
+	return lode.Use(store)
+}
+
+// metadataOf decodes a snapshot's metadata as a map, so values have the
+// types a JSON round trip gives them.
+func metadataOf(t *testing.T, snap *lode.DatasetSnapshot) map[string]any {
+	t.Helper()
+	var meta map[string]any
+	if err := snap.Metadata.Decode(&meta); err != nil {
+		t.Fatalf("decode metadata of %s: %v", snap.ID, err)
+	}
+	return meta
+}
+
+// readView opens a view of the quarry dataset behind factory, as the read
+// path does.
+func readView(ctx context.Context, factory lode.Factory[lode.RangeStore]) (lode.RecordView[lode.D], error) {
+	store, err := factory()
+	if err != nil {
+		return nil, err
+	}
+	return OpenView(ctx, "quarry", store)
 }
 
 func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
@@ -45,7 +67,7 @@ func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
 	}
 
 	// Write via LodeClient
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -72,12 +94,8 @@ func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
 	}
 
 	// Read via QueryLatestMetrics
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
 
-	record, err := QueryLatestMetrics(t.Context(), ds, "", "")
+	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", "")
 	if err != nil {
 		t.Fatalf("QueryLatestMetrics failed: %v", err)
 	}
@@ -149,7 +167,7 @@ func TestQueryLatestMetrics_Filters(t *testing.T) {
 			factory := sharedFactory(lode.NewMemory())
 			for i, w := range tc.writes {
 				cfg := Config{Dataset: "quarry", Source: w.source, Category: "test-category", Day: "2026-02-03", RunID: w.runID}
-				client, err := NewLodeClientWithFactory(cfg, factory)
+				client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 				if err != nil {
 					t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 				}
@@ -158,11 +176,7 @@ func TestQueryLatestMetrics_Filters(t *testing.T) {
 					t.Fatalf("WriteMetrics for %+v failed: %v", w, err)
 				}
 			}
-			ds, err := NewReadDataset("quarry", factory)
-			if err != nil {
-				t.Fatalf("NewReadDataset failed: %v", err)
-			}
-			record, err := QueryLatestMetrics(t.Context(), ds, tc.runID, tc.source)
+			record, err := QueryLatestMetrics(t.Context(), factory, "quarry", tc.runID, tc.source)
 			if err != nil {
 				t.Fatalf("QueryLatestMetrics failed: %v", err)
 			}
@@ -182,12 +196,7 @@ func TestQueryLatestMetrics_NoMetrics(t *testing.T) {
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	_, err = QueryLatestMetrics(t.Context(), ds, "", "")
+	_, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", "")
 	if err == nil {
 		t.Fatal("expected error for empty dataset, got nil")
 	}
@@ -216,7 +225,7 @@ func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
 			RunID:    runID,
 		}
 
-		client, err := NewLodeClientWithFactory(cfg, factory)
+		client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 		if err != nil {
 			t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 		}
@@ -234,13 +243,8 @@ func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
 		}
 	}
 
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
 	// Filter by run-1 — must NOT match run-10
-	record, err := QueryLatestMetrics(t.Context(), ds, "run-1", "")
+	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-1", "")
 	if err != nil {
 		t.Fatalf("QueryLatestMetrics failed: %v", err)
 	}
@@ -272,7 +276,7 @@ func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
 		RunID:    "run-abc",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -289,13 +293,8 @@ func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
 		t.Fatalf("WriteMetrics failed: %v", err)
 	}
 
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
 	// Filter by a run_id that doesn't exist — should get ErrNoMetricsFound
-	_, err = QueryLatestMetrics(t.Context(), ds, "run-nonexistent", "")
+	_, err = QueryLatestMetrics(t.Context(), factory, "quarry", "run-nonexistent", "")
 	if err == nil {
 		t.Fatal("expected error for non-matching run_id filter, got nil")
 	}
@@ -319,7 +318,7 @@ func TestQueryLatestMetrics_TsRoundTrip(t *testing.T) {
 		RunID:    "run-001",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -337,12 +336,7 @@ func TestQueryLatestMetrics_TsRoundTrip(t *testing.T) {
 		t.Fatalf("WriteMetrics failed: %v", err)
 	}
 
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	record, err := QueryLatestMetrics(t.Context(), ds, "", "")
+	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", "")
 	if err != nil {
 		t.Fatalf("QueryLatestMetrics failed: %v", err)
 	}

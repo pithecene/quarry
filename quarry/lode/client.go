@@ -31,18 +31,16 @@ var ErrMissingArtifactID = errors.New("artifact commit rejected: missing or empt
 // LodeClient is a real Lode-backed implementation of Client.
 // Uses Lode's HiveLayout with partition keys: source/category/day/run_id/event_type.
 type LodeClient struct { //nolint:revive // intentional naming for clarity
-	dataset      lode.Dataset
-	config       Config
-	storeFactory lode.StoreFactory // for sidecar file writes via FileWriter
+	dataset lode.Records[lode.D]
+	config  Config
+	// store is the dataset's store; sidecar files and run records are
+	// written to it directly, outside Lode's snapshots.
+	store lode.Store
 
 	mu           sync.Mutex          // guards offsets, chunksSeen, and pendingFiles
 	offsets      map[string]int64    // cumulative offset per artifact across batches
 	chunksSeen   map[string]struct{} // tracks artifacts that have had chunks written
 	pendingFiles []SidecarFileRef    // sidecar files written since last snapshot flush
-
-	storeOnce sync.Once  // lazy store initialization for FileWriter
-	store     lode.Store // lazily created from storeFactory
-	storeErr  error      // error from lazy store creation
 
 	retryGate *retryGate // suppresses the retry observer during WriteMetrics
 }
@@ -65,51 +63,52 @@ func (g *retryGate) wrap(fn func(attempt int)) func(attempt int) {
 	}
 }
 
-// newClient creates a LodeClient from a dataset, config, store factory, and
-// the retry gate that was installed on the dataset's observer.
+// openClient creates the store once, opens the dataset over it, and returns
+// a client that writes sidecar files and run records to the same store. The
+// retry gate is installed on the dataset's observer when one is configured.
 // All constructors must use this to ensure consistent initialization.
-func newClient(ds lode.Dataset, cfg Config, factory lode.StoreFactory, gate *retryGate) *LodeClient {
-	return &LodeClient{
-		dataset:      ds,
-		config:       cfg,
-		storeFactory: factory,
-		offsets:      make(map[string]int64),
-		chunksSeen:   make(map[string]struct{}),
-		retryGate:    gate,
+func openClient(ctx context.Context, cfg Config, factory lode.Factory[lode.RangeStore]) (*LodeClient, error) {
+	if factory == nil {
+		return nil, errors.New("lode client: nil store factory")
 	}
+	store, err := factory()
+	if err != nil {
+		return nil, err
+	}
+	gate := &retryGate{}
+	var opts []lode.DatasetOption
+	if cfg.RetryObserver != nil {
+		opts = append(opts, lode.WithRetryObserver(gate.wrap(cfg.RetryObserver)))
+	}
+	ds, err := OpenDataset(ctx, cfg.Dataset, store, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &LodeClient{
+		dataset:    ds,
+		config:     cfg,
+		store:      store,
+		offsets:    make(map[string]int64),
+		chunksSeen: make(map[string]struct{}),
+		retryGate:  gate,
+	}, nil
 }
 
 // NewLodeClient creates a new Lode client with filesystem storage.
 // The root parameter is the base directory for Hive-partitioned storage.
-func NewLodeClient(cfg Config, root string) (*LodeClient, error) {
-	return NewLodeClientWithFactory(cfg, lode.NewFSFactory(root))
+func NewLodeClient(ctx context.Context, cfg Config, root string) (*LodeClient, error) {
+	return NewLodeClientWithFactory(ctx, cfg, lode.FS(root))
 }
 
-// NewLodeClientWithFactory creates a new Lode client with a custom store factory.
-// Use lode.NewMemoryFactory() for testing.
-func NewLodeClientWithFactory(cfg Config, factory lode.StoreFactory) (*LodeClient, error) {
-	gate := &retryGate{}
-	ds, err := lode.NewDataset(lode.DatasetID(cfg.Dataset), factory, writeDatasetOptions(cfg, gate)...)
+// NewLodeClientWithFactory creates a new Lode client with a custom store
+// factory, such as lode.Memory() in tests. Opening reads the dataset's head
+// under ctx.
+func NewLodeClientWithFactory(ctx context.Context, cfg Config, factory lode.Factory[lode.RangeStore]) (*LodeClient, error) {
+	c, err := openClient(ctx, cfg, factory)
 	if err != nil {
 		return nil, WrapInitError(err, cfg.Dataset)
 	}
-
-	return newClient(ds, cfg, factory, gate), nil
-}
-
-// writeDatasetOptions returns the Dataset options shared by every write-path
-// constructor: Hive layout, JSONL codec, bounded CAS retry per
-// CONTRACT_LODE.md, and the gated retry observer when one is configured.
-func writeDatasetOptions(cfg Config, gate *retryGate) []lode.Option {
-	opts := []lode.Option{
-		lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"),
-		lode.WithCodec(lode.NewJSONLCodec()),
-		lode.WithRetryCount(3),
-	}
-	if cfg.RetryObserver != nil {
-		opts = append(opts, lode.WithRetryObserver(gate.wrap(cfg.RetryObserver)))
-	}
-	return opts
+	return c, nil
 }
 
 // WriteEvents writes a batch of events to Lode.
@@ -131,9 +130,9 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 	// Collect artifact IDs being committed for post-write cleanup
 	var committedArtifacts []string
 
-	records := make([]any, 0, len(events))
+	records := make([]lode.D, 0, len(events))
 	for _, e := range events {
-		var record map[string]any
+		var record lode.D
 		if e.Type == types.EventTypeArtifact {
 			// Extract artifact_id from payload and validate
 			artifactID := extractArtifactID(e.Payload)
@@ -179,7 +178,7 @@ func (c *LodeClient) WriteChunks(ctx context.Context, _, _ string, chunks []*typ
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	records := make([]any, 0, len(chunks))
+	records := make([]lode.D, 0, len(chunks))
 
 	// Compute offsets locally first (don't modify state yet)
 	localOffsets := make(map[string]int64)
@@ -205,7 +204,7 @@ func (c *LodeClient) WriteChunks(ctx context.Context, _, _ string, chunks []*typ
 	// Write to storage.
 	// Chunk writes use empty metadata — sidecar file refs are only flushed
 	// on event and metrics writes, which are the consumer-facing boundaries.
-	_, err := c.dataset.Write(ctx, records, lode.Metadata{})
+	_, err := c.dataset.Write(ctx, records, nil)
 	if err != nil {
 		return WrapWriteError(err, buildPartitionPath(c.config, "artifact"))
 	}
@@ -233,7 +232,7 @@ func (c *LodeClient) WriteMetrics(ctx context.Context, snap metrics.Snapshot, co
 	defer c.retryGate.suppressed.Store(false)
 
 	record := toMetricsRecordMap(snap, c.config, completedAt)
-	_, err := c.dataset.Write(ctx, []any{record}, c.snapshotMetadata())
+	_, err := c.dataset.Write(ctx, lode.R(record), c.snapshotMetadata())
 	if err != nil {
 		return WrapWriteError(err, buildPartitionPath(c.config, "metrics"))
 	}
@@ -251,19 +250,20 @@ func (c *LodeClient) Close() error {
 // Downstream consumers read this to enumerate files without prefix-scanning.
 const MetadataKeySidecarFiles = "sidecar_files"
 
-// snapshotMetadata returns Metadata containing any pending sidecar file refs.
-// Returns empty metadata if no files are pending.
+// snapshotMetadata returns metadata containing any pending sidecar file refs,
+// or an empty object if no files are pending. The empty case must be a
+// non-nil map: a nil map encodes as JSON null, which Lode rejects.
 // Only called from WriteEvents and WriteMetrics — chunk writes do not flush
 // file refs because chunks are not consumer-facing commit boundaries.
 // Must be called under c.mu.
-func (c *LodeClient) snapshotMetadata() lode.Metadata {
+func (c *LodeClient) snapshotMetadata() map[string]any {
 	if len(c.pendingFiles) == 0 {
-		return lode.Metadata{}
+		return map[string]any{}
 	}
 	// Copy pending files into metadata value to decouple from mutable state.
 	refs := make([]SidecarFileRef, len(c.pendingFiles))
 	copy(refs, c.pendingFiles)
-	return lode.Metadata{MetadataKeySidecarFiles: refs}
+	return map[string]any{MetadataKeySidecarFiles: refs}
 }
 
 // drainPendingFiles clears accumulated sidecar file refs after a successful write.

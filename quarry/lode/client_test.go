@@ -23,7 +23,7 @@ func TestLodeClient_WriteEvents(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestLodeClient_WriteArtifactEvent(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestLodeClient_WriteChunks(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestLodeClient_ChunkOffset_AcrossBatches(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestLodeClient_CommitRequiresChunks(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestLodeClient_CommitSucceedsWithChunks(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestLodeClient_OffsetsResetAfterCommit(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestLodeClient_CommitRejectsMissingArtifactID(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestLodeClient_WriteMetrics(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -685,18 +685,8 @@ func TestNewClient_InitializesMaps(t *testing.T) {
 
 	// Regression: NewLodeS3Client previously returned &LodeClient{} without
 	// initializing offsets/chunksSeen maps, causing nil-map panic on first
-	// WriteChunks call. All constructors now use newClient() which must
+	// WriteChunks call. All constructors now use openClient() which must
 	// initialize both maps.
-	ds, err := lode.NewDataset(
-		lode.DatasetID("test"),
-		lode.NewMemoryFactory(),
-		lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"),
-		lode.WithCodec(lode.NewJSONLCodec()),
-	)
-	if err != nil {
-		t.Fatalf("NewDataset failed: %v", err)
-	}
-
 	cfg := Config{
 		Dataset:  "test",
 		Source:   "src",
@@ -705,7 +695,10 @@ func TestNewClient_InitializesMaps(t *testing.T) {
 		RunID:    "run-1",
 	}
 
-	client := newClient(ds, cfg, lode.NewMemoryFactory(), &retryGate{})
+	client, err := openClient(t.Context(), cfg, lode.Memory())
+	if err != nil {
+		t.Fatalf("openClient failed: %v", err)
+	}
 
 	if client.offsets == nil {
 		t.Fatal("offsets map is nil, must be initialized")
@@ -778,7 +771,7 @@ func TestLodeClient_RetryObserver_CountsCASRetries(t *testing.T) {
 	t.Parallel()
 
 	mem := lode.NewMemory()
-	factory := func() (lode.Store, error) { return mem, nil }
+	factory := func() (lode.RangeStore, error) { return mem, nil }
 
 	collector := metrics.NewCollector("strict", "test", "memory", "run-123", "")
 	cfg := Config{
@@ -791,13 +784,13 @@ func TestLodeClient_RetryObserver_CountsCASRetries(t *testing.T) {
 		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
 
 	// Competing writer on the same store, same dataset, no retries.
-	competitor, err := NewLodeClientWithFactory(Config{
+	competitor, err := NewLodeClientWithFactory(t.Context(), Config{
 		Dataset:  cfg.Dataset,
 		Source:   cfg.Source,
 		Category: cfg.Category,
@@ -851,7 +844,7 @@ func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
 	t.Parallel()
 
 	mem := lode.NewMemory()
-	factory := func() (lode.Store, error) { return mem, nil }
+	factory := func() (lode.RangeStore, error) { return mem, nil }
 
 	collector := metrics.NewCollector("strict", "test", "memory", "run-123", "")
 	cfg := Config{
@@ -864,11 +857,11 @@ func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
 		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
-	competitor, err := NewLodeClientWithFactory(Config{
+	competitor, err := NewLodeClientWithFactory(t.Context(), Config{
 		Dataset:  cfg.Dataset,
 		Source:   cfg.Source,
 		Category: cfg.Category,

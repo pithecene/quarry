@@ -221,11 +221,7 @@ func (c *LodeClient) WriteEndRecord(ctx context.Context, end RunEnd) error {
 }
 
 func (c *LodeClient) putRecord(ctx context.Context, name string, record any) error {
-	store, err := c.getOrCreateStore()
-	if err != nil {
-		return fmt.Errorf("run record store init failed: %w", err)
-	}
-	return putRunRecord(ctx, store, c.config, name, record)
+	return putRunRecord(ctx, c.store, c.config, name, record)
 }
 
 // validateRecordKey rejects a run whose components cannot form a safe
