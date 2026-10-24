@@ -1,0 +1,1 @@
+{"attempt":1,"category":"default","contract_version":"0.13.7","day":"2026-10-02","event_id":"run-killed-1-e1","event_type":"item","payload":{"item_type":"product","n":0,"title":"run-killed-1 item 0"},"policy":"strict","record_kind":"event","run_id":"run-killed-1","seq":1,"source":"news","ts":"2026-10-02T04:00:01Z","type":"item"}
