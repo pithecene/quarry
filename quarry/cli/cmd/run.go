@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -1107,9 +1108,7 @@ func parseAdapterConfigWithPrecedence(c *cli.Context, cfg *quarryconfig.Config, 
 
 	// Merge config headers first, then CLI headers override
 	if cfg != nil {
-		for k, v := range cfg.Adapter.Headers {
-			ac.headers[k] = v
-		}
+		maps.Copy(ac.headers, cfg.Adapter.Headers)
 	}
 	for _, h := range c.StringSlice("adapter-header") {
 		k, v, ok := strings.Cut(h, "=")

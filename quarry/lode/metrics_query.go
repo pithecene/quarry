@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/pithecene/lode/lode"
 )
@@ -28,9 +29,7 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 	}
 
 	// Iterate in reverse (latest first) — snapshots are ordered by creation time
-	for i := len(snapshots) - 1; i >= 0; i-- {
-		snap := snapshots[i]
-
+	for _, snap := range slices.Backward(snapshots) {
 		if !isMetricsSnapshot(snap) {
 			continue
 		}

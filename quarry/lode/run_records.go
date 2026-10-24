@@ -176,7 +176,7 @@ func NewStartRecord(cfg Config, meta *types.RunMeta, startedAt time.Time) StartR
 		Category:      cfg.Category,
 		Day:           cfg.Day,
 		Partition:     PartitionPrefix(cfg),
-		StartedAt:     ptr(formatRecordTime(startedAt)),
+		StartedAt:     new(formatRecordTime(startedAt)),
 		QuarryVersion: types.Version,
 	}
 }
@@ -188,9 +188,9 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		SchemaVersion:    RunRecordSchemaVersion,
 		RunID:            cfg.RunID,
 		EndedAt:          formatRecordTime(end.EndedAt),
-		Outcome:          ptr(string(end.Outcome)),
+		Outcome:          new(string(end.Outcome)),
 		Message:          end.Message,
-		EventCount:       ptr(end.EventCount),
+		EventCount:       new(end.EventCount),
 		MetricsPersisted: end.MetricsPersisted,
 	}
 	if end.Terminal != "" {
@@ -199,8 +199,6 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 	}
 	return rec
 }
-
-func ptr[T any](v T) *T { return &v }
 
 func formatRecordTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)

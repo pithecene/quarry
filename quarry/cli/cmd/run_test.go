@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"flag"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -620,12 +621,8 @@ func newTestCLIContext(t *testing.T, flagValues, defaultFlags map[string]string)
 
 	// Register all flags
 	allFlags := make(map[string]string)
-	for k, v := range defaultFlags {
-		allFlags[k] = v
-	}
-	for k, v := range flagValues {
-		allFlags[k] = v
-	}
+	maps.Copy(allFlags, defaultFlags)
+	maps.Copy(allFlags, flagValues)
 
 	var cliFlags []cli.Flag
 	for name, val := range allFlags {

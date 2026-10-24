@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"maps"
 	"time"
 
 	"github.com/pithecene/quarry/metrics"
@@ -248,9 +249,7 @@ func toMetricsRecordMap(snap metrics.Snapshot, cfg Config, completedAt time.Time
 	// Copy dropped_by_type if non-empty
 	if len(snap.DroppedByType) > 0 {
 		dropped := make(map[string]int64, len(snap.DroppedByType))
-		for k, v := range snap.DroppedByType {
-			dropped[k] = v
-		}
+		maps.Copy(dropped, snap.DroppedByType)
 		m["dropped_by_type"] = dropped
 	}
 

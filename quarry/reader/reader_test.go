@@ -3,6 +3,7 @@ package reader
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -49,10 +50,10 @@ func (f *fixture) write(spec runSpec) {
 	}
 	// Write events in two batches, out of seq order across event types, so
 	// ReadEvents has to order them.
-	for i := len(spec.events) - 1; i >= 0; i-- {
+	for i, v := range slices.Backward(spec.events) {
 		ev := &types.EventEnvelope{
 			ContractVersion: types.ContractVersion, EventID: fmt.Sprintf("e%d", i+1), RunID: spec.runID,
-			Seq: int64(i + 1), Type: spec.events[i], Ts: "2026-10-21T01:00:00Z", Payload: map[string]any{"n": i + 1}, Attempt: 1,
+			Seq: int64(i + 1), Type: v, Ts: "2026-10-21T01:00:00Z", Payload: map[string]any{"n": i + 1}, Attempt: 1,
 		}
 		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
 			f.t.Fatalf("events: %v", err)

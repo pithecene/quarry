@@ -214,8 +214,8 @@ func (r *Renderer) getHeaders(v reflect.Value) []string {
 	switch v.Kind() {
 	case reflect.Struct:
 		t := v.Type()
-		for i := 0; i < t.NumField(); i++ {
-			headers = append(headers, r.getFieldName(t.Field(i)))
+		for field := range t.Fields() {
+			headers = append(headers, r.getFieldName(field))
 		}
 	case reflect.Map:
 		// For maps, use keys as headers
@@ -234,8 +234,8 @@ func (r *Renderer) getRowValues(v reflect.Value, headers []string) []string {
 	var values []string
 	switch v.Kind() {
 	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			values = append(values, r.formatValue(v.Field(i)))
+		for _, field := range v.Fields() {
+			values = append(values, r.formatValue(field))
 		}
 	case reflect.Map:
 		for _, h := range headers {

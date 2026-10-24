@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -182,9 +183,7 @@ func (c *LodeClient) WriteChunks(ctx context.Context, _, _ string, chunks []*typ
 
 	// Compute offsets locally first (don't modify state yet)
 	localOffsets := make(map[string]int64)
-	for id, offset := range c.offsets {
-		localOffsets[id] = offset
-	}
+	maps.Copy(localOffsets, c.offsets)
 
 	for _, chunk := range chunks {
 		offset := localOffsets[chunk.ArtifactID]

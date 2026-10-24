@@ -61,8 +61,7 @@ func exitErrHandler(_ *cli.Context, err error) {
 	}
 
 	// Check for ExitCoder (from cli.Exit), handles wrapped errors
-	var exitCoder cli.ExitCoder
-	if errors.As(err, &exitCoder) {
+	if exitCoder, ok := errors.AsType[cli.ExitCoder](err); ok {
 		code := exitCoder.ExitCode()
 		msg := exitCoder.Error()
 

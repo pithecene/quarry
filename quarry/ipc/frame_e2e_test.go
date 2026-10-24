@@ -351,11 +351,8 @@ func TestE2E_FixtureDrift(t *testing.T) {
 	}
 
 	// Compare each event's semantic structure
-	minEvents := len(existingEvents)
-	if len(newEvents) < minEvents {
-		minEvents = len(newEvents)
-	}
-	for i := 0; i < minEvents; i++ {
+	minEvents := min(len(newEvents), len(existingEvents))
+	for i := range minEvents {
 		existing := existingEvents[i]
 		current := newEvents[i]
 
@@ -388,11 +385,8 @@ func TestE2E_FixtureDrift(t *testing.T) {
 	}
 
 	// Compare each chunk's structure
-	minChunks := len(existingChunks)
-	if len(newChunks) < minChunks {
-		minChunks = len(newChunks)
-	}
-	for i := 0; i < minChunks; i++ {
+	minChunks := min(len(newChunks), len(existingChunks))
+	for i := range minChunks {
 		existing := existingChunks[i]
 		current := newChunks[i]
 
