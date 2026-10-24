@@ -164,6 +164,19 @@ describe('probeBrowser', () => {
     expect(await probeBrowser(endpointOn(html))).toBe('gone')
   })
 
+  it('cannot tell when the response is cut short', async () => {
+    const server = createServer((_, res) => {
+      res.writeHead(200, { 'content-length': '1000' })
+      res.write('{"webSocketDebuggerUrl":')
+      res.destroy()
+    })
+    servers.push(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+
+    expect(await probeBrowser(endpointOn(port))).toBe('unknown')
+  })
+
   it('finds it gone when nothing listens on its port', async () => {
     const port = await serveVersion(() => '')
     await new Promise((resolve) => servers.pop()?.close(resolve))

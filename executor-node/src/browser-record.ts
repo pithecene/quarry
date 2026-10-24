@@ -69,17 +69,26 @@ export function recordBrowsers(recordPath: string, endpoints: readonly string[])
 export const probeBrowser: ProbeBrowser = async (endpoint) => {
   const url = new URL(endpoint)
   const scheme = url.protocol === 'wss:' ? 'https:' : 'http:'
-  let res: Response
+  let text: string
   try {
-    res = await fetch(`${scheme}//${url.host}/json/version`, {
+    const res = await fetch(`${scheme}//${url.host}/json/version`, {
       signal: AbortSignal.timeout(STEP_TIMEOUT_MS)
     })
+    text = await res.text()
   } catch (err) {
+    // A response cut short says nothing about which browser answered.
     return refused(err) ? 'gone' : 'unknown'
   }
-  // Whatever answers, only this browser names this endpoint.
-  const body = (await res.json().catch(() => null)) as { webSocketDebuggerUrl?: unknown } | null
-  return body?.webSocketDebuggerUrl === endpoint ? 'running' : 'gone'
+  // A whole response from anything but this browser cannot name its endpoint.
+  return namedEndpoint(text) === endpoint ? 'running' : 'gone'
+}
+
+function namedEndpoint(text: string): unknown {
+  try {
+    return (JSON.parse(text) as { webSocketDebuggerUrl?: unknown } | null)?.webSocketDebuggerUrl
+  } catch {
+    return undefined
+  }
 }
 
 /** Ask the browser to close; true when the request was delivered. */
