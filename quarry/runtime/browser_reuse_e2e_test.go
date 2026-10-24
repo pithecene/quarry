@@ -240,6 +240,13 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 		t.Fatalf("first acquire: %v", err)
 	}
 	pid := serverPID(t, h.socketPath)
+	// Should the test stop before the new server closes the killed server's
+	// browser, close it here, so that no browser outlives the test.
+	t.Cleanup(func() {
+		if browserAlive(ws1) {
+			closeBrowser(t, ws1)
+		}
+	})
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
 		t.Fatalf("kill server: %v", err)
 	}
@@ -253,7 +260,6 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 		t.Error("expected a new server's endpoint after the kill")
 	}
 	if browserAlive(ws1) {
-		closeBrowser(t, ws1)
 		t.Error("the new server left the killed server's browser running")
 	}
 }
