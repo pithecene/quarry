@@ -3179,17 +3179,24 @@ function recordBrowsers(recordPath, endpoints) {
 var probeBrowser = async (endpoint) => {
   const url = new URL(endpoint);
   const scheme = url.protocol === "wss:" ? "https:" : "http:";
-  let res;
+  let text;
   try {
-    res = await fetch(`${scheme}//${url.host}/json/version`, {
+    const res = await fetch(`${scheme}//${url.host}/json/version`, {
       signal: AbortSignal.timeout(STEP_TIMEOUT_MS)
     });
+    text = await res.text();
   } catch (err) {
     return refused(err) ? "gone" : "unknown";
   }
-  const body = await res.json().catch(() => null);
-  return body?.webSocketDebuggerUrl === endpoint ? "running" : "gone";
+  return namedEndpoint(text) === endpoint ? "running" : "gone";
 };
+function namedEndpoint(text) {
+  try {
+    return JSON.parse(text)?.webSocketDebuggerUrl;
+  } catch {
+    return void 0;
+  }
+}
 async function attemptClose(endpoint, connect) {
   try {
     const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), STEP_TIMEOUT_MS);
