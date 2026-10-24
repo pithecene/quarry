@@ -97,6 +97,18 @@ cat >"$STUBS/curl" <<'EOF'
 if [[ -f "$STATE/jsr_published" ]]; then printf 200; else printf 404; fi
 EOF
 
+# gh release view <tag> --json body -q .body: prints $STATE/release_body if
+# it exists; fails with "release not found" otherwise, or with a connection
+# error when $STATE/release_lookup_fails exists.
+cat >"$STUBS/gh" <<'EOF2'
+#!/usr/bin/env bash
+echo "gh $*" >>"$STATE/calls"
+[[ -f "$STATE/release_lookup_fails" ]] && { echo "error connecting to api.github.com" >&2; exit 1; }
+[[ -f "$STATE/release_body" ]] && { cat "$STATE/release_body"; exit 0; }
+echo "release not found" >&2
+exit 1
+EOF2
+
 chmod +x "$STUBS"/*
 export PATH="$STUBS:$PATH"
 
@@ -314,6 +326,32 @@ expect "converge: persistent image lookup failure fails the job" fail "$C" "$PKG
 check "converge: unreadable image registry writes no image pointer" [ "$(grep -c ' create ' "$STATE/calls")" -eq 0 ]
 check "converge: unreadable image registry does not fall back to an older version" [ "$(grep -c 'inspect ghcr.io/x/y:1.2.3' "$STATE/calls")" -eq 0 ]
 check "converge: npm still converges when images are unreadable" grep -q "dist-tag add @scope/pkg@1.3.0 latest" "$STATE/calls"
+
+# --- release-notes-state.sh --------------------------------------------------
+
+R="$HERE/release-notes-state.sh"
+state() { "$R" v1.2.3 2>/dev/null; }
+
+new_case
+check "notes: no release yet means no notes" [ "$(state)" = "has_notes=false" ]
+
+new_case
+printf '<!-- comment -->\n**TODO: Add release notes before publishing**\n' >"$STATE/release_body"
+check "notes: the draft placeholder means no notes" [ "$(state)" = "has_notes=false" ]
+
+new_case
+printf '\n' >"$STATE/release_body"
+check "notes: an empty body means no notes" [ "$(state)" = "has_notes=false" ]
+
+new_case
+printf '**Tagline**\n\n## Summary\n\nText.\n' >"$STATE/release_body"
+check "notes: a written body has notes" [ "$(state)" = "has_notes=true" ]
+
+new_case
+touch "$STATE/release_lookup_fails"
+expect "notes: an unreadable release fails the step" fail "$R" v1.2.3
+
+expect "notes: missing tag is rejected" fail "$R"
 
 # --- result ------------------------------------------------------------------
 

@@ -264,15 +264,7 @@ jobs:
         id: existing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          BODY=$(gh release view "$TAG" \
-            --json body -q '.body' 2>/dev/null || echo "")
-          if echo "$BODY" | grep -qv "TODO: Add release notes"; then
-            echo "has_notes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_notes=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: scripts/release/release-notes-state.sh "${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       - name: 📎 Upload assets to existing release
         if: steps.existing.outputs.has_notes == 'true'
