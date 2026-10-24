@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pithecene/quarry/internal/testutil"
 )
 
 // ipcContext bounds each lease exchange in these tests, so that a deadlock
@@ -196,9 +198,11 @@ func TestRequestLease_HeldForAContextThatCannotEnd(t *testing.T) {
 	closed := make(chan struct{})
 	path := fakeLeaseServer(t, replyWith(`{"ws_endpoint":"ws://127.0.0.1:1/devtools/browser/x","pid":1}`, closed))
 
-	if _, err := requestLease(context.Background(), path, ""); err != nil {
+	lease, err := requestLease(context.Background(), path, "")
+	if err != nil {
 		t.Fatalf("requestLease: %v", err)
 	}
+	t.Cleanup(lease.Release)
 	for range 3 {
 		goruntime.GC()
 	}
@@ -208,6 +212,38 @@ func TestRequestLease_HeldForAContextThatCannotEnd(t *testing.T) {
 		t.Fatal("lease closed though its context cannot end")
 	case <-time.After(300 * time.Millisecond):
 	}
+}
+
+// Only a granted lease is held, and only until it is released.
+func TestRequestLease_ForeverLeaseHeldOnlyUntilReleased(t *testing.T) {
+	testutil.Serial(t, "reads the process-wide set of held leases")
+
+	refused := fakeLeaseServer(t, replyWith(`{"refused":"proxy mismatch"}`, nil))
+	if _, err := requestLease(context.Background(), refused, ""); err == nil {
+		t.Fatal("expected a refusal")
+	}
+	if n := heldCount(); n != 0 {
+		t.Fatalf("held %d connections after a refusal, want 0", n)
+	}
+
+	granted := fakeLeaseServer(t, replyWith(`{"ws_endpoint":"ws://127.0.0.1:1/devtools/browser/x","pid":1}`, nil))
+	lease, err := requestLease(context.Background(), granted, "")
+	if err != nil {
+		t.Fatalf("requestLease: %v", err)
+	}
+	if n := heldCount(); n != 1 {
+		t.Fatalf("held %d connections after a grant, want 1", n)
+	}
+	lease.Release()
+	if n := heldCount(); n != 0 {
+		t.Errorf("held %d connections after release, want 0", n)
+	}
+}
+
+func heldCount() int {
+	foreverLeases.mu.Lock()
+	defer foreverLeases.mu.Unlock()
+	return len(foreverLeases.conns)
 }
 
 // The connection is the lease: it stays open until the run's context ends.

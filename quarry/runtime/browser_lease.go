@@ -81,12 +81,10 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 
 	// The connection lives exactly as long as ctx: closing it when ctx ends
 	// both releases a granted lease and cuts short a stalled exchange.
-	if ctx.Done() == nil {
-		holdForever(conn)
-	}
 	stop := context.AfterFunc(ctx, func() { iox.DiscardClose(conn) })
 	release := func() {
 		stop()
+		foreverLeases.drop(conn)
 		iox.DiscardClose(conn)
 	}
 	lease, err := exchange(conn, proxyHash)
@@ -96,6 +94,9 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 			return browserLease{}, ctxErr
 		}
 		return browserLease{}, err
+	}
+	if ctx.Done() == nil {
+		foreverLeases.hold(conn)
 	}
 	lease.Release = release
 	return lease, nil
@@ -151,17 +152,26 @@ func isTimeout(err error) bool {
 	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
-// foreverLeases holds the connections of leases whose context can never
-// end. context.AfterFunc keeps nothing for such a context, and a connection
-// nothing references is closed when it is garbage collected, which would
-// end the lease while the run still uses the browser.
-var foreverLeases struct {
-	sync.Mutex
-	conns []net.Conn
+// foreverLeases holds the connections of granted leases whose context can
+// never end, until they are released. context.AfterFunc keeps nothing for
+// such a context, and a connection nothing references is closed when it is
+// garbage collected, which would end the lease while the run still uses the
+// browser.
+var foreverLeases = heldConns{conns: map[net.Conn]struct{}{}}
+
+type heldConns struct {
+	mu    sync.Mutex
+	conns map[net.Conn]struct{}
 }
 
-func holdForever(conn net.Conn) {
-	foreverLeases.Lock()
-	defer foreverLeases.Unlock()
-	foreverLeases.conns = append(foreverLeases.conns, conn)
+func (h *heldConns) hold(conn net.Conn) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.conns[conn] = struct{}{}
+}
+
+func (h *heldConns) drop(conn net.Conn) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.conns, conn)
 }
