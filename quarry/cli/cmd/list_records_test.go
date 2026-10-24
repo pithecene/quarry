@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/types"
 )

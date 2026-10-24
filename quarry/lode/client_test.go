@@ -583,17 +583,17 @@ func TestLodeClient_WriteMetrics(t *testing.T) {
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:          1,
-		RunsCompleted:        1,
-		EventsReceived:       10,
-		EventsPersisted:      10,
-		DroppedByType:        map[string]int64{"log": 2},
+		RunsStarted:           1,
+		RunsCompleted:         1,
+		EventsReceived:        10,
+		EventsPersisted:       10,
+		DroppedByType:         map[string]int64{"log": 2},
 		ExecutorLaunchSuccess: 1,
-		LodeWriteSuccess:     5,
-		Policy:               "strict",
-		Executor:             "executor.js",
-		StorageBackend:       "fs",
-		RunID:                "run-123",
+		LodeWriteSuccess:      5,
+		Policy:                "strict",
+		Executor:              "executor.js",
+		StorageBackend:        "fs",
+		RunID:                 "run-123",
 	}
 
 	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
@@ -618,20 +618,20 @@ func TestToMetricsRecordMap(t *testing.T) {
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:          1,
-		RunsCompleted:        1,
-		EventsReceived:       42,
-		EventsPersisted:      40,
-		EventsDropped:        2,
-		DroppedByType:        map[string]int64{"debug": 2},
+		RunsStarted:           1,
+		RunsCompleted:         1,
+		EventsReceived:        42,
+		EventsPersisted:       40,
+		EventsDropped:         2,
+		DroppedByType:         map[string]int64{"debug": 2},
 		ExecutorLaunchSuccess: 1,
-		ExecutorCrash:        0,
-		LodeWriteSuccess:     10,
-		Policy:               "strict",
-		Executor:             "executor.js",
-		StorageBackend:       "fs",
-		RunID:                "run-abc",
-		JobID:                "job-xyz",
+		ExecutorCrash:         0,
+		LodeWriteSuccess:      10,
+		Policy:                "strict",
+		Executor:              "executor.js",
+		StorageBackend:        "fs",
+		RunID:                 "run-abc",
+		JobID:                 "job-xyz",
 	}
 
 	completedAt := time.Date(2026, 2, 3, 15, 30, 0, 0, time.UTC)
