@@ -3471,6 +3471,16 @@ async function browserServer(scriptPath) {
     headless: true,
     args: chromiumArgs(proxyArgs)
   });
+  const stopped = Promise.race([
+    new Promise(
+      (resolve3) => browser.once("disconnected", () => resolve3({ reason: "browser disconnected", code: 1 }))
+    ),
+    ...["SIGTERM", "SIGINT"].map(
+      (signal) => new Promise(
+        (resolve3) => process.once(signal, () => resolve3({ reason: signal, code: 0 }))
+      )
+    )
+  ]);
   const leases = await serveLeases({
     socketPath: join(process.env.QUARRY_BROWSER_REUSE_DIR ?? ".", "server.sock"),
     wsEndpoint: browser.wsEndpoint(),
@@ -3480,24 +3490,17 @@ async function browserServer(scriptPath) {
     await browser.close();
     throw err;
   });
-  let stopping;
-  const shutdown = (reason, code) => {
-    stopping ??= (async () => {
-      process.stderr.write(`Browser server shutting down: ${reason}
-`);
-      leases.close();
-      await browser.close();
-      process.exit(code);
-    })();
-    return stopping;
-  };
-  browser.on("disconnected", () => void shutdown("browser disconnected", 1));
-  process.on("SIGTERM", () => void shutdown("SIGTERM", 0));
-  process.on("SIGINT", () => void shutdown("SIGINT", 0));
   process.on("SIGPIPE", () => void 0);
-  process.stdout.write("ready\n");
-  await leases.idle;
-  return shutdown("no lease for the idle timeout", 0);
+  if (browser.connected) process.stdout.write("ready\n");
+  const stop = await Promise.race([
+    stopped,
+    leases.idle.then(() => ({ reason: "no lease for the idle timeout", code: 0 }))
+  ]);
+  process.stderr.write(`Browser server shutting down: ${stop.reason}
+`);
+  leases.close();
+  await browser.close().catch(() => void 0);
+  process.exit(stop.code);
 }
 async function launchBrowserServer(scriptPath) {
   const { getPuppeteer: getBrowserPuppeteer } = await Promise.resolve().then(() => (init_executor(), executor_exports));

@@ -238,6 +238,19 @@ async function browserServer(scriptPath: string): Promise<never> {
     args: chromiumArgs(proxyArgs)
   })
 
+  // Subscribe before anything awaits, so no stop reason is missed.
+  const stopped = Promise.race([
+    new Promise<Stop>((resolve) =>
+      browser.once('disconnected', () => resolve({ reason: 'browser disconnected', code: 1 }))
+    ),
+    ...(['SIGTERM', 'SIGINT'] as const).map(
+      (signal) =>
+        new Promise<Stop>((resolve) =>
+          process.once(signal, () => resolve({ reason: signal, code: 0 }))
+        )
+    )
+  ])
+
   const leases = await serveLeases({
     socketPath: join(process.env.QUARRY_BROWSER_REUSE_DIR ?? '.', 'server.sock'),
     wsEndpoint: browser.wsEndpoint(),
@@ -248,28 +261,23 @@ async function browserServer(scriptPath: string): Promise<never> {
     throw err
   })
 
-  let stopping: Promise<never> | undefined
-  const shutdown = (reason: string, code: number): Promise<never> => {
-    stopping ??= (async () => {
-      process.stderr.write(`Browser server shutting down: ${reason}\n`)
-      leases.close()
-      await browser.close()
-      process.exit(code)
-    })()
-    return stopping
-  }
-
-  browser.on('disconnected', () => void shutdown('browser disconnected', 1))
-  process.on('SIGTERM', () => void shutdown('SIGTERM', 0))
-  process.on('SIGINT', () => void shutdown('SIGINT', 0))
   // The runtime closes its end of stdout once it reads `ready`
   process.on('SIGPIPE', () => undefined)
+  // A browser lost while the socket started is never offered to a run.
+  if (browser.connected) process.stdout.write('ready\n')
 
-  process.stdout.write('ready\n')
-
-  await leases.idle
-  return shutdown('no lease for the idle timeout', 0)
+  const stop = await Promise.race([
+    stopped,
+    leases.idle.then((): Stop => ({ reason: 'no lease for the idle timeout', code: 0 }))
+  ])
+  process.stderr.write(`Browser server shutting down: ${stop.reason}\n`)
+  leases.close()
+  await browser.close().catch(() => undefined)
+  process.exit(stop.code)
 }
+
+/** Why the browser server stops, and its exit code. */
+type Stop = { reason: string; code: number }
 
 /**
  * Launch a shared browser and print its WebSocket endpoint to stdout.
