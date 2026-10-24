@@ -185,7 +185,10 @@ stays alive. Fan-out child runs inherit the endpoint automatically.
 **Transparent reuse (default):** When no explicit endpoint is provided, Quarry
 automatically starts a reusable browser server on the first run. Subsequent
 runs reuse it. The browser self-terminates after `QUARRY_BROWSER_IDLE_TIMEOUT`
-seconds (default: 60) with no active pages.
+seconds (default: 60) with no active pages. Its diagnostics go to
+`browser-server.log` in the discovery directory
+(`$XDG_RUNTIME_DIR/quarry/`), whose path the run prints when it starts the
+server.
 
 Use `--no-browser-reuse` (or `no_browser_reuse: true` in config) to revert
 to per-run browser launch.

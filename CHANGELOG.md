@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Policy close**: `Close` on the buffered, streaming, and strict policies runs once, so a second call no longer flushes again. Its flush has a 30-second deadline, and a custom sink must honor context cancellation. `Close` returns `ErrCloseUnflushed` when accepted data remains unwritten, and data offered after `Close` begins is refused with `ErrPolicyClosed`.
+- **Browser server output**: The reusable browser server writes its diagnostics to `browser-server.log` in the discovery directory instead of the stderr of the run that launched it. A program that reads a run's output through a pipe no longer waits for the server's idle timeout to see end of file.
 
 ### Upgrade Notes
 

@@ -41,6 +41,12 @@ type ReusableBrowserConfig struct {
 // defaultIdleTimeout is used when ReusableBrowserConfig.IdleTimeout is zero.
 const defaultIdleTimeout = 60 * time.Second
 
+// browserServerLogName is the file in the discovery directory that receives
+// the browser server's stderr. The server outlives the run that launches it,
+// so it must not hold that run's stderr: a reader of the run's output would
+// wait for the server's idle shutdown before seeing end of file.
+const browserServerLogName = "browser-server.log"
+
 // AcquireReusableBrowser returns a WS endpoint for a reusable browser server.
 //
 // Flow:
@@ -57,6 +63,7 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 
 	lockPath := filepath.Join(dir, "browser.lock")
 	discoveryPath := filepath.Join(dir, "browser.json")
+	logPath := filepath.Join(dir, browserServerLogName)
 
 	// Acquire exclusive file lock
 	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
@@ -110,9 +117,9 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 		idleTimeout = defaultIdleTimeout
 	}
 
-	wsEndpoint, pid, err := launchBrowserServerProcess(ctx, cfg.ExecutorPath, cfg.ScriptPath, discoveryPath, idleTimeout, cfg.Proxy)
+	wsEndpoint, pid, err := launchBrowserServerProcess(ctx, cfg.ExecutorPath, cfg.ScriptPath, discoveryPath, logPath, idleTimeout, cfg.Proxy)
 	if err != nil {
-		return "", fmt.Errorf("browser reuse: launch: %w", err)
+		return "", fmt.Errorf("browser reuse: launch (log: %s): %w", logPath, err)
 	}
 
 	// Write discovery file
@@ -127,7 +134,7 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 		return "", fmt.Errorf("browser reuse: write discovery: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Starting reusable browser server (pid=%d)\n", pid)
+	fmt.Fprintf(os.Stderr, "Starting reusable browser server (pid=%d, log=%s)\n", pid, logPath)
 	return wsEndpoint, nil
 }
 
@@ -263,7 +270,7 @@ func proxyHash(proxy *types.ProxyEndpoint) string {
 // the parent quarry run invocation — that is the entire point of reuse.
 func launchBrowserServerProcess(
 	ctx context.Context,
-	executorPath, scriptPath, discoveryPath string,
+	executorPath, scriptPath, discoveryPath, logPath string,
 	idleTimeout time.Duration,
 	proxy *types.ProxyEndpoint,
 ) (wsEndpoint string, pid int, err error) {
@@ -292,8 +299,15 @@ func launchBrowserServerProcess(
 		return "", 0, fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	// Inherit stderr for diagnostics
-	cmd.Stderr = os.Stderr
+	// Diagnostics go to a log file, truncated per launch; the lock held by
+	// the caller means one server writes it at a time.
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return "", 0, fmt.Errorf("open browser server log: %w", err)
+	}
+	// The child holds its own descriptor once started.
+	defer iox.DiscardClose(logFile)
+	cmd.Stderr = logFile
 
 	if err := cmd.Start(); err != nil {
 		return "", 0, fmt.Errorf("start browser server: %w", err)

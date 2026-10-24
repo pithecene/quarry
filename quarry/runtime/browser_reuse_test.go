@@ -3,9 +3,11 @@ package runtime
 import (
 	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -358,6 +360,49 @@ func TestKillProcessGroup(t *testing.T) {
 	// Verify it's dead (signal 0 is a liveness probe)
 	if err := syscall.Kill(pid, 0); err == nil {
 		t.Error("process still alive after killProcessGroup")
+	}
+}
+
+// The browser server outlives the run that launches it, so its stderr must
+// be the log file, never the run's own stderr: a reader of the run's output
+// would otherwise wait for the server's idle shutdown to see end of file.
+func TestLaunchBrowserServerProcess_StderrGoesToLog(t *testing.T) {
+	testutil.Serial(t, "writes and executes a file, which a fork in a parallel test can hold open (ETXTBSY)")
+	if _, err := os.Stat("/proc/self/fd"); err != nil {
+		t.Skip("/proc unavailable")
+	}
+
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-executor")
+	script := "#!/bin/sh\necho 'browser server diagnostics' >&2\necho ws://127.0.0.1:1/devtools/browser/fake\nexec sleep 60\n"
+	if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake executor: %v", err)
+	}
+	logPath := filepath.Join(dir, browserServerLogName)
+
+	ws, pid, err := launchBrowserServerProcess(t.Context(), fake, "script.ts",
+		filepath.Join(dir, "browser.json"), logPath, time.Minute, nil)
+	if err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	t.Cleanup(func() { killProcessGroup(pid) })
+	if ws != "ws://127.0.0.1:1/devtools/browser/fake" {
+		t.Errorf("endpoint = %q", ws)
+	}
+
+	stderrTarget, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/2", pid))
+	if err != nil {
+		t.Fatalf("read server stderr: %v", err)
+	}
+	if stderrTarget != logPath {
+		t.Errorf("server stderr = %q, want the log %q", stderrTarget, logPath)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if !strings.Contains(string(data), "browser server diagnostics") {
+		t.Errorf("log = %q, want the server's stderr", data)
 	}
 }
 
