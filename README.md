@@ -11,7 +11,7 @@
 
 Quarry is a web extraction runtime for imperative, browser-backed scraping workflows. It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
 
-Quarry executes user-authored Puppeteer scripts under a strict runtime contract, streams observations incrementally, and hands off persistence to an external substrate (typically Lode). It is intentionally *not* a crawler framework, workflow engine, or low-code platform.
+Quarry executes user-authored Puppeteer scripts under a strict runtime contract, streams observations incrementally, and hands off persistence to an external substrate (typically [Lode](https://github.com/pithecene/lode)). It is intentionally *not* a crawler framework, workflow engine, or low-code platform.
 
 ---
 
