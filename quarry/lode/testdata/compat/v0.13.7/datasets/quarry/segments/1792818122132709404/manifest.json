@@ -1,0 +1,18 @@
+{
+  "schema_name": "lode-manifest",
+  "format_version": "1.0.0",
+  "dataset_id": "quarry",
+  "snapshot_id": "1792818122132709404",
+  "created_at": "2026-10-24T05:02:02.133508689Z",
+  "metadata": {},
+  "files": [
+    {
+      "path": "datasets/quarry/partitions/source=shop/category=products/day=2026-10-01/run_id=run-ok-1/event_type=item/segments/1792818122132709404/data/data",
+      "size_bytes": 674
+    }
+  ],
+  "row_count": 2,
+  "codec": "jsonl",
+  "compressor": "noop",
+  "partitioner": "hive"
+}

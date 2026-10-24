@@ -1,0 +1,1 @@
+{"attempt":2,"category":"products","contract_version":"0.13.7","day":"2026-10-01","event_id":"run-retry-1-e3","event_type":"run_complete","job_id":"job-1","parent_run_id":"run-fail-1","payload":{"summary":"done"},"policy":"strict","record_kind":"event","run_id":"run-retry-1","seq":3,"source":"shop","ts":"2026-10-01T03:00:03Z","type":"run_complete"}
