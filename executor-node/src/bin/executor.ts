@@ -27,6 +27,7 @@ import { join } from 'node:path'
 import type { ProxyEndpoint } from '@pithecene/quarry-sdk'
 import { chromiumArgs } from '../browser-args.js'
 import { serveLeases } from '../browser-lease-server.js'
+import { closeRecordedBrowser, recordBrowser } from '../browser-record.js'
 import { errorMessage, execute, parseRunMeta } from '../executor.js'
 import { AckReader } from '../ipc/ack-reader.js'
 import { drainStdout } from '../ipc/sink.js'
@@ -216,13 +217,20 @@ async function readStdinMetadata(): Promise<string> {
  * connection to its lease socket (see browser-lease-server.ts).
  *
  * Lifecycle:
- * 1. Launch the browser with plugins
+ * 1. Close the browser an earlier server left running, if any (see
+ *    browser-record.ts), then launch the browser with plugins and record it
  * 2. Listen on `server.sock` in QUARRY_BROWSER_REUSE_DIR, then print `ready`
  * 3. Shut down once no run has held a lease for the idle timeout, when the
  *    browser closes or crashes, or on SIGTERM or SIGINT
  */
 async function browserServer(scriptPath: string): Promise<never> {
-  const { getPuppeteer: getBrowserPuppeteer } = await import('../executor.js')
+  const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer } = await import('../executor.js')
+  const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? '.'
+  const recordPath = join(reuseDir, 'browser.json')
+  const log = (message: string): void => void process.stderr.write(`${message}\n`)
+
+  const vanilla = await getVanillaPuppeteer(scriptPath)
+  await closeRecordedBrowser(recordPath, (options) => vanilla.connect(options), log)
 
   const puppeteer = await getBrowserPuppeteer(scriptPath, {
     stealth: process.env.QUARRY_STEALTH !== '0',
@@ -251,15 +259,22 @@ async function browserServer(scriptPath: string): Promise<never> {
     )
   ])
 
-  const leases = await serveLeases({
-    socketPath: join(process.env.QUARRY_BROWSER_REUSE_DIR ?? '.', 'server.sock'),
-    wsEndpoint: browser.wsEndpoint(),
-    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? '',
-    idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? '60', 10) * 1000
-  }).catch(async (err: unknown) => {
-    await browser.close()
-    throw err
-  })
+  // Record the browser before offering it, so a server killed from here on
+  // leaves a browser that the next server can find and close.
+  const leases = await Promise.resolve()
+    .then(() => recordBrowser(recordPath, browser.wsEndpoint()))
+    .then(() =>
+      serveLeases({
+        socketPath: join(reuseDir, 'server.sock'),
+        wsEndpoint: browser.wsEndpoint(),
+        proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? '',
+        idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? '60', 10) * 1000
+      })
+    )
+    .catch(async (err: unknown) => {
+      await browser.close()
+      throw err
+    })
 
   // The runtime closes its end of stdout once it reads `ready`
   process.on('SIGPIPE', () => undefined)

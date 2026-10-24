@@ -47,7 +47,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // ../sdk/dist/index.mjs
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync as readFileSync2 } from "node:fs";
 import v8 from "node:v8";
 function buildStorageKey(partition, filename) {
   return `datasets/${partition.dataset}/partitions/source=${partition.source}/category=${partition.category}/day=${partition.day}/run_id=${partition.run_id}/files/${filename}`;
@@ -278,7 +278,7 @@ function readCgroupUsage(readFile = readCgroupFile) {
 }
 function readCgroupFile(path) {
   try {
-    const content = readFileSync(path, "utf8").trim();
+    const content = readFileSync2(path, "utf8").trim();
     if (content === "max") return null;
     const value = Number.parseInt(content, 10);
     return Number.isNaN(value) ? null : value;
@@ -2601,6 +2601,7 @@ __export(executor_exports, {
   errorMessage: () => errorMessage,
   execute: () => execute,
   getPuppeteer: () => getPuppeteer,
+  getVanillaPuppeteer: () => getVanillaPuppeteer,
   parseRunMeta: () => parseRunMeta
 });
 import { createRequire } from "node:module";
@@ -3150,6 +3151,51 @@ function parseRequest(line) {
   }
 }
 
+// src/browser-record.ts
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
+var CLOSE_TIMEOUT_MS = 5e3;
+async function closeRecordedBrowser(recordPath, connect, log) {
+  const endpoint = readRecordedEndpoint(recordPath, log);
+  if (endpoint === void 0) return;
+  try {
+    const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), CLOSE_TIMEOUT_MS);
+    await withTimeout(browser.close(), CLOSE_TIMEOUT_MS);
+    log(`Closed the browser an earlier server left running (${endpoint})`);
+  } catch {
+  }
+}
+function recordBrowser(recordPath, endpoint) {
+  const tmp = `${recordPath}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify({ ws_endpoint: endpoint })}
+`, { mode: 384 });
+  renameSync(tmp, recordPath);
+}
+function readRecordedEndpoint(recordPath, log) {
+  let text;
+  try {
+    text = readFileSync(recordPath, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      log(`Cannot read ${recordPath}, leaving any browser it names: ${String(err)}`);
+    }
+    return void 0;
+  }
+  try {
+    const endpoint = JSON.parse(text)?.ws_endpoint;
+    if (typeof endpoint === "string" && endpoint !== "") return endpoint;
+  } catch {
+  }
+  log(`Ignoring malformed ${recordPath}`);
+  return void 0;
+}
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // src/bin/executor.ts
 init_executor();
 
@@ -3460,7 +3506,13 @@ async function readStdinMetadata() {
   });
 }
 async function browserServer(scriptPath) {
-  const { getPuppeteer: getBrowserPuppeteer } = await Promise.resolve().then(() => (init_executor(), executor_exports));
+  const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer: getVanillaPuppeteer2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
+  const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? ".";
+  const recordPath = join(reuseDir, "browser.json");
+  const log = (message) => void process.stderr.write(`${message}
+`);
+  const vanilla = await getVanillaPuppeteer2(scriptPath);
+  await closeRecordedBrowser(recordPath, (options) => vanilla.connect(options), log);
   const puppeteer = await getBrowserPuppeteer(scriptPath, {
     stealth: process.env.QUARRY_STEALTH !== "0",
     adblocker: process.env.QUARRY_ADBLOCKER === "1"
@@ -3481,12 +3533,14 @@ async function browserServer(scriptPath) {
       )
     )
   ]);
-  const leases = await serveLeases({
-    socketPath: join(process.env.QUARRY_BROWSER_REUSE_DIR ?? ".", "server.sock"),
-    wsEndpoint: browser.wsEndpoint(),
-    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
-    idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
-  }).catch(async (err) => {
+  const leases = await Promise.resolve().then(() => recordBrowser(recordPath, browser.wsEndpoint())).then(
+    () => serveLeases({
+      socketPath: join(reuseDir, "server.sock"),
+      wsEndpoint: browser.wsEndpoint(),
+      proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
+      idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
+    })
+  ).catch(async (err) => {
     await browser.close();
     throw err;
   });

@@ -381,6 +381,11 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   listens. The operating system releases the lock if its holder ends. A
   server that exits or fails to listen within 30 seconds is the only
   server the runtime stops, and the runtime stops it as its own child.
+- A server records its browser's endpoint in `browser.json`. A server that
+  ends without closing its browser, as when it is killed with `SIGKILL`,
+  leaves the browser running. The next server closes that browser through
+  the Chrome DevTools Protocol before it launches its own. Only a server
+  reads or writes `browser.json`, and only while it starts under the lock.
 - A server whose browser closes or crashes shuts down.
 - When the runtime cannot tell whether a server is usable, the run does
   not share a browser. This holds when the connection fails for any other

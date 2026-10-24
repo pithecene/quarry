@@ -228,8 +228,9 @@ func TestE2E_BrowserReuse_ProxyMismatch(t *testing.T) {
 	}
 }
 
-// A server killed outright leaves its socket file behind; the next run finds
-// it refuses connections and starts a new server.
+// A server killed outright leaves its socket file and its browser behind.
+// The next run finds the socket refuses connections and starts a new server,
+// which closes the browser the killed one left running.
 func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 	testutil.Serial(t, "setupE2E calls t.Setenv")
 	h := setupE2E(t)
@@ -239,12 +240,6 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 		t.Fatalf("first acquire: %v", err)
 	}
 	pid := serverPID(t, h.socketPath)
-	// The killed server's browser keeps running; close it once the test ends.
-	t.Cleanup(func() {
-		if browserAlive(ws1) {
-			closeBrowser(t, ws1)
-		}
-	})
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
 		t.Fatalf("kill server: %v", err)
 	}
@@ -256,6 +251,10 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 	}
 	if ws2 == ws1 {
 		t.Error("expected a new server's endpoint after the kill")
+	}
+	if browserAlive(ws1) {
+		closeBrowser(t, ws1)
+		t.Error("the new server left the killed server's browser running")
 	}
 }
 
