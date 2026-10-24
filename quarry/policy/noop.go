@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	"github.com/pithecene/quarry/types"
@@ -82,9 +83,7 @@ func (p *NoopPolicy) Stats() Stats {
 	// Return a copy with a copied map
 	stats := p.stats
 	stats.DroppedByType = make(map[types.EventType]int64, len(p.stats.DroppedByType))
-	for k, v := range p.stats.DroppedByType {
-		stats.DroppedByType[k] = v
-	}
+	maps.Copy(stats.DroppedByType, p.stats.DroppedByType)
 
 	return stats
 }

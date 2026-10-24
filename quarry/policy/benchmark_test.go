@@ -428,7 +428,7 @@ func BenchmarkPolicies_IngestEvent_Comparison(b *testing.B) {
 
 	b.Run("buffered", func(b *testing.B) {
 		pol, _ := NewBufferedPolicy(noopSink{}, BufferedConfig{
-			MaxBufferEvents: 0, // bytes-only limit
+			MaxBufferEvents: 0,       // bytes-only limit
 			MaxBufferBytes:  1 << 62, // effectively unbounded
 			FlushMode:       FlushAtLeastOnce,
 		})
@@ -636,9 +636,7 @@ func BenchmarkStreamingPolicy_FlushUnderLoad(b *testing.B) {
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			env := benchEnvelope(1)
 			for {
 				select {
@@ -648,7 +646,7 @@ func BenchmarkStreamingPolicy_FlushUnderLoad(b *testing.B) {
 					_ = pol.IngestEvent(ctx, env)
 				}
 			}
-		}()
+		})
 	}
 
 	// Let writers fill the buffer

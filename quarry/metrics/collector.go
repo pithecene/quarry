@@ -5,7 +5,10 @@
 // policy.Stats at run completion rather than recorded live, avoiding double-counting.
 package metrics
 
-import "sync"
+import (
+	"maps"
+	"sync"
+)
 
 // Snapshot is an immutable point-in-time view of all contract-required metrics.
 // Returned by Collector.Snapshot(). Safe to read concurrently after creation.
@@ -230,14 +233,10 @@ func (c *Collector) AbsorbPolicyStats(totalEvents, persisted, dropped int64, dro
 	c.eventsPersisted = persisted
 	c.eventsDropped = dropped
 	c.droppedByType = make(map[string]int64, len(droppedByType))
-	for k, v := range droppedByType {
-		c.droppedByType[k] = v
-	}
+	maps.Copy(c.droppedByType, droppedByType)
 	if flushTriggers != nil {
 		c.flushTriggers = make(map[string]int64, len(flushTriggers))
-		for k, v := range flushTriggers {
-			c.flushTriggers[k] = v
-		}
+		maps.Copy(c.flushTriggers, flushTriggers)
 	} else {
 		c.flushTriggers = nil
 	}
@@ -257,16 +256,12 @@ func (c *Collector) Snapshot() Snapshot {
 	defer c.mu.Unlock()
 
 	dropped := make(map[string]int64, len(c.droppedByType))
-	for k, v := range c.droppedByType {
-		dropped[k] = v
-	}
+	maps.Copy(dropped, c.droppedByType)
 
 	var triggers map[string]int64
 	if c.flushTriggers != nil {
 		triggers = make(map[string]int64, len(c.flushTriggers))
-		for k, v := range c.flushTriggers {
-			triggers[k] = v
-		}
+		maps.Copy(triggers, c.flushTriggers)
 	}
 
 	return Snapshot{
