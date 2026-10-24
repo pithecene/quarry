@@ -13,15 +13,15 @@ import (
 
 // ParityArtifact represents the CLI parity artifact structure.
 type ParityArtifact struct {
-	Version     string                     `json:"version"`
-	Description string                     `json:"description"`
-	Commands    map[string]ParityCommand   `json:"commands"`
+	Version     string                   `json:"version"`
+	Description string                   `json:"description"`
+	Commands    map[string]ParityCommand `json:"commands"`
 }
 
 // ParityCommand represents a command in the parity artifact.
 type ParityCommand struct {
-	Description string                     `json:"description"`
-	Flags       map[string]ParityFlag      `json:"flags,omitempty"`
+	Description string                      `json:"description"`
+	Flags       map[string]ParityFlag       `json:"flags,omitempty"`
 	Subcommands map[string]ParitySubcommand `json:"subcommands,omitempty"`
 }
 
@@ -32,15 +32,15 @@ type ParitySubcommand struct {
 
 // ParityFlag represents a flag in the parity artifact.
 type ParityFlag struct {
-	Type        string   `json:"type"`
-	Aliases     []string `json:"aliases,omitempty"`
-	Required    bool     `json:"required"`
-	Default     any      `json:"default,omitempty"`
-	Description string   `json:"description"`
-	Validation  string   `json:"validation,omitempty"`
+	Type          string   `json:"type"`
+	Aliases       []string `json:"aliases,omitempty"`
+	Required      bool     `json:"required"`
+	Default       any      `json:"default,omitempty"`
+	Description   string   `json:"description"`
+	Validation    string   `json:"validation,omitempty"`
 	ExclusiveWith []string `json:"exclusiveWith,omitempty"`
-	DependsOn   []string `json:"dependsOn,omitempty"`
-	Notes       string   `json:"notes,omitempty"`
+	DependsOn     []string `json:"dependsOn,omitempty"`
+	Notes         string   `json:"notes,omitempty"`
 }
 
 // loadParityArtifact loads the CLI parity artifact from docs/CLI_PARITY.json.
@@ -55,7 +55,7 @@ func loadParityArtifact(t *testing.T) *ParityArtifact {
 
 	// Walk up from quarry/cli/cmd to find repo root
 	dir := filepath.Dir(filename)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		candidate := filepath.Join(dir, "docs", "CLI_PARITY.json")
 		if _, err := os.Stat(candidate); err == nil {
 			data, err := os.ReadFile(candidate)

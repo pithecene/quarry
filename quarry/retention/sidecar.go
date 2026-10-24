@@ -78,8 +78,7 @@ func unambiguous(cfg qlode.Config) bool {
 // recordedSidecars returns the sidecar paths that the run's snapshots record
 // in their metadata (CONTRACT_LODE.md §Sidecar File Inventory).
 func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]string, error) {
-	ds := lode.DatasetID(p.dataset)
-	parts, err := p.dr.ListPartitions(ctx, ds, lode.PartitionListOptions{Prefix: partition})
+	parts, err := p.ds.ListPartitions(ctx, lode.PartitionListOptions{Prefix: partition})
 	if errors.Is(err, lode.ErrNotFound) {
 		return nil, nil
 	}
@@ -89,23 +88,27 @@ func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]stri
 	seen := map[lode.DatasetSnapshotID]bool{}
 	var out []string
 	for _, part := range parts {
-		refs, err := p.dr.ListManifests(ctx, ds, part.Path, lode.ManifestListOptions{})
+		refs, err := p.ds.ListManifests(ctx, part.Path, lode.ManifestListOptions{})
 		if err != nil {
-			return nil, qlode.WrapReadError(err, part.Path)
+			return nil, qlode.WrapReadError(err, part.Path.String())
 		}
 		for _, ref := range refs {
 			if seen[ref.ID] {
 				continue
 			}
 			seen[ref.ID] = true
-			m, err := p.dr.GetManifest(ctx, ds, ref)
+			m, err := p.ds.GetManifest(ctx, ref)
 			if errors.Is(err, lode.ErrNotFound) {
 				continue // expired since the listing
 			}
 			if err != nil {
-				return nil, qlode.WrapReadError(err, part.Path)
+				return nil, qlode.WrapReadError(err, part.Path.String())
 			}
-			raw, recorded := m.Metadata[qlode.MetadataKeySidecarFiles]
+			var meta map[string]any
+			if err := m.Metadata.Decode(&meta); err != nil {
+				return nil, fmt.Errorf("%w: snapshot %s: %w", errMalformedInventory, ref.ID, err)
+			}
+			raw, recorded := meta[qlode.MetadataKeySidecarFiles]
 			if !recorded {
 				continue // the writer omits the key when a snapshot adds no file
 			}

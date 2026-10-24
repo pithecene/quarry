@@ -30,13 +30,13 @@ var (
 // fixture writes runs through the real write path into one memory store.
 type fixture struct {
 	t       *testing.T
-	store   lode.Store
-	factory lode.StoreFactory
+	store   lode.RangeStore
+	factory lode.Factory[lode.RangeStore]
 }
 
 func newFixture(t *testing.T) *fixture {
 	store := lode.NewMemory()
-	return &fixture{t: t, store: store, factory: func() (lode.Store, error) { return store, nil }}
+	return &fixture{t: t, store: store, factory: func() (lode.RangeStore, error) { return store, nil }}
 }
 
 type runSpec struct {
@@ -53,7 +53,7 @@ type runSpec struct {
 func (f *fixture) write(spec runSpec) qlode.Config {
 	f.t.Helper()
 	cfg := qlode.Config{Dataset: "quarry", Source: spec.source, Category: "cat", Day: spec.day, RunID: spec.runID}
-	c, err := qlode.NewLodeClientWithFactory(cfg, f.factory)
+	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
 	if err != nil {
 		f.t.Fatalf("client: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestPrune_UsesOneStore(t *testing.T) {
 	t.Parallel()
 	f, cfgs := seed(t)
 	calls := 0
-	factory := func() (lode.Store, error) {
+	factory := func() (lode.RangeStore, error) {
 		calls++
 		if calls > 1 {
 			return lode.NewMemory(), nil // a separate, empty store per call
@@ -456,7 +456,7 @@ func TestPrune_OneRunReportsItsMalformedKey(t *testing.T) {
 // commitDuring is a store that runs commit once, the first time the prune
 // lists a sidecar prefix: after the preview expiry and before the real one.
 type commitDuring struct {
-	lode.Store
+	lode.RangeStore
 	commit func()
 	done   bool
 }
@@ -466,7 +466,7 @@ func (s *commitDuring) List(ctx context.Context, prefix string) ([]string, error
 		s.done = true
 		s.commit()
 	}
-	return s.Store.List(ctx, prefix)
+	return s.RangeStore.List(ctx, prefix)
 }
 
 // A run that commits after the preview keeps that snapshot and its records,
@@ -474,12 +474,12 @@ func (s *commitDuring) List(ctx context.Context, prefix string) ([]string, error
 func TestPrune_KeepsASnapshotCommittedAfterThePreview(t *testing.T) {
 	t.Parallel()
 	f, cfgs := seed(t)
-	store := &commitDuring{Store: f.store}
+	store := &commitDuring{RangeStore: f.store}
 	store.commit = func() {
 		f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, again: true})
 		f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
 	}
-	factory := func() (lode.Store, error) { return store, nil }
+	factory := func() (lode.RangeStore, error) { return store, nil }
 	report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now})
 	if err != nil {
 		t.Fatalf("Prune: %v", err)

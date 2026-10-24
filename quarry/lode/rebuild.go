@@ -77,7 +77,7 @@ const metricsEventType = "metrics"
 type legacyRun struct {
 	cfg        Config
 	prefix     string
-	partitions map[string]string // event_type -> partition path
+	partitions map[string]lode.PartitionPath // event_type -> partition path
 }
 
 // RebuildRunRecords writes run records for every run in the dataset's
@@ -86,7 +86,7 @@ type legacyRun struct {
 // written by the runtime is never touched, and a backfilled run gains only a
 // missing end record, so rerunning is idempotent. A store error terminates
 // the rebuild and returns the partial report; a rerun resumes it.
-func RebuildRunRecords(ctx context.Context, dataset string, factory lode.StoreFactory, opts RebuildOptions) (RebuildReport, error) {
+func RebuildRunRecords(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore], opts RebuildOptions) (RebuildReport, error) {
 	report := RebuildReport{Dataset: dataset, DryRun: opts.DryRun, Runs: []RebuiltRun{}}
 	if err := ValidateRunKey(dataset, "x", "x", "x"); err != nil {
 		return report, err
@@ -95,7 +95,11 @@ func RebuildRunRecords(ctx context.Context, dataset string, factory lode.StoreFa
 	if err != nil {
 		return report, err
 	}
-	dr, err := NewPartitionReader(store)
+	// A dataset without snapshots has no partitions to derive runs from.
+	dr, err := OpenView(ctx, dataset, store)
+	if errors.Is(err, lode.ErrNotFound) {
+		return report, nil
+	}
 	if err != nil {
 		return report, WrapReadError(err, "datasets/"+dataset)
 	}
@@ -107,7 +111,7 @@ func RebuildRunRecords(ctx context.Context, dataset string, factory lode.StoreFa
 	if err != nil {
 		return report, err
 	}
-	rb := rebuilder{store: store, dr: dr, ds: lode.DatasetID(dataset), existing: existing, dryRun: opts.DryRun}
+	rb := rebuilder{store: store, dr: dr, existing: existing, dryRun: opts.DryRun}
 	for _, run := range runs {
 		report.RunsScanned++
 		out, indexed, err := rb.rebuild(ctx, run)
@@ -141,7 +145,7 @@ func (r *RebuildReport) add(run RebuiltRun, alreadyIndexed bool) {
 	r.Runs = append(r.Runs, run)
 }
 
-func openStore(factory lode.StoreFactory) (lode.Store, error) {
+func openStore(factory lode.Factory[lode.RangeStore]) (lode.Store, error) {
 	if factory == nil {
 		return nil, errors.New("rebuild: nil store factory")
 	}
@@ -171,8 +175,8 @@ func listKeys(ctx context.Context, store lode.Store, prefix string) (map[string]
 }
 
 // legacyRuns groups the dataset's partitions by run, in key order.
-func legacyRuns(ctx context.Context, dr lode.DatasetReader, dataset string) ([]legacyRun, error) {
-	parts, err := dr.ListPartitions(ctx, lode.DatasetID(dataset), lode.PartitionListOptions{})
+func legacyRuns(ctx context.Context, dr lode.SnapshotReader, dataset string) ([]legacyRun, error) {
+	parts, err := dr.ListPartitions(ctx, lode.PartitionListOptions{})
 	if errors.Is(err, lode.ErrNotFound) {
 		return nil, nil
 	}
@@ -181,14 +185,15 @@ func legacyRuns(ctx context.Context, dr lode.DatasetReader, dataset string) ([]l
 	}
 	byPrefix := map[string]*legacyRun{}
 	for _, p := range parts {
-		values, ok := splitPartition(p.Path)
+		path := p.Path.String()
+		values, ok := splitPartition(path)
 		if !ok {
-			return nil, fmt.Errorf("rebuild: partition %q does not have the layout %s", p.Path, strings.Join(partitionKeys, "/"))
+			return nil, fmt.Errorf("rebuild: partition %q does not have the layout %s", path, strings.Join(partitionKeys, "/"))
 		}
-		prefix := p.Path[:strings.LastIndex(p.Path, "/")+1]
+		prefix := path[:strings.LastIndex(path, "/")+1]
 		run, seen := byPrefix[prefix]
 		if !seen {
-			run = &legacyRun{prefix: prefix, partitions: map[string]string{}, cfg: Config{
+			run = &legacyRun{prefix: prefix, partitions: map[string]lode.PartitionPath{}, cfg: Config{
 				Dataset: dataset, Source: values[0], Category: values[1], Day: values[2], RunID: values[3],
 			}}
 			byPrefix[prefix] = run
@@ -226,8 +231,7 @@ func splitPartition(path string) ([]string, bool) {
 
 type rebuilder struct {
 	store    lode.Store
-	dr       lode.DatasetReader
-	ds       lode.DatasetID
+	dr       lode.SnapshotReader
 	existing map[string]bool
 	dryRun   bool
 }
@@ -302,7 +306,7 @@ func (b *rebuilder) terminalEvent(ctx context.Context, run legacyRun) (map[strin
 		if !ok {
 			continue
 		}
-		recs, err := ReadPartitionRecords(ctx, b.dr, b.ds, path)
+		recs, err := ReadPartitionRecords(ctx, b.dr, path)
 		if err != nil {
 			return nil, "", err
 		}
@@ -390,7 +394,7 @@ func (b *rebuilder) lineageEvent(ctx context.Context, run legacyRun) (map[string
 	}
 	sort.Strings(names)
 	for _, et := range names {
-		recs, err := ReadPartitionRecords(ctx, b.dr, b.ds, run.partitions[et])
+		recs, err := ReadPartitionRecords(ctx, b.dr, run.partitions[et])
 		if err != nil {
 			return nil, err
 		}

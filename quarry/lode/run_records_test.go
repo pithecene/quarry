@@ -18,9 +18,9 @@ func TestValidateRunKey(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name                              string
+		name                             string
 		dataset, source, category, runID string
-		ok                                bool
+		ok                               bool
 	}{
 		{"valid", "quarry", "src", "cat", "run-1", true},
 		{"slash in source is encodable", "quarry", "a/b", "cat", "run-1", true},
@@ -66,7 +66,7 @@ func TestPartitionPrefix_MatchesLodeHiveLayout(t *testing.T) {
 
 	cfg := Config{Dataset: "quarry", Source: "a/b", Category: "c d", Day: "2026-10-21", RunID: "run-1"}
 	factory := sharedMemoryFactory()
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	factory := sharedMemoryFactory()
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	for k, want := range map[string]any{
 		"record_kind": "run_start", "schema_version": float64(1), "run_id": "run-1", "job_id": "job-1",
 		"attempt": float64(1), "dataset": "quarry", "source": "src", "category": "cat", "day": "2026-10-21",
-		"partition": "source=src/category=cat/day=2026-10-21/run_id=run-1/",
+		"partition":  "source=src/category=cat/day=2026-10-21/run_id=run-1/",
 		"started_at": "2026-10-21T08:30:00.000000123Z", "quarry_version": types.Version, "backfilled": false,
 	} {
 		if start[k] != want {
@@ -151,7 +151,7 @@ func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {
 
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
 	factory := sharedMemoryFactory()
-	client, _ := NewLodeClientWithFactory(cfg, factory)
+	client, _ := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err := client.WriteEndRecord(t.Context(), RunEnd{EndedAt: time.Now(), Outcome: types.OutcomeExecutorCrash}); err != nil {
 		t.Fatalf("WriteEndRecord: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestWriteStartRecord_DuplicateRunIDRefused(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
-	client, _ := NewLodeClientWithFactory(cfg, lode.NewMemoryFactory())
+	client, _ := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	meta := &types.RunMeta{RunID: cfg.RunID, Attempt: 1}
 	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	if err := client.WriteStartRecord(t.Context(), meta, at); err != nil {
@@ -184,12 +184,12 @@ func TestWriteStartRecord_DuplicateRunIDRefused(t *testing.T) {
 
 // sharedMemoryFactory returns a factory that always yields the same memory
 // store, so a test can read back what the client wrote.
-func sharedMemoryFactory() lode.StoreFactory {
+func sharedMemoryFactory() lode.Factory[lode.RangeStore] {
 	store := lode.NewMemory()
-	return func() (lode.Store, error) { return store, nil }
+	return func() (lode.RangeStore, error) { return store, nil }
 }
 
-func readJSON(t *testing.T, store lode.Store, path string, v any) {
+func readJSON(t *testing.T, store lode.RangeStore, path string, v any) {
 	t.Helper()
 	rc, err := store.Get(t.Context(), path)
 	if err != nil {
@@ -211,7 +211,7 @@ func TestWriteStartRecord_RejectsUnsafeKey(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{Dataset: "../other", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
-	client, err := NewLodeClientWithFactory(cfg, sharedMemoryFactory())
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedMemoryFactory())
 	if err != nil {
 		t.Skipf("Lode rejected the dataset itself: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestWriteStartRecord_DayChecks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: tc.day, RunID: "run-1"}
-			client, _ := NewLodeClientWithFactory(cfg, sharedMemoryFactory())
+			client, _ := NewLodeClientWithFactory(t.Context(), cfg, sharedMemoryFactory())
 			if err := client.WriteStartRecord(t.Context(), meta, tc.at); !errors.Is(err, ErrInvalidRunKey) {
 				t.Fatalf("err = %v, want ErrInvalidRunKey", err)
 			}

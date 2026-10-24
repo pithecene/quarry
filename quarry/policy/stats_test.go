@@ -33,11 +33,11 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 	const numEventsPerIngester = 100
 
 	// Spawn ingesters
-	for i := 0; i < numIngesters; i++ {
+	for i := range numIngesters {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < numEventsPerIngester; j++ {
+			for j := range numEventsPerIngester {
 				select {
 				case <-ctx.Done():
 					return
@@ -54,10 +54,8 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Spawn chunk ingesters
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 50; i++ {
+	wg.Go(func() {
+		for i := range 50 {
 			select {
 			case <-ctx.Done():
 				return
@@ -70,14 +68,12 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 			}
 			_ = pol.IngestArtifactChunk(ctx, chunk)
 		}
-	}()
+	})
 
 	// Spawn stats readers
 	statsResults := make(chan policy.Stats, 1000)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 200; i++ {
+	wg.Go(func() {
+		for range 200 {
 			select {
 			case <-ctx.Done():
 				return
@@ -86,13 +82,11 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 			stats := pol.Stats()
 			statsResults <- stats
 		}
-	}()
+	})
 
 	// Spawn flushers
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 10; i++ {
+	wg.Go(func() {
+		for range 10 {
 			select {
 			case <-ctx.Done():
 				return
@@ -100,7 +94,7 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 			}
 			_ = pol.Flush(ctx)
 		}
-	}()
+	})
 
 	wg.Wait()
 	close(statsResults)
@@ -131,7 +125,7 @@ func TestBufferedPolicy_Stats_BufferSizeZeroAfterFlush(t *testing.T) {
 	ctx := t.Context()
 
 	// Ingest some data
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		_ = pol.IngestEvent(ctx, &types.EventEnvelope{
 			EventID: "e",
 			Type:    types.EventTypeItem,
@@ -189,7 +183,7 @@ func TestPolicy_Stats_CrossPolicyConsistency(t *testing.T) {
 			ctx := t.Context()
 
 			// Ingest events
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				err := pol.IngestEvent(ctx, &types.EventEnvelope{
 					EventID: "e",
 					Type:    types.EventTypeItem,
@@ -201,7 +195,7 @@ func TestPolicy_Stats_CrossPolicyConsistency(t *testing.T) {
 			}
 
 			// Ingest chunks
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				err := pol.IngestArtifactChunk(ctx, &types.ArtifactChunk{
 					ArtifactID: "a1",
 					Seq:        int64(i),
@@ -404,7 +398,7 @@ func TestStats_EventsPersisted_OnlyOnSuccess(t *testing.T) {
 	ctx := t.Context()
 
 	// Add events
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_ = pol.IngestEvent(ctx, &types.EventEnvelope{
 			EventID: "e", Type: types.EventTypeItem,
 		})

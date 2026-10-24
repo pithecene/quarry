@@ -3,6 +3,7 @@ package reader
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,13 +18,13 @@ import (
 // fixture writes runs through the real write path into one memory store.
 type fixture struct {
 	t       *testing.T
-	store   lode.Store
-	factory lode.StoreFactory
+	store   lode.RangeStore
+	factory lode.Factory[lode.RangeStore]
 }
 
 func newFixture(t *testing.T) *fixture {
 	store := lode.NewMemory()
-	return &fixture{t: t, store: store, factory: func() (lode.Store, error) { return store, nil }}
+	return &fixture{t: t, store: store, factory: func() (lode.RangeStore, error) { return store, nil }}
 }
 
 type runSpec struct {
@@ -35,7 +36,7 @@ type runSpec struct {
 func (f *fixture) write(spec runSpec) {
 	f.t.Helper()
 	cfg := qlode.Config{Dataset: "quarry", Source: spec.source, Category: spec.category, Day: spec.day, RunID: spec.runID}
-	c, err := qlode.NewLodeClientWithFactory(cfg, f.factory)
+	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
 	if err != nil {
 		f.t.Fatalf("client: %v", err)
 	}
@@ -49,10 +50,10 @@ func (f *fixture) write(spec runSpec) {
 	}
 	// Write events in two batches, out of seq order across event types, so
 	// ReadEvents has to order them.
-	for i := len(spec.events) - 1; i >= 0; i-- {
+	for i, v := range slices.Backward(spec.events) {
 		ev := &types.EventEnvelope{
 			ContractVersion: types.ContractVersion, EventID: fmt.Sprintf("e%d", i+1), RunID: spec.runID,
-			Seq: int64(i + 1), Type: spec.events[i], Ts: "2026-10-21T01:00:00Z", Payload: map[string]any{"n": i + 1}, Attempt: 1,
+			Seq: int64(i + 1), Type: v, Ts: "2026-10-21T01:00:00Z", Payload: map[string]any{"n": i + 1}, Attempt: 1,
 		}
 		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
 			f.t.Fatalf("events: %v", err)
@@ -257,7 +258,7 @@ func TestListRuns_IgnoresEndWithoutStart(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	cfg := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "orphan"}
-	c, _ := qlode.NewLodeClientWithFactory(cfg, f.factory)
+	c, _ := qlode.NewLodeClientWithFactory(t.Context(), cfg, f.factory)
 	if err := c.WriteEndRecord(t.Context(), *ended(types.OutcomeExecutorCrash, "")); err != nil {
 		t.Fatalf("end: %v", err)
 	}
@@ -316,7 +317,7 @@ func TestNew_RejectsInvalidFactory(t *testing.T) {
 	if _, err := New("quarry", nil); err == nil {
 		t.Error("nil factory accepted")
 	}
-	if _, err := New("quarry", func() (lode.Store, error) { return nil, nil }); err == nil {
+	if _, err := New("quarry", func() (lode.RangeStore, error) { return nil, nil }); err == nil {
 		t.Error("nil store accepted")
 	}
 }
@@ -327,7 +328,7 @@ func TestReadEvents_UsesTheListingStore(t *testing.T) {
 	t.Parallel()
 	f := seedRuns(t)
 	calls := 0
-	r, err := New("quarry", func() (lode.Store, error) {
+	r, err := New("quarry", func() (lode.RangeStore, error) {
 		calls++
 		if calls == 1 {
 			return f.store, nil
@@ -364,7 +365,7 @@ func TestListRuns_BackfilledRun(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	cfg := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "legacy"}
-	c, err := qlode.NewLodeClientWithFactory(cfg, f.factory)
+	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
 	if err != nil {
 		t.Fatal(err)
 	}

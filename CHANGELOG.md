@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking Changes
 
 - **Go module path**: The Go module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`. The CLI, the SDK, the container images, and stored data are unchanged.
-- **Go version**: The Go module requires Go 1.27.3 or later, the version that Lode v0.11.0 requires. Release binaries and container images are unaffected.
+- **Go version**: The Go module requires Go 1.27.3 or later, the version that Lode v0.12.0 requires. Release binaries and container images are unaffected.
 - **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. Nothing may be written for a run after its end record, so a program must no longer write metrics after `Execute`.
+- **Browser discovery type**: `runtime.BrowserDiscovery` is removed. Browser reuse no longer keeps a discovery file for the runtime to read.
+- **Storage constructors**: `NewLodeClient`, `NewLodeClientWithFactory`, and `NewLodeS3Client` take a `context.Context`, because opening a dataset reads its head. Store factories are `lode.Factory[lode.RangeStore]`. `QueryLatestMetrics` and `QuerySidecarFiles` take the store factory and dataset ID in place of a dataset, and `NewReadDataset`, `NewReadDatasetFS`, `NewReadDatasetS3`, and `NewPartitionReader` are replaced by `OpenDataset` and `OpenView`.
 
 ### Added
 
@@ -31,18 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Run key validation**: `quarry run` refuses a dataset ID, source, category, or run ID that cannot form a safe storage key, such as an empty value, `.`, or `..`. It also refuses a run whose source, category, day, and run ID already have a start record.
-- **Lode v0.11.0**: Quarry depends on Lode v0.11.0 at `github.com/pithecene/lode`. Snapshot IDs written from this release carry a random suffix. The storage layout is unchanged.
+- **Lode v0.12.0**: Quarry depends on Lode v0.12.0 at `github.com/pithecene/lode`. Snapshot IDs written from this release carry a random suffix, and each manifest records the dataset's partition keys and path names. Data files, sidecar files, run records, and the storage layout are unchanged, and Quarry v0.13.7 reads and extends datasets that this release writes.
 - **Packaging**: The npm package and the container images declare their license, homepage, and source repository.
 - **License**: The copyright holder is Pithecene LLC. The license, Apache-2.0, is unchanged.
 
 ### Fixed
 
 - **Policy close**: `Close` on the buffered, streaming, and strict policies runs once, so a second call no longer flushes again. Its flush has a 30-second deadline, and a custom sink must honor context cancellation. `Close` returns `ErrCloseUnflushed` when accepted data remains unwritten, and data offered after `Close` begins is refused with `ErrPolicyClosed`.
+- **Browser server output**: The reusable browser server writes its diagnostics to `browser-server.log` in the discovery directory instead of the stderr of the run that launched it. A program that reads a run's output through a pipe no longer waits for the server's idle timeout to see end of file.
+- **Browser server lifetime**: The reusable browser server no longer shuts down under a run in progress. It counted only pages that had navigated, so a run whose page was still `about:blank`, or one that connected as the idle timeout expired, could lose its browser. Each run now holds a connection to the server, over a Unix socket in the discovery directory, until it ends. The server shuts down only after it has had no connection for the idle timeout.
+- **Orphaned browser**: A browser left running by a reusable browser server that was killed, as with `SIGKILL`, is closed by the next server to start.
+- **Prune option errors**: `quarry prune` refuses options it cannot act on, such as no age flag, with the plain reason and exit code 1. It no longer renders an empty report or advises a rerun that would be refused again.
+- **S3 checksum warnings**: Reads from S3-compatible stores that send no checksum, such as R2 and MinIO, no longer log a warning to stderr for each response. The SDK still validates every checksum a store sends.
 
 ### Upgrade Notes
 
 - **Go module path**: Replace `github.com/pithecene-io/quarry` with `github.com/pithecene/quarry` in `go.mod` and in imports. Releases through v0.13.7 remain available under the former path.
 - **Go version**: Build Go programs that import Quarry with Go 1.27.3 or later.
+- **Storage constructors**: Pass a context to the client constructors, and replace `lode.NewFSFactory(root)` with `lode.FS(root)` and `lode.NewMemoryFactory()` with `lode.Memory()`. Read through `OpenView`, or call `QueryLatestMetrics(ctx, factory, dataset, runID, source)`.
 - **Run finalization**: Set `RunConfig.Storage`, `StartedAt`, and `StorageDay`, so that `RunOrchestrator.Execute` writes the metrics and the run records. Without `Storage`, it writes neither. Then remove any metrics write that follows `Execute`, including calls to `LodeClient.WriteMetrics`.
 - **Existing runs**: Once no writer older than v0.14.0 is still writing to a dataset, run `quarry index rebuild` once, so that `quarry list runs` and `quarry prune` find the runs stored before v0.14.0.
 

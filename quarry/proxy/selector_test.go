@@ -28,7 +28,7 @@ func TestSelector_RoundRobin(t *testing.T) {
 
 	// Select in round-robin order (Commit: true to advance counter)
 	hosts := make([]string, 6)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		ep, err := s.Select(SelectRequest{Pool: "test", Commit: true})
 		if err != nil {
 			t.Fatalf("Select failed: %v", err)
@@ -74,7 +74,7 @@ func TestSelector_Random(t *testing.T) {
 
 	// Select multiple times - should not panic
 	seen := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		ep, err := s.Select(SelectRequest{Pool: "test"})
 		if err != nil {
 			t.Fatalf("Select failed: %v", err)
@@ -557,7 +557,7 @@ func TestSelector_RecencyWindow_NoRecencyWithoutConfig(t *testing.T) {
 	}
 
 	// Should work fine without recency window
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err := s.Select(SelectRequest{Pool: "test", Commit: true})
 		if err != nil {
 			t.Fatalf("Select failed: %v", err)
@@ -593,7 +593,7 @@ func TestSelector_RecencyWindow_SingleEndpoint(t *testing.T) {
 	}
 
 	// Should always return the single endpoint (LRU fallback)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		ep, err := s.Select(SelectRequest{Pool: "test", Commit: true})
 		if err != nil {
 			t.Fatalf("Select failed: %v", err)

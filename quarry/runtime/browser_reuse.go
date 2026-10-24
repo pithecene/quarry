@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,15 +22,6 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-// BrowserDiscovery is the on-disk schema for a reusable browser server.
-// Written to $QUARRY_RUNTIME_DIR/browser.json.
-type BrowserDiscovery struct {
-	WSEndpoint string `json:"ws_endpoint"`
-	PID        int    `json:"pid"`
-	ProxyHash  string `json:"proxy_hash"`
-	StartedAt  string `json:"started_at"`
-}
-
 // ReusableBrowserConfig holds inputs for AcquireReusableBrowser.
 type ReusableBrowserConfig struct {
 	ExecutorPath string
@@ -41,105 +33,117 @@ type ReusableBrowserConfig struct {
 // defaultIdleTimeout is used when ReusableBrowserConfig.IdleTimeout is zero.
 const defaultIdleTimeout = 60 * time.Second
 
-// AcquireReusableBrowser returns a WS endpoint for a reusable browser server.
+// browserServerLogName is the file in the discovery directory that receives
+// the browser server's stderr. The server outlives the run that launches it,
+// so it must not hold that run's stderr: a reader of the run's output would
+// wait for the server's idle shutdown before seeing end of file.
+const browserServerLogName = "browser-server.log"
+
+// browserServerStartTimeout bounds the wait for a new server to listen.
+const browserServerStartTimeout = 30 * time.Second
+
+// browserServerStopGrace is how long a server that failed to start has to
+// exit after SIGTERM before it is killed.
+const browserServerStopGrace = 5 * time.Second
+
+// AcquireReusableBrowser returns the WS endpoint of the reusable browser
+// server, starting the server if none is listening. The run holds a lease on
+// the server until ctx is done, and the server stays up while any lease is
+// held (see CONTRACT_CLI.md, "Server lifetime").
 //
-// Flow:
-//  1. Resolve discovery dir
-//  2. Acquire flock on browser.lock
-//  3. Read browser.json — if valid + healthy + proxy hash matches → return
-//  4. If stale/missing → launch --browser-server, read endpoint, write browser.json
-//  5. Release lock
+// An error means the run should launch its own browser. No error path stops
+// a server other than one this call started and that failed to listen.
 func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (string, error) {
 	dir, err := discoveryDir()
 	if err != nil {
 		return "", fmt.Errorf("browser reuse: %w", err)
 	}
+	socketPath := filepath.Join(dir, leaseSocketName)
+	hash := proxyHash(cfg.Proxy)
 
-	lockPath := filepath.Join(dir, "browser.lock")
-	discoveryPath := filepath.Join(dir, "browser.json")
+	lease, err := requestLease(ctx, socketPath, hash)
+	if !errors.Is(err, errNoServer) {
+		return reused(lease, err)
+	}
 
-	// Acquire exclusive file lock
-	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	unlock, err := lockDiscovery(dir)
 	if err != nil {
-		return "", fmt.Errorf("browser reuse: open lock: %w", err)
+		return "", fmt.Errorf("browser reuse: %w", err)
 	}
-	defer func() {
-		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-		_ = lockFile.Close()
-	}()
+	defer unlock()
 
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		return "", fmt.Errorf("browser reuse: flock: %w", err)
-	}
-
-	wantHash := proxyHash(cfg.Proxy)
-
-	// Try existing discovery file
-	disc, err := readDiscovery(discoveryPath)
-	if err == nil {
-		// Validate proxy hash
-		if disc.ProxyHash != wantHash {
-			fmt.Fprintf(os.Stderr, "Proxy mismatch, skipping browser reuse for this run\n")
-			return "", errors.New("browser reuse: proxy mismatch")
-		}
-
-		// Fast-path: check process liveness before the 2s HTTP health check
-		switch processStatus(disc.PID) {
-		case processGone:
-			fmt.Fprintf(os.Stderr, "Browser server process gone (pid=%d), relaunching\n", disc.PID)
-			_ = os.Remove(discoveryPath)
-		case processZombie:
-			fmt.Fprintf(os.Stderr, "Zombie browser server detected (pid=%d), cleaning up and relaunching\n", disc.PID)
-			cleanupStaleProcess(disc.PID)
-			_ = os.Remove(discoveryPath)
-		default:
-			if err := HealthCheckBrowser(disc.WSEndpoint); err == nil {
-				age := time.Since(parseTimeOrZero(disc.StartedAt))
-				fmt.Fprintf(os.Stderr, "Reusing browser server (pid=%d, age=%s)\n", disc.PID, age.Round(time.Second))
-				return disc.WSEndpoint, nil
-			}
-			fmt.Fprintf(os.Stderr, "Stale browser server detected (pid=%d), cleaning up and relaunching\n", disc.PID)
-			cleanupStaleProcess(disc.PID)
-			_ = os.Remove(discoveryPath)
-		}
+	// Another run may have started a server while this one waited for the lock.
+	lease, err = requestLease(ctx, socketPath, hash)
+	if !errors.Is(err, errNoServer) {
+		return reused(lease, err)
 	}
 
-	// Launch new browser server
-	idleTimeout := cfg.IdleTimeout
-	if idleTimeout == 0 {
-		idleTimeout = defaultIdleTimeout
-	}
-
-	wsEndpoint, pid, err := launchBrowserServerProcess(ctx, cfg.ExecutorPath, cfg.ScriptPath, discoveryPath, idleTimeout, cfg.Proxy)
+	logPath := filepath.Join(dir, browserServerLogName)
+	pid, err := startBrowserServer(ctx, cfg, dir, socketPath, logPath)
 	if err != nil {
-		return "", fmt.Errorf("browser reuse: launch: %w", err)
+		return "", fmt.Errorf("browser reuse: launch (log: %s): %w", logPath, err)
 	}
+	fmt.Fprintf(os.Stderr, "Starting reusable browser server (pid=%d, log=%s)\n", pid, logPath)
 
-	// Write discovery file
-	disc = &BrowserDiscovery{
-		WSEndpoint: wsEndpoint,
-		PID:        pid,
-		ProxyHash:  wantHash,
-		StartedAt:  time.Now().UTC().Format(time.RFC3339),
+	lease, err = requestLease(ctx, socketPath, hash)
+	if err != nil {
+		return "", fmt.Errorf("browser reuse: lease on the new server: %w", err)
 	}
-	if err := writeDiscovery(discoveryPath, disc); err != nil {
-		killProcessGroup(pid)
-		return "", fmt.Errorf("browser reuse: write discovery: %w", err)
-	}
-
-	fmt.Fprintf(os.Stderr, "Starting reusable browser server (pid=%d)\n", pid)
-	return wsEndpoint, nil
+	return healthy(lease)
 }
 
-// discoveryDir returns the directory for browser discovery files.
-// Uses $XDG_RUNTIME_DIR/quarry/ on Linux, falls back to $TMPDIR/quarry-$UID/.
-func discoveryDir() (string, error) {
-	var dir string
-	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
-		dir = filepath.Join(xdg, "quarry")
-	} else {
-		dir = filepath.Join(os.TempDir(), fmt.Sprintf("quarry-%d", os.Getuid()))
+// reused reports the outcome of a lease request on an existing server.
+func reused(lease browserLease, err error) (string, error) {
+	switch {
+	case errors.Is(err, errProxyMismatch):
+		fmt.Fprintf(os.Stderr, "Proxy mismatch, skipping browser reuse for this run\n")
+		return "", fmt.Errorf("browser reuse: %w", err)
+	case err != nil:
+		return "", fmt.Errorf("browser reuse: %w", err)
 	}
+	fmt.Fprintf(os.Stderr, "Reusing browser server (pid=%d)\n", lease.ServerPID)
+	return healthy(lease)
+}
+
+// healthy returns the lease's endpoint once the browser answers on it. A
+// server can hold a browser that is connected but no longer answers; such a
+// lease is released at once, so the run launches its own browser and the
+// server, held by no run, stops at its idle timeout.
+func healthy(lease browserLease) (string, error) {
+	if err := HealthCheckBrowser(lease.WSEndpoint); err != nil {
+		lease.Release()
+		return "", fmt.Errorf("browser reuse: server's browser does not answer (pid=%d): %w", lease.ServerPID, err)
+	}
+	return lease.WSEndpoint, nil
+}
+
+// lockDiscovery takes the exclusive lock that serializes starting a server.
+// The operating system releases it if this process ends while holding it.
+func lockDiscovery(dir string) (unlock func(), err error) {
+	lockFile, err := os.OpenFile(filepath.Join(dir, "browser.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open lock: %w", err)
+	}
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		iox.DiscardClose(lockFile)
+		return nil, fmt.Errorf("flock: %w", err)
+	}
+	return func() { iox.DiscardClose(lockFile) }, nil
+}
+
+// discoveryDir returns the directory for browser reuse state:
+// browser-reuse/ under $XDG_RUNTIME_DIR/quarry/, falling back to
+// $TMPDIR/quarry-$UID/. Releases before v0.14.0 kept a discovery file in the
+// parent directory; keeping apart means neither release's servers see the
+// other's.
+func discoveryDir() (string, error) {
+	var base string
+	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
+		base = filepath.Join(xdg, "quarry")
+	} else {
+		base = filepath.Join(os.TempDir(), fmt.Sprintf("quarry-%d", os.Getuid()))
+	}
+	dir := filepath.Join(base, "browser-reuse")
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("create discovery dir %s: %w", dir, err)
@@ -181,65 +185,6 @@ func HealthCheckBrowser(wsEndpoint string) error {
 	return nil
 }
 
-type processState int
-
-const (
-	processGone    processState = iota // PID does not exist
-	processZombie                      // PID exists but is zombie/defunct
-	processHealthy                     // PID exists and is running
-)
-
-// processStatus checks whether a PID is alive, zombie, or gone.
-// On non-Linux systems where /proc is unavailable, falls back to signal-0 only
-// (conservative — zombies will be caught by the subsequent health check).
-func processStatus(pid int) processState {
-	if err := syscall.Kill(pid, 0); err != nil {
-		return processGone
-	}
-
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
-	if err != nil {
-		// /proc unavailable (non-Linux) — conservatively assume healthy
-		return processHealthy
-	}
-
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "State:") {
-			if strings.Contains(line, "Z") {
-				return processZombie
-			}
-			return processHealthy
-		}
-	}
-
-	return processHealthy
-}
-
-// isBrowserServerProcess checks whether a PID belongs to a Quarry browser
-// server by reading /proc/{pid}/cmdline for the --browser-server flag.
-// Returns false if /proc is unavailable (non-Linux) or the cmdline doesn't match.
-func isBrowserServerProcess(pid int) bool {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil {
-		return false
-	}
-	for _, arg := range strings.Split(string(data), "\x00") {
-		if arg == "--browser-server" {
-			return true
-		}
-	}
-	return false
-}
-
-// cleanupStaleProcess attempts to kill a stale browser server's process group.
-// Only kills if the PID is verified to belong to a browser server process
-// (via /proc cmdline check), preventing accidental kills after PID reuse.
-func cleanupStaleProcess(pid int) {
-	if isBrowserServerProcess(pid) {
-		killProcessGroup(pid)
-	}
-}
-
 // proxyHash returns a deterministic hash of proxy config for mismatch detection.
 // Returns empty string for nil proxy.
 func proxyHash(proxy *types.ProxyEndpoint) string {
@@ -256,134 +201,119 @@ func proxyHash(proxy *types.ProxyEndpoint) string {
 	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
 
-// launchBrowserServerProcess starts the executor in --browser-server mode as a
-// detached process. Returns the WS endpoint and PID.
+// startBrowserServer starts the executor in --browser-server mode as a
+// detached process and waits until it listens on socketPath. The caller
+// holds the discovery lock. Returns the server's PID.
 //
-// Uses exec.Command (not CommandContext) because the browser server must outlive
-// the parent quarry run invocation — that is the entire point of reuse.
-func launchBrowserServerProcess(
-	ctx context.Context,
-	executorPath, scriptPath, discoveryPath string,
-	idleTimeout time.Duration,
-	proxy *types.ProxyEndpoint,
-) (wsEndpoint string, pid int, err error) {
-	cmd := exec.Command(executorPath, "--browser-server", scriptPath)
-
-	// Detach: new session so the browser server outlives the parent
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true,
+// Uses exec.Command (not CommandContext) because the browser server must
+// outlive the run that starts it: that is the point of reuse. A server that
+// fails to start is this process's unreaped child, so signaling its PID
+// cannot reach another process; it is the only server the runtime stops.
+func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, socketPath, logPath string) (int, error) {
+	// Under the lock no server is listening, so a socket file left by one
+	// that was killed is stale, and the new server cannot bind over it.
+	if err := os.Remove(socketPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return 0, fmt.Errorf("remove stale socket: %w", err)
 	}
 
-	// Pass discovery file path and config so the server can self-manage
-	env := append(os.Environ(),
-		fmt.Sprintf("QUARRY_BROWSER_DISCOVERY_FILE=%s", discoveryPath),
+	idleTimeout := cfg.IdleTimeout
+	if idleTimeout == 0 {
+		idleTimeout = defaultIdleTimeout
+	}
+
+	cmd := exec.Command(cfg.ExecutorPath, "--browser-server", cfg.ScriptPath)
+	// Detach: new session so the browser server outlives the parent
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Env = append(os.Environ(),
+		"QUARRY_BROWSER_REUSE_DIR="+dir,
+		"QUARRY_BROWSER_PROXY_HASH="+proxyHash(cfg.Proxy),
 		fmt.Sprintf("QUARRY_BROWSER_IDLE_TIMEOUT=%d", int(idleTimeout.Seconds())),
 	)
-
 	// Pass proxy URL so the browser server launches Chromium with --proxy-server
-	if proxy != nil {
-		env = append(env, fmt.Sprintf("QUARRY_BROWSER_PROXY=%s://%s:%d", proxy.Protocol, proxy.Host, proxy.Port))
+	if cfg.Proxy != nil {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARRY_BROWSER_PROXY=%s://%s:%d", cfg.Proxy.Protocol, cfg.Proxy.Host, cfg.Proxy.Port))
 	}
 
-	cmd.Env = env
-
-	stdout, err := cmd.StdoutPipe()
+	// Diagnostics go to a log file, truncated per launch; the lock held by
+	// the caller means one server writes it at a time.
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
-		return "", 0, fmt.Errorf("stdout pipe: %w", err)
+		return 0, fmt.Errorf("open browser server log: %w", err)
 	}
+	// The child holds its own descriptor once started.
+	defer iox.DiscardClose(logFile)
+	cmd.Stderr = logFile
 
-	// Inherit stderr for diagnostics
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
-		return "", 0, fmt.Errorf("start browser server: %w", err)
+	// A pipe of our own, not StdoutPipe, so that reaping the child cannot
+	// close the read end under the readiness read.
+	ready, readyW, err := os.Pipe()
+	if err != nil {
+		return 0, fmt.Errorf("stdout pipe: %w", err)
 	}
+	defer iox.DiscardClose(ready)
+	cmd.Stdout = readyW
 
-	// Read WS endpoint from first line of stdout
-	scanner := bufio.NewScanner(stdout)
-	wsURLCh := make(chan string, 1)
-	errCh := make(chan error, 1)
+	err = cmd.Start()
+	iox.DiscardClose(readyW)
+	if err != nil {
+		return 0, fmt.Errorf("start browser server: %w", err)
+	}
+	exited := make(chan struct{})
 	go func() {
-		if scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if strings.HasPrefix(line, "ws://") || strings.HasPrefix(line, "wss://") {
-				wsURLCh <- line
-				return
-			}
-			errCh <- fmt.Errorf("unexpected browser server output: %q", line)
-			return
+		// Reap the server whenever it exits, while this process lives.
+		_ = cmd.Wait()
+		close(exited)
+	}()
+
+	if err := awaitReady(ctx, ready); err != nil {
+		stopFailedServer(cmd.Process.Pid, exited)
+		return 0, err
+	}
+	return cmd.Process.Pid, nil
+}
+
+// awaitReady waits for the server to print "ready", which it does once it
+// listens on its socket.
+func awaitReady(ctx context.Context, ready io.Reader) error {
+	readyErr := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(ready)
+		switch {
+		case scanner.Scan() && strings.TrimSpace(scanner.Text()) == "ready":
+			readyErr <- nil
+		case scanner.Err() != nil:
+			readyErr <- fmt.Errorf("reading browser server stdout: %w", scanner.Err())
+		case scanner.Text() != "":
+			readyErr <- fmt.Errorf("unexpected browser server output: %q", scanner.Text())
+		default:
+			readyErr <- errors.New("browser server exited before it listened")
 		}
-		if scanErr := scanner.Err(); scanErr != nil {
-			errCh <- fmt.Errorf("reading browser server stdout: %w", scanErr)
-			return
-		}
-		errCh <- errors.New("browser server exited without printing WS endpoint")
 	}()
 
 	select {
-	case ws := <-wsURLCh:
-		// Detached process — do NOT call cmd.Wait() (we don't own the lifecycle)
-		return ws, cmd.Process.Pid, nil
-	case readErr := <-errCh:
-		killProcessGroup(cmd.Process.Pid)
-		_ = cmd.Wait()
-		return "", 0, readErr
-	case <-time.After(30 * time.Second):
-		killProcessGroup(cmd.Process.Pid)
-		_ = cmd.Wait()
-		return "", 0, errors.New("timed out waiting for browser server WS endpoint")
+	case err := <-readyErr:
+		return err
+	case <-time.After(browserServerStartTimeout):
+		return fmt.Errorf("browser server did not listen within %s", browserServerStartTimeout)
 	case <-ctx.Done():
-		killProcessGroup(cmd.Process.Pid)
-		_ = cmd.Wait()
-		return "", 0, ctx.Err()
+		return ctx.Err()
 	}
 }
 
-// killProcessGroup kills an entire process group by negated PID.
-// The browser server is launched with Setsid: true, so its PGID == PID.
-// This ensures Chromium (a child of the Node wrapper) is also killed.
-func killProcessGroup(pid int) {
+// stopFailedServer stops a server that failed to start: SIGTERM to its
+// process group, which lets Puppeteer close the browser, then SIGKILL after
+// browserServerStopGrace. The server is unreaped until exited closes, so its
+// PID still names it.
+func stopFailedServer(pid int, exited <-chan struct{}) {
+	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	select {
+	case <-exited:
+		return
+	case <-time.After(browserServerStopGrace):
+	}
+	fmt.Fprintf(os.Stderr, "Browser server (pid=%d) did not stop within %s; killing it, which may leave its browser running\n", pid, browserServerStopGrace)
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
-}
-
-// readDiscovery reads and parses a browser discovery file.
-func readDiscovery(path string) (*BrowserDiscovery, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var disc BrowserDiscovery
-	if err := json.Unmarshal(data, &disc); err != nil {
-		return nil, fmt.Errorf("parse discovery: %w", err)
-	}
-	if disc.WSEndpoint == "" {
-		return nil, errors.New("discovery file missing ws_endpoint")
-	}
-	return &disc, nil
-}
-
-// writeDiscovery atomically writes a discovery file.
-func writeDiscovery(path string, disc *BrowserDiscovery) error {
-	data, err := json.MarshalIndent(disc, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	// Write to temp file, then rename for atomicity
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-// parseTimeOrZero parses an RFC3339 time string, returning zero time on error.
-func parseTimeOrZero(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
+	<-exited
 }
 
 // IdleTimeoutFromEnv reads QUARRY_BROWSER_IDLE_TIMEOUT from the environment.

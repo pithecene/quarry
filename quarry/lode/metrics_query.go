@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/pithecene/lode/lode"
 )
@@ -11,19 +12,24 @@ import (
 // ErrNoMetricsFound is returned when no metrics records exist in the dataset.
 var ErrNoMetricsFound = errors.New("no metrics records found")
 
-// QueryLatestMetrics finds and reads the most recent metrics record from Lode.
-// Filters by runID and source if non-empty.
+// QueryLatestMetrics finds and reads the most recent metrics record of the
+// dataset stored behind factory. Filters by runID and source if non-empty.
 // Returns the raw record map or ErrNoMetricsFound if none exist.
-func QueryLatestMetrics(ctx context.Context, ds lode.Dataset, runID, source string) (map[string]any, error) {
+func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStore], dataset, runID, source string) (map[string]any, error) {
+	ds, ok, err := openReadView(ctx, dataset, factory)
+	if err != nil {
+		return nil, WrapReadError(err, "datasets/"+dataset)
+	}
+	if !ok {
+		return nil, ErrNoMetricsFound
+	}
 	snapshots, err := ds.Snapshots(ctx)
 	if err != nil {
 		return nil, WrapReadError(err, "quarry/snapshots")
 	}
 
 	// Iterate in reverse (latest first) — snapshots are ordered by creation time
-	for i := len(snapshots) - 1; i >= 0; i-- {
-		snap := snapshots[i]
-
+	for _, snap := range slices.Backward(snapshots) {
 		if !isMetricsSnapshot(snap) {
 			continue
 		}
@@ -43,11 +49,7 @@ func QueryLatestMetrics(ctx context.Context, ds lode.Dataset, runID, source stri
 		// Find a metrics record that passes record-level filters.
 		// Manifest path filtering is a coarse pre-filter; record fields
 		// are authoritative (handles cumulative/multi-record snapshots).
-		for _, item := range data {
-			record, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
+		for _, record := range data {
 			if record["record_kind"] != RecordKindMetrics {
 				continue
 			}

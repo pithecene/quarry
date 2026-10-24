@@ -25,7 +25,7 @@ func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -49,12 +49,8 @@ func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
 	}
 
 	// Query sidecar files
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
 
-	files, err := QuerySidecarFiles(ctx, ds, "run-query")
+	files, err := QuerySidecarFiles(ctx, factory, "quarry", "run-query")
 	if err != nil {
 		t.Fatalf("QuerySidecarFiles failed: %v", err)
 	}
@@ -89,12 +85,7 @@ func TestQuerySidecarFiles_NoFiles(t *testing.T) {
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
-	files, err := QuerySidecarFiles(t.Context(), ds, "run-nonexistent")
+	files, err := QuerySidecarFiles(t.Context(), factory, "quarry", "run-nonexistent")
 	if err != nil {
 		t.Fatalf("QuerySidecarFiles failed: %v", err)
 	}
@@ -122,7 +113,7 @@ func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
 			Policy:   "strict",
 		}
 
-		client, err := NewLodeClientWithFactory(cfg, factory)
+		client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 		if err != nil {
 			t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 		}
@@ -139,13 +130,8 @@ func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
 		}
 	}
 
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
-
 	// Query for run-A only
-	files, err := QuerySidecarFiles(ctx, ds, "run-A")
+	files, err := QuerySidecarFiles(ctx, factory, "quarry", "run-A")
 	if err != nil {
 		t.Fatalf("QuerySidecarFiles failed: %v", err)
 	}
@@ -173,7 +159,7 @@ func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -201,12 +187,8 @@ func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
 	}
 
 	// Query should union across both snapshots
-	ds, err := NewReadDataset("quarry", factory)
-	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
-	}
 
-	files, err := QuerySidecarFiles(ctx, ds, "run-multi")
+	files, err := QuerySidecarFiles(ctx, factory, "quarry", "run-multi")
 	if err != nil {
 		t.Fatalf("QuerySidecarFiles failed: %v", err)
 	}

@@ -19,7 +19,7 @@ import (
 // Phase 8 + Phase 10: Storage Failure Hardening Tests (Typed Assertions)
 // =============================================================================
 
-// FailingStore is a lode.Store that returns configurable errors.
+// FailingStore is a lode.RangeStore that returns configurable errors.
 type FailingStore struct {
 	PutErr    error
 	GetErr    error
@@ -84,18 +84,18 @@ func (s *FailingStore) CompareAndSwap(_ context.Context, path, expected, _ strin
 	return nil
 }
 
-var _ lode.Store = (*FailingStore)(nil)
+var _ lode.RangeStore = (*FailingStore)(nil)
 
 // FailingStoreFactory creates a factory that returns a FailingStore.
-func FailingStoreFactory(store *FailingStore) lode.StoreFactory {
-	return func() (lode.Store, error) {
+func FailingStoreFactory(store *FailingStore) lode.Factory[lode.RangeStore] {
+	return func() (lode.RangeStore, error) {
 		return store, nil
 	}
 }
 
 // FailingFactoryFactory creates a factory that fails to create a store.
-func FailingFactoryFactory(err error) lode.StoreFactory {
-	return func() (lode.Store, error) {
+func FailingFactoryFactory(err error) lode.Factory[lode.RangeStore] {
+	return func() (lode.RangeStore, error) {
 		return nil, err
 	}
 }
@@ -121,7 +121,7 @@ func TestLodeClient_FSDirectoryCreationFailure_NonExistentParent(t *testing.T) {
 	}
 
 	// Failure can occur at factory creation OR at write time
-	client, factoryErr := NewLodeClient(cfg, nonExistentPath)
+	client, factoryErr := NewLodeClient(t.Context(), cfg, nonExistentPath)
 
 	if factoryErr != nil {
 		// Factory creation failed - MUST be a typed StorageError with appropriate kind
@@ -184,7 +184,7 @@ func TestLodeClient_FSDirectoryCreationFailure_ReadOnlyParent(t *testing.T) {
 
 	// Try to use a subdirectory of the read-only dir
 	storePath := filepath.Join(readOnlyDir, "data")
-	client, factoryErr := NewLodeClient(cfg, storePath)
+	client, factoryErr := NewLodeClient(t.Context(), cfg, storePath)
 
 	if factoryErr != nil {
 		// Factory creation failed - MUST be a typed StorageError
@@ -244,7 +244,7 @@ func TestLodeClient_WriteFailure_DiskFull(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestLodeClient_WriteFailure_PermissionDenied(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestLodeClient_ChunkWriteFailure_DiskFull(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestLodeClient_PartialWriteDetection_ChunksNotMarkedOnFailure(t *testing.T)
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -411,7 +411,7 @@ func TestLodeClient_PartialWriteDetection_OffsetsNotUpdatedOnFailure(t *testing.
 
 	// First, successfully write some chunks
 	successStore := &FailingStore{PutErr: nil}
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(successStore))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(successStore))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -465,7 +465,7 @@ func TestLodeClient_S3AuthFailure(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -505,7 +505,7 @@ func TestLodeClient_S3AccessDenied(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -554,7 +554,7 @@ func TestLodeClient_S3NetworkTimeout(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -594,7 +594,7 @@ func TestLodeClient_S3Throttling(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -664,7 +664,7 @@ func TestLodeClient_StorageError_ContainsOperationAndPath(t *testing.T) {
 				Policy:   "strict",
 			}
 
-			client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+			client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 			if err != nil {
 				t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 			}
@@ -727,7 +727,7 @@ func TestLodeClient_ErrorPropagation_EventWrite(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -773,7 +773,7 @@ func TestLodeClient_ErrorPropagation_ChunkWrite(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -790,8 +790,7 @@ func TestLodeClient_ErrorPropagation_ChunkWrite(t *testing.T) {
 	}
 
 	// Verify wrapped correctly
-	var storageErr *StorageError
-	if !errors.As(err, &storageErr) {
+	if _, ok := errors.AsType[*StorageError](err); !ok {
 		t.Fatalf("expected *StorageError, got %T", err)
 	}
 }
@@ -814,7 +813,7 @@ func TestLodeClient_NoSilentCorruption_FailedWritePreservesState(t *testing.T) {
 
 	// Start with working store
 	store := &FailingStore{PutErr: nil}
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -878,7 +877,7 @@ func TestLodeClient_NoSilentCorruption_CommitFailurePreservesChunksState(t *test
 
 	// Start with working store
 	store := &FailingStore{PutErr: nil}
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -948,7 +947,7 @@ func TestLodeClient_ErrorChain_UnwrapPreservesOriginal(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(store))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(store))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}

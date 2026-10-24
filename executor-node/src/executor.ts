@@ -191,7 +191,7 @@ export function _resetPuppeteerForTesting(): void {
  * Used when browser-ws-endpoint is set — stealth/adblocker plugins don't apply
  * since we're connecting to an already-running browser.
  */
-async function getVanillaPuppeteer(
+export async function getVanillaPuppeteer(
   scriptPath: string
 ): Promise<{ connect: (options: { browserWSEndpoint: string }) => Promise<Browser> }> {
   const puppeteerMod = await resolveModuleOrThrow(

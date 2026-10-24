@@ -87,8 +87,7 @@ func TestExitErrHandler_RegularError(t *testing.T) {
 	// Regular errors should result in exit code 1 (tested via behavior)
 	err := errors.New("regular error")
 
-	var exitCoder cli.ExitCoder
-	if errors.As(err, &exitCoder) {
+	if _, ok := errors.AsType[cli.ExitCoder](err); ok {
 		t.Fatal("regular error should not be cli.ExitCoder")
 	}
 }

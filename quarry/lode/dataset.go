@@ -1,41 +1,36 @@
 package lode
 
 import (
+	"context"
+	"errors"
+	"slices"
 	"strings"
 
 	"github.com/pithecene/lode/lode"
 )
 
-// NewReadDataset creates a Lode Dataset for reading.
-// Uses the same codec and layout as the write path to ensure compatibility.
-func NewReadDataset(dataset string, factory lode.StoreFactory) (lode.Dataset, error) {
-	return lode.NewDataset(
-		lode.DatasetID(dataset),
-		factory,
-		lode.WithHiveLayout("source", "category", "day", "run_id", "event_type"),
-		lode.WithCodec(lode.NewJSONLCodec()),
-	)
-}
-
-// NewReadDatasetFS creates a read Dataset with filesystem storage.
-func NewReadDatasetFS(dataset, rootPath string) (lode.Dataset, error) {
-	return NewReadDataset(dataset, lode.NewFSFactory(rootPath))
-}
-
-// NewReadDatasetS3 creates a read Dataset with S3 storage. The store is
-// built exactly as on the write path, including Endpoint and UsePathStyle.
-func NewReadDatasetS3(dataset string, s3cfg S3Config) (lode.Dataset, error) {
-	factory, err := newS3StoreFactory(s3cfg)
-	if err != nil {
-		return nil, err
+// openReadView creates the store and opens a read-only view of the dataset
+// over it. ok is false when the dataset has no snapshot, which a reader
+// reports as an empty result rather than an error.
+func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view lode.RecordView[lode.D], ok bool, err error) {
+	if factory == nil {
+		return nil, false, errors.New("read: nil store factory")
 	}
-	return NewReadDataset(dataset, factory)
+	store, err := factory()
+	if err != nil {
+		return nil, false, err
+	}
+	view, err = OpenView(ctx, dataset, store)
+	if errors.Is(err, lode.ErrNotFound) {
+		return nil, false, nil
+	}
+	return view, err == nil, err
 }
 
 // isMetricsSnapshot checks if a snapshot contains metrics data
 // by examining file paths for the event_type=metrics partition.
 func isMetricsSnapshot(snap *lode.DatasetSnapshot) bool {
-	for _, f := range snap.Manifest.Files {
+	for _, f := range snap.Files {
 		if matchesPartitionValue(f.Path, "event_type", "metrics") {
 			return true
 		}
@@ -49,7 +44,7 @@ func snapshotMatchesFilter(snap *lode.DatasetSnapshot, key, value string) bool {
 	if value == "" {
 		return true
 	}
-	for _, f := range snap.Manifest.Files {
+	for _, f := range snap.Files {
 		if matchesPartitionValue(f.Path, key, value) {
 			return true
 		}
@@ -61,12 +56,5 @@ func snapshotMatchesFilter(snap *lode.DatasetSnapshot, key, value string) bool {
 // key=value segment. Segments are delimited by "/" in paths. This avoids
 // substring false positives (e.g., run_id=run-1 matching run_id=run-10).
 func matchesPartitionValue(path, key, value string) bool {
-	segment := key + "=" + value
-	// Split path into segments and match exactly
-	for _, part := range strings.Split(path, "/") {
-		if part == segment {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strings.Split(path, "/"), key+"="+value)
 }

@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -9,20 +10,50 @@ import (
 	"github.com/pithecene/quarry/metrics"
 )
 
-func TestNewReadDatasetFS(t *testing.T) {
+// A view needs a head to take the layout from, so a dataset without
+// snapshots is reported as not found; readers turn that into an empty result.
+func TestOpenView_EmptyDataset(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	ds, err := NewReadDatasetFS("quarry", dir)
+	store, err := lode.NewFS(t.TempDir())
 	if err != nil {
-		t.Fatalf("NewReadDatasetFS failed: %v", err)
+		t.Fatalf("NewFS failed: %v", err)
 	}
-	if ds.ID() != "quarry" {
-		t.Errorf("Dataset ID = %q, want %q", ds.ID(), "quarry")
+	if _, err := OpenView(t.Context(), "quarry", store); !errors.Is(err, lode.ErrNotFound) {
+		t.Fatalf("OpenView on an empty dataset: err = %v, want lode.ErrNotFound", err)
 	}
 }
 
-func TestNewReadDataset_WriteReadRoundTrip(t *testing.T) {
+// Every writer of a Quarry dataset must share its settings: Lode records
+// them in each manifest and rejects a writer that differs when it opens.
+func TestOpenDataset_RejectsOtherSettings(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		opts []lode.DatasetOption
+	}{
+		{"another partition layout", []lode.DatasetOption{lode.WithLayout(lode.Hive("day"))}},
+		{"a compressor", []lode.DatasetOption{lode.WithCompressor(lode.NewGzipCompressor())}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := lode.NewMemory()
+			cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-02-04", RunID: "run-1", Policy: "strict"}
+			client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Use(store))
+			if err != nil {
+				t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+			}
+			if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: "run-1"}, time.Date(2026, 2, 4, 10, 0, 0, 0, time.UTC)); err != nil {
+				t.Fatalf("WriteMetrics failed: %v", err)
+			}
+			if _, err := OpenDataset(t.Context(), "quarry", store, tc.opts...); !errors.Is(err, lode.ErrSettingsMismatch) {
+				t.Fatalf("OpenDataset with %s: err = %v, want lode.ErrSettingsMismatch", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestOpenView_WriteReadRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	store := lode.NewMemory()
@@ -38,17 +69,17 @@ func TestNewReadDataset_WriteReadRoundTrip(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:   7,
-		RunsCompleted: 6,
-		RunsFailed:    1,
-		Policy:        "strict",
-		Executor:      "test-exec.js",
+		RunsStarted:    7,
+		RunsCompleted:  6,
+		RunsFailed:     1,
+		Policy:         "strict",
+		Executor:       "test-exec.js",
 		StorageBackend: "fs",
 		RunID:          "run-rt",
 	}
@@ -58,10 +89,10 @@ func TestNewReadDataset_WriteReadRoundTrip(t *testing.T) {
 		t.Fatalf("WriteMetrics failed: %v", err)
 	}
 
-	// Read via Dataset.Read
-	ds, err := NewReadDataset("quarry", factory)
+	// Read through a view, as the read path does
+	ds, err := readView(t.Context(), factory)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("readView failed: %v", err)
 	}
 
 	latest, err := ds.Latest(t.Context())
@@ -78,10 +109,7 @@ func TestNewReadDataset_WriteReadRoundTrip(t *testing.T) {
 		t.Fatalf("Read returned %d items, want 1", len(data))
 	}
 
-	record, ok := data[0].(map[string]any)
-	if !ok {
-		t.Fatalf("record type = %T, want map[string]any", data[0])
-	}
+	record := data[0]
 	if record["record_kind"] != RecordKindMetrics {
 		t.Errorf("record_kind = %v, want %q", record["record_kind"], RecordKindMetrics)
 	}

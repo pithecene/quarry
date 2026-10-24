@@ -181,7 +181,7 @@ func TestStreamingPolicy_ArtifactChunks_Buffered(t *testing.T) {
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
 			ArtifactID: "a1",
 			Seq:        int64(i + 1),

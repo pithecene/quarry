@@ -77,10 +77,10 @@ type StoragePartition struct {
 
 // executorInput is the JSON structure written to executor stdin.
 type executorInput struct {
-	RunID       string               `json:"run_id"`
-	Attempt     int                  `json:"attempt"`
-	JobID       *string              `json:"job_id,omitempty"`
-	ParentRunID *string              `json:"parent_run_id,omitempty"`
+	RunID             string               `json:"run_id"`
+	Attempt           int                  `json:"attempt"`
+	JobID             *string              `json:"job_id,omitempty"`
+	ParentRunID       *string              `json:"parent_run_id,omitempty"`
 	Job               any                  `json:"job"`
 	Proxy             *types.ProxyEndpoint `json:"proxy,omitempty"`
 	BrowserWSEndpoint string               `json:"browser_ws_endpoint,omitempty"`
@@ -196,8 +196,7 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 
 	// Determine exit code
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 				result.ExitCode = status.ExitStatus()
 			} else {
@@ -229,9 +228,9 @@ type ScriptExports struct {
 
 // ScriptValidation is the result of executor --validate.
 type ScriptValidation struct {
-	Valid   bool          `json:"valid"`
+	Valid   bool           `json:"valid"`
 	Exports *ScriptExports `json:"exports,omitempty"`
-	Error   string        `json:"error,omitempty"`
+	Error   string         `json:"error,omitempty"`
 }
 
 // ValidateScript spawns the executor in --validate mode and returns the

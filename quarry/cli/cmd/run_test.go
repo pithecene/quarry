@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"flag"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -620,12 +621,8 @@ func newTestCLIContext(t *testing.T, flagValues, defaultFlags map[string]string)
 
 	// Register all flags
 	allFlags := make(map[string]string)
-	for k, v := range defaultFlags {
-		allFlags[k] = v
-	}
-	for k, v := range flagValues {
-		allFlags[k] = v
-	}
+	maps.Copy(allFlags, defaultFlags)
+	maps.Copy(allFlags, flagValues)
 
 	var cliFlags []cli.Flag
 	for name, val := range allFlags {
@@ -852,6 +849,8 @@ func TestRunAction_ConfigProvidesRequiredFields(t *testing.T) {
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	if err == nil {
 		t.Skip("executor found; cannot test validation-only path")
@@ -894,6 +893,8 @@ func TestRunAction_CLIOverridesConfig(t *testing.T) {
 		"--script", "./test.ts",
 		"--run-id", "run-001",
 		"--source", "cli-source",
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	if err == nil {
 		t.Skip("executor found; cannot test validation-only path")
@@ -1572,6 +1573,8 @@ func TestRunAction_ResolveFromValidDirectory(t *testing.T) {
 		"--storage-backend", "fs",
 		"--storage-path", storageDir,
 		"--resolve-from", nodeModulesDir,
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	// Should pass resolve-from validation and fail later (executor resolution)
 	if err == nil {
@@ -1606,6 +1609,8 @@ func TestRunAction_ResolveFromConfigFile(t *testing.T) {
 		"--config", configPath,
 		"--script", "./test.ts",
 		"--run-id", "run-001",
+		// Not a browser reuse test: it must not start a browser server.
+		"--no-browser-reuse",
 	})
 	// Should pass resolve-from validation and fail later (executor resolution)
 	if err == nil {
@@ -1797,7 +1802,7 @@ func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
 
 	// Call buildPolicy with the captured timestamp — this is exactly what
 	// childFactory.Run() does at run.go:386-389
-	childPol, _, childFileWriter, err := buildPolicy(pol, storage, "quarry", "src", "cat", "run-001", childStartTime, collector, nil)
+	childPol, _, childFileWriter, err := buildPolicy(t.Context(), pol, storage, "quarry", "src", "cat", "run-001", childStartTime, collector, nil)
 	if err != nil {
 		t.Fatalf("buildPolicy: %v", err)
 	}

@@ -49,7 +49,7 @@ func ParseS3Path(path string) (bucket, prefix string) {
 // newS3StoreFactory builds the Lode S3 store factory used by both the write
 // and read paths, so they reach the same endpoint with the same addressing.
 // Uses AWS SDK default credential chain (env vars, shared config, IAM role).
-func newS3StoreFactory(s3cfg S3Config) (lode.StoreFactory, error) {
+func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 	if err := s3cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -65,18 +65,23 @@ func newS3StoreFactory(s3cfg S3Config) (lode.StoreFactory, error) {
 	}
 
 	s3Client := s3.NewFromConfig(awsConfig, s3ClientOptions(s3cfg)...)
-	return func() (lode.Store, error) {
-		return lodes3.New(s3Client, lodes3.Config{
-			Bucket: s3cfg.Bucket,
-			Prefix: s3cfg.Prefix,
-		})
-	}, nil
+	return lodes3.Factory(s3Client, lodes3.Config{
+		Bucket: s3cfg.Bucket,
+		Prefix: s3cfg.Prefix,
+	}), nil
 }
 
 // s3ClientOptions applies the endpoint and path-style overrides for
 // S3-compatible providers.
+//
+// It also silences the SDK's warning that a response carried no checksum
+// it supports. Stores such as R2 and MinIO often send none, and the SDK
+// logs the warning on every such read, flooding stderr. Validation is
+// unchanged: the SDK still validates every checksum a store sends.
 func s3ClientOptions(s3cfg S3Config) []func(*s3.Options) {
-	var s3Opts []func(*s3.Options)
+	s3Opts := []func(*s3.Options){func(o *s3.Options) {
+		o.DisableLogOutputChecksumValidationSkipped = true
+	}}
 	if s3cfg.Endpoint != "" {
 		endpoint := s3cfg.Endpoint
 		s3Opts = append(s3Opts, func(o *s3.Options) {
@@ -93,29 +98,26 @@ func s3ClientOptions(s3cfg S3Config) []func(*s3.Options) {
 
 // NewLodeS3Client creates a new Lode client with S3 storage backend.
 // Uses AWS SDK default credential chain (env vars, shared config, IAM role).
-func NewLodeS3Client(cfg Config, s3cfg S3Config) (*LodeClient, error) {
+// Opening reads the dataset's head under ctx.
+func NewLodeS3Client(ctx context.Context, cfg Config, s3cfg S3Config) (*LodeClient, error) {
 	s3Factory, err := newS3StoreFactory(s3cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	// Create dataset with Hive layout
-	gate := &retryGate{}
-	ds, err := lode.NewDataset(lode.DatasetID(cfg.Dataset), s3Factory, writeDatasetOptions(cfg, gate)...)
+	c, err := openClient(ctx, cfg, s3Factory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Lode dataset: %w", err)
 	}
-
-	return newClient(ds, cfg, s3Factory, gate), nil
+	return c, nil
 }
 
 // NewStoreFactory returns the store factory for a storage backend, built
 // exactly as the write path builds it ("fs": path is a directory; "s3": path
 // is bucket/prefix and s3cfg supplies region, endpoint, and addressing).
-func NewStoreFactory(backend, path string, s3cfg S3Config) (lode.StoreFactory, error) {
+func NewStoreFactory(backend, path string, s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 	switch backend {
 	case "fs":
-		return lode.NewFSFactory(path), nil
+		return lode.FS(path), nil
 	case "s3":
 		s3cfg.Bucket, s3cfg.Prefix = ParseS3Path(path)
 		return newS3StoreFactory(s3cfg)

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+
 	"github.com/pithecene/quarry/internal/testutil"
 )
 
@@ -36,7 +38,7 @@ func (f *fakeS3) requests() []string {
 
 // The read path must reach the configured S3-compatible endpoint with
 // path-style addressing, exactly like the write path (issue #253).
-func TestNewReadDatasetS3_HonorsEndpointAndPathStyle(t *testing.T) {
+func TestNewStoreFactoryS3_ReadHonorsEndpointAndPathStyle(t *testing.T) {
 	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
 	t.Setenv("AWS_ACCESS_KEY_ID", "test")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
@@ -49,19 +51,17 @@ func TestNewReadDatasetS3_HonorsEndpointAndPathStyle(t *testing.T) {
 	srv := httptest.NewServer(fake)
 	t.Cleanup(srv.Close)
 
-	ds, err := NewReadDatasetS3("quarry", S3Config{
-		Bucket:       "test-bucket",
-		Prefix:       "data",
+	factory, err := NewStoreFactory("s3", "test-bucket/data", S3Config{
 		Region:       "us-east-1",
 		Endpoint:     srv.URL,
 		UsePathStyle: true,
 	})
 	if err != nil {
-		t.Fatalf("NewReadDatasetS3: %v", err)
+		t.Fatalf("NewStoreFactory: %v", err)
 	}
 
-	// The listing result is irrelevant; only where the request went matters.
-	_, _ = ds.Snapshots(t.Context())
+	// The query result is irrelevant; only where the requests went matters.
+	_, _ = QueryLatestMetrics(t.Context(), factory, "quarry", "", "")
 
 	got := fake.requests()
 	if len(got) == 0 {
@@ -71,5 +71,25 @@ func TestNewReadDatasetS3_HonorsEndpointAndPathStyle(t *testing.T) {
 		if !strings.HasPrefix(path, "/test-bucket") {
 			t.Errorf("request path %q is not path-style (want /test-bucket/...)", path)
 		}
+	}
+}
+
+// A read from a store that sends no checksum must not log a warning: the
+// SDK otherwise writes one to stderr for every such response.
+func TestS3ClientOptions_SilenceSkippedChecksumWarning(t *testing.T) {
+	t.Parallel()
+	for name, cfg := range map[string]S3Config{
+		"AWS":           {},
+		"S3-compatible": {Endpoint: "http://127.0.0.1:9000", UsePathStyle: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var o s3.Options
+			for _, apply := range s3ClientOptions(cfg) {
+				apply(&o)
+			}
+			if !o.DisableLogOutputChecksumValidationSkipped {
+				t.Error("the skipped-checksum warning is not silenced")
+			}
+		})
 	}
 }

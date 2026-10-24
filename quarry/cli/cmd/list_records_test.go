@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/pithecene/quarry/internal/testutil"
 	"encoding/json"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/types"
 )
@@ -45,7 +45,7 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 func writeFSRun(t *testing.T, root, runID string) {
 	t.Helper()
 	cfg := lode.Config{Dataset: "quarry", Source: "demo", Category: "default", Day: "2026-10-22", RunID: runID}
-	c, err := lode.NewLodeClient(cfg, root)
+	c, err := lode.NewLodeClient(t.Context(), cfg, root)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}

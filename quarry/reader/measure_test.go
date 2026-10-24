@@ -17,7 +17,7 @@ import (
 // calls return (on S3, ListObjectsV2 returns at most 1,000 keys per request,
 // so the keys returned bound the requests), and objects read.
 type countingStore struct {
-	lode.Store
+	lode.RangeStore
 	mu         sync.Mutex
 	lists      int
 	keysListed int
@@ -25,7 +25,7 @@ type countingStore struct {
 }
 
 func (s *countingStore) List(ctx context.Context, prefix string) ([]string, error) {
-	keys, err := s.Store.List(ctx, prefix)
+	keys, err := s.RangeStore.List(ctx, prefix)
 	s.mu.Lock()
 	s.lists++
 	s.keysListed += len(keys)
@@ -37,7 +37,7 @@ func (s *countingStore) Get(ctx context.Context, path string) (io.ReadCloser, er
 	s.mu.Lock()
 	s.gets++
 	s.mu.Unlock()
-	return s.Store.Get(ctx, path)
+	return s.RangeStore.Get(ctx, path)
 }
 
 func (s *countingStore) reset() {
@@ -64,8 +64,8 @@ func TestMeasure_ListRunsVsPartitionEnumeration(t *testing.T) {
 		}
 		f.write(runSpec{"src", "cat", fmt.Sprintf("2026-10-%02d", 1+i%days), fmt.Sprintf("run-%04d", i), evs, end})
 	}
-	cs := &countingStore{Store: f.store}
-	factory := func() (lode.Store, error) { return cs, nil }
+	cs := &countingStore{RangeStore: f.store}
+	factory := func() (lode.RangeStore, error) { return cs, nil }
 	ctx := t.Context()
 
 	r, err := New("quarry", factory)

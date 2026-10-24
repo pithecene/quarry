@@ -78,8 +78,7 @@ func (e *FrameError) IsFatal() bool {
 
 // IsFatalFrameError returns true if the error is a fatal frame error.
 func IsFatalFrameError(err error) bool {
-	var frameErr *FrameError
-	if errors.As(err, &frameErr) {
+	if frameErr, ok := errors.AsType[*FrameError](err); ok {
 		return frameErr.IsFatal()
 	}
 	return false
