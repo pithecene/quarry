@@ -3212,18 +3212,34 @@ function readRecord(recordPath, log) {
   try {
     text = readFileSync(recordPath, "utf8");
   } catch (err) {
-    if (err.code !== "ENOENT") {
-      log(`Cannot read ${recordPath}, leaving any browser it lists: ${String(err)}`);
-    }
+    if (err.code === "ENOENT") return [];
+    throw new Error(`cannot read ${recordPath}: ${String(err)}`);
+  }
+  const entries = parseEntries(text);
+  if (entries === void 0) {
+    log(`Ignoring malformed ${recordPath}`);
     return [];
   }
+  const endpoints = entries.filter(isEndpoint);
+  if (endpoints.length < entries.length) log(`Ignoring malformed entries in ${recordPath}`);
+  return endpoints;
+}
+function parseEntries(text) {
   try {
     const browsers = JSON.parse(text)?.browsers;
-    if (Array.isArray(browsers)) return browsers.filter((b) => typeof b === "string");
+    return Array.isArray(browsers) ? browsers : void 0;
   } catch {
+    return void 0;
   }
-  log(`Ignoring malformed ${recordPath}`);
-  return [];
+}
+function isEndpoint(entry) {
+  if (typeof entry !== "string") return false;
+  try {
+    const { protocol } = new URL(entry);
+    return protocol === "ws:" || protocol === "wss:";
+  } catch {
+    return false;
+  }
 }
 function refused(err) {
   const cause = err?.cause;

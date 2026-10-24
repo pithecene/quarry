@@ -390,7 +390,8 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   connections or answers as anything but that browser. The endpoint carries
   the browser's own ID, so a record never names another browser. Only a
   server reads or writes `browser.json`, and only while it starts under
-  the lock. A server killed while it launches its browser, before the
+  the lock. A server that cannot read the record does not start, so it
+  never replaces the record, and the run launches its own browser. A server killed while it launches its browser, before the
   endpoint exists, can leave that browser unrecorded.
 - A server whose browser closes or crashes shuts down.
 - When the runtime cannot tell whether a server is usable, the run does

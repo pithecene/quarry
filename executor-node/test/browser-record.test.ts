@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -89,6 +89,27 @@ describe('closeRecordedBrowsers', () => {
     )
     expect(connect).not.toHaveBeenCalled()
     expect(log).not.toHaveBeenCalled()
+  })
+
+  it('drops entries that are not endpoints and says so', async () => {
+    const path = recordPath()
+    writeFileSync(path, JSON.stringify({ browsers: [WS, 'not a url', 'http://x/', 7] }))
+    const connect = vi.fn(closes)
+    const log = vi.fn()
+
+    expect(await closeRecordedBrowsers(path, connect, probeSays('gone'), log)).toEqual([])
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('malformed entries'))
+  })
+
+  it('refuses to start over a record it cannot read', async () => {
+    // A directory in place of the file reads as EISDIR, not ENOENT.
+    const path = recordPath()
+    mkdirSync(path)
+
+    await expect(closeRecordedBrowsers(path, closes, probeSays('gone'), vi.fn())).rejects.toThrow(
+      /cannot read/
+    )
   })
 
   it('leaves a malformed record alone and says so', async () => {

@@ -108,24 +108,47 @@ async function becomesGone(
   }
 }
 
+/**
+ * Read the recorded endpoints. A missing record lists none. A record that
+ * cannot be read throws, so the server does not start and overwrite it: the
+ * browsers it lists stay findable. A record that reads but holds no usable
+ * endpoint can name no browser to close, so it is dropped and logged.
+ */
 function readRecord(recordPath: string, log: (message: string) => void): string[] {
   let text: string
   try {
     text = readFileSync(recordPath, 'utf8')
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      log(`Cannot read ${recordPath}, leaving any browser it lists: ${String(err)}`)
-    }
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw new Error(`cannot read ${recordPath}: ${String(err)}`)
+  }
+  const entries = parseEntries(text)
+  if (entries === undefined) {
+    log(`Ignoring malformed ${recordPath}`)
     return []
   }
+  const endpoints = entries.filter(isEndpoint)
+  if (endpoints.length < entries.length) log(`Ignoring malformed entries in ${recordPath}`)
+  return endpoints
+}
+
+function parseEntries(text: string): unknown[] | undefined {
   try {
     const browsers = (JSON.parse(text) as { browsers?: unknown } | null)?.browsers
-    if (Array.isArray(browsers)) return browsers.filter((b): b is string => typeof b === 'string')
+    return Array.isArray(browsers) ? browsers : undefined
   } catch {
-    // Reported below
+    return undefined
   }
-  log(`Ignoring malformed ${recordPath}`)
-  return []
+}
+
+function isEndpoint(entry: unknown): entry is string {
+  if (typeof entry !== 'string') return false
+  try {
+    const { protocol } = new URL(entry)
+    return protocol === 'ws:' || protocol === 'wss:'
+  } catch {
+    return false
+  }
 }
 
 /** Whether a fetch failed because nothing listens on the port. */
