@@ -367,7 +367,7 @@ func TestKillProcessGroup(t *testing.T) {
 // be the log file, never the run's own stderr: a reader of the run's output
 // would otherwise wait for the server's idle shutdown to see end of file.
 func TestLaunchBrowserServerProcess_StderrGoesToLog(t *testing.T) {
-	t.Parallel()
+	testutil.Serial(t, "writes and executes a file, which a fork in a parallel test can hold open (ETXTBSY)")
 	if _, err := os.Stat("/proc/self/fd"); err != nil {
 		t.Skip("/proc unavailable")
 	}
