@@ -1,0 +1,1 @@
+{"artifact_id":"art-1","attempt":1,"category":"products","content_type":"text/plain","contract_version":"0.13.7","day":"2026-10-01","event_id":"run-ok-1-e4","event_type":"artifact","job_id":"job-1","name":"report.txt","policy":"strict","record_kind":"artifact_event","run_id":"run-ok-1","seq":4,"size_bytes":18,"source":"shop","ts":"2026-10-01T01:00:04Z"}

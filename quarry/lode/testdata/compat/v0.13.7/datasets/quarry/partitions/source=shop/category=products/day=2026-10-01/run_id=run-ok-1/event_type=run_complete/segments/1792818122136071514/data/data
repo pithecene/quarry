@@ -1,0 +1,1 @@
+{"attempt":1,"category":"products","contract_version":"0.13.7","day":"2026-10-01","event_id":"run-ok-1-e5","event_type":"run_complete","job_id":"job-1","payload":{"summary":"done"},"policy":"strict","record_kind":"event","run_id":"run-ok-1","seq":5,"source":"shop","ts":"2026-10-01T01:00:05Z","type":"run_complete"}
