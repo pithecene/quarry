@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Go module path**: The Go module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`. The CLI, the SDK, the container images, and stored data are unchanged.
 - **Go version**: The Go module requires Go 1.27.3 or later, the version that Lode v0.12.0 requires. Release binaries and container images are unaffected.
 - **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. Nothing may be written for a run after its end record, so a program must no longer write metrics after `Execute`.
+- **Browser discovery type**: `runtime.BrowserDiscovery` is removed. Browser reuse no longer keeps a discovery file for the runtime to read.
 - **Storage constructors**: `NewLodeClient`, `NewLodeClientWithFactory`, and `NewLodeS3Client` take a `context.Context`, because opening a dataset reads its head. Store factories are `lode.Factory[lode.RangeStore]`. `QueryLatestMetrics` and `QuerySidecarFiles` take the store factory and dataset ID in place of a dataset, and `NewReadDataset`, `NewReadDatasetFS`, `NewReadDatasetS3`, and `NewPartitionReader` are replaced by `OpenDataset` and `OpenView`.
 
 ### Added
@@ -35,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Policy close**: `Close` on the buffered, streaming, and strict policies runs once, so a second call no longer flushes again. Its flush has a 30-second deadline, and a custom sink must honor context cancellation. `Close` returns `ErrCloseUnflushed` when accepted data remains unwritten, and data offered after `Close` begins is refused with `ErrPolicyClosed`.
 - **Browser server output**: The reusable browser server writes its diagnostics to `browser-server.log` in the discovery directory instead of the stderr of the run that launched it. A program that reads a run's output through a pipe no longer waits for the server's idle timeout to see end of file.
+- **Browser server lifetime**: The reusable browser server no longer shuts down under a run in progress. It counted only pages that had navigated, so a run whose page was still `about:blank`, or one that connected as the idle timeout expired, could lose its browser. Each run now holds a connection to the server, over a Unix socket in the discovery directory, until it ends. The server shuts down only after it has had no connection for the idle timeout.
 
 ### Upgrade Notes
 

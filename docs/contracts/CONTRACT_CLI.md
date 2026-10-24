@@ -348,14 +348,45 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   to `LaunchManagedBrowser` when reuse is disabled.
 - Proxy mismatch between runs causes a graceful fallback to per-run browser
   launch (the reusable browser is not killed).
-- Discovery state is stored in `$XDG_RUNTIME_DIR/quarry/browser.json`
-  (or `$TMPDIR/quarry-$UID/` on macOS). Concurrent access is serialized
-  via `flock`.
+- The runtime and the server keep their state in the discovery directory,
+  `$XDG_RUNTIME_DIR/quarry/browser-reuse/`, or
+  `$TMPDIR/quarry-$UID/browser-reuse/` when `XDG_RUNTIME_DIR` is unset, as
+  on macOS. Releases before v0.14.0 used the parent directory. Their
+  servers and the current ones share no file, so neither reuses nor stops
+  the other's, and each stops at its own idle timeout.
 - The browser server writes its diagnostics to `browser-server.log` in the
   discovery directory, truncated at each launch. It never holds the output
   streams of the run that launched it, so that run's output ends when the
   run ends. The run's stderr names the log when it starts a server.
 - Config file: `no_browser_reuse: true` in YAML.
+
+**Server lifetime:**
+- A run reaches the server through the Unix socket `server.sock` in the
+  discovery directory. The run connects, sends a hash of its proxy
+  configuration, and receives the browser's endpoint, or a refusal when
+  the proxy differs from the server's. The run keeps the connection open
+  until it ends.
+- Each open connection is a reference to the server. The operating system
+  closes a connection when its process ends, however the process ends, so
+  the server's count of connections is exact. No file, PID, or timestamp
+  stands for a run.
+- The server shuts down once it has had no open connection for the idle
+  timeout. It first stops listening, which removes `server.sock`, and then
+  closes its browser. The server handles connections and its idle timer
+  in one event loop, so it never shuts down while a connection is open.
+- A run that finds no server, because `server.sock` is missing, refuses
+  the connection, or closes it without a reply, takes an exclusive `flock`
+  on `browser.lock`. Holding the lock, it connects again in case another
+  run has started a server, and otherwise starts one and waits until it
+  listens. The operating system releases the lock if its holder ends. A
+  server that exits or fails to listen within 30 seconds is the only
+  server the runtime stops, and the runtime stops it as its own child.
+- A server whose browser closes or crashes shuts down.
+- When the runtime cannot tell whether a server is usable, the run does
+  not share a browser. This holds when the connection fails for any other
+  reason, or the server does not reply within 5 seconds. The run launches
+  its own browser, as on a proxy mismatch, and its stderr gives the
+  reason. No such failure stops a server or closes a browser.
 
 **Reconciliation with "no background process" invariant:**
 The invariant "No command starts a long-running background process" (§Invariants)
@@ -363,7 +394,7 @@ refers to user-visible daemons that require management (start/stop/monitor).
 The reusable browser server is:
 - Self-terminating (idle timeout)
 - Not user-managed (no start/stop commands)
-- Discoverable only via an ephemeral runtime file
+- Discoverable only via an ephemeral runtime socket
 - Semantically equivalent to a kernel page cache or credential helper
 
 This is a permitted side-effect, not a background service.

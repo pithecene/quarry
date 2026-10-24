@@ -23,10 +23,10 @@
  *
  * @module
  */
-import { unlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import type { ProxyEndpoint } from '@pithecene/quarry-sdk'
 import { chromiumArgs } from '../browser-args.js'
-import { evaluateIdlePoll, type IdlePollState } from '../browser-idle.js'
+import { serveLeases } from '../browser-lease-server.js'
 import { errorMessage, execute, parseRunMeta } from '../executor.js'
 import { AckReader } from '../ipc/ack-reader.js'
 import { drainStdout } from '../ipc/sink.js'
@@ -208,18 +208,18 @@ async function readStdinMetadata(): Promise<string> {
 }
 
 /**
- * Run a long-lived browser server that self-terminates after idle timeout.
+ * Run a long-lived browser server that runs share through leases.
  *
  * Unlike --launch-browser (which waits for stdin EOF), this mode manages its
- * own lifetime via idle monitoring. The Go runtime launches this as a detached
- * process that outlives the parent quarry run.
+ * own lifetime. The Go runtime launches it as a detached process that
+ * outlives the run that started it, and every run that uses it holds a
+ * connection to its lease socket (see browser-lease-server.ts).
  *
  * Lifecycle:
- * 1. Launch browser with plugins
- * 2. Print WS endpoint to stdout
- * 3. Monitor /json/list for active pages every 5s
- * 4. After idle timeout with no active pages, shut down
- * 5. Remove discovery file on exit
+ * 1. Launch the browser with plugins
+ * 2. Listen on `server.sock` in QUARRY_BROWSER_REUSE_DIR, then print `ready`
+ * 3. Shut down once no run has held a lease for the idle timeout, when the
+ *    browser closes or crashes, or on SIGTERM or SIGINT
  */
 async function browserServer(scriptPath: string): Promise<never> {
   const { getPuppeteer: getBrowserPuppeteer } = await import('../executor.js')
@@ -238,95 +238,37 @@ async function browserServer(scriptPath: string): Promise<never> {
     args: chromiumArgs(proxyArgs)
   })
 
-  const wsEndpoint = browser.wsEndpoint()
-  process.stdout.write(`${wsEndpoint}\n`)
-
-  // Handle SIGPIPE gracefully (parent may close stdout after reading endpoint)
-  process.on('SIGPIPE', () => {
-    // Ignore — parent read the endpoint and closed its pipe
+  const leases = await serveLeases({
+    socketPath: join(process.env.QUARRY_BROWSER_REUSE_DIR ?? '.', 'server.sock'),
+    wsEndpoint: browser.wsEndpoint(),
+    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? '',
+    idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? '60', 10) * 1000
+  }).catch(async (err: unknown) => {
+    await browser.close()
+    throw err
   })
 
-  const idleTimeoutMs = Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? '60', 10) * 1000
-  const discoveryFile = process.env.QUARRY_BROWSER_DISCOVERY_FILE ?? ''
-
-  // Extract port from WS endpoint for HTTP health queries
-  const wsUrl = new URL(wsEndpoint)
-  const baseUrl = `http://127.0.0.1:${wsUrl.port}`
-
-  const pollIntervalMs = 5_000
-
-  /**
-   * Count active page targets (excluding the default about:blank).
-   * Uses Chromium's /json/list endpoint — no CDP protocol needed.
-   */
-  async function countActivePages(): Promise<number> {
-    const res = await fetch(`${baseUrl}/json/list`)
-    if (!res.ok) throw new Error(`/json/list returned ${res.status}`)
-    const targets = (await res.json()) as Array<{ type: string; url: string }>
-    return targets.filter((t) => t.type === 'page' && t.url !== 'about:blank').length
+  let stopping: Promise<never> | undefined
+  const shutdown = (reason: string, code: number): Promise<never> => {
+    stopping ??= (async () => {
+      process.stderr.write(`Browser server shutting down: ${reason}\n`)
+      leases.close()
+      await browser.close()
+      process.exit(code)
+    })()
+    return stopping
   }
 
-  /** Remove the discovery file on shutdown (best effort). */
-  function removeDiscoveryFile(): void {
-    if (!discoveryFile) return
-    try {
-      unlinkSync(discoveryFile)
-    } catch {
-      // Already removed or inaccessible — fine
-    }
-  }
+  browser.on('disconnected', () => void shutdown('browser disconnected', 1))
+  process.on('SIGTERM', () => void shutdown('SIGTERM', 0))
+  process.on('SIGINT', () => void shutdown('SIGINT', 0))
+  // The runtime closes its end of stdout once it reads `ready`
+  process.on('SIGPIPE', () => undefined)
 
-  // Idle monitoring state — declared before shutdown() which reads it
-  const pollConfig = { idleTimeoutMs, maxConsecutiveFailures: 3 }
-  let pollState: IdlePollState = { idleStartedAt: null, consecutiveFailures: 0 }
+  process.stdout.write('ready\n')
 
-  async function shutdown(): Promise<never> {
-    const idleSec = pollState.idleStartedAt
-      ? Math.round((Date.now() - pollState.idleStartedAt) / 1000)
-      : 0
-    process.stderr.write(`Browser server idle for ${idleSec}s, shutting down\n`)
-    removeDiscoveryFile()
-    await browser.close()
-    process.exit(0)
-  }
-
-  // Graceful shutdown on signals
-  process.on('SIGTERM', () => void shutdown())
-  process.on('SIGINT', () => void shutdown())
-
-  const timer = setInterval(async () => {
-    let fetchResult: { ok: true; activePages: number } | { ok: false }
-    try {
-      fetchResult = { ok: true, activePages: await countActivePages() }
-    } catch {
-      fetchResult = { ok: false }
-    }
-
-    const action = evaluateIdlePoll(fetchResult, pollState, pollConfig)
-
-    switch (action.type) {
-      case 'continue':
-        pollState = action.nextState
-        return
-      case 'shutdown':
-        clearInterval(timer)
-        await shutdown()
-        return
-      case 'crash-exit':
-        process.stderr.write(
-          `Browser health check failed ${action.failures} times consecutively, exiting\n`
-        )
-        clearInterval(timer)
-        removeDiscoveryFile()
-        process.exit(1)
-    }
-  }, pollIntervalMs)
-
-  // Block forever — process exits via shutdown() or signal handlers
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 2_147_483_647))
-  }
+  await leases.idle
+  return shutdown('no lease for the idle timeout', 0)
 }
 
 /**

@@ -3060,7 +3060,7 @@ var init_resolve_from = __esm({
 });
 
 // src/bin/executor.ts
-import { unlinkSync } from "node:fs";
+import { join } from "node:path";
 
 // src/browser-args.ts
 function chromiumArgs(extra = []) {
@@ -3071,32 +3071,83 @@ function chromiumArgs(extra = []) {
   return args;
 }
 
-// src/browser-idle.ts
-function evaluateIdlePoll(fetchResult, state, config, now = Date.now()) {
-  if (!fetchResult.ok) {
-    const failures = state.consecutiveFailures + 1;
-    if (failures >= config.maxConsecutiveFailures) {
-      return { type: "crash-exit", failures };
-    }
-    return {
-      type: "continue",
-      nextState: { ...state, consecutiveFailures: failures }
-    };
-  }
-  if (fetchResult.activePages > 0) {
-    return {
-      type: "continue",
-      nextState: { idleStartedAt: null, consecutiveFailures: 0 }
-    };
-  }
-  const idleStartedAt = state.idleStartedAt ?? now;
-  if (now - idleStartedAt >= config.idleTimeoutMs) {
-    return { type: "shutdown" };
-  }
-  return {
-    type: "continue",
-    nextState: { idleStartedAt, consecutiveFailures: 0 }
+// src/browser-lease-server.ts
+import { once } from "node:events";
+import { createServer } from "node:net";
+var MAX_REQUEST_BYTES = 4096;
+async function serveLeases(options) {
+  const connections = /* @__PURE__ */ new Set();
+  let timer;
+  let becameIdle = () => void 0;
+  const idle = new Promise((resolve3) => {
+    becameIdle = resolve3;
+  });
+  const server = createServer((socket) => {
+    connections.add(socket);
+    clearTimeout(timer);
+    socket.on("error", () => {
+    });
+    socket.on("close", () => {
+      connections.delete(socket);
+      if (connections.size === 0) arm();
+    });
+    void answer(socket, options);
+  });
+  const close = () => {
+    clearTimeout(timer);
+    if (server.listening) server.close();
   };
+  function arm() {
+    timer = setTimeout(() => {
+      close();
+      becameIdle();
+    }, options.idleTimeoutMs);
+  }
+  server.listen(options.socketPath);
+  await once(server, "listening");
+  arm();
+  return { idle, close };
+}
+async function answer(socket, options) {
+  const reply = replyTo(await firstLine(socket), options);
+  socket.write(`${JSON.stringify(reply)}
+`);
+  if ("refused" in reply) socket.end();
+}
+function replyTo(line, options) {
+  const request = parseRequest(line);
+  if (request === void 0) return { refused: "malformed request" };
+  if (request.proxy_hash !== options.proxyHash) return { refused: "proxy mismatch" };
+  return { ws_endpoint: options.wsEndpoint, pid: process.pid };
+}
+function firstLine(socket) {
+  return new Promise((resolve3) => {
+    let buffered = "";
+    const finish = (line) => {
+      socket.off("data", onData);
+      socket.off("end", onEnd);
+      socket.resume();
+      resolve3(line);
+    };
+    const onData = (chunk) => {
+      buffered += chunk.toString("utf8");
+      const end = buffered.indexOf("\n");
+      if (end !== -1) finish(buffered.slice(0, end));
+      else if (buffered.length > MAX_REQUEST_BYTES) finish(void 0);
+    };
+    const onEnd = () => finish(void 0);
+    socket.on("data", onData);
+    socket.on("end", onEnd);
+  });
+}
+function parseRequest(line) {
+  if (line === void 0) return void 0;
+  try {
+    const hash = JSON.parse(line)?.proxy_hash;
+    return typeof hash === "string" ? { proxy_hash: hash } : void 0;
+  } catch {
+    return void 0;
+  }
 }
 
 // src/bin/executor.ts
@@ -3420,70 +3471,33 @@ async function browserServer(scriptPath) {
     headless: true,
     args: chromiumArgs(proxyArgs)
   });
-  const wsEndpoint = browser.wsEndpoint();
-  process.stdout.write(`${wsEndpoint}
-`);
-  process.on("SIGPIPE", () => {
-  });
-  const idleTimeoutMs = Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3;
-  const discoveryFile = process.env.QUARRY_BROWSER_DISCOVERY_FILE ?? "";
-  const wsUrl = new URL(wsEndpoint);
-  const baseUrl = `http://127.0.0.1:${wsUrl.port}`;
-  const pollIntervalMs = 5e3;
-  async function countActivePages() {
-    const res = await fetch(`${baseUrl}/json/list`);
-    if (!res.ok) throw new Error(`/json/list returned ${res.status}`);
-    const targets = await res.json();
-    return targets.filter((t) => t.type === "page" && t.url !== "about:blank").length;
-  }
-  function removeDiscoveryFile() {
-    if (!discoveryFile) return;
-    try {
-      unlinkSync(discoveryFile);
-    } catch {
-    }
-  }
-  const pollConfig = { idleTimeoutMs, maxConsecutiveFailures: 3 };
-  let pollState = { idleStartedAt: null, consecutiveFailures: 0 };
-  async function shutdown() {
-    const idleSec = pollState.idleStartedAt ? Math.round((Date.now() - pollState.idleStartedAt) / 1e3) : 0;
-    process.stderr.write(`Browser server idle for ${idleSec}s, shutting down
-`);
-    removeDiscoveryFile();
+  const leases = await serveLeases({
+    socketPath: join(process.env.QUARRY_BROWSER_REUSE_DIR ?? ".", "server.sock"),
+    wsEndpoint: browser.wsEndpoint(),
+    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
+    idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
+  }).catch(async (err) => {
     await browser.close();
-    process.exit(0);
-  }
-  process.on("SIGTERM", () => void shutdown());
-  process.on("SIGINT", () => void shutdown());
-  const timer = setInterval(async () => {
-    let fetchResult;
-    try {
-      fetchResult = { ok: true, activePages: await countActivePages() };
-    } catch {
-      fetchResult = { ok: false };
-    }
-    const action = evaluateIdlePoll(fetchResult, pollState, pollConfig);
-    switch (action.type) {
-      case "continue":
-        pollState = action.nextState;
-        return;
-      case "shutdown":
-        clearInterval(timer);
-        await shutdown();
-        return;
-      case "crash-exit":
-        process.stderr.write(
-          `Browser health check failed ${action.failures} times consecutively, exiting
-`
-        );
-        clearInterval(timer);
-        removeDiscoveryFile();
-        process.exit(1);
-    }
-  }, pollIntervalMs);
-  while (true) {
-    await new Promise((resolve3) => setTimeout(resolve3, 2147483647));
-  }
+    throw err;
+  });
+  let stopping;
+  const shutdown = (reason, code) => {
+    stopping ??= (async () => {
+      process.stderr.write(`Browser server shutting down: ${reason}
+`);
+      leases.close();
+      await browser.close();
+      process.exit(code);
+    })();
+    return stopping;
+  };
+  browser.on("disconnected", () => void shutdown("browser disconnected", 1));
+  process.on("SIGTERM", () => void shutdown("SIGTERM", 0));
+  process.on("SIGINT", () => void shutdown("SIGINT", 0));
+  process.on("SIGPIPE", () => void 0);
+  process.stdout.write("ready\n");
+  await leases.idle;
+  return shutdown("no lease for the idle timeout", 0);
 }
 async function launchBrowserServer(scriptPath) {
   const { getPuppeteer: getBrowserPuppeteer } = await Promise.resolve().then(() => (init_executor(), executor_exports));

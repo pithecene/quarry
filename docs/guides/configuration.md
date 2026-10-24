@@ -185,9 +185,9 @@ stays alive. Fan-out child runs inherit the endpoint automatically.
 **Transparent reuse (default):** When no explicit endpoint is provided, Quarry
 automatically starts a reusable browser server on the first run. Subsequent
 runs reuse it. The browser self-terminates after `QUARRY_BROWSER_IDLE_TIMEOUT`
-seconds (default: 60) with no active pages. Its diagnostics go to
+seconds (default: 60) once no run is using it. Its diagnostics go to
 `browser-server.log` in the discovery directory
-(`$XDG_RUNTIME_DIR/quarry/`), whose path the run prints when it starts the
+(`$XDG_RUNTIME_DIR/quarry/browser-reuse/`), whose path the run prints when it starts the
 server.
 
 Use `--no-browser-reuse` (or `no_browser_reuse: true` in config) to revert
@@ -214,7 +214,7 @@ by the Node executor process, not the Go runtime.
 | `QUARRY_ADBLOCKER` | disabled | Puppeteer adblocker plugin. Set to `1` to enable. |
 | `QUARRY_NO_SANDBOX` | disabled | Disable Chromium sandbox (required in containers/CI). Set to `1` to enable. |
 | `QUARRY_BROWSER_ENDPOINT` | — | WebSocket URL of an externally managed browser (equivalent to `--browser-ws-endpoint` flag). Preferred for container deployments. |
-| `QUARRY_BROWSER_IDLE_TIMEOUT` | `60` | Seconds before the reusable browser server self-terminates after all pages close. Read by both the Go runtime (to pass to the browser server) and the executor (as its idle timer). |
+| `QUARRY_BROWSER_IDLE_TIMEOUT` | `60` | Seconds before the reusable browser server self-terminates once no run is using it. Read by both the Go runtime (to pass to the browser server) and the executor (as its idle timer). |
 | `QUARRY_RESOLVE_FROM` | — | Absolute path to `node_modules` for ESM resolution fallback. Set automatically by the Go runtime when `--resolve-from` is specified; not typically set manually. |
 
 ### Usage
