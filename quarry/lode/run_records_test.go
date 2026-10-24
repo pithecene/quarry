@@ -18,9 +18,9 @@ func TestValidateRunKey(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name                              string
+		name                             string
 		dataset, source, category, runID string
-		ok                                bool
+		ok                               bool
 	}{
 		{"valid", "quarry", "src", "cat", "run-1", true},
 		{"slash in source is encodable", "quarry", "a/b", "cat", "run-1", true},
@@ -123,7 +123,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	for k, want := range map[string]any{
 		"record_kind": "run_start", "schema_version": float64(1), "run_id": "run-1", "job_id": "job-1",
 		"attempt": float64(1), "dataset": "quarry", "source": "src", "category": "cat", "day": "2026-10-21",
-		"partition": "source=src/category=cat/day=2026-10-21/run_id=run-1/",
+		"partition":  "source=src/category=cat/day=2026-10-21/run_id=run-1/",
 		"started_at": "2026-10-21T08:30:00.000000123Z", "quarry_version": types.Version, "backfilled": false,
 	} {
 		if start[k] != want {

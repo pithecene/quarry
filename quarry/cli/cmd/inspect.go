@@ -30,8 +30,8 @@ func inspectRunCommand() *cli.Command {
 		Name:      "run",
 		Usage:     "Inspect a run by ID",
 		ArgsUsage: "<run-id>",
-		Flags: TUIReadOnlyFlags(),
-		Action: inspectRunAction,
+		Flags:     TUIReadOnlyFlags(),
+		Action:    inspectRunAction,
 	}
 }
 
@@ -62,8 +62,8 @@ func inspectJobCommand() *cli.Command {
 		Name:      "job",
 		Usage:     "Inspect a job by ID",
 		ArgsUsage: "<job-id>",
-		Flags: TUIReadOnlyFlags(),
-		Action: inspectJobAction,
+		Flags:     TUIReadOnlyFlags(),
+		Action:    inspectJobAction,
 	}
 }
 
@@ -90,8 +90,8 @@ func inspectTaskCommand() *cli.Command {
 		Name:      "task",
 		Usage:     "Inspect a task by ID",
 		ArgsUsage: "<task-id>",
-		Flags: TUIReadOnlyFlags(),
-		Action: inspectTaskAction,
+		Flags:     TUIReadOnlyFlags(),
+		Action:    inspectTaskAction,
 	}
 }
 

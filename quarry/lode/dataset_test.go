@@ -75,11 +75,11 @@ func TestOpenView_WriteReadRoundTrip(t *testing.T) {
 	}
 
 	snap := metrics.Snapshot{
-		RunsStarted:   7,
-		RunsCompleted: 6,
-		RunsFailed:    1,
-		Policy:        "strict",
-		Executor:      "test-exec.js",
+		RunsStarted:    7,
+		RunsCompleted:  6,
+		RunsFailed:     1,
+		Policy:         "strict",
+		Executor:       "test-exec.js",
 		StorageBackend: "fs",
 		RunID:          "run-rt",
 	}

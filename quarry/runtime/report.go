@@ -14,18 +14,18 @@ import (
 // RunReport is the structured JSON report written by --report.
 // All fields use json tags matching the documented contract.
 type RunReport struct {
-	RunID      string             `json:"run_id"`
-	JobID      string             `json:"job_id,omitempty"`
-	Attempt    int                `json:"attempt"`
+	RunID      string              `json:"run_id"`
+	JobID      string              `json:"job_id,omitempty"`
+	Attempt    int                 `json:"attempt"`
 	Outcome    types.OutcomeStatus `json:"outcome"`
-	Message    string             `json:"message"`
-	ExitCode   int                `json:"exit_code"`
-	DurationMs int64              `json:"duration_ms"`
-	EventCount int64              `json:"event_count"`
+	Message    string              `json:"message"`
+	ExitCode   int                 `json:"exit_code"`
+	DurationMs int64               `json:"duration_ms"`
+	EventCount int64               `json:"event_count"`
 
-	Policy   *ReportPolicy   `json:"policy"`
-	Artifacts *ReportArtifacts `json:"artifacts"`
-	Metrics  *metrics.Snapshot `json:"metrics"`
+	Policy    *ReportPolicy     `json:"policy"`
+	Artifacts *ReportArtifacts  `json:"artifacts"`
+	Metrics   *metrics.Snapshot `json:"metrics"`
 
 	TerminalSummary *map[string]any              `json:"terminal_summary,omitempty"`
 	ProxyUsed       *types.ProxyEndpointRedacted `json:"proxy_used,omitempty"`
@@ -35,10 +35,10 @@ type RunReport struct {
 
 // ReportPolicy holds policy stats in the report.
 type ReportPolicy struct {
-	Name            string          `json:"name"`
-	EventsReceived  int64           `json:"events_received"`
-	EventsPersisted int64           `json:"events_persisted"`
-	EventsDropped   int64           `json:"events_dropped"`
+	Name            string           `json:"name"`
+	EventsReceived  int64            `json:"events_received"`
+	EventsPersisted int64            `json:"events_persisted"`
+	EventsDropped   int64            `json:"events_dropped"`
 	FlushTriggers   map[string]int64 `json:"flush_triggers,omitempty"`
 }
 
@@ -77,10 +77,10 @@ func BuildRunReport(result *RunResult, snap metrics.Snapshot, policyName string,
 			Chunks:    result.ArtifactStats.TotalChunks,
 			Bytes:     result.ArtifactStats.TotalBytes,
 		},
-		Metrics:   &snap,
-		ProxyUsed: result.ProxyUsed,
-		Stderr:          result.StderrOutput,
-		RunRecordError:  result.RunRecordError,
+		Metrics:        &snap,
+		ProxyUsed:      result.ProxyUsed,
+		Stderr:         result.StderrOutput,
+		RunRecordError: result.RunRecordError,
 	}
 
 	if result.RunMeta.JobID != nil {

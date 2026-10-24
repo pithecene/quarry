@@ -853,7 +853,7 @@ func makePartialEventStream(runMeta *types.RunMeta, validEventCount int) []byte 
 
 	// Append truncated/invalid data (simulating crash mid-frame)
 	buf.Write([]byte{0x00, 0x00, 0x00, 0x10}) // Length prefix for 16 bytes
-	buf.Write([]byte{0xFF, 0xFE})              // Only 2 bytes instead of 16
+	buf.Write([]byte{0xFF, 0xFE})             // Only 2 bytes instead of 16
 
 	return buf.Bytes()
 }

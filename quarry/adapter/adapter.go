@@ -15,9 +15,9 @@ type RunCompletedEvent struct {
 	Source          string `json:"source"`
 	Category        string `json:"category"`
 	Day             string `json:"day"`
-	Outcome         string `json:"outcome"`      // success, script_error, etc.
+	Outcome         string `json:"outcome"` // success, script_error, etc.
 	StoragePath     string `json:"storage_path"`
-	Timestamp       string `json:"timestamp"`     // ISO 8601
+	Timestamp       string `json:"timestamp"` // ISO 8601
 	JobID           string `json:"job_id,omitempty"`
 	Attempt         int    `json:"attempt"`
 	EventCount      int64  `json:"event_count"`
