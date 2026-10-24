@@ -32,6 +32,12 @@ jobs:
         if: ${{ steps.regex-match.outputs.match != '' }}
         run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
 
+      - name: 🔎 Release Published
+        if: ${{ steps.regex-match.outputs.match != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/release/assert-release-published.sh "$GITHUB_REF_NAME"
+
   version_lockstep:
     name: 🔒 Version Lockstep
     runs-on: ubuntu-latest
@@ -251,46 +257,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: [hold]
     steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
       - name: ⬇️ Download Artifacts
         uses: actions/download-artifact@v4
         with:
           name: release-dist
           path: dist
 
-      - name: 🔍 Check for existing release
-        id: existing
+      # Tag Check has confirmed the release exists.
+      - name: 📎 Upload Assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          BODY=$(gh release view "$TAG" \
-            --json body -q '.body' 2>/dev/null || echo "")
-          if echo "$BODY" | grep -qv "TODO: Add release notes"; then
-            echo "has_notes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_notes=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: 📎 Upload assets to existing release
-        if: steps.existing.outputs.has_notes == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" dist/* --clobber
-
-      - name: 🚀 Create draft release
-        if: steps.existing.outputs.has_notes != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: false
-          draft: true
-          body: |
-            <!-- Replace this with the release body per the GitHub release format standard in CLAUDE.md -->
-            **TODO: Add release notes before publishing**
-          files: dist/*
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
 
   publish_ghpr:
     name: 📦 Publish SDK (GitHub Packages)
