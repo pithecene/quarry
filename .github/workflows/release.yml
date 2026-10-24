@@ -32,22 +32,11 @@ jobs:
         if: ${{ steps.regex-match.outputs.match != '' }}
         run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
 
-      # A release is published by creating its GitHub release, notes and
-      # all, which pushes the tag. A tag without a published, stable
-      # release stops here, before anything is published.
       - name: 🔎 Release Published
         if: ${{ steps.regex-match.outputs.match != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          STATE=$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease \
-            -q 'if .isDraft then "draft" elif .isPrerelease then "prerelease" else "published" end') \
-            || STATE=missing
-          if [[ "$STATE" != published ]]; then
-            echo "::error::The GitHub release for $GITHUB_REF_NAME is $STATE." \
-              "Create and publish the release with its notes; that pushes the tag."
-            exit 1
-          fi
+        run: scripts/release/assert-release-published.sh "$GITHUB_REF_NAME"
 
   version_lockstep:
     name: 🔒 Version Lockstep

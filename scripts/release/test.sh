@@ -97,6 +97,17 @@ cat >"$STUBS/curl" <<'EOF'
 if [[ -f "$STATE/jsr_published" ]]; then printf 200; else printf 404; fi
 EOF
 
+# gh release view <tag> --json isDraft,isPrerelease -q <expr>: prints the
+# release state from $STATE/release ("published", "a draft", "a
+# prerelease"); fails with "release not found" when it is absent.
+cat >"$STUBS/gh" <<'EOF2'
+#!/usr/bin/env bash
+echo "gh $*" >>"$STATE/calls"
+[[ -f "$STATE/release" ]] && { cat "$STATE/release"; exit 0; }
+echo "release not found" >&2
+exit 1
+EOF2
+
 chmod +x "$STUBS"/*
 export PATH="$STUBS:$PATH"
 
@@ -155,6 +166,27 @@ expect "malformed tag is rejected" fail "$A" 0.13.6
 expect "missing tag is rejected" fail "$A"
 tags v0.13.6
 expect "unreadable tag list fails instead of passing" fail env RELEASE_TAGS_FILE="$WORK/missing" "$A" v0.13.7
+
+# --- assert-release-published.sh ---------------------------------------------
+
+P="$HERE/assert-release-published.sh"
+
+new_case
+echo published >"$STATE/release"
+expect "a published release passes" ok "$P" v1.2.3
+
+new_case
+expect "a tag without a release is rejected" fail "$P" v1.2.3
+
+new_case
+echo "a draft" >"$STATE/release"
+expect "a draft release is rejected" fail "$P" v1.2.3
+
+new_case
+echo "a prerelease" >"$STATE/release"
+expect "a prerelease is rejected" fail "$P" v1.2.3
+
+expect "missing tag is rejected" fail "$P"
 
 # --- publish-npm.sh ----------------------------------------------------------
 
