@@ -73,7 +73,7 @@ func newRunReader(c *cli.Context) (*runreader.Reader, error) {
 }
 
 // storeFactoryFrom builds the store factory the storage flags describe.
-func storeFactoryFrom(c *cli.Context) (lodelib.StoreFactory, error) {
+func storeFactoryFrom(c *cli.Context) (lodelib.Factory[lodelib.RangeStore], error) {
 	backend := c.String("storage-backend")
 	endpoint, pathStyle := c.String("storage-endpoint"), c.Bool("storage-s3-path-style")
 	if backend == "fs" && (endpoint != "" || pathStyle) {

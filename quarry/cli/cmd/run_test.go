@@ -1797,7 +1797,7 @@ func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
 
 	// Call buildPolicy with the captured timestamp — this is exactly what
 	// childFactory.Run() does at run.go:386-389
-	childPol, _, childFileWriter, err := buildPolicy(pol, storage, "quarry", "src", "cat", "run-001", childStartTime, collector, nil)
+	childPol, _, childFileWriter, err := buildPolicy(t.Context(), pol, storage, "quarry", "src", "cat", "run-001", childStartTime, collector, nil)
 	if err != nil {
 		t.Fatalf("buildPolicy: %v", err)
 	}

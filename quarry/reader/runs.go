@@ -102,7 +102,7 @@ type Reader struct {
 }
 
 // New returns a reader for the dataset stored behind factory.
-func New(dataset string, factory lode.StoreFactory) (*Reader, error) {
+func New(dataset string, factory lode.Factory[lode.RangeStore]) (*Reader, error) {
 	// The dataset component is used unencoded; reject unsafe IDs as the
 	// write path does.
 	if err := qlode.ValidateRunKey(dataset, "x", "x", "x"); err != nil {

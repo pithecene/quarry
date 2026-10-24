@@ -161,12 +161,12 @@ func (r *Report) add(run Run) {
 // (CONTRACT_LODE.md §Run Retention): the run's snapshots, then its sidecar
 // files, then its start record and its end record. A store error terminates
 // the prune and returns the partial report.
-func Prune(ctx context.Context, dataset string, factory lode.StoreFactory, opts Options) (Report, error) {
+func Prune(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore], opts Options) (Report, error) {
 	report := Report{Dataset: dataset, DryRun: opts.DryRun, Runs: []Run{}}
 	if err := opts.validate(); err != nil {
 		return report, err
 	}
-	p, err := newPruner(dataset, factory, opts)
+	p, err := newPruner(ctx, dataset, factory, opts)
 	if err != nil {
 		return report, err
 	}

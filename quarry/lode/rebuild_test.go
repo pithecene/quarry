@@ -19,10 +19,10 @@ const legacyTs = "2026-10-21T03:04:05.5Z"
 
 // writeLegacyRun writes a run the way pre-record versions did: partitions
 // only, no run records. A nil eventTypes writes only the metrics record.
-func writeLegacyRun(t *testing.T, factory lode.StoreFactory, source, runID string, eventTypes ...types.EventType) Config {
+func writeLegacyRun(t *testing.T, factory lode.Factory[lode.RangeStore], source, runID string, eventTypes ...types.EventType) Config {
 	t.Helper()
 	cfg := Config{Dataset: "quarry", Source: source, Category: "cat", Day: "2026-10-21", RunID: runID}
-	c, err := NewLodeClientWithFactory(cfg, factory)
+	c, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
@@ -42,7 +42,7 @@ func writeLegacyRun(t *testing.T, factory lode.StoreFactory, source, runID strin
 	return cfg
 }
 
-func rebuild(t *testing.T, factory lode.StoreFactory, dryRun bool) RebuildReport {
+func rebuild(t *testing.T, factory lode.Factory[lode.RangeStore], dryRun bool) RebuildReport {
 	t.Helper()
 	report, err := RebuildRunRecords(t.Context(), "quarry", factory, RebuildOptions{DryRun: dryRun})
 	if err != nil {
@@ -51,7 +51,7 @@ func rebuild(t *testing.T, factory lode.StoreFactory, dryRun bool) RebuildReport
 	return report
 }
 
-func hasKey(t *testing.T, factory lode.StoreFactory, key string) bool {
+func hasKey(t *testing.T, factory lode.Factory[lode.RangeStore], key string) bool {
 	t.Helper()
 	store, _ := factory()
 	keys, err := listKeys(t.Context(), store, key)
@@ -149,7 +149,7 @@ func TestRebuild_IdempotentAndResumes(t *testing.T) {
 		t.Fatalf("rerun = %+v", again)
 	}
 
-	c, err := NewLodeClientWithFactory(cfg, factory)
+	c, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestRebuild_LeavesRuntimeRecordsAlone(t *testing.T) {
 	t.Parallel()
 	factory := sharedMemoryFactory()
 	cfg := writeLegacyRun(t, factory, "src", "r1", types.EventTypeRunComplete)
-	c, err := NewLodeClientWithFactory(cfg, factory)
+	c, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestRebuild_EmptyDataset(t *testing.T) {
 }
 
 // failEndPut fails every end-record write.
-type failEndPut struct{ lode.Store }
+type failEndPut struct{ lode.RangeStore }
 
 var errEndPut = errors.New("end put failed")
 
@@ -205,7 +205,7 @@ func (s failEndPut) Put(ctx context.Context, path string, r io.Reader) error {
 	if strings.HasSuffix(path, "/"+EndRecordName) {
 		return errEndPut
 	}
-	return s.Store.Put(ctx, path, r)
+	return s.RangeStore.Put(ctx, path, r)
 }
 
 // A store error terminates the rebuild, and the report still lists the start
@@ -215,7 +215,7 @@ func TestRebuild_ErrorReportsRecordsWritten(t *testing.T) {
 	factory := sharedMemoryFactory()
 	writeLegacyRun(t, factory, "src", "r1", types.EventTypeRunComplete)
 	store, _ := factory()
-	failing := func() (lode.Store, error) { return failEndPut{store}, nil }
+	failing := func() (lode.RangeStore, error) { return failEndPut{store}, nil }
 
 	report, err := RebuildRunRecords(t.Context(), "quarry", failing, RebuildOptions{})
 	if !errors.Is(err, errEndPut) {
@@ -249,7 +249,7 @@ func TestRebuild_LineageFallsBackWhenTerminalLacksIt(t *testing.T) {
 	t.Parallel()
 	factory := sharedMemoryFactory()
 	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "r1"}
-	c, err := NewLodeClientWithFactory(cfg, factory)
+	c, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}

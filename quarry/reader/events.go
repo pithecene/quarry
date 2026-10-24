@@ -32,16 +32,19 @@ func (r *Reader) ReadEvents(ctx context.Context, run Run) ([]map[string]any, err
 	if want := qlode.PartitionPrefix(cfg); run.Partition != want {
 		return nil, fmt.Errorf("%w: run %q has partition %q, want %q", ErrInvalidRun, run.RunID, run.Partition, want)
 	}
-	// Bind the dataset reader to the reader's store, so events come from the
-	// same store the run was listed from.
-	dr, err := qlode.NewPartitionReader(r.store)
+	// Bind the dataset view to the reader's store, so events come from the
+	// same store the run was listed from. A dataset without snapshots holds
+	// no events.
+	dr, err := qlode.OpenView(ctx, r.dataset, r.store)
+	if errors.Is(err, lode.ErrNotFound) {
+		return []map[string]any{}, nil
+	}
 	if err != nil {
 		return nil, qlode.WrapReadError(err, "datasets/"+r.dataset)
 	}
-	ds := lode.DatasetID(r.dataset)
 
 	// The prefix ends with "/", so run_id=r1/ never matches run_id=r10/.
-	parts, err := dr.ListPartitions(ctx, ds, lode.PartitionListOptions{Prefix: run.Partition})
+	parts, err := dr.ListPartitions(ctx, lode.PartitionListOptions{Prefix: run.Partition})
 	if err != nil {
 		if errors.Is(err, lode.ErrNotFound) {
 			return []map[string]any{}, nil
@@ -51,7 +54,7 @@ func (r *Reader) ReadEvents(ctx context.Context, run Run) ([]map[string]any, err
 
 	var events []map[string]any
 	for _, part := range parts {
-		recs, err := qlode.ReadPartitionRecords(ctx, dr, ds, part.Path)
+		recs, err := qlode.ReadPartitionRecords(ctx, dr, part.Path)
 		if err != nil {
 			return nil, err
 		}

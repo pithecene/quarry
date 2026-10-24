@@ -45,7 +45,7 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 func writeFSRun(t *testing.T, root, runID string) {
 	t.Helper()
 	cfg := lode.Config{Dataset: "quarry", Source: "demo", Category: "default", Day: "2026-10-22", RunID: runID}
-	c, err := lode.NewLodeClient(cfg, root)
+	c, err := lode.NewLodeClient(t.Context(), cfg, root)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
