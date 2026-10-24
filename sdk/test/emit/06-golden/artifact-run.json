@@ -1,6 +1,6 @@
 [
   {
-    "contract_version": "0.13.7",
+    "contract_version": "0.14.0",
     "event_id": "EVENT_ID_PLACEHOLDER",
     "run_id": "00000000-0000-0000-0000-000000000001",
     "job_id": "00000000-0000-0000-0000-000000000002",
@@ -17,7 +17,7 @@
     }
   },
   {
-    "contract_version": "0.13.7",
+    "contract_version": "0.14.0",
     "event_id": "EVENT_ID_PLACEHOLDER",
     "run_id": "00000000-0000-0000-0000-000000000001",
     "job_id": "00000000-0000-0000-0000-000000000002",
@@ -33,7 +33,7 @@
     }
   },
   {
-    "contract_version": "0.13.7",
+    "contract_version": "0.14.0",
     "event_id": "EVENT_ID_PLACEHOLDER",
     "run_id": "00000000-0000-0000-0000-000000000001",
     "job_id": "00000000-0000-0000-0000-000000000002",
@@ -47,7 +47,7 @@
     }
   },
   {
-    "contract_version": "0.13.7",
+    "contract_version": "0.14.0",
     "event_id": "EVENT_ID_PLACEHOLDER",
     "run_id": "00000000-0000-0000-0000-000000000001",
     "job_id": "00000000-0000-0000-0000-000000000002",
