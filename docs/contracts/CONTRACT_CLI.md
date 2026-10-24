@@ -384,7 +384,9 @@ on the first run and self-terminates after an idle timeout (default: 60s).
 - A server whose browser closes or crashes shuts down.
 - When the runtime cannot tell whether a server is usable, the run does
   not share a browser. This holds when the connection fails for any other
-  reason, or the server does not reply within 5 seconds. The run launches
+  reason, the server does not reply within 5 seconds, or the browser it
+  grants does not answer the health check (`/json/version`). In the last
+  case the run releases its lease at once. The run launches
   its own browser, as on a proxy mismatch, and its stderr gives the
   reason. No such failure stops a server or closes a browser.
 

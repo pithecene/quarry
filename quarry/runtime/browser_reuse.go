@@ -89,7 +89,7 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 	if err != nil {
 		return "", fmt.Errorf("browser reuse: lease on the new server: %w", err)
 	}
-	return lease.WSEndpoint, nil
+	return healthy(lease)
 }
 
 // reused reports the outcome of a lease request on an existing server.
@@ -102,6 +102,18 @@ func reused(lease browserLease, err error) (string, error) {
 		return "", fmt.Errorf("browser reuse: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "Reusing browser server (pid=%d)\n", lease.ServerPID)
+	return healthy(lease)
+}
+
+// healthy returns the lease's endpoint once the browser answers on it. A
+// server can hold a browser that is connected but no longer answers; such a
+// lease is released at once, so the run launches its own browser and the
+// server, held by no run, stops at its idle timeout.
+func healthy(lease browserLease) (string, error) {
+	if err := HealthCheckBrowser(lease.WSEndpoint); err != nil {
+		lease.Release()
+		return "", fmt.Errorf("browser reuse: server's browser does not answer (pid=%d): %w", lease.ServerPID, err)
+	}
 	return lease.WSEndpoint, nil
 }
 

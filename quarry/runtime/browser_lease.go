@@ -54,6 +54,8 @@ type leaseReply struct {
 type browserLease struct {
 	WSEndpoint string
 	ServerPID  int
+	// Release ends the lease before its context does.
+	Release func()
 }
 
 // requestLease connects to the server at socketPath and asks for its
@@ -78,16 +80,20 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 
 	// The connection lives exactly as long as ctx: closing it when ctx ends
 	// both releases a granted lease and cuts short a stalled exchange.
-	release := context.AfterFunc(ctx, func() { iox.DiscardClose(conn) })
+	stop := context.AfterFunc(ctx, func() { iox.DiscardClose(conn) })
+	release := func() {
+		stop()
+		iox.DiscardClose(conn)
+	}
 	lease, err := exchange(conn, proxyHash)
 	if err != nil {
 		release()
-		iox.DiscardClose(conn)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return browserLease{}, ctxErr
 		}
 		return browserLease{}, err
 	}
+	lease.Release = release
 	return lease, nil
 }
 

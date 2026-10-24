@@ -235,3 +235,23 @@ func TestIdleTimeoutFromEnv(t *testing.T) {
 		})
 	}
 }
+
+// A granted browser that does not answer is not shared, and its lease is
+// released at once, so that the server is left to idle out.
+func TestHealthy_ReleasesALeaseOnABrowserThatDoesNotAnswer(t *testing.T) {
+	t.Parallel()
+
+	released := 0
+	lease := browserLease{
+		WSEndpoint: "ws://127.0.0.1:19999/devtools/browser/x",
+		ServerPID:  1,
+		Release:    func() { released++ },
+	}
+
+	if _, err := healthy(lease); err == nil {
+		t.Fatal("expected an error for a browser that does not answer")
+	}
+	if released != 1 {
+		t.Errorf("released %d times, want 1", released)
+	}
+}
