@@ -954,7 +954,9 @@ before the v1.0 freeze.
 
 - [ ] [`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md): `file_write_ack` carries the resolved storage
       key, the runtime alone builds keys with Hive encoding for sidecar
-      keys, and SDK `buildStorageKey` is removed (B1)
+      keys, and SDK `buildStorageKey` is removed (B1). This is part of the
+      experimental artifact surface (v1.0 § Experimental Artifact
+      Surface), so it does not gate the freeze.
 - [ ] Measurements on the dogfood dataset (about 11k runs): store calls
       per `list runs` page (B2/C) and `quarry prune --dry-run` candidate
       counts by outcome (A/D)
@@ -987,6 +989,33 @@ Freeze the run contracts (`CONTRACT_RUN`, `CONTRACT_EMIT`, `CONTRACT_IPC`,
 it is the point after which the v1.x host is built *on* the contracts
 rather than *in* them.
 
+### Experimental Artifact Surface
+
+Artifact and byte acquisition is experimental in v1.0 and excluded from
+its compatibility commitment, as Lode v1.0 excludes Volume (Lode
+`V1_API_DECISIONS.md` D9). The experimental surface comprises
+`emit.artifact`, `ctx.storage.put`, the `artifact_chunk`, `file_write`,
+and `file_write_ack` frames ([`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md)), and the storage of artifact
+bytes and sidecar files ([`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md)). The `artifact` event remains
+the commit record and is frozen with the other events. Data that any
+release writes remains readable.
+
+The reason is the main use case. Panthalassa acquires raw provider files
+(GRIB2, NetCDF, and compressed AIS archives) that must be retained for
+replay and identified by content. The current path cannot carry them:
+an artifact must fit in memory, and its bytes are stored base64-encoded.
+The replacement streams bytes into Lode Volumes, and its design depends
+on measurements from Panthalassa's source samples: object sizes, range
+support, whether a length is known before the transfer, and the content
+digest. Freezing the current path before those measurements exist would
+fix a design that is known to be replaced.
+
+The replacement is designed on #255 and leaves experimental when it has
+run against Panthalassa's samples. The same work supplies the downstream
+evidence for Lode's Volume stability gate (Lode `V1_READINESS.md` §4).
+Until then, `quarry prune` must not select datasets that hold inputs
+pinned for replay.
+
 ### Deliverables
 
 - [`docs/RELEASE_READINESS_v1.0.md`](RELEASE_READINESS_v1.0.md) taken from Draft to signed off: the
@@ -997,6 +1026,8 @@ rather than *in* them.
   limitation is retired by the v0.14.0 reader (shipped before v1.0); the
   scheduling limitation stays in force, restated as "planned: the v1.x
   first-party host", and is retired only when `quarry serve` ships.
+- [`PUBLIC_API.md`](../PUBLIC_API.md) and the affected contracts mark the experimental artifact
+  surface as such.
 - `.grove.yaml` intent revised deliberately if the host changes the
   project's stated shape; not by drift.
 
@@ -1004,6 +1035,7 @@ rather than *in* them.
 
 - [x] v0.14.0 shipped
 - [ ] v0.14.0 Carried Forward items that change a run contract landed
+- [ ] Experimental artifact surface marked in [`PUBLIC_API.md`](../PUBLIC_API.md) and the contracts
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged
