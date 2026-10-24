@@ -351,6 +351,10 @@ on the first run and self-terminates after an idle timeout (default: 60s).
 - Discovery state is stored in `$XDG_RUNTIME_DIR/quarry/browser.json`
   (or `$TMPDIR/quarry-$UID/` on macOS). Concurrent access is serialized
   via `flock`.
+- The browser server writes its diagnostics to `browser-server.log` in the
+  discovery directory, truncated at each launch. It never holds the output
+  streams of the run that launched it, so that run's output ends when the
+  run ends. The run's stderr names the log when it starts a server.
 - Config file: `no_browser_reuse: true` in YAML.
 
 **Reconciliation with "no background process" invariant:**
