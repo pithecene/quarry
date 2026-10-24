@@ -73,8 +73,15 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 
 // s3ClientOptions applies the endpoint and path-style overrides for
 // S3-compatible providers.
+//
+// It also silences the SDK's warning that a response carried no checksum
+// it supports. Stores such as R2 and MinIO often send none, and the SDK
+// logs the warning on every such read, flooding stderr. Validation is
+// unchanged: the SDK still validates every checksum a store sends.
 func s3ClientOptions(s3cfg S3Config) []func(*s3.Options) {
-	var s3Opts []func(*s3.Options)
+	s3Opts := []func(*s3.Options){func(o *s3.Options) {
+		o.DisableLogOutputChecksumValidationSkipped = true
+	}}
 	if s3cfg.Endpoint != "" {
 		endpoint := s3cfg.Endpoint
 		s3Opts = append(s3Opts, func(o *s3.Options) {

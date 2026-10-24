@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+
 	"github.com/pithecene/quarry/internal/testutil"
 )
 
@@ -69,5 +71,25 @@ func TestNewStoreFactoryS3_ReadHonorsEndpointAndPathStyle(t *testing.T) {
 		if !strings.HasPrefix(path, "/test-bucket") {
 			t.Errorf("request path %q is not path-style (want /test-bucket/...)", path)
 		}
+	}
+}
+
+// A read from a store that sends no checksum must not log a warning: the
+// SDK otherwise writes one to stderr for every such response.
+func TestS3ClientOptions_SilenceSkippedChecksumWarning(t *testing.T) {
+	t.Parallel()
+	for name, cfg := range map[string]S3Config{
+		"AWS":           {},
+		"S3-compatible": {Endpoint: "http://127.0.0.1:9000", UsePathStyle: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var o s3.Options
+			for _, apply := range s3ClientOptions(cfg) {
+				apply(&o)
+			}
+			if !o.DisableLogOutputChecksumValidationSkipped {
+				t.Error("the skipped-checksum warning is not silenced")
+			}
+		})
 	}
 }
