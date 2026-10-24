@@ -737,10 +737,10 @@ public surface changes.
 
 ### Mini-milestones
 
-- [ ] Lode v0.10.0 tagged upstream
-- [ ] `go.mod` bump, tests green
-- [ ] [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md) listing notes
-- [ ] Lockstep release: `task version:bump V=0.13.6`, [`CHANGELOG.md`](../CHANGELOG.md)
+- [x] Lode v0.10.0 tagged upstream
+- [x] `go.mod` bump, tests green
+- [x] [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md) listing notes (§ Listing Order and Cursors)
+- [x] Lockstep release: `task version:bump V=0.13.6`, [`CHANGELOG.md`](../CHANGELOG.md)
       promoted, single version-bump commit (AGENTS.md § Version Policy)
 
 ---
@@ -757,6 +757,11 @@ consumers (#240) and long-lived datasets (#239).
 Quarry owns the Hive layout, the event envelope, and the meaning of a run's
 terminal event. Today a downstream consumer must reimplement all three to
 enumerate runs, which couples it to layout details Quarry may change.
+
+**Status:** shipped in v0.14.0 (2026-10-24), except the items under
+Carried Forward. This section keeps the decisions below as the operator
+made them. Where the shipped design differs, Mini-milestones states the
+difference, and the contracts are authoritative.
 
 ### Decisions
 
@@ -858,23 +863,21 @@ provisional labels for the decisions, not API; the contract PRs fix the
 names and shapes.
 
 **Compression** is a property of the dataset, not of an invocation. Lode
-reads with the dataset's configured compressor and cannot yet dispatch on
-`manifest.Compressor`, so a mixed dataset is unreadable until that Lode
-change lands — which means one writer omitting a per-run flag would make
-every earlier snapshot inaccessible. The compressor is therefore chosen
-once per dataset and persisted as Quarry dataset configuration in the
-namespace (`datasets/<dataset>/quarry.json`); `run` reads it and refuses
-to write with any other compressor. "New" means Lode's own snapshot
-listing finds no manifests — not a missing `latest` pointer (a legacy
-dataset or an interrupted pointer write can hold committed snapshots
-without one, and Lode itself falls back to scanning manifests), and
-never merely no `quarry.json`: every
-dataset written before this file existed holds uncompressed snapshots,
-so on first contact `run` bootstraps a missing `quarry.json` as `none`
-and refuses any other value for that dataset. An explicit compressor is
-accepted only for a snapshot-less dataset or when it matches the pinned
-one, and the pin is immutable until Lode dispatches per manifest. Recompressing old snapshots waits on a Lode
-rewrite primitive. No lockstep or contract-version impact.
+v0.12.0 enforces this itself: each manifest records its compressor, a
+read decompresses each snapshot with the compressor its manifest names,
+and a writer whose compressor differs from the head manifest's is
+refused with `ErrSettingsMismatch` before it writes anything. A
+Quarry-side pin (`datasets/<dataset>/quarry.json`) is therefore
+unnecessary and is dropped. Today every Quarry writer opens a dataset
+without a compressor, and no option selects one. The planned change,
+carried forward, has every writer, `run` and `prune` alike, open a
+dataset that has snapshots with the compressor its head manifest
+records, since Lode refuses any other. A compressor option will choose
+the compressor only for a dataset without snapshots, and `run` will
+refuse a value that differs from an existing head's. The option will
+ship with the benchmark below.
+Recompressing an existing dataset waits on a Lode rewrite primitive. No
+lockstep or contract-version impact.
 
 **Known constraints, recorded not hidden:** a Lode dataset is one linear
 history with one `latest` pointer (commit rate is bounded per dataset;
@@ -894,56 +897,84 @@ Each decision is judged by a number in its PR, not by argument:
   (~11k runs): partition enumeration vs. record listing, in
   [`docs/guides/benchmarks.md`](guides/benchmarks.md).
 - A/D: zero runs without an end record among runs that completed
-  finalization; `gc --dry-run` candidate counts by outcome on the dogfood
+  finalization; `quarry prune --dry-run` candidate counts by outcome on the dogfood
   dataset before any deletion ships.
 - Compression: write throughput, per-event latency under `strict`, and
   bytes stored for none/gzip/zstd, same benchmark harness.
 
 ### Prerequisites
 
-- [ ] Lode v0.10.0 (listing) — v0.13.6
-- [ ] pithecene/lode#174 (deletion primitive) and Lode's retention
-      contract out of Draft — block `gc` deletion, not the reader,
-      `--dry-run`, or the backfill
-- [ ] Lode: decompressor dispatch on `manifest.Compressor` — blocks
-      compression on existing datasets, not on new ones
-- [ ] Lode: snapshot rewrite primitive — blocks `--recompress` only
+- [x] Lode v0.10.0 (listing), taken in v0.13.6
+- [x] pithecene/lode#174 (deletion primitive) and Lode's retention
+      contract out of Draft, in Lode v0.12.0 (`Expire`, `Sweep`)
+- [x] Lode: decompressor dispatch on `manifest.Compressor`, in Lode v0.12.0
+- [ ] Lode: snapshot rewrite primitive, which blocks `--recompress` only
 
 ### Mini-milestones
 
-- [ ] [`CONTRACT_RUN.md`](contracts/CONTRACT_RUN.md) / [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md): runtime-owned
-      finalization; start/end records; run deadline (A, D1)
-- [ ] [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md): the `runs/` namespace; one key builder with
-      Hive encoding; sidecar inventory unchanged; append-only exception
-      for whole-run deletion; Quarry-side deletion of its own objects;
-      head-owner exclusion (B, D)
-- [ ] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): read side rewritten from the data model (E);
-      [`CONTRACT_METRICS.md`](contracts/CONTRACT_METRICS.md) § Data Source Progression aligned
+- [x] [`CONTRACT_RUN.md`](contracts/CONTRACT_RUN.md) / [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md): runtime-owned
+      finalization, and start and end records (A). The run deadline (D1)
+      is carried forward.
+- [x] [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md): the `runs/` namespace with Hive-encoded
+      components, the unchanged sidecar inventory, whole-run deletion,
+      Quarry-side deletion of its own objects, and head-owner exclusion
+      (B2, B3, D). Sidecar keys remain unencoded (§ Key Encoding, known
+      limitation), so the single key builder (B1) is carried forward.
+- [x] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): `list runs`, `list events`, `index rebuild`, and
+      `prune` specified from the data model, with `unterminated` in place
+      of `running` (E). Removing the stub-backed views and aligning
+      [`CONTRACT_METRICS.md`](contracts/CONTRACT_METRICS.md) § Data Source Progression are carried forward.
+- [x] Runtime: finalization moved into `Execute`, which writes the start
+      and end records (A)
+- [x] `quarry/reader` over run records, which the CLI commands use, with
+      its [`ARCH_INDEX.md`](ARCH_INDEX.md) boundary entry (C). Module Split records its
+      placement in `quarry-core/`, and that extraction remains planned
+      there. `cli/reader` remains as it was, not an adapter over
+      `quarry/reader`.
+- [x] `quarry index rebuild`, the operator-run backfill, dry run first (C2)
+- [x] `sdk/` reader module over CLI JSON, exported from the public entrypoint
+      (`listRuns`, `readRun`)
+- [x] Retention shipped as `quarry prune` rather than `gc`, with
+      `--dry-run`, selection by state and age (`--succeeded-days`,
+      `--failed-days`, `--unterminated-days`) or by `--run-id`, and
+      `--sweep-grace` (D). The
+      operator's bound on unterminated runs is `--unterminated-days` in
+      place of `--presume-dead-after`. Tombstones (D3) were replaced by
+      idempotent steps: an interrupted prune resumes on the next prune
+      that selects the run.
+- [x] [`PUBLIC_API.md`](../PUBLIC_API.md) Known Limitation 7 updated
+- [x] `list runs` benchmark on a 200-run fixture published in
+      [`docs/guides/benchmarks.md`](guides/benchmarks.md). The dogfood measurements are carried
+      forward.
+
+### Carried Forward
+
+Not shipped in v0.14.0. The items that change a run contract must land
+before the v1.0 freeze.
+
 - [ ] [`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md): `file_write_ack` carries the resolved storage
-      key (B1 prerequisite)
-- [ ] Runtime: finalization moved into `Execute`; start/end records;
-      deadline enforcement; SDK `buildStorageKey` removed once the ack
-      carries the key (A, B1)
-- [ ] `quarry/reader` over run records; `cli/reader` as a thin adapter;
-      [`ARCH_INDEX.md`](ARCH_INDEX.md) boundary entry; `quarry-core/` placement in the
-      module split (C)
-- [ ] `quarry index rebuild` — the operator-run backfill, dry-run first (C2)
-- [ ] `sdk/` reader module over CLI JSON, exported from the public entrypoint
-- [ ] `quarry gc --dry-run`; `quarry gc` deletion with tombstones once
-      prerequisites land (D)
-- [ ] Dataset-pinned compression (`quarry.json` in the namespace; writers
-      refuse a mismatch) with the benchmark; `--recompress` once the Lode
+      key, the runtime alone builds keys with Hive encoding for sidecar
+      keys, and SDK `buildStorageKey` is removed (B1)
+- [ ] Measurements on the dogfood dataset (about 11k runs): store calls
+      per `list runs` page (B2/C) and `quarry prune --dry-run` candidate
+      counts by outcome (A/D)
+- [ ] Run deadline declared per run and enforced by the runtime (D1)
+- [ ] Consumer-supplied run list for retention (`--runs-from`, D2)
+- [ ] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
+      tasks, executors) removed, and [`CONTRACT_METRICS.md`](contracts/CONTRACT_METRICS.md) § Data
+      Source Progression aligned (E)
+- [ ] Writers that open a dataset with its head's compressor, a
+      compressor option for datasets without snapshots, and the
+      none/gzip/zstd benchmark, with `--recompress` once the Lode
       primitive exists
-- [ ] [`PUBLIC_API.md`](../PUBLIC_API.md) Known Limitation 7 updated; minimum-reader-version
-      note for switched datasets
-- [ ] Benchmarks above published with the PRs that make the claims
 
-### Open Questions
+### Resolved Questions
 
-- Whether the `sdk/` reader locates the `quarry` binary by `PATH` only or
-  also accepts an explicit path.
-- Whether the event reader exposes artifact bytes in this milestone or
-  events only (Known Limitation 3).
+- The `sdk/` reader runs `quarry` from `PATH` by default and accepts an
+  explicit path (`quarryPath`).
+- The event reader returns events only. Artifact bytes remain Known
+  Limitation 3, and #255 holds the open question of where Quarry stores
+  them.
 
 ---
 
@@ -971,7 +1002,8 @@ rather than *in* them.
 
 ### Mini-milestones
 
-- [ ] v0.14.0 shipped
+- [x] v0.14.0 shipped
+- [ ] v0.14.0 Carried Forward items that change a run contract landed
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged
