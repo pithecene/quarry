@@ -3153,40 +3153,71 @@ function parseRequest(line) {
 
 // src/browser-record.ts
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
-var CLOSE_TIMEOUT_MS = 5e3;
-async function closeRecordedBrowser(recordPath, connect, log) {
-  const endpoint = readRecordedEndpoint(recordPath, log);
-  if (endpoint === void 0) return;
-  try {
-    const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), CLOSE_TIMEOUT_MS);
-    await withTimeout(browser.close(), CLOSE_TIMEOUT_MS);
-    log(`Closed the browser an earlier server left running (${endpoint})`);
-  } catch {
-  }
+var STEP_TIMEOUT_MS = 5e3;
+async function closeRecordedBrowsers(recordPath, connect, probe, log) {
+  const outcomes = await Promise.all(
+    readRecord(recordPath, log).map(async (endpoint) => {
+      const closed = await closeBrowser(endpoint, connect);
+      if (closed) log(`Closed a browser an earlier server left running (${endpoint})`);
+      const state = closed ? "gone" : await probe(endpoint);
+      if (state === "running" || state === "unknown") {
+        log(`Could not close a browser an earlier server left (${endpoint}); keeping it listed`);
+      }
+      return { endpoint, keep: state !== "gone" };
+    })
+  );
+  return outcomes.filter((o) => o.keep).map((o) => o.endpoint);
 }
-function recordBrowser(recordPath, endpoint) {
+function recordBrowsers(recordPath, endpoints) {
   const tmp = `${recordPath}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify({ ws_endpoint: endpoint })}
+  writeFileSync(tmp, `${JSON.stringify({ browsers: endpoints })}
 `, { mode: 384 });
   renameSync(tmp, recordPath);
 }
-function readRecordedEndpoint(recordPath, log) {
+var probeBrowser = async (endpoint) => {
+  const url = new URL(endpoint);
+  const scheme = url.protocol === "wss:" ? "https:" : "http:";
+  let res;
+  try {
+    res = await fetch(`${scheme}//${url.host}/json/version`, {
+      signal: AbortSignal.timeout(STEP_TIMEOUT_MS)
+    });
+  } catch (err) {
+    return refused(err) ? "gone" : "unknown";
+  }
+  const body = await res.json().catch(() => null);
+  return body?.webSocketDebuggerUrl === endpoint ? "running" : "gone";
+};
+async function closeBrowser(endpoint, connect) {
+  try {
+    const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), STEP_TIMEOUT_MS);
+    await withTimeout(browser.close(), STEP_TIMEOUT_MS);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function readRecord(recordPath, log) {
   let text;
   try {
     text = readFileSync(recordPath, "utf8");
   } catch (err) {
     if (err.code !== "ENOENT") {
-      log(`Cannot read ${recordPath}, leaving any browser it names: ${String(err)}`);
+      log(`Cannot read ${recordPath}, leaving any browser it lists: ${String(err)}`);
     }
-    return void 0;
+    return [];
   }
   try {
-    const endpoint = JSON.parse(text)?.ws_endpoint;
-    if (typeof endpoint === "string" && endpoint !== "") return endpoint;
+    const browsers = JSON.parse(text)?.browsers;
+    if (Array.isArray(browsers)) return browsers.filter((b) => typeof b === "string");
   } catch {
   }
   log(`Ignoring malformed ${recordPath}`);
-  return void 0;
+  return [];
+}
+function refused(err) {
+  const cause = err?.cause;
+  return cause?.code === "ECONNREFUSED";
 }
 function withTimeout(promise, ms) {
   let timer;
@@ -3512,7 +3543,12 @@ async function browserServer(scriptPath) {
   const log = (message) => void process.stderr.write(`${message}
 `);
   const vanilla = await getVanillaPuppeteer2(scriptPath);
-  await closeRecordedBrowser(recordPath, (options) => vanilla.connect(options), log);
+  const stillListed = await closeRecordedBrowsers(
+    recordPath,
+    (options) => vanilla.connect(options),
+    probeBrowser,
+    log
+  );
   const puppeteer = await getBrowserPuppeteer(scriptPath, {
     stealth: process.env.QUARRY_STEALTH !== "0",
     adblocker: process.env.QUARRY_ADBLOCKER === "1"
@@ -3523,6 +3559,12 @@ async function browserServer(scriptPath) {
     headless: true,
     args: chromiumArgs(proxyArgs)
   });
+  try {
+    recordBrowsers(recordPath, [...stillListed, browser.wsEndpoint()]);
+  } catch (err) {
+    await browser.close();
+    throw err;
+  }
   const stopped = Promise.race([
     new Promise(
       (resolve3) => browser.once("disconnected", () => resolve3({ reason: "browser disconnected", code: 1 }))
@@ -3533,14 +3575,12 @@ async function browserServer(scriptPath) {
       )
     )
   ]);
-  const leases = await Promise.resolve().then(() => recordBrowser(recordPath, browser.wsEndpoint())).then(
-    () => serveLeases({
-      socketPath: join(reuseDir, "server.sock"),
-      wsEndpoint: browser.wsEndpoint(),
-      proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
-      idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
-    })
-  ).catch(async (err) => {
+  const leases = await serveLeases({
+    socketPath: join(reuseDir, "server.sock"),
+    wsEndpoint: browser.wsEndpoint(),
+    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
+    idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
+  }).catch(async (err) => {
     await browser.close();
     throw err;
   });

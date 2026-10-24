@@ -1,39 +1,70 @@
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
-import { closeRecordedBrowser, recordBrowser } from '../src/browser-record.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  type ConnectBrowser,
+  closeRecordedBrowsers,
+  type ProbeBrowser,
+  probeBrowser,
+  recordBrowsers
+} from '../src/browser-record.js'
 
 const WS = 'ws://127.0.0.1:9222/devtools/browser/abc'
+const OTHER = 'ws://127.0.0.1:9333/devtools/browser/def'
 
 function recordPath(): string {
   return join(mkdtempSync(join(tmpdir(), 'quarry-record-')), 'browser.json')
 }
 
-function fakeConnect(close = vi.fn(async () => undefined)) {
-  return { connect: vi.fn(async () => ({ close })), close }
+const closes: ConnectBrowser = async () => ({ close: async () => undefined })
+const failsToConnect: ConnectBrowser = async () => {
+  throw new Error('connect failed')
 }
+const probeSays =
+  (state: Awaited<ReturnType<ProbeBrowser>>): ProbeBrowser =>
+  async () =>
+    state
 
-describe('closeRecordedBrowser', () => {
-  it('closes the browser an earlier server recorded', async () => {
+describe('closeRecordedBrowsers', () => {
+  it('closes each recorded browser and keeps none', async () => {
     const path = recordPath()
-    recordBrowser(path, WS)
-    const { connect, close } = fakeConnect()
+    recordBrowsers(path, [WS, OTHER])
+    const connect = vi.fn(closes)
     const log = vi.fn()
 
-    await closeRecordedBrowser(path, connect, log)
+    const kept = await closeRecordedBrowsers(path, connect, probeSays('running'), log)
 
+    expect(kept).toEqual([])
     expect(connect).toHaveBeenCalledWith({ browserWSEndpoint: WS })
-    expect(close).toHaveBeenCalledOnce()
+    expect(connect).toHaveBeenCalledWith({ browserWSEndpoint: OTHER })
     expect(log).toHaveBeenCalledWith(expect.stringContaining(WS))
   })
 
+  it('drops a browser that failed to close only when the probe shows it gone', async () => {
+    const path = recordPath()
+    recordBrowsers(path, [WS])
+
+    expect(await closeRecordedBrowsers(path, failsToConnect, probeSays('gone'), vi.fn())).toEqual(
+      []
+    )
+    expect(
+      await closeRecordedBrowsers(path, failsToConnect, probeSays('running'), vi.fn())
+    ).toEqual([WS])
+    expect(
+      await closeRecordedBrowsers(path, failsToConnect, probeSays('unknown'), vi.fn())
+    ).toEqual([WS])
+  })
+
   it('does nothing when no browser is recorded', async () => {
-    const { connect } = fakeConnect()
+    const connect = vi.fn(closes)
     const log = vi.fn()
 
-    await closeRecordedBrowser(recordPath(), connect, log)
-
+    expect(await closeRecordedBrowsers(recordPath(), connect, probeSays('running'), log)).toEqual(
+      []
+    )
     expect(connect).not.toHaveBeenCalled()
     expect(log).not.toHaveBeenCalled()
   })
@@ -41,32 +72,59 @@ describe('closeRecordedBrowser', () => {
   it('leaves a malformed record alone and says so', async () => {
     const path = recordPath()
     writeFileSync(path, 'not json')
-    const { connect } = fakeConnect()
+    const connect = vi.fn(closes)
     const log = vi.fn()
 
-    await closeRecordedBrowser(path, connect, log)
-
+    expect(await closeRecordedBrowsers(path, connect, probeSays('running'), log)).toEqual([])
     expect(connect).not.toHaveBeenCalled()
     expect(log).toHaveBeenCalledWith(expect.stringContaining('malformed'))
   })
+})
 
-  it('moves on when the recorded browser is already gone', async () => {
+describe('recordBrowsers', () => {
+  it('replaces the record without leaving a temporary file', () => {
     const path = recordPath()
-    recordBrowser(path, WS)
-    const connect = vi.fn(async () => {
-      throw new Error('ECONNREFUSED')
-    })
+    recordBrowsers(path, [OTHER])
+    recordBrowsers(path, [WS])
 
-    await expect(closeRecordedBrowser(path, connect, vi.fn())).resolves.toBeUndefined()
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ browsers: [WS] })
+    expect(readdirSync(join(path, '..'))).toEqual(['browser.json'])
   })
 })
 
-describe('recordBrowser', () => {
-  it('replaces the record without leaving a temporary file', () => {
-    const path = recordPath()
-    recordBrowser(path, 'ws://127.0.0.1:1/devtools/browser/old')
-    recordBrowser(path, WS)
+describe('probeBrowser', () => {
+  const servers: Server[] = []
+  afterEach(() => {
+    for (const server of servers.splice(0)) server.close()
+  })
 
-    expect(readdirSync(join(path, '..'))).toEqual(['browser.json'])
+  /** Serve `/json/version` with `body(port)` and return the port. */
+  async function serveVersion(body: (port: number) => string): Promise<number> {
+    const server = createServer((_, res) => res.end(body((server.address() as AddressInfo).port)))
+    servers.push(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    return (server.address() as AddressInfo).port
+  }
+  const endpointOn = (port: number): string => `ws://127.0.0.1:${port}/devtools/browser/abc`
+
+  it('finds the browser running when its port names its endpoint', async () => {
+    const port = await serveVersion((p) => JSON.stringify({ webSocketDebuggerUrl: endpointOn(p) }))
+
+    expect(await probeBrowser(endpointOn(port))).toBe('running')
+  })
+
+  it('finds it gone when its port answers as another browser or anything else', async () => {
+    const other = await serveVersion(() => JSON.stringify({ webSocketDebuggerUrl: OTHER }))
+    const html = await serveVersion(() => '<html></html>')
+
+    expect(await probeBrowser(endpointOn(other))).toBe('gone')
+    expect(await probeBrowser(endpointOn(html))).toBe('gone')
+  })
+
+  it('finds it gone when nothing listens on its port', async () => {
+    const port = await serveVersion(() => '')
+    await new Promise((resolve) => servers.pop()?.close(resolve))
+
+    expect(await probeBrowser(endpointOn(port))).toBe('gone')
   })
 })

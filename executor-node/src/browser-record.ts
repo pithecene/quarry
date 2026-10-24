@@ -5,64 +5,111 @@ export type ConnectBrowser = (options: {
   browserWSEndpoint: string
 }) => Promise<{ close(): Promise<void> }>
 
-/** How long closing a recorded browser may take before the server moves on. */
-const CLOSE_TIMEOUT_MS = 5_000
+/**
+ * Whether the browser an endpoint names still runs: `gone` only when its port
+ * refuses connections or answers as anything but that browser, `unknown`
+ * when it cannot be told.
+ */
+export type ProbeBrowser = (endpoint: string) => Promise<'running' | 'gone' | 'unknown'>
+
+/** How long one step of closing a recorded browser may take. */
+const STEP_TIMEOUT_MS = 5_000
 
 /**
- * Close the browser that `recordPath` names, if it still runs.
+ * Close the browsers that `recordPath` lists, and return those that may
+ * still run.
  *
- * A server records its browser's endpoint as it starts. One that ends without
- * closing its browser, as when killed with SIGKILL, leaves the browser
- * running with its endpoint recorded, so the next server closes it. A server
+ * A server records its browser's endpoint as it launches the browser. One
+ * that ends without closing its browser, as when killed with SIGKILL, leaves
+ * the browser running and listed, so the next server closes it. A server
  * starts only while the runtime holds the discovery lock and no server
- * listens, so the recorded browser belongs to no server that a run can
- * reach. The endpoint carries the browser's own ID, so it never names
- * another browser. A record that cannot be read is logged and left alone.
+ * listens, so a listed browser belongs to no server that a run can reach.
+ * The endpoint carries the browser's own ID, so it never names another
+ * browser. A browser that fails to close stays listed unless a probe shows
+ * it gone, so that a later server tries again.
  */
-export async function closeRecordedBrowser(
+export async function closeRecordedBrowsers(
   recordPath: string,
   connect: ConnectBrowser,
+  probe: ProbeBrowser,
   log: (message: string) => void
-): Promise<void> {
-  const endpoint = readRecordedEndpoint(recordPath, log)
-  if (endpoint === undefined) return
-  try {
-    const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), CLOSE_TIMEOUT_MS)
-    await withTimeout(browser.close(), CLOSE_TIMEOUT_MS)
-    log(`Closed the browser an earlier server left running (${endpoint})`)
-  } catch {
-    // Closed with its server, as is usual
-  }
+): Promise<string[]> {
+  const outcomes = await Promise.all(
+    readRecord(recordPath, log).map(async (endpoint) => {
+      const closed = await closeBrowser(endpoint, connect)
+      if (closed) log(`Closed a browser an earlier server left running (${endpoint})`)
+      const state = closed ? 'gone' : await probe(endpoint)
+      if (state === 'running' || state === 'unknown') {
+        log(`Could not close a browser an earlier server left (${endpoint}); keeping it listed`)
+      }
+      return { endpoint, keep: state !== 'gone' }
+    })
+  )
+  return outcomes.filter((o) => o.keep).map((o) => o.endpoint)
 }
 
-/** Record `endpoint` as this server's browser, replacing the file atomically. */
-export function recordBrowser(recordPath: string, endpoint: string): void {
+/** Replace the record with `endpoints`, atomically. */
+export function recordBrowsers(recordPath: string, endpoints: readonly string[]): void {
   const tmp = `${recordPath}.tmp`
-  writeFileSync(tmp, `${JSON.stringify({ ws_endpoint: endpoint })}\n`, { mode: 0o600 })
+  writeFileSync(tmp, `${JSON.stringify({ browsers: endpoints })}\n`, { mode: 0o600 })
   renameSync(tmp, recordPath)
 }
 
-function readRecordedEndpoint(
-  recordPath: string,
-  log: (message: string) => void
-): string | undefined {
+/**
+ * Probe the browser at `endpoint` through its `/json/version`, which names
+ * the endpoint of the browser on that port.
+ */
+export const probeBrowser: ProbeBrowser = async (endpoint) => {
+  const url = new URL(endpoint)
+  const scheme = url.protocol === 'wss:' ? 'https:' : 'http:'
+  let res: Response
+  try {
+    res = await fetch(`${scheme}//${url.host}/json/version`, {
+      signal: AbortSignal.timeout(STEP_TIMEOUT_MS)
+    })
+  } catch (err) {
+    return refused(err) ? 'gone' : 'unknown'
+  }
+  // Whatever answers, only this browser names this endpoint.
+  const body = (await res.json().catch(() => null)) as { webSocketDebuggerUrl?: unknown } | null
+  return body?.webSocketDebuggerUrl === endpoint ? 'running' : 'gone'
+}
+
+async function closeBrowser(endpoint: string, connect: ConnectBrowser): Promise<boolean> {
+  try {
+    const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), STEP_TIMEOUT_MS)
+    await withTimeout(browser.close(), STEP_TIMEOUT_MS)
+    return true
+  } catch {
+    // The probe decides whether it is gone
+    return false
+  }
+}
+
+function readRecord(recordPath: string, log: (message: string) => void): string[] {
   let text: string
   try {
     text = readFileSync(recordPath, 'utf8')
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      log(`Cannot read ${recordPath}, leaving any browser it names: ${String(err)}`)
+      log(`Cannot read ${recordPath}, leaving any browser it lists: ${String(err)}`)
     }
-    return undefined
+    return []
   }
   try {
-    const endpoint = (JSON.parse(text) as { ws_endpoint?: unknown } | null)?.ws_endpoint
-    if (typeof endpoint === 'string' && endpoint !== '') return endpoint
+    const browsers = (JSON.parse(text) as { browsers?: unknown } | null)?.browsers
+    if (Array.isArray(browsers)) return browsers.filter((b): b is string => typeof b === 'string')
   } catch {
     // Reported below
   }
   log(`Ignoring malformed ${recordPath}`)
-  return undefined
+  return []
+}
+
+/** Whether a fetch failed because nothing listens on the port. */
+function refused(err: unknown): boolean {
+  const cause = (err as { cause?: { code?: unknown } } | null)?.cause
+  return cause?.code === 'ECONNREFUSED'
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
