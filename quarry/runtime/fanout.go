@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -283,9 +284,7 @@ func (s *Operator) Results() FanOutResult {
 
 	// Copy the map to avoid external mutation
 	results := make(map[string]*RunResult, len(s.childResults))
-	for k, v := range s.childResults {
-		results[k] = v
-	}
+	maps.Copy(results, s.childResults)
 
 	return FanOutResult{
 		RunsTotal:       s.runsFinished.Load(),

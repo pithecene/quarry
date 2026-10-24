@@ -3,6 +3,7 @@ package lode
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/pithecene/lode/lode"
@@ -55,12 +56,5 @@ func snapshotMatchesFilter(snap *lode.DatasetSnapshot, key, value string) bool {
 // key=value segment. Segments are delimited by "/" in paths. This avoids
 // substring false positives (e.g., run_id=run-1 matching run_id=run-10).
 func matchesPartitionValue(path, key, value string) bool {
-	segment := key + "=" + value
-	// Split path into segments and match exactly
-	for _, part := range strings.Split(path, "/") {
-		if part == segment {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strings.Split(path, "/"), key+"="+value)
 }

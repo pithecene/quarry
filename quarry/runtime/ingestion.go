@@ -47,8 +47,7 @@ func (e *IngestionError) Unwrap() error {
 
 // IsPolicyError returns true if the error is a policy failure.
 func IsPolicyError(err error) bool {
-	var ingErr *IngestionError
-	if errors.As(err, &ingErr) {
+	if ingErr, ok := errors.AsType[*IngestionError](err); ok {
 		return ingErr.Kind == IngestionErrorPolicy
 	}
 	return false
@@ -56,8 +55,7 @@ func IsPolicyError(err error) bool {
 
 // IsCanceledError returns true if the error is due to context cancellation.
 func IsCanceledError(err error) bool {
-	var ingErr *IngestionError
-	if errors.As(err, &ingErr) {
+	if ingErr, ok := errors.AsType[*IngestionError](err); ok {
 		return ingErr.Kind == IngestionErrorCanceled
 	}
 	return false
@@ -65,8 +63,7 @@ func IsCanceledError(err error) bool {
 
 // IsVersionMismatchError returns true if the error is a contract version mismatch.
 func IsVersionMismatchError(err error) bool {
-	var ingErr *IngestionError
-	if errors.As(err, &ingErr) {
+	if ingErr, ok := errors.AsType[*IngestionError](err); ok {
 		return ingErr.Kind == IngestionErrorVersionMismatch
 	}
 	return false
@@ -74,8 +71,7 @@ func IsVersionMismatchError(err error) bool {
 
 // IsStreamError returns true if the error is a stream/frame error.
 func IsStreamError(err error) bool {
-	var ingErr *IngestionError
-	if errors.As(err, &ingErr) {
+	if ingErr, ok := errors.AsType[*IngestionError](err); ok {
 		return ingErr.Kind == IngestionErrorStream
 	}
 	return false
@@ -101,19 +97,19 @@ type EnqueueObserver func(*types.EventEnvelope)
 //   - Policy failure on non-droppable events terminates run
 //   - run_result control frames do not affect seq ordering
 type IngestionEngine struct {
-	decoder          *ipc.FrameDecoder
-	policy           policy.Policy
-	artifacts        *ArtifactManager
-	fileWriter       lode.FileWriter // sidecar file writes, may be nil
-	logger           *log.Logger
-	runMeta          *types.RunMeta // for envelope validation
-	collector        *metrics.Collector
-	enqueueObserver  EnqueueObserver // optional fan-out observer, may be nil
-	ackWriter        io.Writer       // stdin pipe for file_write_ack frames, may be nil
-	currentSeq       int64
-	terminalSeen     bool
-	terminalEvent    *types.EventEnvelope
-	runResult        *types.RunResultFrame // control frame, not counted in seq
+	decoder         *ipc.FrameDecoder
+	policy          policy.Policy
+	artifacts       *ArtifactManager
+	fileWriter      lode.FileWriter // sidecar file writes, may be nil
+	logger          *log.Logger
+	runMeta         *types.RunMeta // for envelope validation
+	collector       *metrics.Collector
+	enqueueObserver EnqueueObserver // optional fan-out observer, may be nil
+	ackWriter       io.Writer       // stdin pipe for file_write_ack frames, may be nil
+	currentSeq      int64
+	terminalSeen    bool
+	terminalEvent   *types.EventEnvelope
+	runResult       *types.RunResultFrame // control frame, not counted in seq
 }
 
 // NewIngestionEngine creates a new ingestion engine.

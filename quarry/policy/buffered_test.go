@@ -251,7 +251,7 @@ func TestBufferedPolicy_ArtifactChunksBuffered(t *testing.T) {
 	pol := mustNewBufferedPolicy(t, sink, config)
 
 	// Ingest chunks
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		chunk := &types.ArtifactChunk{
 			ArtifactID: "a1",
 			Seq:        int64(i + 1),
@@ -538,7 +538,7 @@ func TestBufferedPolicy_BufferSize_AccurateAfterChunkBuffering(t *testing.T) {
 	pol := mustNewBufferedPolicy(t, sink, config)
 
 	// Add chunks with known sizes
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		chunk := &types.ArtifactChunk{
 			ArtifactID: "a1",
 			Seq:        int64(i + 1),
@@ -635,7 +635,7 @@ func TestBufferedPolicy_FlushFailure_PreservesChunkBuffer(t *testing.T) {
 	pol := mustNewBufferedPolicy(t, sink, config)
 
 	// Buffer chunks only (no events to avoid partial success complexity)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
 			ArtifactID: "a1",
 			Seq:        int64(i + 1),
@@ -710,7 +710,7 @@ func TestBufferedPolicy_ChunksPersisted_IncrementedAfterFlush(t *testing.T) {
 	pol := mustNewBufferedPolicy(t, sink, config)
 
 	// Buffer chunks
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
 			ArtifactID: "a1",
 			Seq:        int64(i + 1),

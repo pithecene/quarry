@@ -790,8 +790,7 @@ func TestLodeClient_ErrorPropagation_ChunkWrite(t *testing.T) {
 	}
 
 	// Verify wrapped correctly
-	var storageErr *StorageError
-	if !errors.As(err, &storageErr) {
+	if _, ok := errors.AsType[*StorageError](err); !ok {
 		t.Fatalf("expected *StorageError, got %T", err)
 	}
 }

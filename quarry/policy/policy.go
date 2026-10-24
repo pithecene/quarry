@@ -3,6 +3,7 @@ package policy
 
 import (
 	"context"
+	"maps"
 	"sync/atomic"
 
 	"github.com/pithecene/quarry/types"
@@ -103,9 +104,7 @@ func estimateEventSize(envelope *types.EventEnvelope) int64 {
 func DroppableTypes() map[types.EventType]bool {
 	// Return a copy to prevent mutation
 	result := make(map[types.EventType]bool, len(droppableTypes))
-	for k, v := range droppableTypes {
-		result[k] = v
-	}
+	maps.Copy(result, droppableTypes)
 	return result
 }
 
@@ -143,11 +142,11 @@ func newStatsRecorder() *statsRecorder {
 }
 
 func (r *statsRecorder) incTotalEvents()            { r.totalEvents.Add(1) }
-func (r *statsRecorder) incEventsPersisted(n int64)  { r.eventsPersisted.Add(n) }
-func (r *statsRecorder) incTotalChunks()             { r.totalChunks.Add(1) }
-func (r *statsRecorder) incChunksPersisted(n int64)  { r.chunksPersisted.Add(n) }
-func (r *statsRecorder) incErrors()                  { r.errors.Add(1) }
-func (r *statsRecorder) incFlush()                   { r.flushCount.Add(1) }
+func (r *statsRecorder) incEventsPersisted(n int64) { r.eventsPersisted.Add(n) }
+func (r *statsRecorder) incTotalChunks()            { r.totalChunks.Add(1) }
+func (r *statsRecorder) incChunksPersisted(n int64) { r.chunksPersisted.Add(n) }
+func (r *statsRecorder) incErrors()                 { r.errors.Add(1) }
+func (r *statsRecorder) incFlush()                  { r.flushCount.Add(1) }
 
 func (r *statsRecorder) snapshot() Stats {
 	s := Stats{
@@ -161,9 +160,7 @@ func (r *statsRecorder) snapshot() Stats {
 		Errors:          r.errors.Load(),
 		DroppedByType:   make(map[types.EventType]int64, len(r.droppedByType)),
 	}
-	for k, v := range r.droppedByType {
-		s.DroppedByType[k] = v
-	}
+	maps.Copy(s.DroppedByType, r.droppedByType)
 	return s
 }
 
@@ -199,8 +196,6 @@ func (r *statsRecorder) snapshotLocked(bufferSize int64) Stats {
 		Errors:          r.errors.Load(),
 		DroppedByType:   make(map[types.EventType]int64, len(r.droppedByType)),
 	}
-	for k, v := range r.droppedByType {
-		s.DroppedByType[k] = v
-	}
+	maps.Copy(s.DroppedByType, r.droppedByType)
 	return s
 }
