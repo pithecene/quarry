@@ -455,7 +455,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 	}
 
 	childStartTime := time.Now()
-	childPol, childLodeClient, childFileWriter, err := buildPolicy(
+	childPol, childLodeClient, childFileWriter, err := buildPolicy(ctx,
 		cf.policyChoice, cf.storage, cf.storageDataset,
 		childSource, childCategory, item.RunID,
 		childStartTime, childCollector, cf.eventSinks,
@@ -731,7 +731,7 @@ func runAction(c *cli.Context) error {
 	// Build policy with storage sink and optional event sinks
 	// Start time is "now" - used to derive partition day
 	startTime := time.Now()
-	pol, lodeClient, fileWriter, err := buildPolicy(choice, storageConfig, storageDataset, source, category, runMeta.RunID, startTime, collector, eventSinks)
+	pol, lodeClient, fileWriter, err := buildPolicy(c.Context, choice, storageConfig, storageDataset, source, category, runMeta.RunID, startTime, collector, eventSinks)
 	if err != nil {
 		return fmt.Errorf("failed to create policy: %w", err)
 	}
@@ -1420,8 +1420,8 @@ Quarry could not locate the executor. To fix:
   3. Or add quarry-executor to your PATH`)
 }
 
-func buildPolicy(choice policyChoice, storageConfig storageChoice, dataset, source, category, runID string, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
-	lodeSink, client, fw, err := buildStorageSink(storageConfig, dataset, source, category, runID, choice.name, startTime, collector)
+func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storageChoice, dataset, source, category, runID string, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
+	lodeSink, client, fw, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runID, choice.name, startTime, collector)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create storage sink: %w", err)
 	}
@@ -1462,7 +1462,7 @@ func buildPolicy(choice policyChoice, storageConfig storageChoice, dataset, sour
 // If collector is non-nil, wraps the sink with metrics instrumentation.
 // Returns the sink, the underlying client (for run finalization),
 // a FileWriter for sidecar file uploads, and any error.
-func buildStorageSink(storageConfig storageChoice, dataset, source, category, runID, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, lode.FileWriter, error) {
+func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset, source, category, runID, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, lode.FileWriter, error) {
 	// Build Lode config with partition keys
 	cfg := lode.Config{
 		Dataset:  dataset,
@@ -1483,7 +1483,7 @@ func buildStorageSink(storageConfig storageChoice, dataset, source, category, ru
 
 	switch storageConfig.backend {
 	case "fs":
-		lc, err = lode.NewLodeClient(cfg, storageConfig.path)
+		lc, err = lode.NewLodeClient(ctx, cfg, storageConfig.path)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("filesystem storage initialization failed: %w (ensure directory %s exists and is writable)", err, storageConfig.path)
 		}
@@ -1496,7 +1496,7 @@ func buildStorageSink(storageConfig storageChoice, dataset, source, category, ru
 			Endpoint:     storageConfig.endpoint,
 			UsePathStyle: storageConfig.usePathStyle,
 		}
-		lc, err = lode.NewLodeS3Client(cfg, s3cfg)
+		lc, err = lode.NewLodeS3Client(ctx, cfg, s3cfg)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("S3 storage initialization failed: %w (check AWS credentials and bucket permissions)", err)
 		}

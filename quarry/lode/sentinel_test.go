@@ -39,7 +39,7 @@ func TestPutFile_ErrPathExists_DoubleWrite(t *testing.T) {
 		RunID:    "run-001",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestPutFile_ErrPathExists_MetaSidecar(t *testing.T) {
 		RunID:    "run-001",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
 	}
 
 	// Write a metrics record so we have a real snapshot
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -159,9 +159,9 @@ func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
 	}
 
 	// Read dataset directly to exercise ds.Read with a bad snapshot ID
-	ds, err := NewReadDataset("quarry", factory)
+	ds, err := readView(t.Context(), factory)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("readView failed: %v", err)
 	}
 
 	// Fabricate a stale snapshot ID that doesn't exist
@@ -202,7 +202,7 @@ func TestPutFile_MetadataInventory_IncludedInWriteEvents(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -226,9 +226,9 @@ func TestPutFile_MetadataInventory_IncludedInWriteEvents(t *testing.T) {
 	}
 
 	// Read the snapshot and verify Metadata contains file refs
-	ds, err := NewReadDataset("quarry", factory)
+	ds, err := readView(t.Context(), factory)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("readView failed: %v", err)
 	}
 
 	snapshots, err := ds.Snapshots(ctx)
@@ -239,7 +239,7 @@ func TestPutFile_MetadataInventory_IncludedInWriteEvents(t *testing.T) {
 	// Find the snapshot with sidecar_files in metadata
 	var found bool
 	for _, snap := range snapshots {
-		raw, ok := snap.Manifest.Metadata[MetadataKeySidecarFiles]
+		raw, ok := metadataOf(t, snap)[MetadataKeySidecarFiles]
 		if !ok {
 			continue
 		}
@@ -288,7 +288,7 @@ func TestPutFile_MetadataInventory_DrainedAfterWrite(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -324,9 +324,9 @@ func TestPutFile_MetadataInventory_DrainedAfterWrite(t *testing.T) {
 	}
 
 	// Read all snapshots and verify only the first has sidecar_files
-	ds, err := NewReadDataset("quarry", factory)
+	ds, err := readView(t.Context(), factory)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("readView failed: %v", err)
 	}
 
 	snapshots, err := ds.Snapshots(ctx)
@@ -336,7 +336,7 @@ func TestPutFile_MetadataInventory_DrainedAfterWrite(t *testing.T) {
 
 	filesSnapshots := 0
 	for _, snap := range snapshots {
-		if raw, ok := snap.Manifest.Metadata[MetadataKeySidecarFiles]; ok {
+		if raw, ok := metadataOf(t, snap)[MetadataKeySidecarFiles]; ok {
 			if files, ok := raw.([]any); ok && len(files) > 0 {
 				filesSnapshots++
 			}
@@ -364,7 +364,7 @@ func TestPutFile_MetadataInventory_PreservedOnWriteFailure(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, FailingStoreFactory(failStore))
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, FailingStoreFactory(failStore))
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
 		RunID:    "run-001",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -446,9 +446,9 @@ func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
 	}
 
 	// Verify metadata in snapshot
-	ds, err := NewReadDataset("quarry", factory)
+	ds, err := readView(t.Context(), factory)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("readView failed: %v", err)
 	}
 
 	snapshots, err := ds.Snapshots(ctx)
@@ -458,7 +458,7 @@ func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
 
 	var found bool
 	for _, s := range snapshots {
-		if raw, ok := s.Manifest.Metadata[MetadataKeySidecarFiles]; ok {
+		if raw, ok := metadataOf(t, s)[MetadataKeySidecarFiles]; ok {
 			files, ok := raw.([]any)
 			if !ok || len(files) == 0 {
 				continue
@@ -498,7 +498,7 @@ func TestPutFile_MetadataInventory_SurvivesChunkWrite(t *testing.T) {
 		Policy:   "strict",
 	}
 
-	client, err := NewLodeClientWithFactory(cfg, factory)
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
 	if err != nil {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
@@ -543,9 +543,9 @@ func TestPutFile_MetadataInventory_SurvivesChunkWrite(t *testing.T) {
 	}
 
 	// Verify the event snapshot (not the chunk snapshot) has the file refs
-	ds, err := NewReadDataset("quarry", factory)
+	ds, err := readView(t.Context(), factory)
 	if err != nil {
-		t.Fatalf("NewReadDataset failed: %v", err)
+		t.Fatalf("readView failed: %v", err)
 	}
 
 	snapshots, err := ds.Snapshots(ctx)
@@ -556,7 +556,7 @@ func TestPutFile_MetadataInventory_SurvivesChunkWrite(t *testing.T) {
 	// Count snapshots with sidecar_files — must be exactly 1 (the event snapshot)
 	filesSnapshots := 0
 	for _, snap := range snapshots {
-		if raw, ok := snap.Manifest.Metadata[MetadataKeySidecarFiles]; ok {
+		if raw, ok := metadataOf(t, snap)[MetadataKeySidecarFiles]; ok {
 			if files, ok := raw.([]any); ok && len(files) > 0 {
 				filesSnapshots++
 				ref, ok := files[0].(map[string]any)

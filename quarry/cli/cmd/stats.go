@@ -3,10 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
-	lodelibrary "github.com/pithecene/lode/lode"
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/cli/reader"
@@ -154,9 +152,6 @@ func statsMetricsCommand() *cli.Command {
 }
 
 func statsMetricsAction(c *cli.Context) error {
-	backend := c.String("storage-backend")
-	path := c.String("storage-path")
-
 	var snapshot *reader.MetricsSnapshot
 
 	withStorage, err := storageRequested(c)
@@ -164,8 +159,9 @@ func statsMetricsAction(c *cli.Context) error {
 		return err
 	}
 	if withStorage {
-		// Build Lode dataset for reading
-		ds, err := buildReadDataset(c, backend, path)
+		// The store is built exactly as `quarry run` builds it, so data written
+		// to an S3-compatible provider can be read back from it.
+		factory, err := storeFactoryFrom(c)
 		if err != nil {
 			return fmt.Errorf("failed to initialize storage reader: %w", err)
 		}
@@ -173,7 +169,7 @@ func statsMetricsAction(c *cli.Context) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		record, err := lode.QueryLatestMetrics(ctx, ds, c.String("run-id"), c.String("source"))
+		record, err := lode.QueryLatestMetrics(ctx, factory, c.String("storage-dataset"), c.String("run-id"), c.String("source"))
 		if err != nil {
 			return fmt.Errorf("failed to read metrics from Lode: %w", err)
 		}
@@ -197,31 +193,4 @@ func statsMetricsAction(c *cli.Context) error {
 	}
 
 	return r.Render(snapshot)
-}
-
-// buildReadDataset creates a Lode Dataset for reading based on CLI flags.
-// S3 options mirror `quarry run`, so data written to an S3-compatible
-// provider can be read back from it.
-func buildReadDataset(c *cli.Context, backend, path string) (lodelibrary.Dataset, error) {
-	dataset := c.String("storage-dataset")
-	endpoint := c.String("storage-endpoint")
-	usePathStyle := c.Bool("storage-s3-path-style")
-	switch backend {
-	case "fs":
-		if endpoint != "" || usePathStyle {
-			fmt.Fprintf(os.Stderr, "Warning: --storage-endpoint and --storage-s3-path-style are ignored for fs backend\n")
-		}
-		return lode.NewReadDatasetFS(dataset, path)
-	case "s3":
-		bucket, prefix := lode.ParseS3Path(path)
-		return lode.NewReadDatasetS3(dataset, lode.S3Config{
-			Bucket:       bucket,
-			Prefix:       prefix,
-			Region:       c.String("storage-region"),
-			Endpoint:     endpoint,
-			UsePathStyle: usePathStyle,
-		})
-	default:
-		return nil, fmt.Errorf("unsupported storage-backend: %s (must be fs or s3)", backend)
-	}
 }

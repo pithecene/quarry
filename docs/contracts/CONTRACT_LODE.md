@@ -66,7 +66,7 @@ For Hive-style layouts, the preferred order is:
 
 ## Write Retry
 
-Quarry configures Lode with bounded CAS retry (`WithRetryCount(3)`) on the
+Quarry configures Lode with bounded CAS retry (`WithRetry(3)`) on the
 write path. On `ErrSnapshotConflict`, the Lode commit is retried up to 3
 times with jittered exponential backoff (10ms base, 2s max).
 
@@ -262,13 +262,39 @@ Lode's `CONTRACT_READ_API.md` makes normative from v0.10.0:
   `ErrInvalidPath` on every platform.
 - Refused caller values — nil store factory, out-of-range `WithRetry*`
   options — are classified `ErrInvalidArgument` and reported before the
-  store factory is called. Quarry's `WithRetryCount(3)` and
+  store factory is called. Quarry's `WithRetry(3)` and
   `WithRetryObserver` registration are valid values and unaffected.
 
 Error text changed in v0.10.0 (`lode: invalid argument: <value>`,
 `invalid path`, one extra nesting level on manifest read failures);
 `errors.Is` classification is unchanged and Quarry matches on sentinels,
 never on message text.
+
+---
+
+## Writer Settings (Lode v0.12.0+)
+
+Every Quarry writer of a dataset opens it with the same settings: the Hive
+layout over the required partition keys in the recommended order, the JSONL
+codec, no compressor, no checksum, and Lode's default path names.
+
+- Lode records the partition keys and path names in each manifest, under
+  manifest format 1.1.0, and compares a writer's settings with the head's
+  when the writer opens. A writer whose settings differ is rejected with
+  `ErrSettingsMismatch` before it writes anything.
+- Opening a writer reads the dataset's head, so constructing a client
+  performs storage reads and takes a context.
+- Readers open read-only views, which take the layout from the dataset's
+  manifests. A view of a dataset without snapshots reports `ErrNotFound`,
+  which Quarry's readers return as an empty result.
+- Retention (`Expire`, `Sweep`) is available only on writer handles, so
+  `quarry prune` opens a writer with the settings above.
+- A dataset written before v0.12.0 has manifests in format 1.0.0, which
+  record no settings, and opens under the default path names; no migration is
+  required. Lode v0.10.0, which Quarry v0.13.7 uses, and Lode v0.11.0 read
+  and extend datasets that Lode v0.12.0 has written, and Lode v0.11.0 also
+  expires and sweeps them, so a rollback to an earlier Quarry release needs
+  no migration either.
 
 ---
 
