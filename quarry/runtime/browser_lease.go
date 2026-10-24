@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"sync"
 	"syscall"
 	"time"
 
@@ -80,6 +81,9 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 
 	// The connection lives exactly as long as ctx: closing it when ctx ends
 	// both releases a granted lease and cuts short a stalled exchange.
+	if ctx.Done() == nil {
+		holdForever(conn)
+	}
 	stop := context.AfterFunc(ctx, func() { iox.DiscardClose(conn) })
 	release := func() {
 		stop()
@@ -145,4 +149,19 @@ func classifyExchangeError(step string, err error) error {
 func isTimeout(err error) bool {
 	var netErr net.Error
 	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+// foreverLeases holds the connections of leases whose context can never
+// end. context.AfterFunc keeps nothing for such a context, and a connection
+// nothing references is closed when it is garbage collected, which would
+// end the lease while the run still uses the browser.
+var foreverLeases struct {
+	sync.Mutex
+	conns []net.Conn
+}
+
+func holdForever(conn net.Conn) {
+	foreverLeases.Lock()
+	defer foreverLeases.Unlock()
+	foreverLeases.conns = append(foreverLeases.conns, conn)
 }

@@ -42,7 +42,8 @@ async function settlesWithin(promise: Promise<void>, ms: number): Promise<boolea
   return Promise.race([promise.then(() => true as const), timeout])
 }
 
-describe('serveLeases', () => {
+// Each test runs over a real Unix socket; a deadlock must fail, not hang.
+describe('serveLeases', { timeout: 5_000 }, () => {
   it('grants the endpoint to a run with the same proxy', async () => {
     const { socketPath } = await start(10_000)
 
