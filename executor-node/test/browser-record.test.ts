@@ -35,7 +35,7 @@ describe('closeRecordedBrowsers', () => {
     const connect = vi.fn(closes)
     const log = vi.fn()
 
-    const kept = await closeRecordedBrowsers(path, connect, probeSays('running'), log)
+    const kept = await closeRecordedBrowsers(path, connect, probeSays('gone'), log)
 
     expect(kept).toEqual([])
     expect(connect).toHaveBeenCalledWith({ browserWSEndpoint: WS })
@@ -51,11 +51,33 @@ describe('closeRecordedBrowsers', () => {
       []
     )
     expect(
-      await closeRecordedBrowsers(path, failsToConnect, probeSays('running'), vi.fn())
+      await closeRecordedBrowsers(path, failsToConnect, probeSays('running'), vi.fn(), 0)
     ).toEqual([WS])
     expect(
-      await closeRecordedBrowsers(path, failsToConnect, probeSays('unknown'), vi.fn())
+      await closeRecordedBrowsers(path, failsToConnect, probeSays('unknown'), vi.fn(), 0)
     ).toEqual([WS])
+  })
+
+  it('keeps a browser whose close resolved but which still runs', async () => {
+    const path = recordPath()
+    recordBrowsers(path, [WS])
+
+    expect(await closeRecordedBrowsers(path, closes, probeSays('running'), vi.fn(), 0)).toEqual([
+      WS
+    ])
+  })
+
+  it('waits for a closing browser to exit', async () => {
+    const path = recordPath()
+    recordBrowsers(path, [WS])
+    const probe = vi.fn<ProbeBrowser>()
+    probe
+      .mockResolvedValueOnce('running')
+      .mockResolvedValueOnce('running')
+      .mockResolvedValue('gone')
+
+    expect(await closeRecordedBrowsers(path, closes, probe, vi.fn(), 2_000)).toEqual([])
+    expect(probe).toHaveBeenCalledTimes(3)
   })
 
   it('does nothing when no browser is recorded', async () => {

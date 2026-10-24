@@ -385,9 +385,9 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   has launched the browser. A server that ends without closing its
   browser, as when it is killed with `SIGKILL`, leaves the browser running
   and recorded. The next server closes each recorded browser through the
-  Chrome DevTools Protocol before it launches its own. A browser that fails
-  to close stays recorded, for a later server to close, unless its port
-  refuses connections or answers as another browser. The endpoint carries
+  Chrome DevTools Protocol before it launches its own. A browser stays
+  recorded, for a later server to close, until its port refuses
+  connections or answers as anything but that browser. The endpoint carries
   the browser's own ID, so a record never names another browser. Only a
   server reads or writes `browser.json`, and only while it starts under
   the lock. A server killed while it launches its browser, before the

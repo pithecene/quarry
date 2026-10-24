@@ -3154,16 +3154,18 @@ function parseRequest(line) {
 // src/browser-record.ts
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 var STEP_TIMEOUT_MS = 5e3;
-async function closeRecordedBrowsers(recordPath, connect, probe, log) {
+var SETTLE_POLL_MS = 100;
+async function closeRecordedBrowsers(recordPath, connect, probe, log, settleMs = STEP_TIMEOUT_MS) {
   const outcomes = await Promise.all(
     readRecord(recordPath, log).map(async (endpoint) => {
-      const closed = await closeBrowser(endpoint, connect);
-      if (closed) log(`Closed a browser an earlier server left running (${endpoint})`);
-      const state = closed ? "gone" : await probe(endpoint);
-      if (state === "running" || state === "unknown") {
-        log(`Could not close a browser an earlier server left (${endpoint}); keeping it listed`);
+      const attempted = await attemptClose(endpoint, connect);
+      const gone = await becomesGone(endpoint, probe, settleMs);
+      if (!gone) {
+        log(`Could not close a browser an earlier server left (${endpoint}); keeping it recorded`);
+      } else if (attempted) {
+        log(`Closed a browser an earlier server left running (${endpoint})`);
       }
-      return { endpoint, keep: state !== "gone" };
+      return { endpoint, keep: !gone };
     })
   );
   return outcomes.filter((o) => o.keep).map((o) => o.endpoint);
@@ -3188,13 +3190,21 @@ var probeBrowser = async (endpoint) => {
   const body = await res.json().catch(() => null);
   return body?.webSocketDebuggerUrl === endpoint ? "running" : "gone";
 };
-async function closeBrowser(endpoint, connect) {
+async function attemptClose(endpoint, connect) {
   try {
     const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), STEP_TIMEOUT_MS);
     await withTimeout(browser.close(), STEP_TIMEOUT_MS);
     return true;
   } catch {
     return false;
+  }
+}
+async function becomesGone(endpoint, probe, settleMs) {
+  const deadline = Date.now() + settleMs;
+  for (; ; ) {
+    if (await probe(endpoint) === "gone") return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve3) => setTimeout(resolve3, SETTLE_POLL_MS));
   }
 }
 function readRecord(recordPath, log) {

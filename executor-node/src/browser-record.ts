@@ -15,6 +15,9 @@ export type ProbeBrowser = (endpoint: string) => Promise<'running' | 'gone' | 'u
 /** How long one step of closing a recorded browser may take. */
 const STEP_TIMEOUT_MS = 5_000
 
+/** How often to probe a closing browser. */
+const SETTLE_POLL_MS = 100
+
 /**
  * Close the browsers that `recordPath` lists, and return those that may
  * still run.
@@ -25,24 +28,28 @@ const STEP_TIMEOUT_MS = 5_000
  * starts only while the runtime holds the discovery lock and no server
  * listens, so a listed browser belongs to no server that a run can reach.
  * The endpoint carries the browser's own ID, so it never names another
- * browser. A browser that fails to close stays listed unless a probe shows
- * it gone, so that a later server tries again.
+ * browser. A browser stays listed until a probe shows it gone, so that a
+ * later server tries again.
  */
 export async function closeRecordedBrowsers(
   recordPath: string,
   connect: ConnectBrowser,
   probe: ProbeBrowser,
-  log: (message: string) => void
+  log: (message: string) => void,
+  settleMs: number = STEP_TIMEOUT_MS
 ): Promise<string[]> {
   const outcomes = await Promise.all(
     readRecord(recordPath, log).map(async (endpoint) => {
-      const closed = await closeBrowser(endpoint, connect)
-      if (closed) log(`Closed a browser an earlier server left running (${endpoint})`)
-      const state = closed ? 'gone' : await probe(endpoint)
-      if (state === 'running' || state === 'unknown') {
-        log(`Could not close a browser an earlier server left (${endpoint}); keeping it listed`)
+      const attempted = await attemptClose(endpoint, connect)
+      // Only the probe shows the browser gone: Puppeteer's close() resolves
+      // even when the browser refused to close.
+      const gone = await becomesGone(endpoint, probe, settleMs)
+      if (!gone) {
+        log(`Could not close a browser an earlier server left (${endpoint}); keeping it recorded`)
+      } else if (attempted) {
+        log(`Closed a browser an earlier server left running (${endpoint})`)
       }
-      return { endpoint, keep: state !== 'gone' }
+      return { endpoint, keep: !gone }
     })
   )
   return outcomes.filter((o) => o.keep).map((o) => o.endpoint)
@@ -75,7 +82,8 @@ export const probeBrowser: ProbeBrowser = async (endpoint) => {
   return body?.webSocketDebuggerUrl === endpoint ? 'running' : 'gone'
 }
 
-async function closeBrowser(endpoint: string, connect: ConnectBrowser): Promise<boolean> {
+/** Ask the browser to close; true when the request was delivered. */
+async function attemptClose(endpoint: string, connect: ConnectBrowser): Promise<boolean> {
   try {
     const browser = await withTimeout(connect({ browserWSEndpoint: endpoint }), STEP_TIMEOUT_MS)
     await withTimeout(browser.close(), STEP_TIMEOUT_MS)
@@ -83,6 +91,20 @@ async function closeBrowser(endpoint: string, connect: ConnectBrowser): Promise<
   } catch {
     // The probe decides whether it is gone
     return false
+  }
+}
+
+/** Probe until the browser is gone, for up to `settleMs`, as it may take a moment to exit. */
+async function becomesGone(
+  endpoint: string,
+  probe: ProbeBrowser,
+  settleMs: number
+): Promise<boolean> {
+  const deadline = Date.now() + settleMs
+  for (;;) {
+    if ((await probe(endpoint)) === 'gone') return true
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS))
   }
 }
 
