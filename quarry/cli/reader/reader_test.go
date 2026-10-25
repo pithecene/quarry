@@ -30,24 +30,6 @@ func TestInspectRunResponse(t *testing.T) {
 	}
 }
 
-// TestInspectJobResponse verifies the response shape.
-func TestInspectJobResponse(t *testing.T) {
-	t.Parallel()
-
-	resp := InspectJob("test-job")
-
-	if resp.JobID != "test-job" {
-		t.Errorf("JobID = %q, want %q", resp.JobID, "test-job")
-	}
-	if resp.State == "" {
-		t.Error("State should not be empty")
-	}
-	// RunIDs may be empty but should not be nil
-	if resp.RunIDs == nil {
-		t.Error("RunIDs should not be nil")
-	}
-}
-
 // TestInspectProxyResponse verifies proxy pool response shape.
 func TestInspectProxyResponse(t *testing.T) {
 	t.Parallel()

@@ -17,13 +17,10 @@ import (
 func StatsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "stats",
-		Usage: "Show aggregated statistics (runs, jobs, tasks, proxies, executors)",
+		Usage: "Show aggregated statistics (runs, proxies, metrics)",
 		Subcommands: []*cli.Command{
 			statsRunsCommand(),
-			statsJobsCommand(),
-			statsTasksCommand(),
 			statsProxiesCommand(),
-			statsExecutorsCommand(),
 			statsMetricsCommand(),
 		},
 	}
@@ -51,50 +48,6 @@ func statsRunsAction(c *cli.Context) error {
 	return r.Render(reader.StatsRuns())
 }
 
-func statsJobsCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "jobs",
-		Usage:  "Show job statistics",
-		Flags:  TUIReadOnlyFlags(),
-		Action: statsJobsAction,
-	}
-}
-
-func statsJobsAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("stats_jobs", reader.StatsJobs())
-	}
-
-	return r.Render(reader.StatsJobs())
-}
-
-func statsTasksCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "tasks",
-		Usage:  "Show task statistics",
-		Flags:  TUIReadOnlyFlags(),
-		Action: statsTasksAction,
-	}
-}
-
-func statsTasksAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("stats_tasks", reader.StatsTasks())
-	}
-
-	return r.Render(reader.StatsTasks())
-}
-
 func statsProxiesCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "proxies",
@@ -115,28 +68,6 @@ func statsProxiesAction(c *cli.Context) error {
 	}
 
 	return r.Render(reader.StatsProxies())
-}
-
-func statsExecutorsCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "executors",
-		Usage:  "Show executor statistics",
-		Flags:  TUIReadOnlyFlags(),
-		Action: statsExecutorsAction,
-	}
-}
-
-func statsExecutorsAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("stats_executors", reader.StatsExecutors())
-	}
-
-	return r.Render(reader.StatsExecutors())
 }
 
 func statsMetricsCommand() *cli.Command {

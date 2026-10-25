@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
+
 ### Changed
 
 - **Experimental surface**: The artifact byte path is experimental. `PUBLIC_API.md` § Experimental Surface defines it: artifact bytes, `ctx.storage.put` and `createStorageBatcher`, the `artifact_chunk`, `file_write`, and `file_write_ack` frames, and the stored chunk records and sidecar files. v1.0 excludes it from its compatibility commitment unless its replacement, which streams bytes into Lode Volumes (#255), is ready first. The `artifact` event and its commit record are not experimental, and behavior is unchanged.

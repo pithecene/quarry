@@ -47,23 +47,15 @@ quarry
 ├─ run
 ├─ inspect
 │  ├─ run <run-id>
-│  ├─ job <job-id>
-│  ├─ task <task-id>
-│  ├─ proxy <pool-name>
-│  └─ executor <executor-id>
+│  └─ proxy <pool-name>
 ├─ stats
 │  ├─ runs
-│  ├─ jobs
-│  ├─ tasks
 │  ├─ proxies
-│  ├─ executors
 │  └─ metrics
 ├─ list
 │  ├─ runs
 │  ├─ events
-│  ├─ jobs
-│  ├─ pools
-│  └─ executors
+│  └─ pools
 ├─ index
 │  └─ rebuild
 ├─ prune
@@ -124,8 +116,8 @@ TUI mode (`--tui`) provides interactive views for select read-only commands.
 Commands that do not support TUI must error if `--tui` is provided.
 
 Supported TUI commands:
-- `inspect run|job|task|proxy|executor`
-- `stats runs|jobs|tasks|proxies|executors|metrics`
+- `inspect run|proxy`
+- `stats runs|proxies|metrics`
 
 Unsupported (must error with `--tui`):
 - `list` commands
@@ -481,20 +473,6 @@ The `sidecar_files` field lists files written via `storage.put()` during the
 run. File refs are collected from Lode snapshot metadata (see CONTRACT_LODE.md
 § Sidecar File Inventory). The field is omitted when no sidecar files exist.
 
-### `inspect job <job-id>`
-
-Response must include:
-- `job_id`
-- `state`
-- `run_ids` (if any)
-
-### `inspect task <task-id>`
-
-Response must include:
-- `task_id`
-- `state`
-- `run_id` (if any)
-
 ### `inspect proxy <pool-name>`
 
 Response:
@@ -512,13 +490,6 @@ InspectProxyPoolResponse:
 
 This response reinforces that **proxy selection is runtime-owned** and
 the executor only applies resolved endpoints (see CONTRACT_PROXY.md).
-
-### `inspect executor <executor-id>`
-
-Response must include:
-- `executor_id`
-- `state`
-- `last_seen_at` (time | null)
 
 ---
 
@@ -548,30 +519,6 @@ ProxyStats:
   failures: number
   last_used_at: time | null
 ```
-
-### `stats jobs`
-
-Response must include:
-- `total`
-- `running`
-- `succeeded`
-- `failed`
-
-### `stats tasks`
-
-Response must include:
-- `total`
-- `running`
-- `succeeded`
-- `failed`
-
-### `stats executors`
-
-Response must include:
-- `total`
-- `running`
-- `idle`
-- `failed`
 
 ### `stats metrics`
 
@@ -736,23 +683,11 @@ item schema. The run's partitions are addressed from its start record's
 
 A run with no start record is an error (`run not found`).
 
-### `list jobs`
-
-Response must include:
-- `job_id`
-- `state`
-
 ### `list pools`
 
 Response must include:
 - `name`
 - `strategy`
-
-### `list executors`
-
-Response must include:
-- `executor_id`
-- `state`
 
 ---
 

@@ -963,7 +963,7 @@ land before the v1.0 freeze.
       counts by outcome (A/D)
 - [ ] Run deadline declared per run and enforced by the runtime (D1)
 - [ ] Consumer-supplied run list for retention (`--runs-from`, D2)
-- [ ] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
+- [x] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
       tasks, executors) removed, and [`CONTRACT_METRICS.md`](contracts/CONTRACT_METRICS.md) § Data
       Source Progression aligned (E)
 - [ ] Writers that open a dataset with its head's compressor, a

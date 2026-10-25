@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/cli/reader"
@@ -14,13 +12,10 @@ import (
 func InspectCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "inspect",
-		Usage: "Inspect a single entity (run, job, task, proxy, executor)",
+		Usage: "Inspect a single entity (run, proxy)",
 		Subcommands: []*cli.Command{
 			inspectRunCommand(),
-			inspectJobCommand(),
-			inspectTaskCommand(),
 			inspectProxyCommand(),
-			inspectExecutorCommand(),
 		},
 	}
 }
@@ -57,62 +52,6 @@ func inspectRunAction(c *cli.Context) error {
 	return r.Render(resp)
 }
 
-func inspectJobCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "job",
-		Usage:     "Inspect a job by ID",
-		ArgsUsage: "<job-id>",
-		Flags:     TUIReadOnlyFlags(),
-		Action:    inspectJobAction,
-	}
-}
-
-func inspectJobAction(c *cli.Context) error {
-	if c.NArg() < 1 {
-		return cli.Exit("job-id required", 1)
-	}
-	jobID := c.Args().First()
-
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("inspect_job", reader.InspectJob(jobID))
-	}
-
-	return r.Render(reader.InspectJob(jobID))
-}
-
-func inspectTaskCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "task",
-		Usage:     "Inspect a task by ID",
-		ArgsUsage: "<task-id>",
-		Flags:     TUIReadOnlyFlags(),
-		Action:    inspectTaskAction,
-	}
-}
-
-func inspectTaskAction(c *cli.Context) error {
-	if c.NArg() < 1 {
-		return cli.Exit("task-id required", 1)
-	}
-	taskID := c.Args().First()
-
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("inspect_task", reader.InspectTask(taskID))
-	}
-
-	return r.Render(reader.InspectTask(taskID))
-}
-
 func inspectProxyCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "proxy",
@@ -139,37 +78,4 @@ func inspectProxyAction(c *cli.Context) error {
 	}
 
 	return r.Render(reader.InspectProxy(poolName))
-}
-
-func inspectExecutorCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "executor",
-		Usage:     "Inspect an executor by ID",
-		ArgsUsage: "<executor-id>",
-		Flags:     TUIReadOnlyFlags(),
-		Action:    inspectExecutorAction,
-	}
-}
-
-func inspectExecutorAction(c *cli.Context) error {
-	if c.NArg() < 1 {
-		return cli.Exit("executor-id required", 1)
-	}
-	executorID := c.Args().First()
-
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("inspect_executor", reader.InspectExecutor(executorID))
-	}
-
-	resp := reader.InspectExecutor(executorID)
-	if resp == nil {
-		return fmt.Errorf("executor not found: %s", executorID)
-	}
-
-	return r.Render(resp)
 }

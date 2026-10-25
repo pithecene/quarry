@@ -61,14 +61,8 @@ func (m InspectModel) View() string {
 	switch m.viewType {
 	case "inspect_run":
 		content = m.renderInspectRun()
-	case "inspect_job":
-		content = m.renderInspectJob()
-	case "inspect_task":
-		content = m.renderInspectTask()
 	case "inspect_proxy":
 		content = m.renderInspectProxy()
-	case "inspect_executor":
-		content = m.renderInspectExecutor()
 	default:
 		content = fmt.Sprintf("Unknown view type: %s", m.viewType)
 	}
@@ -113,63 +107,6 @@ func (m InspectModel) renderInspectRun() string {
 			value = ValueStyle.Render(value)
 		}
 		fmt.Fprintf(&b, "%s %s\n", label, value)
-	}
-
-	return BoxStyle.Render(b.String())
-}
-
-func (m InspectModel) renderInspectJob() string {
-	data, ok := m.data.(*reader.InspectJobResponse)
-	if !ok {
-		return "Invalid data type for inspect_job"
-	}
-
-	var b strings.Builder
-	b.WriteString(TitleStyle.Render("Job Details"))
-	b.WriteString("\n\n")
-
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("Job ID:"),
-		ValueStyle.Render(data.JobID))
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("State:"),
-		StateStyle(data.State).Render(data.State))
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("Runs:"),
-		ValueStyle.Render(fmt.Sprintf("%d", len(data.RunIDs))))
-
-	if len(data.RunIDs) > 0 {
-		b.WriteString("\n")
-		b.WriteString(LabelStyle.Render("Run IDs:\n"))
-		for _, runID := range data.RunIDs {
-			fmt.Fprintf(&b, "  • %s\n", ValueStyle.Render(runID))
-		}
-	}
-
-	return BoxStyle.Render(b.String())
-}
-
-func (m InspectModel) renderInspectTask() string {
-	data, ok := m.data.(*reader.InspectTaskResponse)
-	if !ok {
-		return "Invalid data type for inspect_task"
-	}
-
-	var b strings.Builder
-	b.WriteString(TitleStyle.Render("Task Details"))
-	b.WriteString("\n\n")
-
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("Task ID:"),
-		ValueStyle.Render(data.TaskID))
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("State:"),
-		StateStyle(data.State).Render(data.State))
-
-	if data.RunID != nil {
-		fmt.Fprintf(&b, "%s %s\n",
-			LabelStyle.Render("Run ID:"),
-			ValueStyle.Render(*data.RunID))
 	}
 
 	return BoxStyle.Render(b.String())
@@ -222,32 +159,6 @@ func (m InspectModel) renderInspectProxy() string {
 		fmt.Fprintf(&b, "%s %s\n",
 			LabelStyle.Render("  Last Used:"),
 			ValueStyle.Render(data.Runtime.LastUsedAt.Format("2006-01-02 15:04:05")))
-	}
-
-	return BoxStyle.Render(b.String())
-}
-
-func (m InspectModel) renderInspectExecutor() string {
-	data, ok := m.data.(*reader.InspectExecutorResponse)
-	if !ok {
-		return "Invalid data type for inspect_executor"
-	}
-
-	var b strings.Builder
-	b.WriteString(TitleStyle.Render("Executor Details"))
-	b.WriteString("\n\n")
-
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("Executor ID:"),
-		ValueStyle.Render(data.ExecutorID))
-	fmt.Fprintf(&b, "%s %s\n",
-		LabelStyle.Render("State:"),
-		StateStyle(data.State).Render(data.State))
-
-	if data.LastSeenAt != nil {
-		fmt.Fprintf(&b, "%s %s\n",
-			LabelStyle.Render("Last Seen:"),
-			ValueStyle.Render(data.LastSeenAt.Format("2006-01-02 15:04:05")))
 	}
 
 	return BoxStyle.Render(b.String())
