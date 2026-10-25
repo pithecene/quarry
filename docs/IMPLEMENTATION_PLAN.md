@@ -949,8 +949,9 @@ Each decision is judged by a number in its PR, not by argument:
 
 ### Carried Forward
 
-Not shipped in v0.14.0. The items that change a run contract must land
-before the v1.0 freeze.
+Not shipped in v0.14.0. The items that change a run contract outside the
+experimental artifact surface (v1.0 § Experimental Artifact Surface) must
+land before the v1.0 freeze.
 
 - [ ] [`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md): `file_write_ack` carries the resolved storage
       key, the runtime alone builds keys with Hive encoding for sidecar
@@ -975,8 +976,8 @@ before the v1.0 freeze.
 - The `sdk/` reader runs `quarry` from `PATH` by default and accepts an
   explicit path (`quarryPath`).
 - The event reader returns events only. Artifact bytes remain Known
-  Limitation 3, and #255 holds the open question of where Quarry stores
-  them.
+  Limitation 3. Their replacement streams them into Lode Volumes and is
+  designed on #255 (v1.0 § Experimental Artifact Surface).
 
 ---
 
@@ -1013,8 +1014,15 @@ fix a design that is known to be replaced.
 The replacement is designed on #255 and leaves experimental when it has
 run against Panthalassa's samples. The same work supplies the downstream
 evidence for Lode's Volume stability gate (Lode `V1_READINESS.md` §4).
-Until then, `quarry prune` must not select datasets that hold inputs
-pinned for replay.
+Experimental status is the default, not a target. If the replacement
+ships and has run against Panthalassa's samples, with tests and usage
+sufficient for the freeze, before v1.0 is tagged, v1.0 freezes it with
+the other contracts instead. Lode's side follows its own gate.
+
+Retention has no notion of a pinned input: `quarry prune` selects runs by
+state and age, or one run by `--run-id`. An operator must therefore not
+run it against a dataset that holds inputs retained for replay. A pin or exclusion mechanism is part of the
+#255 design.
 
 ### Deliverables
 
@@ -1034,7 +1042,8 @@ pinned for replay.
 ### Mini-milestones
 
 - [x] v0.14.0 shipped
-- [ ] v0.14.0 Carried Forward items that change a run contract landed
+- [ ] v0.14.0 Carried Forward items that change a run contract outside
+      the experimental artifact surface landed
 - [ ] Experimental artifact surface marked in [`PUBLIC_API.md`](../PUBLIC_API.md) and the contracts
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
