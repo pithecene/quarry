@@ -134,6 +134,9 @@ func TestInit_RejectsTwoDirectories(t *testing.T) {
 	if _, err := runInit(t, t.TempDir(), t.TempDir()); err == nil {
 		t.Fatal("init accepted two directories")
 	}
+	if got := initNextSteps("-foo")[0]; got != "cd ./-foo" {
+		t.Fatalf("cd step for -foo = %q", got)
+	}
 	_, err := runInit(t, t.TempDir(), "--format", "yaml")
 	if err == nil || !strings.Contains(err.Error(), "flags go before the directory") {
 		t.Fatalf("flag after the directory: err = %v", err)

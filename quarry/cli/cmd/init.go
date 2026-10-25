@@ -244,6 +244,9 @@ func initNextSteps(dir string) []string {
 	if dir == "." {
 		return steps
 	}
+	if strings.HasPrefix(dir, "-") {
+		dir = "./" + dir // cd would read a leading dash as an option
+	}
 	return append([]string{"cd " + shellQuote(dir)}, steps...)
 }
 

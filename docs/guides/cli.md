@@ -316,6 +316,9 @@ version and on the Puppeteer packages the executor loads. `init` writes
 nothing when any of those files already exists, and it installs nothing:
 its output lists the commands to run next, ending with a `quarry run` of
 the example script.
+The project targets Node.js 22.18 or later. On Node 22.6 through 22.11,
+change the `puppeteer` range in `package.json` to `^24` before installing,
+because Puppeteer 25 requires Node.js 22.12 or later.
 
 ### `inspect`
 

@@ -464,6 +464,9 @@ Rules:
 - `init` installs nothing and starts no process. Its response lists the
   commands that install the project and run the example script
 - `init` takes at most one directory
+- The project targets Node.js 22.18 or later, as Puppeteer 25 requires 22.12
+  or later. On Node 22.6 through 22.11, change the `puppeteer` range to `^24`
+  before installing
 
 Response:
 ```
