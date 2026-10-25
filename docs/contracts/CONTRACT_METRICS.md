@@ -120,14 +120,20 @@ Optional dimensions:
 
 ### Data Source Progression
 
-During 0.x, stats commands may return stub data when a Lode-backed reader
-is not yet implemented. This is a transitional allowance, not a permanent state.
+During 0.x, a read command may return stub data when it has no
+Lode-backed reader. This is a transitional allowance, not a permanent state.
 
-Requirements by milestone:
-- **v0.3.0**: Write path complete. Read path via `--storage-backend`/`--storage-path`
-  flags on `stats metrics`. Stub fallback when flags omitted.
-- **Post-v0.3.0**: Global reader configuration. All stats commands Lode-backed.
-  Stub reader retained only for testing.
+Current state (v0.14.0):
+- `stats metrics` reads the latest metrics record from storage when
+  `--storage-backend` and `--storage-path` are both given, and returns stub
+  data when no storage flag is given (CONTRACT_CLI.md §`stats metrics`).
+- `list runs` reads run records from storage in the same way, with the
+  same stub fallback (CONTRACT_CLI.md §`list runs`). `list events`
+  requires the storage flags and has no stub (CONTRACT_CLI.md
+  §`list events`).
+- Every other `stats`, `inspect`, and `list` command returns stub data
+  only. No global reader configuration exists, and the commands read
+  storage only through their own storage flags.
 
 ---
 
