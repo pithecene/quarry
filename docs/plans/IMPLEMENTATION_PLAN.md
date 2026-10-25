@@ -16,7 +16,7 @@ Scripts and executors remain **policy-agnostic**.
 ## Current Status (as of v0.14.0)
 - Latest release: v0.14.0 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
-- All v1.0 readiness items resolved (see docs/RELEASE_READINESS_v1.0.md).
+- All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
 - Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side & retention) →
   v1.0 (contract freeze) → v1.x (first-party host). See the roadmap
   sections below; #245 is the umbrella issue, #239 and #240 the drivers.
@@ -51,7 +51,7 @@ Establish development discipline before any architectural commitments harden.
   - `sdk/`
   - `docs/`
   - `examples/`
-- [`AGENTS.md`](../AGENTS.md) defining style and collaboration guardrails
+- [`AGENTS.md`](../../AGENTS.md) defining style and collaboration guardrails
 - Taskfile scaffolding for lint / test / build
 
 ### Mini-milestones
@@ -342,26 +342,26 @@ Provide runtime-integrated downstream notification so consumers do not need
 to poll Lode or wire external plumbing.
 
 ### Deliverables
-- `Adapter` interface and `RunCompletedEvent` type ([`quarry/adapter/`](../quarry/adapter/))
-- Webhook adapter: HTTP POST with retries, custom headers, timeout ([`quarry/adapter/webhook/`](../quarry/adapter/webhook/))
-- Redis pub/sub adapter: PUBLISH with retries, configurable channel ([`quarry/adapter/redis/`](../quarry/adapter/redis/))
+- `Adapter` interface and `RunCompletedEvent` type ([`quarry/adapter/`](../../quarry/adapter/))
+- Webhook adapter: HTTP POST with retries, custom headers, timeout ([`quarry/adapter/webhook/`](../../quarry/adapter/webhook/))
+- Redis pub/sub adapter: PUBLISH with retries, configurable channel ([`quarry/adapter/redis/`](../../quarry/adapter/redis/))
 - CLI flags: `--adapter`, `--adapter-url`, `--adapter-header`, `--adapter-channel`, `--adapter-timeout`, `--adapter-retries`
 - Hook in `runAction()` after metrics persist (best-effort, does not fail run)
 - Contract and guide updates
 
 ### Mini-milestones
-- [x] Adapter interface and event type ([`quarry/adapter/adapter.go`](../quarry/adapter/adapter.go))
-- [x] Webhook adapter implementation ([`quarry/adapter/webhook/webhook.go`](../quarry/adapter/webhook/webhook.go))
-- [x] Webhook tests with httptest ([`quarry/adapter/webhook/webhook_test.go`](../quarry/adapter/webhook/webhook_test.go))
-- [x] CLI flags and hook in [`quarry/cli/cmd/run.go`](../quarry/cli/cmd/run.go)
+- [x] Adapter interface and event type ([`quarry/adapter/adapter.go`](../../quarry/adapter/adapter.go))
+- [x] Webhook adapter implementation ([`quarry/adapter/webhook/webhook.go`](../../quarry/adapter/webhook/webhook.go))
+- [x] Webhook tests with httptest ([`quarry/adapter/webhook/webhook_test.go`](../../quarry/adapter/webhook/webhook_test.go))
+- [x] CLI flags and hook in [`quarry/cli/cmd/run.go`](../../quarry/cli/cmd/run.go)
 - [x] CONTRACT_INTEGRATION.md updated with runtime adapter reference
 - [x] CONTRACT_CLI.md updated with adapter flags
 - [x] Integration guide updated with webhook example
 - [x] CLI_PARITY.json updated
 
 ### Redis Pub/Sub Adapter (v0.5.0)
-- [x] Redis adapter implementation ([`quarry/adapter/redis/redis.go`](../quarry/adapter/redis/redis.go))
-- [x] Redis adapter tests with miniredis ([`quarry/adapter/redis/redis_test.go`](../quarry/adapter/redis/redis_test.go))
+- [x] Redis adapter implementation ([`quarry/adapter/redis/redis.go`](../../quarry/adapter/redis/redis.go))
+- [x] Redis adapter tests with miniredis ([`quarry/adapter/redis/redis_test.go`](../../quarry/adapter/redis/redis_test.go))
 - [x] `--adapter-channel` CLI flag
 - [x] Config YAML `channel` field in adapter stanza
 - [x] CLI wiring in `run.go` (import, flag, parse, build)
@@ -404,7 +404,7 @@ Standalone CLI usage remains a first-class paradigm. The outbox pattern
 is relevant for users running Quarry directly (cron, CI, shell scripts)
 without an external orchestrator.
 
-See [`docs/guides/temporal.md`](guides/temporal.md) for the full Temporal integration design.
+See [`docs/guides/temporal.md`](../guides/temporal.md) for the full Temporal integration design.
 
 #### Open questions
 - Retry ownership: CLI command, background process, or next-run piggyback?
@@ -432,7 +432,7 @@ occurs when the user provides explicit fan-out flags. No new top-level
 verbs, no umbrella "scope" or "budget" concepts. Only independent, literal
 flags that state facts about execution bounds.
 
-This preserves [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md)'s invariant: `quarry run` is the only
+This preserves [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md)'s invariant: `quarry run` is the only
 execution entrypoint.
 
 ### Motivation
@@ -473,7 +473,7 @@ quarry run --source list.ts --job '{"url":"..."}' ...
 - Process exits deterministically.
 
 This is unchanged from current behavior. The `enqueue` event type remains
-advisory per [`CONTRACT_EMIT.md`](contracts/CONTRACT_EMIT.md).
+advisory per [`CONTRACT_EMIT.md`](../contracts/CONTRACT_EMIT.md).
 
 ### Fan-Out Behavior (any fan-out flag present)
 
@@ -593,7 +593,7 @@ When `--max-runs` is reached mid-execution:
 - [x] In-process scheduler: enqueue event interception, dedup, depth tracking
 - [x] Child run spawning with concurrency limiter
 - [x] `parent_run_id` and `depth` threading through run metadata
-- [x] Fan-out flag wiring in [`quarry/cli/cmd/run.go`](../quarry/cli/cmd/run.go)
+- [x] Fan-out flag wiring in [`quarry/cli/cmd/run.go`](../../quarry/cli/cmd/run.go)
 - [x] Summary output and exit code semantics
 - [ ] `quarry inspect` fan-out lineage view
 - [x] Tests: depth bounds, max-runs cap, concurrency, dedup, scheduling
@@ -624,7 +624,7 @@ these features, it has exceeded its scope.
 
 ### Design Context
 
-See [`docs/ingress-models.md`](ingress-models.md) for the broader analysis of ingress models
+See [`docs/plans/ingress-models.md`](ingress-models.md) for the broader analysis of ingress models
 and use case taxonomy that motivated this approach.
 
 ---
@@ -652,7 +652,7 @@ time interval), reducing R2 PUTs by an order of magnitude while preserving
 near-real-time downstream visibility.
 
 #### Deliverables
-- `StreamingPolicy` implementation in [`quarry/policy/`](../quarry/policy/)
+- `StreamingPolicy` implementation in [`quarry/policy/`](../../quarry/policy/)
 - CLI flags: `--flush-count`, `--flush-interval` (valid only with `--policy=streaming`)
 - Config YAML: `policy.flush_count`, `policy.flush_interval`
 - Flush trigger loop in runtime run orchestration
@@ -688,18 +688,18 @@ recently-used endpoint indices and excludes them from random selection.
 - Contract, guide, and SDK validation updates
 
 #### Implementation scope
-- [`quarry/types/proxy.go`](../quarry/types/proxy.go) — field, validation, warnings
-- [`quarry/proxy/selector.go`](../quarry/proxy/selector.go) — ring buffer, modified `selectRandom`, stats
-- [`sdk/src/types/proxy.ts`](../sdk/src/types/proxy.ts) — `recencyWindow` field
-- [`sdk/src/proxy.ts`](../sdk/src/proxy.ts) — validation in `validateProxyPool`
-- [`quarry/cli/reader/types.go`](../quarry/cli/reader/types.go) — `RecencyWindow`/`RecencyFill` in `ProxyRuntime`
+- [`quarry/types/proxy.go`](../../quarry/types/proxy.go) — field, validation, warnings
+- [`quarry/proxy/selector.go`](../../quarry/proxy/selector.go) — ring buffer, modified `selectRandom`, stats
+- [`sdk/src/types/proxy.ts`](../../sdk/src/types/proxy.ts) — `recencyWindow` field
+- [`sdk/src/proxy.ts`](../../sdk/src/proxy.ts) — validation in `validateProxyPool`
+- [`quarry/cli/reader/types.go`](../../quarry/cli/reader/types.go) — `RecencyWindow`/`RecencyFill` in `ProxyRuntime`
 
 #### Mini-milestones
-- [x] Contract updated ([`CONTRACT_PROXY.md`](contracts/CONTRACT_PROXY.md) — recency semantics)
-- [x] Guide updated ([`docs/guides/proxy.md`](guides/proxy.md) — user-facing docs)
-- [x] Go types and validation ([`quarry/types/proxy.go`](../quarry/types/proxy.go))
-- [x] Selector ring buffer and recency-aware random ([`quarry/proxy/selector.go`](../quarry/proxy/selector.go))
-- [x] SDK types and validation ([`sdk/src/types/proxy.ts`](../sdk/src/types/proxy.ts), [`sdk/src/proxy.ts`](../sdk/src/proxy.ts))
+- [x] Contract updated ([`CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md) — recency semantics)
+- [x] Guide updated ([`docs/guides/proxy.md`](../guides/proxy.md) — user-facing docs)
+- [x] Go types and validation ([`quarry/types/proxy.go`](../../quarry/types/proxy.go))
+- [x] Selector ring buffer and recency-aware random ([`quarry/proxy/selector.go`](../../quarry/proxy/selector.go))
+- [x] SDK types and validation ([`sdk/src/types/proxy.ts`](../../sdk/src/types/proxy.ts), [`sdk/src/proxy.ts`](../../sdk/src/proxy.ts))
 - [x] Tests: type validation, selector avoidance, LRU fallback, peek semantics
 
 ### Phase 2: Pluggable Recency Backend (Future)
@@ -726,8 +726,8 @@ public surface changes.
 
 ### Deliverables
 
-- `github.com/pithecene-io/lode` → v0.10.0 in [`quarry/go.mod`](../quarry/go.mod).
-- Record the additive listing API in [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md) as Quarry-visible
+- `github.com/pithecene-io/lode` → v0.10.0 in [`quarry/go.mod`](../../quarry/go.mod).
+- Record the additive listing API in [`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md) as Quarry-visible
   behavior: `PartitionListOptions.Prefix`, `StartAfter` cursors, sorted
   `ListManifests`, `Store.List` string-prefix semantics, and the
   `ErrPartitionPrefixNotSupported` sentinel.
@@ -739,8 +739,8 @@ public surface changes.
 
 - [x] Lode v0.10.0 tagged upstream
 - [x] `go.mod` bump, tests green
-- [x] [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md) listing notes (§ Listing Order and Cursors)
-- [x] Lockstep release: `task version:bump V=0.13.6`, [`CHANGELOG.md`](../CHANGELOG.md)
+- [x] [`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md) listing notes (§ Listing Order and Cursors)
+- [x] Lockstep release: `task version:bump V=0.13.6`, [`CHANGELOG.md`](../../CHANGELOG.md)
       promoted, single version-bump commit (AGENTS.md § Version Policy)
 
 ---
@@ -774,7 +774,7 @@ reviewed there, against code, not here.
 record before any other write, runs, performs finalization (metrics
 persistence and the end record) and returns only after it. Today metrics
 are persisted by the CLI after `Execute` returns, so any host other than
-the CLI gets no finalization at all; [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md)'s "atomic
+the CLI gets no finalization at all; [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md)'s "atomic
 unit of work" becomes true for every host, and the end record is a real
 quiescence barrier because nothing writes after it.
 
@@ -782,7 +782,7 @@ quiescence barrier because nothing writes after it.
 B1 — the runtime alone computes storage keys, using Lode's Hive encoding.
 Today `file_write_ack` carries only `type`, `write_id`, `ok`, `error`, and
 the SDK fills `StoragePutResult.key` from its own `buildStorageKey`; so
-B1 is a [`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md) change first — the ack gains the resolved key —
+B1 is a [`CONTRACT_IPC.md`](../contracts/CONTRACT_IPC.md) change first — the ack gains the resolved key —
 and only then is the SDK predictor removed, deleting the raw-vs-encoded
 path divergence in both writers rather than fixing it twice. B2 — run
 records live in a Quarry-owned namespace inside the dataset,
@@ -844,7 +844,7 @@ is a consumer-supplied list (`--runs-from`); Quarry holds no ack state.
 D3 — deletion writes a tombstone first and clears it last, so a crashed
 `gc` leaves a state the next run resumes from and `list runs` can flag.
 
-**E. [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md)'s read side is rewritten from this data model**, as
+**E. [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md)'s read side is rewritten from this data model**, as
 a versioned breaking change: partition selectors become required,
 `started_at` nullable, the `running` state is retired in favour of
 `unterminated` ("no terminal evidence" — a live run, a killed process, a
@@ -895,7 +895,7 @@ Each decision is judged by a number in its PR, not by argument:
   sidecars under different prefixes) goes from failing to passing.
 - B2/C: store calls per `list runs` page on the dogfood dataset
   (~11k runs): partition enumeration vs. record listing, in
-  [`docs/guides/benchmarks.md`](guides/benchmarks.md).
+  [`docs/guides/benchmarks.md`](../guides/benchmarks.md).
 - A/D: zero runs without an end record among runs that completed
   finalization; `quarry prune --dry-run` candidate counts by outcome on the dogfood
   dataset before any deletion ships.
@@ -912,22 +912,22 @@ Each decision is judged by a number in its PR, not by argument:
 
 ### Mini-milestones
 
-- [x] [`CONTRACT_RUN.md`](contracts/CONTRACT_RUN.md) / [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md): runtime-owned
+- [x] [`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md) / [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md): runtime-owned
       finalization, and start and end records (A). The run deadline (D1)
       is carried forward.
-- [x] [`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md): the `runs/` namespace with Hive-encoded
+- [x] [`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md): the `runs/` namespace with Hive-encoded
       components, the unchanged sidecar inventory, whole-run deletion,
       Quarry-side deletion of its own objects, and head-owner exclusion
       (B2, B3, D). Sidecar keys remain unencoded (§ Key Encoding, known
       limitation), so the single key builder (B1) is carried forward.
-- [x] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): `list runs`, `list events`, `index rebuild`, and
+- [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): `list runs`, `list events`, `index rebuild`, and
       `prune` specified from the data model, with `unterminated` in place
       of `running` (E). Removing the stub-backed views and aligning
-      [`CONTRACT_METRICS.md`](contracts/CONTRACT_METRICS.md) § Data Source Progression are carried forward.
+      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Source Progression are carried forward.
 - [x] Runtime: finalization moved into `Execute`, which writes the start
       and end records (A)
 - [x] `quarry/reader` over run records, which the CLI commands use, with
-      its [`ARCH_INDEX.md`](ARCH_INDEX.md) boundary entry (C). Module Split records its
+      its [`ARCH_INDEX.md`](../ARCH_INDEX.md) boundary entry (C). Module Split records its
       placement in `quarry-core/`, and that extraction remains planned
       there. `cli/reader` remains as it was, not an adapter over
       `quarry/reader`.
@@ -942,9 +942,9 @@ Each decision is judged by a number in its PR, not by argument:
       place of `--presume-dead-after`. Tombstones (D3) were replaced by
       idempotent steps: an interrupted prune resumes on the next prune
       that selects the run.
-- [x] [`PUBLIC_API.md`](../PUBLIC_API.md) Known Limitation 7 updated
+- [x] [`PUBLIC_API.md`](../../PUBLIC_API.md) Known Limitation 7 updated
 - [x] `list runs` benchmark on a 200-run fixture published in
-      [`docs/guides/benchmarks.md`](guides/benchmarks.md). The dogfood measurements are carried
+      [`docs/guides/benchmarks.md`](../guides/benchmarks.md). The dogfood measurements are carried
       forward.
 
 ### Carried Forward
@@ -953,7 +953,7 @@ Not shipped in v0.14.0. The items that change a run contract outside the
 experimental artifact surface (v1.0 § Experimental Artifact Surface) must
 land before the v1.0 freeze.
 
-- [ ] [`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md): `file_write_ack` carries the resolved storage
+- [ ] [`CONTRACT_IPC.md`](../contracts/CONTRACT_IPC.md): `file_write_ack` carries the resolved storage
       key, the runtime alone builds keys with Hive encoding for sidecar
       keys, and SDK `buildStorageKey` is removed (B1). This is part of the
       experimental artifact surface (v1.0 § Experimental Artifact
@@ -963,8 +963,8 @@ land before the v1.0 freeze.
       counts by outcome (A/D)
 - [ ] Run deadline declared per run and enforced by the runtime (D1)
 - [ ] Consumer-supplied run list for retention (`--runs-from`, D2)
-- [x] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
-      tasks, executors) removed, and [`CONTRACT_METRICS.md`](contracts/CONTRACT_METRICS.md) § Data
+- [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
+      tasks, executors) removed, and [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data
       Source Progression aligned (E)
 - [ ] Writers that open a dataset with its head's compressor, a
       compressor option for datasets without snapshots, and the
@@ -995,7 +995,7 @@ rather than *in* them.
 **Decision:** the artifact byte path is experimental by default
 and excluded from the v1.0 compatibility commitment, as Lode v1.0
 excludes Volume (Lode `V1_API_DECISIONS.md` D9).
-[`PUBLIC_API.md`](../PUBLIC_API.md) § Experimental Surface defines the surface.
+[`PUBLIC_API.md`](../../PUBLIC_API.md) § Experimental Surface defines the surface.
 
 The main use case, Panthalassa, acquires raw provider files that the
 current path cannot carry, and the replacement, designed on #255, depends
@@ -1006,11 +1006,11 @@ freezes it with the other contracts. Lode's side follows its own gate.
 
 ### Deliverables
 
-- [`docs/RELEASE_READINESS_v1.0.md`](RELEASE_READINESS_v1.0.md) taken from Draft to signed off: the
+- [`docs/plans/RELEASE_READINESS_v1.0.md`](RELEASE_READINESS_v1.0.md) taken from Draft to signed off: the
   v1.0 blockers (§1–§5) are resolved; the Release Gates checklist and the
   Sign-Off table are still open and are completed as part of this
   milestone, not assumed.
-- [`PUBLIC_API.md`](../PUBLIC_API.md) Known Limitations rewritten as decisions: the read side
+- [`PUBLIC_API.md`](../../PUBLIC_API.md) Known Limitations rewritten as decisions: the read side
   limitation is retired by the v0.14.0 reader (shipped before v1.0); the
   scheduling limitation stays in force, restated as "planned: the v1.x
   first-party host", and is retired only when `quarry serve` ships.
@@ -1022,7 +1022,7 @@ freezes it with the other contracts. Lode's side follows its own gate.
 - [x] v0.14.0 shipped
 - [ ] v0.14.0 Carried Forward items that change a run contract outside
       the experimental artifact surface landed
-- [x] Experimental artifact surface marked in [`PUBLIC_API.md`](../PUBLIC_API.md) and the contracts
+- [x] Experimental artifact surface marked in [`PUBLIC_API.md`](../../PUBLIC_API.md) and the contracts
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged
@@ -1046,7 +1046,7 @@ that is allowed to idle, not a service that must be up.
 - The runtime is already an embeddable library: the seam is
   `runtime.NewRunOrchestrator(config)`, which returns
   `(*RunOrchestrator, error)`, followed by `Execute(ctx)` on the result,
-  and [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md) § Orchestration Integration Semantics
+  and [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Orchestration Integration Semantics
   already defines its boundary. `quarry serve` is one host of that seam; a
   Temporal worker is another. Quarry must not become specific to either.
 - Lode remains the data plane and the system of record for everything a
@@ -1087,19 +1087,19 @@ The store must never hold anything Lode already has.
 - `CONTRACT_JOBS.md` (job definition and lifecycle) and `CONTRACT_SERVE.md`
   (HTTP read surface, process lifecycle).
 - Run actions with lineage: re-run / retry a run as a new attempt per
-  [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md) § Lineage Preservation.
+  [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Lineage Preservation.
 - Proxy pool health over time. `inspect proxy` exposes selection state
   only (round-robin index, sticky entries, recency, last-used) and
-  [`CONTRACT_PROXY.md`](contracts/CONTRACT_PROXY.md) excludes health checking, so this needs new
+  [`CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md) excludes health checking, so this needs new
   per-endpoint success/failure instrumentation and persistence — a
-  [`CONTRACT_PROXY.md`](contracts/CONTRACT_PROXY.md) change, scoped when the host exists.
+  [`CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md) change, scoped when the host exists.
 - A GUI, if built, is a consumer of the HTTP read API in its own package
   or repository — never a second reader.
 
 ### Mini-milestones
 
 - [ ] Job definition format decided (extend config YAML vs. separate file)
-- [ ] [`CONTRACT_CLI.md`](contracts/CONTRACT_CLI.md) revised: `serve` leaves the forbidden list and is
+- [ ] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md) revised: `serve` leaves the forbidden list and is
       defined as the one long-lived, work-executing command besides `run`
 - [ ] `CONTRACT_JOBS.md` / `CONTRACT_SERVE.md` drafted
 - [ ] `quarry serve` with scheduler and pool (declarative state only)
@@ -1174,7 +1174,7 @@ quarry-core/      (no quarry-* dependencies)
 ## Temporal Orchestration Integration (Deferred Host)
 
 > Temporal is not being dogfooded. It is one host of the runtime seam
-> defined in [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md), alongside the first-party
+> defined in [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md), alongside the first-party
 > `quarry serve` host in the v1.x roadmap. Nothing in Quarry may become
 > Temporal-specific; this section is built when a Temporal deployment
 > exists to validate it against.
@@ -1196,7 +1196,7 @@ lineage tracking, and durable execution guarantees.
   `runtime.NewRunOrchestrator(config).Execute(ctx)`
 - Heartbeat goroutine: concurrent liveness reporting (30s interval)
 - Outcome mapping: `OutcomeStatus` → Temporal error semantics per
-  [`CONTRACT_INTEGRATION.md`](contracts/CONTRACT_INTEGRATION.md)
+  [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md)
 - Reference workflow: `QuarryExtractionWorkflow` with lineage-aware
   retry logic (new `run_id` per attempt, `parent_run_id` threading)
 - Worker binary: standalone Temporal worker for `quarry-temporal/`
@@ -1212,7 +1212,7 @@ lineage tracking, and durable execution guarantees.
 - [ ] Batch workflow patterns (parallel + child workflow)
 - [ ] Integration tests with Temporal test framework
 
-See [`docs/guides/temporal.md`](guides/temporal.md) for detailed design and pseudocode.
+See [`docs/guides/temporal.md`](../guides/temporal.md) for detailed design and pseudocode.
 
 ---
 
@@ -1225,7 +1225,7 @@ Order of support:
 
 > Temporal is an orchestration integration, not a notification adapter.
 > See [Temporal Orchestration Integration (Deferred Host)](#temporal-orchestration-integration-deferred-host)
-> and [`docs/guides/temporal.md`](guides/temporal.md).
+> and [`docs/guides/temporal.md`](../guides/temporal.md).
 
 Principles:
 - Integrations must not change contracts.
@@ -1242,16 +1242,16 @@ must follow this protocol.
 ### Pre-merge checklist
 
 **For SDK envelope/event type changes:**
-- [ ] Update [`docs/contracts/CONTRACT_EMIT.md`](contracts/CONTRACT_EMIT.md)
+- [ ] Update [`docs/contracts/CONTRACT_EMIT.md`](../contracts/CONTRACT_EMIT.md)
 - [ ] Update impacted contract docs (if any)
 - [ ] Verify SDK types match contract definitions
 
 **For IPC/streaming changes:**
-- [ ] Update [`docs/contracts/CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md)
+- [ ] Update [`docs/contracts/CONTRACT_IPC.md`](../contracts/CONTRACT_IPC.md)
 - [ ] Verify executor and runtime implementations align
 
 **For run identity/lineage changes:**
-- [ ] Update [`docs/contracts/CONTRACT_RUN.md`](contracts/CONTRACT_RUN.md)
+- [ ] Update [`docs/contracts/CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md)
 
 ### PR requirements
 

@@ -24,7 +24,7 @@ quarry/executor/bundle/executor.mjs	CONTRACT_VERSION = "__V__"
 # Fixtures that embed the contract version
 sdk/test/emit/06-golden/*.json	"contract_version": "__V__"
 quarry/adapter/redisstream/*_test.go	ContractVersion: "__V__"
-docs/CLI_PARITY.json	"version": "__V__"
+docs/maintainers/CLI_PARITY.json	"version": "__V__"
 
 # Install commands and image tags
 README.md PUBLIC_API.md docs/guides/container.md	ghcr\.io/pithecene/quarry:__V__	-slim
@@ -39,5 +39,5 @@ SUPPORT.md	support expectations for Quarry v__V__\.
 SUPPORT.md	Quarry v__V__ is provided
 SUPPORT.md	\*\*v__V__ is an early release\.\*\*
 SUPPORT.md	_No known functional issues in v__V__\._
-docs/IMPLEMENTATION_PLAN.md	## Current Status \(as of v__V__\)
-docs/IMPLEMENTATION_PLAN.md	- Latest release: v__V__
+docs/plans/IMPLEMENTATION_PLAN.md	## Current Status \(as of v__V__\)
+docs/plans/IMPLEMENTATION_PLAN.md	- Latest release: v__V__
