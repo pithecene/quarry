@@ -59,3 +59,36 @@ retry() {
   done
   return 1
 }
+
+# Registry probes return PRESENT, ABSENT, or LOOKUP_FAILED. Only the
+# registry's own "not found" answer counts as absent: an unreachable
+# registry or an auth failure must never be read as "not published".
+PRESENT=0
+ABSENT=1
+LOOKUP_FAILED=2
+
+# lookup <probe> <args...>: runs <probe>, retrying only LOOKUP_FAILED,
+# doubling the delay between attempts. Returns the probe's last answer.
+# Tunables (environment): PROBE_ATTEMPTS (3), PROBE_RETRY_DELAY (5 s).
+lookup() {
+  local attempts="${PROBE_ATTEMPTS:-3}" delay="${PROBE_RETRY_DELAY:-5}" n rc
+  for ((n = 1; ; n++)); do
+    rc=0
+    "$@" || rc=$?
+    ((rc == LOOKUP_FAILED && n < attempts)) || return "$rc"
+    sleep "$delay"
+    delay=$((delay * 2))
+  done
+}
+
+# npm_probe <name> <version>: is <name>@<version> on the npm registry?
+npm_probe() {
+  local out
+  if out=$(npm view "$1@$2" version 2>&1); then
+    [[ "$(tail -n 1 <<<"$out")" == "$2" ]] && return "$PRESENT"
+    return "$ABSENT"
+  fi
+  [[ "$out" == *E404* ]] && return "$ABSENT"
+  info "npm lookup of $1@$2 failed: $(tail -n 1 <<<"$out")"
+  return "$LOOKUP_FAILED"
+}

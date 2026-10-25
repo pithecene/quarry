@@ -91,9 +91,13 @@ case "$3" in
 esac
 EOF
 
-# curl -w '%{http_code}' <url>: 200 iff the version is on JSR.
+# curl -w '%{http_code}' <url>: 200 iff the version is on JSR, otherwise
+# 404; no response (code 000, exit 7) while jsr_lookup_errors lasts.
 cat >"$STUBS/curl" <<'EOF'
 #!/usr/bin/env bash
+source "$FAIL_LOOKUP"
+echo "curl $*" >>"$STATE/calls"
+fail_lookup jsr_lookup_errors && { printf 000; exit 7; }
 if [[ -f "$STATE/jsr_published" ]]; then printf 200; else printf 404; fi
 EOF
 
@@ -200,6 +204,7 @@ expect "missing tag is rejected" fail "$P"
 # --- publish-npm.sh ----------------------------------------------------------
 
 N="$HERE/publish-npm.sh"
+export PROBE_RETRY_DELAY=0
 
 new_case
 echo 1.2.3 >"$STATE/npm_versions"
@@ -219,6 +224,25 @@ expect "npm: concurrent publish counts as success" ok "$N" "$PKG"
 new_case
 echo fail >"$STATE/pnpm_mode"
 expect "npm: real publish failure fails" fail "$N" "$PKG"
+
+# Registry lookup failures (default PROBE_ATTEMPTS=3).
+
+new_case
+echo 1.2.3 >"$STATE/npm_versions"
+echo 2 >"$STATE/npm_lookup_errors"
+expect "npm: transient lookup failure is retried" ok "$N" "$PKG"
+check "npm: a recovered lookup that finds the version does not publish" [ "$(calls pnpm)" -eq 0 ]
+
+new_case
+echo 3 >"$STATE/npm_lookup_errors"
+expect "npm: unreadable registry still publishes" ok "$N" "$PKG"
+check "npm: unreadable registry publishes once" [ "$(calls pnpm)" -eq 1 ]
+
+new_case
+echo fail >"$STATE/pnpm_mode"
+echo 6 >"$STATE/npm_lookup_errors"
+"$N" "$PKG" >"$STATE/out" 2>&1 || true
+check "npm: failed publish with an unreadable registry fails" grep -q "could not check the registry" "$STATE/out"
 
 # --- publish-jsr.sh ----------------------------------------------------------
 
@@ -250,10 +274,26 @@ expect "jsr: a stalled attempt is cut off and the job fails" fail \
   env JSR_ATTEMPTS=2 JSR_ATTEMPT_TIMEOUT=1 "$J" "$PKG" 1.2.3
 check "jsr: each stalled attempt is retried" [ "$(calls npx)" -eq 2 ]
 
+new_case
+touch "$STATE/jsr_published"
+echo 2 >"$STATE/jsr_lookup_errors"
+expect "jsr: transient lookup failure is retried" ok "$J" "$PKG" 1.2.3
+check "jsr: a recovered lookup that finds the version does not publish" [ "$(calls npx)" -eq 0 ]
+
+new_case
+echo 3 >"$STATE/jsr_lookup_errors"
+expect "jsr: unreadable registry still publishes" ok "$J" "$PKG" 1.2.3
+check "jsr: unreadable registry publishes once" [ "$(calls npx)" -eq 1 ]
+
+new_case
+echo poll_fail >"$STATE/npx_mode"
+echo 6 >"$STATE/jsr_lookup_errors"
+expect "jsr: an unconfirmed upload is attempted again" ok env JSR_ATTEMPTS=2 "$J" "$PKG" 1.2.3
+check "jsr: a failed lookup after an attempt is not read as published" [ "$(calls npx)" -eq 2 ]
+
 # --- converge-pointers.sh -----------------------------------------------------
 
 C="$HERE/converge-pointers.sh"
-export PROBE_RETRY_DELAY=0
 img() { printf '%s\n' "$@" >"$STATE/images"; }
 last_alias() { grep -- " create -t ghcr.io/x/y:$1 " "$STATE/calls" | tail -n 1 | awk '{print $NF}'; }
 

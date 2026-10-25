@@ -20,14 +20,17 @@ cd "$DIR"
 NAME=$(jq -r '.name' package.json)
 VERSION=$(jq -r '.version' package.json)
 
-published() {
-  npm view "${NAME}@${VERSION}" version >/dev/null 2>&1
-}
+published() { lookup npm_probe "$NAME" "$VERSION"; }
 
-if published; then
+# A failed lookup is not read as "not published": the publish below runs
+# either way, and the registry rejects a duplicate version.
+rc=0
+published || rc=$?
+if ((rc == PRESENT)); then
   info "${NAME}@${VERSION} is already published"
   exit 0
 fi
+((rc == LOOKUP_FAILED)) && info "could not check whether ${NAME}@${VERSION} is published; publishing"
 
 if pnpm publish --access restricted --no-git-checks --tag release; then
   info "Published ${NAME}@${VERSION}"
@@ -36,5 +39,8 @@ fi
 
 # The registry rejects a duplicate version; if another run published it
 # between the check and the publish, the release is still complete.
-published || die "failed to publish ${NAME}@${VERSION}"
+rc=0
+published || rc=$?
+((rc == LOOKUP_FAILED)) && die "failed to publish ${NAME}@${VERSION}, and could not check the registry for it"
+((rc == PRESENT)) || die "failed to publish ${NAME}@${VERSION}"
 info "${NAME}@${VERSION} was published by a concurrent run"

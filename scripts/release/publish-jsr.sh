@@ -27,20 +27,37 @@ NAME=$(jq -r '.name' jsr.json)
 # installers; the api.jsr.io version endpoint can lag behind it.
 META_URL="https://jsr.io/${NAME}/${VERSION}_meta.json"
 
-published() {
-  [[ "$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "$META_URL")" == "200" ]]
+# jsr_probe: 200 is present and 404 absent. Anything else, including no
+# response, is a failed lookup.
+jsr_probe() {
+  local code
+  code=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "$META_URL") || true
+  case "$code" in
+    200) return "$PRESENT" ;;
+    404) return "$ABSENT" ;;
+  esac
+  info "JSR lookup of ${NAME}@${VERSION} failed: HTTP ${code:-none}"
+  return "$LOOKUP_FAILED"
 }
 
+published() { lookup jsr_probe; }
+
+# After a failed attempt only a confirmed PRESENT counts as published; a
+# failed lookup leads to another attempt, which JSR refuses if the version
+# exists.
 attempt() {
   timeout "$ATTEMPT_TIMEOUT" npx --yes jsr publish --set-version "$VERSION" && return 0
   published && { info "${NAME}@${VERSION} is on JSR despite the client error"; return 0; }
   return 1
 }
 
-if published; then
+rc=0
+published || rc=$?
+if ((rc == PRESENT)); then
   info "${NAME}@${VERSION} is already on JSR"
   exit 0
 fi
+((rc == LOOKUP_FAILED)) && info "could not check whether ${NAME}@${VERSION} is on JSR; publishing"
 
 retry "$ATTEMPTS" "$RETRY_DELAY" attempt || die "failed to publish ${NAME}@${VERSION} to JSR"
 info "Published ${NAME}@${VERSION} to JSR"

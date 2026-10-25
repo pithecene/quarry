@@ -33,25 +33,9 @@ VERSIONS=$(released_tags) || die "could not list release tags on origin"
 VERSIONS=$(printf '%s\n' "$VERSIONS" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV | sed 's/^v//' || true)
 [[ -n "$VERSIONS" ]] || die "no release tags on origin"
 
-# Registry probes return 0 (present), 1 (absent) or 2 (lookup failed). Only
-# the registry's own "not found" answer counts as absent: an unreachable
-# registry or an auth failure must never be read as "not published", or the
-# pointer would silently move to an older release.
-PRESENT=0
-ABSENT=1
-LOOKUP_FAILED=2
-
-npm_probe() {
-  local out
-  if out=$(npm view "${NAME}@$1" version 2>&1); then
-    [[ "$(tail -n 1 <<<"$out")" == "$1" ]] && return "$PRESENT"
-    return "$ABSENT"
-  fi
-  [[ "$out" == *E404* ]] && return "$ABSENT"
-  info "npm lookup of ${NAME}@$1 failed: $(tail -n 1 <<<"$out")"
-  return "$LOOKUP_FAILED"
-}
-
+# Probes come from lib.sh (PRESENT, ABSENT, LOOKUP_FAILED). A lookup that
+# fails is never read as "not published", or a pointer would silently move
+# to an older release.
 image_probe() {
   local out
   out=$(docker buildx imagetools inspect "$1" 2>&1 >/dev/null) && return "$PRESENT"
@@ -60,20 +44,7 @@ image_probe() {
   return "$LOOKUP_FAILED"
 }
 
-# lookup <probe> <arg>: runs <probe>, retrying only failed lookups, doubling
-# the delay between attempts.
-lookup() {
-  local attempts="${PROBE_ATTEMPTS:-3}" delay="${PROBE_RETRY_DELAY:-5}" n rc
-  for ((n = 1; ; n++)); do
-    rc=0
-    "$@" || rc=$?
-    ((rc == LOOKUP_FAILED && n < attempts)) || return "$rc"
-    sleep "$delay"
-    delay=$((delay * 2))
-  done
-}
-
-npm_published() { lookup npm_probe "$1"; }
+npm_published() { lookup npm_probe "$NAME" "$1"; }
 
 images_pushed() {
   lookup image_probe "${IMAGE}:$1" || return
@@ -95,40 +66,42 @@ first_where() {
   return "$ABSENT"
 }
 
-converge_npm() {
-  local target rc=0
-  target=$(first_where npm_published) || rc=$?
+# converge <pointer> <predicate> <point> <unknown> <none>: points <pointer>
+# at the highest version for which <predicate> holds, by calling <point>
+# with it. <unknown> and <none> describe a failed lookup and an empty
+# result. A pointer whose target cannot be determined is left unchanged and
+# fails.
+converge() {
+  local pointer="$1" predicate="$2" point="$3" unknown="$4" none="$5" target rc=0
+  target=$(first_where "$predicate") || rc=$?
   if ((rc == LOOKUP_FAILED)); then
-    info "could not determine which releases of ${NAME} are published; npm latest unchanged"
+    info "${unknown}; ${pointer} unchanged"
     return 1
   fi
   if ((rc == ABSENT)); then
-    info "no release of ${NAME} is published; npm latest unchanged"
+    info "${none}; ${pointer} unchanged"
     return 0
   fi
-  npm dist-tag add "${NAME}@${target}" latest || return 1
-  info "npm ${NAME} latest -> ${target}"
+  "$point" "$target" || return 1
+  info "${pointer} -> ${target}"
 }
 
-converge_images() {
-  local target rc=0
-  target=$(first_where images_pushed) || rc=$?
-  if ((rc == LOOKUP_FAILED)); then
-    info "could not determine which release images are pushed; ${IMAGE}:latest and :slim unchanged"
-    return 1
-  fi
-  if ((rc == ABSENT)); then
-    info "no release images are pushed; ${IMAGE}:latest and :slim unchanged"
-    return 0
-  fi
-  docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${target}" || return 1
-  docker buildx imagetools create -t "${IMAGE}:slim" "${IMAGE}:${target}-slim" || return 1
-  info "${IMAGE}:latest -> ${target}, :slim -> ${target}-slim"
+point_npm() { npm dist-tag add "${NAME}@$1" latest; }
+
+point_images() {
+  docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:$1" || return 1
+  docker buildx imagetools create -t "${IMAGE}:slim" "${IMAGE}:$1-slim"
 }
 
 # Each registry is attempted even if the other fails; the job still fails
 # so the stale pointer is visible and a re-run repairs it.
 FAILED=()
-converge_npm || FAILED+=("npm latest")
-converge_images || FAILED+=("GHCR :latest/:slim")
+converge "npm ${NAME} latest" npm_published point_npm \
+  "could not determine which releases of ${NAME} are published" \
+  "no release of ${NAME} is published" \
+  || FAILED+=("npm latest")
+converge "${IMAGE}:latest and :slim" images_pushed point_images \
+  "could not determine which release images are pushed" \
+  "no release images are pushed" \
+  || FAILED+=("GHCR :latest/:slim")
 ((${#FAILED[@]} == 0)) || die "failed to converge: ${FAILED[*]}"
