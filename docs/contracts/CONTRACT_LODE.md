@@ -1,4 +1,4 @@
-# Quarry Lode Storage — Contract
+# Quarry Lode Storage Contract
 
 This document defines Quarry's minimal expectations of Lode.
 

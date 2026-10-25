@@ -1,4 +1,4 @@
-# Quarry CLI — Contract
+# Quarry CLI Contract
 
 This document defines the **CLI surface** and **read-only guarantees** for
 Quarry. It defines the command topology, required invariants, and the

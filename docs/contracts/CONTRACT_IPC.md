@@ -1,4 +1,4 @@
-# Quarry IPC and Streaming — Contract
+# Quarry IPC and Streaming Contract
 
 This document defines the IPC framing and streaming behavior between
 executor and runtime. It defines framing, encoding, chunking, backpressure,
