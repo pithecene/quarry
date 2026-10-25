@@ -43,11 +43,11 @@ type ParityFlag struct {
 	Notes         string   `json:"notes,omitempty"`
 }
 
-// loadParityArtifact loads the CLI parity artifact from docs/CLI_PARITY.json.
+// loadParityArtifact loads the CLI parity artifact from docs/maintainers/CLI_PARITY.json.
 func loadParityArtifact(t *testing.T) *ParityArtifact {
 	t.Helper()
 
-	// Find the repo root by looking for docs/CLI_PARITY.json
+	// Find the repo root by looking for docs/maintainers/CLI_PARITY.json
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("could not determine test file location")
@@ -56,7 +56,7 @@ func loadParityArtifact(t *testing.T) *ParityArtifact {
 	// Walk up from quarry/cli/cmd to find repo root
 	dir := filepath.Dir(filename)
 	for range 5 {
-		candidate := filepath.Join(dir, "docs", "CLI_PARITY.json")
+		candidate := filepath.Join(dir, "docs", "maintainers", "CLI_PARITY.json")
 		if _, err := os.Stat(candidate); err == nil {
 			data, err := os.ReadFile(candidate)
 			if err != nil {
@@ -72,7 +72,7 @@ func loadParityArtifact(t *testing.T) *ParityArtifact {
 		dir = filepath.Dir(dir)
 	}
 
-	t.Fatal("could not find docs/CLI_PARITY.json - run from repo root")
+	t.Fatal("could not find docs/maintainers/CLI_PARITY.json - run from repo root")
 	return nil
 }
 

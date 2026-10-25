@@ -51,13 +51,20 @@ User-facing guides (informational).
 - [`guides/temporal.md`](guides/temporal.md) — Temporal orchestration integration guide
 - [`guides/benchmarks.md`](guides/benchmarks.md) — benchmark methodology and results
 
-### docs/ (top-level)
+### docs/plans/
 
-- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — staged implementation roadmap
-- [`RELEASE_READINESS_v0.3.0.md`](RELEASE_READINESS_v0.3.0.md) — historical release readiness (v0.3.0)
-- [`RELEASE_READINESS_v1.0.md`](RELEASE_READINESS_v1.0.md) — v1.0 release gating and gap analysis
-- [`ingress-models.md`](ingress-models.md) — data ingestion modeling
-- [`CLI_PARITY.json`](CLI_PARITY.json) — CLI flag parity tracking
+Plans and records (for maintainers; not user documentation).
+
+- [`plans/IMPLEMENTATION_PLAN.md`](plans/IMPLEMENTATION_PLAN.md) — staged implementation roadmap
+- [`plans/RELEASE_READINESS_v0.3.0.md`](plans/RELEASE_READINESS_v0.3.0.md) — historical release readiness (v0.3.0)
+- [`plans/RELEASE_READINESS_v1.0.md`](plans/RELEASE_READINESS_v1.0.md) — v1.0 release gating and gap analysis
+- [`plans/ingress-models.md`](plans/ingress-models.md) — data ingestion modeling
+
+### docs/maintainers/
+
+Maintainer material read by tests and scripts.
+
+- [`maintainers/CLI_PARITY.json`](maintainers/CLI_PARITY.json) — CLI flag parity tracking (read by `quarry/cli/cmd/parity_test.go` and the lockstep version targets)
 
 ### docs/contracts/
 

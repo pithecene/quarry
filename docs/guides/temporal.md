@@ -244,7 +244,7 @@ activity in the workflow — e.g., a webhook POST or SNS publish activity
 that runs after the extraction activity completes. Temporal's durable
 execution guarantees at-least-once delivery without the outbox pattern.
 
-The outbox pattern (see [`docs/IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)) remains relevant
+The outbox pattern (see [`docs/plans/IMPLEMENTATION_PLAN.md`](../plans/IMPLEMENTATION_PLAN.md)) remains relevant
 for standalone CLI deployments where no external orchestrator provides
 delivery guarantees.
 
@@ -261,7 +261,7 @@ can depend on core runtime types without pulling in CLI/TUI dependencies.
 | `quarry-cli/` | CLI commands, TUI, config | `quarry-core/` |
 | `quarry-temporal/` | activity, workflow, worker | `quarry-core/`, `go.temporal.io/sdk` |
 
-See [`docs/IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) for the module split roadmap and
+See [`docs/plans/IMPLEMENTATION_PLAN.md`](../plans/IMPLEMENTATION_PLAN.md) for the module split roadmap and
 sequencing.
 
 ---
@@ -271,4 +271,4 @@ sequencing.
 - [`docs/contracts/CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) — normative orchestration integration semantics
 - [`docs/contracts/CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md) — run lifecycle, lineage, and outcome rules
 - [`docs/guides/integration.md`](integration.md) — downstream notification patterns (event-bus, polling)
-- [`docs/IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) — module split and Temporal roadmap
+- [`docs/plans/IMPLEMENTATION_PLAN.md`](../plans/IMPLEMENTATION_PLAN.md) — module split and Temporal roadmap
