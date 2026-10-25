@@ -33,7 +33,7 @@ docker pull ghcr.io/pithecene/quarry:0.14.0
 docker pull ghcr.io/pithecene/quarry:0.14.0-slim
 ```
 
-See [docs/guides/container.md](docs/guides/container.md) for Docker Compose examples.
+See the [container guide](docs/guides/container.md) for Docker Compose examples.
 
 ### SDK
 
@@ -41,7 +41,7 @@ See [docs/guides/container.md](docs/guides/container.md) for Docker Compose exam
 npx jsr add @pithecene/quarry-sdk
 ```
 
-See [PUBLIC_API.md](PUBLIC_API.md) for full setup and usage guide.
+See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
 
 ---
 
@@ -78,6 +78,13 @@ Persistence Substrate (e.g. Lode)
 Scripts **emit observations**.  
 Policies decide how those observations are handled.  
 Persistence decides what survives.
+
+Four components carry out this model:
+
+- **SDK**: the authoring surface for scripts, `emit.*` and the context objects.
+- **Executor**: runs a script and streams its events to the runtime.
+- **Runtime**: manages runs and applies the ingestion policy.
+- **Lode**: stores each run's data under stable partitions.
 
 ---
 
@@ -152,17 +159,17 @@ Scripts are imperative, explicit, and boring by design.
 
 ## Key Concepts
 
-- **Emit API** — all script output flows through `emit.*` → [docs/guides/emit.md](docs/guides/emit.md)
-- **Policies** — strict, buffered, or streaming ingestion control → [docs/guides/policy.md](docs/guides/policy.md)
-- **Storage** — FS and S3 backends via Lode → [docs/guides/lode.md](docs/guides/lode.md)
-- **Proxies** — pool-based rotation with multiple strategies → [docs/guides/proxy.md](docs/guides/proxy.md)
-- **Streaming** — chunked artifacts with backpressure → [docs/guides/streaming.md](docs/guides/streaming.md)
-- **Configuration** — YAML project defaults via `--config` → [docs/guides/cli.md](docs/guides/cli.md)
-- **Browser Reuse** — transparent Chromium persistence across sequential runs → [docs/guides/configuration.md](docs/guides/configuration.md)
-- **Container Deployment** — full/slim images, shared browser pools, multi-crawler topologies → [docs/guides/container.md](docs/guides/container.md)
-- **Integration** — webhook and Redis adapters for downstream triggers → [docs/guides/integration.md](docs/guides/integration.md)
-- **Fan-Out** — derived work execution via `emit.enqueue()` → [docs/guides/emit.md](docs/guides/emit.md)
-- **Run Lifecycle** — terminal states and exit codes → [docs/guides/run.md](docs/guides/run.md)
+- **Emit API** — all script output flows through `emit.*` → [emit guide](docs/guides/emit.md)
+- **Policies** — strict, buffered, or streaming ingestion control → [policy guide](docs/guides/policy.md)
+- **Storage** — FS and S3 backends via Lode → [storage guide](docs/guides/lode.md)
+- **Proxies** — pool-based rotation with multiple strategies → [proxy guide](docs/guides/proxy.md)
+- **Streaming** — chunked artifacts with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
+- **Configuration** — YAML project defaults via `--config` → [configuration reference](docs/guides/configuration.md)
+- **Browser Reuse** — transparent Chromium persistence across sequential runs → [configuration reference](docs/guides/configuration.md)
+- **Container Deployment** — full/slim images, shared browser pools, multi-crawler topologies → [container guide](docs/guides/container.md)
+- **Integration** — webhook and Redis adapters for downstream triggers → [integration guide](docs/guides/integration.md)
+- **Fan-Out** — derived work execution via `emit.enqueue()` → [emit guide](docs/guides/emit.md)
+- **Run Lifecycle** — terminal states and exit codes → [run guide](docs/guides/run.md)
 
 ---
 

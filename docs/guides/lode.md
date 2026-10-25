@@ -1,7 +1,10 @@
 # Lode Expectations (User View)
 
-This document explains the storage expectations Quarry places on Lode.
-The authoritative contract is [`docs/contracts/CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md).
+Quarry stores every run in a [Lode](https://github.com/pithecene/lode)
+dataset on the filesystem or in S3. This guide explains what Quarry relies
+on Lode to guarantee, how a run's data is partitioned and stored, and how
+each storage backend behaves. The
+[storage contract](../contracts/CONTRACT_LODE.md) states the rules.
 
 ---
 
@@ -67,9 +70,8 @@ Chunk records may include an MD5 checksum for integrity verification.
 - `checksum`: hex-encoded MD5 digest of chunk data
 - `checksum_algo`: always `"md5"` when checksum is present
 
-**v0.1.0 Status:** Checksum generation is disabled by default and not
-user-configurable. The infrastructure exists for future enablement.
-Validation is a downstream consumer responsibility.
+Quarry writes no checksum by default, and no setting enables one.
+Validation is the responsibility of downstream consumers.
 
 ---
 

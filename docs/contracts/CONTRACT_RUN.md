@@ -143,7 +143,7 @@ The runtime owns a run's whole lifecycle. `Execute`
    `policy_failure` (a run that has already failed retains its outcome).
    Policy statistics are taken after the close, so the metrics record and
    the exit report match what was persisted.
-3. Persist the run's metrics record (CONTRACT_LODE.md §Metrics Record
+3. Persist the run's metrics record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record
    Storage).
 4. Write the run's **end record**.
 5. Return.
@@ -158,7 +158,7 @@ blocks the run at that call, as it would block any write. Lode's
 filesystem and S3 stores return; S3 calls also honor cancellation.
 
 Finalization happens inside `Execute` for every caller: the CLI, fan-out
-child runs, and any embedding host (CONTRACT_INTEGRATION.md §Activity
+child runs, and any embedding host ([CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) §Activity
 Boundary). Callers do not persist metrics themselves. When `Execute` has
 no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
 
@@ -178,7 +178,7 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
     is scoped to the key: global `run_id` uniqueness (§Canonical
     Identifiers) remains the caller's obligation.
   - Values that can never form a valid key are rejected earlier, as a
-    configuration error, before `Execute` (CONTRACT_LODE.md §Key
+    configuration error, before `Execute` ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Key
     Encoding).
 - **Metrics record.** Best-effort, as before: a failure is a warning, does
   not change the outcome, and is recorded in the end record
@@ -194,7 +194,7 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
 
 Every run has two small JSON records that the runtime writes outside
 Lode's partition tree: a start record and an end record. Their location
-and key encoding are defined in CONTRACT_LODE.md §Run Record Namespace.
+and key encoding are defined in [CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Record Namespace.
 Records are written once and never rewritten. Runs written before records
 existed get backfilled records (§Backfilled Run Records).
 
@@ -234,7 +234,7 @@ existed get backfilled records (§Backfilled Run Records).
 
 ### Backfilled Run Records
 
-`quarry index rebuild` (CONTRACT_CLI.md §index rebuild) writes records for
+`quarry index rebuild` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §index rebuild) writes records for
 runs that have partitions but no start record. It is the only reader
 that finds runs by scanning the partition tree, and it writes only what
 the stored data shows:
@@ -267,7 +267,7 @@ run the rebuild after such writers have stopped writing to the dataset.
 
 ### Reading Run Records
 
-Readers (CONTRACT_CLI.md §list runs) apply these rules:
+Readers ([CONTRACT_CLI.md](CONTRACT_CLI.md) §list runs) apply these rules:
 
 - A run is listed if and only if its start record exists. An end record
   without a start record (left by a start-record write that failed without being persisted) is
@@ -370,4 +370,4 @@ data fetching occurs.
 - `run_record_error` is omitted unless writing the end record failed
   (§Run Finalization).
 - `policy.flush_triggers` is omitted for non-streaming policies.
-- `exit_code` matches the process exit code per §Exit Codes in CONTRACT_CLI.md.
+- `exit_code` matches the process exit code per §Exit Codes in [CONTRACT_CLI.md](CONTRACT_CLI.md).

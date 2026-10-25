@@ -15,7 +15,7 @@ This is a contract document. Implementations must conform.
 - Defines backpressure semantics.
 
 Non-goals:
-- Does not define event envelope structure (see CONTRACT_EMIT.md).
+- Does not define event envelope structure (see [CONTRACT_EMIT.md](CONTRACT_EMIT.md)).
 - Does not define ingestion policy behavior.
 
 ---
@@ -310,7 +310,7 @@ This makes loss explicit and avoids hidden queues.
 ### Pipe Closure
 - If the pipe closes cleanly after a valid `run_complete`, the run is complete.
 - If the pipe closes without `run_complete`, the runtime records a crash or
-  premature termination (see CONTRACT_EMIT.md error semantics).
+  premature termination (see [CONTRACT_EMIT.md](CONTRACT_EMIT.md) error semantics).
 
 ---
 

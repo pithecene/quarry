@@ -1,7 +1,9 @@
 # CLI Overview
 
-This document is a user guide for the Quarry CLI.
-The authoritative contract is [`docs/contracts/CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md).
+The `quarry` command runs scripts and reads the data that runs store.
+This guide starts with a first run, then describes the command groups, the
+output formats, and each command. The
+[CLI contract](../contracts/CONTRACT_CLI.md) states the rules.
 
 ---
 
@@ -208,7 +210,7 @@ spawned in validation mode, which loads the script module (including
 optional hook signatures, and exits. Exit code 0 = valid, 1 = load/validation
 failure, 2 = executor missing.
 
-Exit codes (per CONTRACT_RUN.md):
+Exit codes (per the [run contract](../contracts/CONTRACT_RUN.md)):
 - `0`: success (run_complete)
 - `1`: script error (run_error)
 - `2`: executor crash
@@ -350,7 +352,7 @@ Notes:
 - `--limit` defaults to `0` (no limit).
 - If output is large, the CLI may warn and suggest `--limit`.
 - With `--storage-backend` and `--storage-path`, `list runs` reads the run
-  records every run writes (v0.14.0+), and `list events` returns a run's
+  records every run writes, and `list events` returns a run's
   events in sequence order. Without storage flags, `list runs` returns stub
   data.
 - A run with no end record is `unterminated`: it may still be running, or

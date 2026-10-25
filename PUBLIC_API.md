@@ -1,7 +1,9 @@
 # Quarry Public API
 
-User-facing guide for Quarry.
-Normative behavior is defined by contracts under [`docs/contracts/`](docs/contracts/).
+Quarry runs Puppeteer scripts written against its SDK. This guide covers
+installing Quarry, writing and running a script, the emit API and the CLI,
+the experimental surface, and the known limitations of this release. The
+contracts under [`docs/contracts/`](docs/contracts/) state the rules.
 
 ---
 
@@ -49,7 +51,7 @@ docker pull ghcr.io/pithecene/quarry:0.14.0
 # Slim image — no browser, multi-arch (BYO Chromium via --browser-ws-endpoint)
 docker pull ghcr.io/pithecene/quarry:0.14.0-slim
 ```
-See [docs/guides/container.md](docs/guides/container.md) for `docker run` and Docker Compose examples.
+See the [container guide](docs/guides/container.md) for `docker run` and Docker Compose examples.
 
 ### SDK
 
@@ -339,15 +341,15 @@ Rules:
 - Maximum file size: 8 MiB
 - Shares ordering and fail-fast with `emit.*`
 - Cannot be called after a terminal event (`run_complete` / `run_error`)
-- Returns `StoragePutResult` with the resolved `key` (v0.11.0+)
-- Promise rejects on backend write failure (v0.12.0+) — errors are recoverable
+- Returns `StoragePutResult` with the resolved `key`
+- Promise rejects on backend write failure — errors are recoverable
 
 Files land at Hive-partitioned paths under the storage root:
 ```
 <storage-path>/datasets/<dataset>/partitions/source=<s>/category=<c>/day=<d>/run_id=<r>/files/<filename>
 ```
 
-#### Sidecar File Inventory (v0.13.4+)
+#### Sidecar File Inventory
 
 Files written via `storage.put()` are automatically tracked in Lode snapshot
 `Metadata` under the `sidecar_files` key. Downstream consumers can enumerate
@@ -359,7 +361,7 @@ are flushed into the snapshot on event and metrics writes only (not chunk
 writes). To reconstruct the full file inventory for a run, union
 `sidecar_files` from all snapshots for that `run_id`.
 
-See [`docs/contracts/CONTRACT_LODE.md`](docs/contracts/CONTRACT_LODE.md) § Sidecar File Inventory for the
+See the [storage contract](docs/contracts/CONTRACT_LODE.md) § Sidecar File Inventory for the
 normative specification.
 
 ### Batching File Uploads
@@ -437,7 +439,7 @@ quarry run [options]
 
 | Flag | Description |
 |------|-------------|
-| `--config <path>` | Path to YAML config file with project-level defaults (see [`docs/guides/configuration.md`](docs/guides/configuration.md)) |
+| `--config <path>` | Path to YAML config file with project-level defaults (see the [configuration reference](docs/guides/configuration.md)) |
 
 CLI flags always override config file values.
 
@@ -474,7 +476,7 @@ CLI flags always override config file values.
 
 > **Streaming policy:** At least one of `--flush-count` or `--flush-interval` must be specified
 > when `--policy=streaming`. Both may be specified; the first trigger to fire wins.
-> See [`docs/guides/policy.md`](docs/guides/policy.md) for details.
+> See the [policy guide](docs/guides/policy.md) for details.
 
 **Adapter flags (event-bus notification):**
 
@@ -487,7 +489,7 @@ CLI flags always override config file values.
 | `--adapter-timeout <duration>` | `10s` | Notification timeout |
 | `--adapter-retries <n>` | `3` | Retry attempts |
 
-**Event sink flags (real-time event delivery, v0.13.0+):**
+**Event sink flags (real-time event delivery):**
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -504,7 +506,7 @@ CLI flags always override config file values.
 > **Event sinks vs adapters:** Event sinks deliver events in real time during a
 > run. Adapters fire once after a run completes. Both can be used together.
 > When no `--event-sink` flags are set, events go to Lode only (default).
-> See [`docs/contracts/CONTRACT_INTEGRATION.md`](docs/contracts/CONTRACT_INTEGRATION.md) and [`docs/guides/integration.md`](docs/guides/integration.md).
+> See the [integration contract](docs/contracts/CONTRACT_INTEGRATION.md) and the [integration guide](docs/guides/integration.md).
 
 **Fan-out flags (derived work execution):**
 
@@ -518,7 +520,7 @@ CLI flags always override config file values.
 
 | Flag | Env Var | Description |
 |------|---------|-------------|
-| `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips per-run Chromium launch; see [`docs/guides/cli.md`](docs/guides/cli.md)) |
+| `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips per-run Chromium launch; see the [CLI guide](docs/guides/cli.md)) |
 | `--no-browser-reuse` | — | Disable transparent browser reuse across runs (forces per-run Chromium launch) |
 
 By default, Quarry transparently reuses a persistent Chromium process across sequential runs.
@@ -535,7 +537,7 @@ See [Container Usage](docs/guides/container.md) for multi-crawler deployment pat
 
 When scripts import workspace packages that are not resolvable from the
 script's directory, `--resolve-from` registers an ESM resolve hook to fall
-back to the specified `node_modules`. See [`docs/contracts/CONTRACT_CLI.md`](docs/contracts/CONTRACT_CLI.md).
+back to the specified `node_modules`. See the [CLI contract](docs/contracts/CONTRACT_CLI.md).
 
 **Validation:**
 
@@ -769,7 +771,7 @@ Quarry ships container images via GHCR:
 - **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.14.0` — includes Chrome for Testing + fonts
 - **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.14.0-slim` — no browser (BYO via `--browser-ws-endpoint`)
 
-For `docker run`, Docker Compose, and sidecar patterns, see [docs/guides/container.md](docs/guides/container.md).
+For `docker run`, Docker Compose, and sidecar patterns, see the [container guide](docs/guides/container.md).
 
 ---
 
@@ -784,8 +786,8 @@ unless its replacement is ready first. It consists of:
 - `ctx.storage.put` and `createStorageBatcher`, including the storage key
   that `put` returns.
 - The IPC frames that carry them: `artifact_chunk`, `file_write`, and
-  `file_write_ack` (CONTRACT_IPC.md).
-- The stored artifact chunk records and sidecar files (CONTRACT_LODE.md).
+  `file_write_ack` (the [IPC contract](docs/contracts/CONTRACT_IPC.md)).
+- The stored artifact chunk records and sidecar files (the [storage contract](docs/contracts/CONTRACT_LODE.md)).
 
 The `artifact` event, including its stored commit record, is not
 experimental. The replacement, which streams bytes into Lode Volumes, is
@@ -803,7 +805,7 @@ change.
 4. **No transactional storage writes**: S3 and S3-compatible providers (R2, MinIO) do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler; external orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
-7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error; with no storage flag, `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers (R2, MinIO) via `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them; backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See [`docs/guides/integration.md`](docs/guides/integration.md).
+7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error; with no storage flag, `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers (R2, MinIO) via `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them; backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release; config-based logical names are under consideration.
 
@@ -866,13 +868,13 @@ export AWS_SECRET_ACCESS_KEY=<secret-key>
 ## Downstream Integration
 
 Quarry is an extraction runtime, not a full pipeline. For triggering downstream
-processing after runs complete, see [docs/guides/integration.md](docs/guides/integration.md).
+processing after runs complete, see the [integration guide](docs/guides/integration.md).
 
-### Reading Runs (v0.14.0+)
+### Reading Runs
 
 `listRuns` and `readRun` read persisted runs from Node.js programs, such as
 an ETL job that ingests finished runs. They run the `quarry` CLI
-(`list runs` and `list events` with `--format json`; CONTRACT_CLI.md) and
+(`list runs` and `list events` with `--format json`; the [CLI contract](docs/contracts/CONTRACT_CLI.md)) and
 return its JSON, so they read exactly what the CLI reads. The `quarry` executable must
 be installed; pass `quarryPath` when it is not on `PATH`.
 
@@ -911,11 +913,11 @@ do {
   default dataset or all sources).
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
 
-**Built-in adapters** (v0.5.0+): `--adapter webhook` sends an HTTP POST, and
+**Built-in adapters**: `--adapter webhook` sends an HTTP POST, and
 `--adapter redis` publishes to a Redis pub/sub channel after each run completes.
 See adapter flags above.
 
-**Event sinks** (v0.13.0+): `--event-sink redis` streams every event to a Redis
+**Event sinks**: `--event-sink redis` streams every event to a Redis
 Stream in real time during the run. Can be combined with adapters for both
 real-time event streaming and post-run notification.
 

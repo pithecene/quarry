@@ -1,7 +1,8 @@
 # Ingestion Policies
 
-This document describes ingestion policy behavior at a user level.
-The authoritative contract is [`docs/contracts/CONTRACT_POLICY.md`](../contracts/CONTRACT_POLICY.md).
+An ingestion policy decides how the runtime buffers a run's events,
+when it writes them to storage, and which events it may drop. The
+[policy contract](../contracts/CONTRACT_POLICY.md) states the rules.
 
 ---
 
@@ -32,7 +33,7 @@ All core output events (`item`, `artifact`, `checkpoint`, `run_error`,
 - **Buffered**: bounded buffers, batched writes, explicit drops allowed.
   Events accumulate in memory and are flushed on run completion. Best for
   high-volume runs where throughput matters and advisory events can be dropped.
-- **Streaming** *(v0.7.0)*: bounded buffers, batched writes, no drops.
+- **Streaming**: bounded buffers, batched writes, no drops.
   Combines strict's no-drop guarantee with buffered's batched write efficiency.
   Events are flushed on configurable triggers: count threshold
   (`--flush-count`), time interval (`--flush-interval`), or run termination.

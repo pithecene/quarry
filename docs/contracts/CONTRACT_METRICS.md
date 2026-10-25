@@ -115,7 +115,7 @@ Optional dimensions:
 - CLI `stats` commands must surface stable, aggregated views of required metrics.
 - Metrics must be derived from runtime-owned sources, not executor counters.
 - Metrics snapshots must be persisted as Lode `record_kind=metrics` records
-  (see CONTRACT_LODE.md) to support stats reads across processes.
+  (see [CONTRACT_LODE.md](CONTRACT_LODE.md)) to support stats reads across processes.
 - No exporter is required; exposure via CLI is mandatory.
 
 ### Data Sources
@@ -124,10 +124,10 @@ A read command that has no Lode-backed reader returns stub data.
 
 - `stats metrics` reads the latest metrics record from storage when
   `--storage-backend` and `--storage-path` are both given, and returns stub
-  data when no storage flag is given (CONTRACT_CLI.md §`stats metrics`).
+  data when no storage flag is given ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
 - `list runs` reads run records from storage in the same way, with the
-  same stub fallback (CONTRACT_CLI.md §`list runs`). `list events`
-  requires the storage flags and has no stub (CONTRACT_CLI.md
+  same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`). `list events`
+  requires the storage flags and has no stub ([CONTRACT_CLI.md](CONTRACT_CLI.md)
   §`list events`).
 - Every other `stats`, `inspect`, and `list` command returns stub data
   only. No global reader configuration exists, and the commands read

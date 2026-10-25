@@ -1,7 +1,10 @@
 # Emitting Data
 
-This document explains how scripts emit data and metadata in Quarry.
-It is user-facing; the authoritative contract is [`docs/contracts/CONTRACT_EMIT.md`](../contracts/CONTRACT_EMIT.md).
+A script reports everything it observes through `emit.*`: items,
+artifacts, checkpoints, logs, and the event that ends the run. This guide
+explains what to emit and when, the ordering Quarry guarantees, sidecar
+file uploads, and how events stream to the runtime. The
+[emit contract](../contracts/CONTRACT_EMIT.md) states the rules.
 
 ---
 
@@ -31,7 +34,7 @@ Some advisory types exist (`enqueue`, `rotate_proxy`), but they are optional.
 
 > **Tip:** The `beforeTerminal` lifecycle hook fires after script execution
 > but before the terminal event, with emit still open. This is useful for
-> emitting summary items or final metadata. See [`PUBLIC_API.md`](../../PUBLIC_API.md) (Lifecycle
+> emitting summary items or final metadata. See the [SDK and setup guide](../../PUBLIC_API.md) (Lifecycle
 > Hooks section) for details.
 
 ---
@@ -58,7 +61,7 @@ intent but carry no delivery or execution guarantee.
 
 Scripts should not depend on advisory events being acted upon.
 
-### Fan-Out Activation (v0.6.0+)
+### Fan-Out Activation
 
 When `quarry run` is invoked with `--depth <n>` (where n > 0), the runtime
 **acts on** enqueue events by executing them as child runs:
@@ -134,6 +137,34 @@ Constraints:
 
 Use `emit.artifact()` for larger payloads or when chunk-level progress
 tracking is needed.
+
+---
+
+## Streaming and Backpressure
+
+The executor sends each event to the runtime as soon as the script emits
+it, and the runtime applies the ingestion policy as events arrive. The
+[IPC contract](../contracts/CONTRACT_IPC.md) states the framing and
+ordering rules.
+
+> The `streaming` ingestion policy is a separate subject: it controls how
+> the runtime batches writes to storage. The [policy guide](policy.md)
+> describes it.
+
+### Artifacts
+
+The executor sends an artifact's bytes as one or more chunk frames, and
+then the `artifact` event. The event is the commit record: until it
+arrives, the runtime treats the artifact as absent.
+
+- Chunks may arrive before the artifact event.
+- Chunks that no artifact event commits may be garbage-collected.
+
+### Backpressure
+
+When the runtime applies backpressure, the executor stalls and the
+script's emit calls wait. No hidden buffer sits between them, so an event
+is never lost silently.
 
 ---
 

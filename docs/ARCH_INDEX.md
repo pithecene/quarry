@@ -37,9 +37,7 @@ Do not update for internal refactors.
 
 User-facing guides (informational).
 
-- [`guides/overview.md`](guides/overview.md) — user-facing system overview
-- [`guides/emit.md`](guides/emit.md) — user-facing emit guide
-- [`guides/streaming.md`](guides/streaming.md) — user-facing streaming and artifact behavior
+- [`guides/emit.md`](guides/emit.md) — user-facing emit guide, including streaming, artifacts, and backpressure
 - [`guides/run.md`](guides/run.md) — user-facing run lifecycle guide
 - [`guides/policy.md`](guides/policy.md) — user-facing ingestion policy guide
 - [`guides/lode.md`](guides/lode.md) — user-facing storage expectations

@@ -18,7 +18,7 @@ This is a contract document. Implementations must conform.
 Non-goals:
 - Does not define executor behavior.
 - Does not define ingestion policy implementation details.
-- Does not define storage layouts (see CONTRACT_LODE.md).
+- Does not define storage layouts (see [CONTRACT_LODE.md](CONTRACT_LODE.md)).
 
 ---
 
@@ -130,8 +130,8 @@ Unsupported (must error with `--tui`):
 ## `run` (execution)
 
 `quarry run` is the **only** command that executes work.
-It must conform to CONTRACT_RUN.md and emit observability defined by
-CONTRACT_EMIT.md and CONTRACT_POLICY.md.
+It must conform to [CONTRACT_RUN.md](CONTRACT_RUN.md) and emit observability defined by
+[CONTRACT_EMIT.md](CONTRACT_EMIT.md) and [CONTRACT_POLICY.md](CONTRACT_POLICY.md).
 
 No other command may initiate or control execution.
 
@@ -161,7 +161,7 @@ JSON report on exit, making every run machine-auditable.
 
 **Semantics:**
 - The report is written after metrics persistence and adapter notification.
-- The report JSON structure is documented in CONTRACT_RUN.md §Structured Exit Report.
+- The report JSON structure is documented in [CONTRACT_RUN.md](CONTRACT_RUN.md) §Structured Exit Report.
 - `--report -` writes the report to stderr (useful for piping/capturing).
 - Report write failures are logged to stderr as warnings and do not affect
   the run exit code.
@@ -205,12 +205,12 @@ Semantics:
 - Buffer is bounded internally; if full before a trigger fires, ingestion
   blocks until the next flush (events are never dropped).
 - On run termination, a final flush is always attempted (best effort).
-- Flush trigger counts are surfaced in `stats metrics` (see CONTRACT_METRICS.md).
+- Flush trigger counts are surfaced in `stats metrics` (see [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
 
 ### Adapter Flags
 
 `quarry run` supports optional event-bus adapter notification.
-See CONTRACT_INTEGRATION.md for semantics.
+See [CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) for semantics.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -227,7 +227,7 @@ The run exit code is determined by execution outcome, never by adapter status.
 ### Event Sink Flags
 
 `quarry run` supports optional event sink configuration for real-time
-event delivery during a run. See CONTRACT_INTEGRATION.md §Event Sink Model
+event delivery during a run. See [CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) §Event Sink Model
 for semantics.
 
 | Flag | Type | Default | Description |
@@ -439,7 +439,7 @@ Node 20.6+).
 ## `inspect` (single-entity introspection)
 
 `inspect` commands return a deep view of a single entity and are read-only.
-Data is sourced from the runtime’s read path (see CONTRACT_LODE.md).
+Data is sourced from the runtime’s read path (see [CONTRACT_LODE.md](CONTRACT_LODE.md)).
 
 ### `inspect run <run-id>`
 
@@ -470,7 +470,7 @@ SidecarFileSummary:
 ```
 
 The `sidecar_files` field lists files written via `storage.put()` during the
-run. File refs are collected from Lode snapshot metadata (see CONTRACT_LODE.md
+run. File refs are collected from Lode snapshot metadata (see [CONTRACT_LODE.md](CONTRACT_LODE.md)
 § Sidecar File Inventory). The field is omitted when no sidecar files exist.
 
 ### `inspect proxy <pool-name>`
@@ -489,7 +489,7 @@ InspectProxyPoolResponse:
 ```
 
 This response reinforces that **proxy selection is runtime-owned** and
-the executor only applies resolved endpoints (see CONTRACT_PROXY.md).
+the executor only applies resolved endpoints (see [CONTRACT_PROXY.md](CONTRACT_PROXY.md)).
 
 ---
 
@@ -537,7 +537,7 @@ Optional flags:
 Both `--storage-backend` and `--storage-path` must be provided together;
 any storage flag given without both is an error.
 When provided, metrics are read from Lode storage. When no storage flag is
-given, stub data is returned (see Data Sources in CONTRACT_METRICS.md).
+given, stub data is returned (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
 
 Response:
 ```
@@ -566,7 +566,7 @@ MetricsSnapshot:
   flush_triggers: map[string]number (optional, streaming policy only)
 ```
 
-Metric names match CONTRACT_METRICS.md. See CONTRACT_METRICS.md for the
+Metric names match [CONTRACT_METRICS.md](CONTRACT_METRICS.md). See [CONTRACT_METRICS.md](CONTRACT_METRICS.md) for the
 outcome-to-metric mapping (which outcomes increment which counters).
 Dimensions are included for traceability.
 
@@ -588,7 +588,7 @@ quarry stats metrics --format json
 ### `list runs`
 
 With `--storage-backend` and `--storage-path`, runs are listed
-from their run records (CONTRACT_RUN.md §Run Records, §Reading Run Records).
+from their run records ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Records, §Reading Run Records).
 Without them, the stub data below is returned. Giving only one of the pair
 is an error.
 
@@ -596,7 +596,7 @@ Storage-backed flags:
 - Storage flags as on `stats metrics` (`--storage-dataset`, `--storage-region`,
   `--storage-endpoint`, `--storage-s3-path-style`)
 - `--source`, `--category`, `--day`: leading selectors, in that order
-  (CONTRACT_LODE.md §Run Record Namespace). `--category` requires
+  ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Record Namespace). `--category` requires
   `--source`, and `--day` requires `--category`; omitting all three lists
   the whole dataset
 - `--state=succeeded|failed|unterminated`
@@ -646,7 +646,7 @@ resumes after its position. With `--state`, a page holds up to `--limit`
 matching runs.
 
 Selector values are rejected when they are `.`, `..`, or contain a `.` or
-`..` path segment (CONTRACT_LODE.md §Key Encoding): stores normalize such
+`..` path segment ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Key Encoding): stores normalize such
 segments, which would widen the prefix beyond the selected runs.
 
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
@@ -674,7 +674,7 @@ RunEvents:
 ```
 
 `events` holds the run's stored records of `record_kind` `event` and
-`artifact_event` (CONTRACT_LODE.md §Record Types), ordered by `seq`.
+`artifact_event` ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Record Types), ordered by `seq`.
 Artifact chunks and the metrics record are not events and are omitted.
 Item payloads are returned as stored; Quarry does not know a script's
 item schema. The run's partitions are addressed from its start record's
@@ -696,7 +696,7 @@ Response must include:
 ### `index rebuild`
 
 Backfills run records for runs written before v0.14.0, which `list runs`
-cannot otherwise find (CONTRACT_RUN.md §Backfilled Run Records). It scans
+cannot otherwise find ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Backfilled Run Records). It scans
 the dataset's partition tree, writes a start record (and, when the stored
 data shows that the run ended, an end record) for each run that has no
 start record, and reports what it wrote. Records are created, never
@@ -741,7 +741,7 @@ rendered.
 
 ## `prune` (run retention)
 
-Removes whole runs, chosen by state and age, as CONTRACT_LODE.md §Run
+Removes whole runs, chosen by state and age, as [CONTRACT_LODE.md](CONTRACT_LODE.md) §Run
 Retention defines: the run's snapshots, sidecar files, and run records.
 
 Flags:
@@ -894,8 +894,8 @@ VersionResponse:
 All Quarry components share a single canonical version defined in `types.Version`.
 This includes:
 - CLI version
-- Emit contract version (CONTRACT_EMIT.md)
-- IPC contract version (CONTRACT_IPC.md)
+- Emit contract version ([CONTRACT_EMIT.md](CONTRACT_EMIT.md))
+- IPC contract version ([CONTRACT_IPC.md](CONTRACT_IPC.md))
 
 Version changes require updating the single source constant. There is no separate
 "contract version" — the project version is the contract version.

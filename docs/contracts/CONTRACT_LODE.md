@@ -154,13 +154,13 @@ Checksum validation is a downstream consumer responsibility.
 ## Metrics Record Storage
 
 A metrics snapshot is written at run completion under `event_type=metrics`,
-by the runtime inside `Execute`, before the end record (CONTRACT_RUN.md
+by the runtime inside `Execute`, before the end record ([CONTRACT_RUN.md](CONTRACT_RUN.md)
 §Run Finalization).
 Write is best-effort — failure produces a warning but does not change run outcome.
 
 ### Metrics Record Schema
 
-Field names use the `_total` suffix to match CONTRACT_METRICS.md naming.
+Field names use the `_total` suffix to match [CONTRACT_METRICS.md](CONTRACT_METRICS.md) naming.
 
 | Field                           | Type              | Required | Description                              |
 |---------------------------------|-------------------|----------|------------------------------------------|
@@ -242,7 +242,7 @@ These are runtime configuration options passed via CLI flags (`--storage-endpoin
 ## Listing Order and Cursors
 
 Quarry's read side relies on the following Lode listing guarantees, which
-Lode's `CONTRACT_READ_API.md` makes normative:
+Lode's [CONTRACT_READ_API.md](https://github.com/pithecene/lode/blob/main/docs/contracts/CONTRACT_READ_API.md) makes normative:
 
 - Listings are sorted on every store: datasets by ID, partitions by path,
   manifests by (partition, ID). A reader must not assume store order and
@@ -298,7 +298,7 @@ codec, no compressor, no checksum, and Lode's default path names.
 
 ## Run Record Namespace
 
-Run start and end records (CONTRACT_RUN.md §Run Records) are stored
+Run start and end records ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Records) are stored
 outside Lode's partition tree, in a namespace Quarry owns inside the
 dataset:
 
@@ -406,13 +406,13 @@ for the run.
 
 Retention removes whole runs, chosen by their state and age. Quarry
 chooses the runs, because only Quarry knows a run's outcome. Lode's
-`Dataset.Expire` removes their snapshots (Lode CONTRACT_RETENTION.md), and
+`Dataset.Expire` removes their snapshots (Lode [CONTRACT_RETENTION.md](https://github.com/pithecene/lode/blob/main/docs/contracts/CONTRACT_RETENTION.md)), and
 Quarry deletes the objects it owns. The `quarry/retention` package
-implements it, and `quarry prune` (CONTRACT_CLI.md §prune) exposes it.
+implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) exposes it.
 
 ### Selection
 
-- Runs are found from their start records (CONTRACT_RUN.md §Reading Run
+- Runs are found from their start records ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Reading Run
   Records), under the leading selectors `source`, `category`, and `day`,
   or one run named by all three and its run ID. A run without a start
   record is not found, so `quarry index rebuild` must index older runs
@@ -428,7 +428,7 @@ implements it, and `quarry prune` (CONTRACT_CLI.md §prune) exposes it.
   `started_at`, so the end of its partition day stands in.
 - An unterminated run cannot be told apart from a live one, so its age
   must be at least 24 hours and must exceed the longest run. A
-  terminated run is final (CONTRACT_RUN.md §Run Finalization), so any age,
+  terminated run is final ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization), so any age,
   including zero, is safe.
 - A start-record key that the write path could not have produced
   (including a day that is not `YYYY-MM-DD`), and a
@@ -496,7 +496,7 @@ data that a manifest describes.
 
 A prune can run while runs are written to the dataset. A run that the
 policy selects is presumed final: a terminated run is final by
-CONTRACT_RUN.md §Run Finalization, and an unterminated run has written
+[CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization, and an unterminated run has written
 nothing for at least its age. If such a run nevertheless commits during
 the prune, step 3 keeps its new snapshot and the run's records remain;
 only a commit after that final listing is not detected. A prune does not coordinate with readers of the run.
