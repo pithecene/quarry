@@ -15,9 +15,11 @@ Quarry runs a Puppeteer script you write under a strict runtime contract, stream
 
 ## Installation
 
+These steps require Node.js 22.18 or later, which runs TypeScript scripts with native type stripping by default. They also use [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured, so the installed CLI is on your `PATH`. Behind an HTTP proxy, also install `proxy-agent`, which Puppeteer needs to download its browser through the proxy. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain and covers earlier Node 22 releases.
+
 ### CLI
 
-Create a directory for your scripts and install the CLI there with [mise](https://mise.jdx.dev). mise records the version in the directory's `mise.toml` and puts `quarry` on your `PATH` inside it:
+Create a directory for your scripts and install the CLI there with mise, which records the version in the directory's `mise.toml` and puts `quarry` on your `PATH` inside it:
 
 ```bash
 mkdir quarry-scripts && cd quarry-scripts
