@@ -63,7 +63,7 @@ These payloads must:
 ### Run Request (Runtime → Executor)
 If present, the run request includes optional fields:
 - `proxy` (optional): `ProxyEndpoint`
-- `storage` (optional, v0.11.0+): `StoragePartition` — Hive partition metadata
+- `storage` (optional): `StoragePartition` — Hive partition metadata
   for SDK-side key computation. When present, `storage.put()` returns the
   resolved storage key without a bidirectional IPC round-trip.
 
@@ -153,14 +153,6 @@ Artifacts larger than 16 MiB must be chunked (see below).
 ---
 
 ## Artifact Chunking
-
-The transport of artifact bytes is experimental (PUBLIC_API.md
-§Experimental Surface). It comprises the chunk frames in this section,
-§Orphaned Blobs and §Size Constraints under Artifact Commit Semantics,
-and the File Write Frames and File Write Acknowledgement sections. The
-`artifact` event is not experimental. Neither is the rule that it is the
-commit record, before which the runtime treats no artifact as existent
-(§Ordering Guarantees).
 
 Artifacts are transmitted as:
 1) One or more **artifact chunk frames** (bytes).

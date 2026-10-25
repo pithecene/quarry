@@ -150,7 +150,7 @@ The `run` command exit code is determined by execution outcome:
 `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
 
-### Structured Exit Report (v0.11.0+)
+### Structured Exit Report
 
 `quarry run` supports an optional `--report` flag that writes a structured
 JSON report on exit, making every run machine-auditable.
@@ -167,7 +167,7 @@ JSON report on exit, making every run machine-auditable.
   the run exit code.
 - The `exit_code` field in the report matches the process exit code.
 
-### Dry-Run Validation (v0.11.0+)
+### Dry-Run Validation
 
 `quarry run` supports a `--dry-run` flag that validates script loadability
 without executing a run. No browser is launched, no storage is written,
@@ -189,7 +189,7 @@ and no policy/proxy/adapter config is required.
 - Exit code 2 = executor binary missing or failed to spawn.
 - Policy, storage, proxy, adapter, and fan-out configuration are skipped entirely.
 
-### Streaming Policy Flags (v0.7.0+)
+### Streaming Policy Flags
 
 `quarry run` supports a `streaming` ingestion policy with configurable flush
 triggers. At least one of `--flush-count` or `--flush-interval` must be
@@ -207,7 +207,7 @@ Semantics:
 - On run termination, a final flush is always attempted (best effort).
 - Flush trigger counts are surfaced in `stats metrics` (see CONTRACT_METRICS.md).
 
-### Adapter Flags (v0.5.0+)
+### Adapter Flags
 
 `quarry run` supports optional event-bus adapter notification.
 See CONTRACT_INTEGRATION.md for semantics.
@@ -224,7 +224,7 @@ See CONTRACT_INTEGRATION.md for semantics.
 Adapter invocation is best-effort. Failures are logged to stderr.
 The run exit code is determined by execution outcome, never by adapter status.
 
-### Event Sink Flags (v0.13.0+)
+### Event Sink Flags
 
 `quarry run` supports optional event sink configuration for real-time
 event delivery during a run. See CONTRACT_INTEGRATION.md §Event Sink Model
@@ -253,7 +253,7 @@ Semantics:
 - Config file: `events.sinks[]` array in YAML.
 - Fan-out child runs inherit the parent's event sink configuration.
 
-### Fan-Out Flags (v0.6.0+)
+### Fan-Out Flags
 
 `quarry run` supports optional derived work execution via enqueue events.
 
@@ -282,7 +282,7 @@ Semantics:
 - Per-enqueue `source`/`category` overrides apply to the immediate child only;
   grandchildren inherit from their parent unless they also specify overrides.
 
-### Config File (v0.4.x+)
+### Config File
 
 `quarry run` supports an optional `--config <path>` flag that loads a YAML
 config file providing project-level defaults for run flags.
@@ -297,7 +297,7 @@ config file providing project-level defaults for run flags.
 3. urfave flag defaults apply if neither CLI nor config provides a value.
 
 **Required field handling:**
-- `--source`, `--storage-backend`, and `--storage-path` are no longer
+- `--source`, `--storage-backend`, and `--storage-path` are not
   `Required` on the flag definition. They are validated after config merge.
   If missing from both CLI and config, an actionable error is returned.
 - `--script` and `--run-id` remain `Required: true` (per-invocation, never
@@ -312,7 +312,7 @@ config file providing project-level defaults for run flags.
 **No auto-discovery:** Config files are loaded only via explicit `--config`.
 There is no implicit `quarry.yaml` search in the working directory.
 
-### Transparent Browser Reuse (v0.7.2+)
+### Transparent Browser Reuse
 
 By default, `quarry run` transparently reuses a Chromium browser process
 across sequential invocations. The browser is launched as a detached process
@@ -405,7 +405,7 @@ The reusable browser server is:
 
 This is a permitted side-effect, not a background service.
 
-### Module Resolution (v0.9.0+)
+### Module Resolution
 
 `quarry run` supports a `--resolve-from` flag for workspace and monorepo
 setups where scripts import bare specifiers (`@myorg/db`, `shared-utils`)
@@ -537,7 +537,7 @@ Optional flags:
 Both `--storage-backend` and `--storage-path` must be provided together;
 any storage flag given without both is an error.
 When provided, metrics are read from Lode storage. When no storage flag is
-given, stub data is returned (see Data Source Progression in CONTRACT_METRICS.md).
+given, stub data is returned (see Data Sources in CONTRACT_METRICS.md).
 
 Response:
 ```
@@ -587,7 +587,7 @@ quarry stats metrics --format json
 
 ### `list runs`
 
-With `--storage-backend` and `--storage-path` (v0.14.0+), runs are listed
+With `--storage-backend` and `--storage-path`, runs are listed
 from their run records (CONTRACT_RUN.md §Run Records, §Reading Run Records).
 Without them, the stub data below is returned. Giving only one of the pair
 is an error.
@@ -656,7 +656,7 @@ without storage is an error, and any storage flag given without both
 `--storage-backend` and `--storage-path` is an error, never a fallback to
 stub data.
 
-### `list events` (v0.14.0+)
+### `list events`
 
 Lists one run's events, read from storage.
 
@@ -693,7 +693,7 @@ Response must include:
 
 ## `index` (run records)
 
-### `index rebuild` (v0.14.0+)
+### `index rebuild`
 
 Backfills run records for runs written before v0.14.0, which `list runs`
 cannot otherwise find (CONTRACT_RUN.md §Backfilled Run Records). It scans
@@ -739,7 +739,7 @@ rendered.
 
 ---
 
-## `prune` (run retention, v0.14.0+)
+## `prune` (run retention)
 
 Removes whole runs, chosen by state and age, as CONTRACT_LODE.md §Run
 Retention defines: the run's snapshots, sidecar files, and run records.

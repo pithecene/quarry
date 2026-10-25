@@ -49,7 +49,7 @@ When applicable, the following fields must be set:
   - Incremented by 1 for each retry run.
   - A run with `attempt: 1` and no `parent_run_id` is an initial run.
 
-### Child Runs (v0.6.0+)
+### Child Runs
 
 When fan-out is active (`--depth > 0`), the runtime may create child runs
 in response to `enqueue` events. Child runs have:
@@ -63,7 +63,7 @@ script, not a re-execution of the same job.
 
 ---
 
-## Lifecycle Hooks (v0.9.0+)
+## Lifecycle Hooks
 
 Scripts may export optional lifecycle hooks alongside the default run function.
 Hooks are invoked by the executor at well-defined points in the run lifecycle.
@@ -117,15 +117,15 @@ auto-emit terminal → [cleanup] → run_result → return
 
 ### Hook Contract Rules
 
-- All hooks are optional. Scripts that do not export hooks behave identically
-  to pre-0.9.0.
+- All hooks are optional. A script that exports no hooks runs as though
+  each hook did nothing.
 - Hook exports must be functions. Non-function exports of hook names cause
   a load-time validation error.
 - `cleanup` is **not called** on `prepare`-skip paths (no context exists).
 
 ---
 
-## Run Finalization (v0.14.0+)
+## Run Finalization
 
 The runtime owns a run's whole lifecycle. `Execute`
 (`runtime.RunOrchestrator.Execute`) performs, in order:
@@ -190,7 +190,7 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
 
 ---
 
-## Run Records (v0.14.0+)
+## Run Records
 
 Every run has two small JSON records that the runtime writes outside
 Lode's partition tree: a start record and an end record. Their location
@@ -206,7 +206,7 @@ existed get backfilled records (§Backfilled Run Records).
 | `schema_version` | int    | yes      | `1` |
 | `run_id`         | string | yes      | Run identifier |
 | `job_id`         | string | no       | Omitted when unknown |
-| `parent_run_id`  | string | no       | As in the run's lineage (§Lineage Fields); omitted when absent. Fan-out child runs do not yet carry their enqueueing run here (§Child Runs), so their records omit it |
+| `parent_run_id`  | string | no       | As in the run's lineage (§Lineage Fields); omitted when absent. Fan-out child runs do not carry their enqueueing run here (§Child Runs), so their records omit it |
 | `attempt`        | int    | yes      | Per §Lineage Fields |
 | `dataset`        | string | yes      | Lode dataset ID |
 | `source`         | string | yes      | Partition key (unencoded) |
@@ -310,7 +310,7 @@ This metadata must be available to storage and logs.
 
 ---
 
-## Structured Exit Report (v0.11.0+)
+## Structured Exit Report
 
 When `--report <path>` is specified, the runtime writes a structured JSON
 report on exit. `--report -` writes to stderr.

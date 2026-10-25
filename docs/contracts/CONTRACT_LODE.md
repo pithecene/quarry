@@ -103,8 +103,6 @@ types without inspecting `event_type` or payload structure.
 ## Artifact Chunk Storage
 
 Artifact binary data is stored as chunk records under `event_type=artifact`.
-The chunk records are experimental (PUBLIC_API.md §Experimental Surface).
-The commit record is not.
 
 ### Chunk Record Schema
 
@@ -241,10 +239,10 @@ These are runtime configuration options passed via CLI flags (`--storage-endpoin
 
 ---
 
-## Listing Order and Cursors (Lode v0.10.0+)
+## Listing Order and Cursors
 
 Quarry's read side relies on the following Lode listing guarantees, which
-Lode's `CONTRACT_READ_API.md` makes normative from v0.10.0:
+Lode's `CONTRACT_READ_API.md` makes normative:
 
 - Listings are sorted on every store: datasets by ID, partitions by path,
   manifests by (partition, ID). A reader must not assume store order and
@@ -267,14 +265,12 @@ Lode's `CONTRACT_READ_API.md` makes normative from v0.10.0:
   store factory is called. Quarry's `WithRetry(3)` and
   `WithRetryObserver` registration are valid values and unaffected.
 
-Error text changed in v0.10.0 (`lode: invalid argument: <value>`,
-`invalid path`, one extra nesting level on manifest read failures);
-`errors.Is` classification is unchanged and Quarry matches on sentinels,
-never on message text.
+Quarry matches Lode errors on their sentinels with `errors.Is`, never on
+message text.
 
 ---
 
-## Writer Settings (Lode v0.12.0+)
+## Writer Settings
 
 Every Quarry writer of a dataset opens it with the same settings: the Hive
 layout over the required partition keys in the recommended order, the JSONL
@@ -300,7 +296,7 @@ codec, no compressor, no checksum, and Lode's default path names.
 
 ---
 
-## Run Record Namespace (v0.14.0+)
+## Run Record Namespace
 
 Run start and end records (CONTRACT_RUN.md §Run Records) are stored
 outside Lode's partition tree, in a namespace Quarry owns inside the
@@ -345,13 +341,11 @@ key, as a configuration error:
   segment (split on `/` or `\`). Sidecar file paths (§Sidecar File
   Inventory) still interpolate these values unencoded, so such a segment
   could place one run's files under another run's partition.
-- Known limitation, unchanged from earlier releases: for a value that
-  Hive encoding changes (one containing `/`, `\`, `%`, a space, and so on),
-  the sidecar file path differs from the run's partition prefix, because
-  sidecar paths (and the key the SDK reports from `storage.put()`) are
-  built raw. Run records and the partition tree always agree. Moving
-  sidecar keys to the same encoding requires the IPC acknowledgment to
-  carry the resolved key first; it is roadmap decision B1.
+- Sidecar file paths, and the key the SDK reports from `storage.put()`,
+  are built from the raw values. For a value that Hive encoding changes
+  (one containing `/`, `\`, `%`, a space, and so on), the sidecar file
+  path therefore differs from the run's partition prefix. Run records and
+  the partition tree always agree.
 - Dataset ID: empty, `.`, `..`, or any value containing `/` or `\`. The
   dataset component is not encoded, so these would leave the dataset's
   directory or add path segments.
@@ -368,8 +362,6 @@ re-deriving keys.
 ---
 
 ## Sidecar File Inventory
-
-Sidecar files are experimental (PUBLIC_API.md §Experimental Surface).
 
 Sidecar files written via `storage.put()` land at Hive-partitioned paths
 under `files/`, bypassing the Dataset segment/manifest machinery. These files
@@ -410,7 +402,7 @@ for the run.
 
 ---
 
-## Run Retention (v0.14.0+)
+## Run Retention
 
 Retention removes whole runs, chosen by their state and age. Quarry
 chooses the runs, because only Quarry knows a run's outcome. Lode's

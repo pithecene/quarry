@@ -923,7 +923,7 @@ Each decision is judged by a number in its PR, not by argument:
 - [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): `list runs`, `list events`, `index rebuild`, and
       `prune` specified from the data model, with `unterminated` in place
       of `running` (E). Removing the stub-backed views and aligning
-      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Source Progression are carried forward.
+      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Sources are carried forward.
 - [x] Runtime: finalization moved into `Execute`, which writes the start
       and end records (A)
 - [x] `quarry/reader` over run records, which the CLI commands use, with
@@ -1022,7 +1022,7 @@ freezes it with the other contracts. Lode's side follows its own gate.
 - [x] v0.14.0 shipped
 - [ ] v0.14.0 Carried Forward items that change a run contract outside
       the experimental artifact surface landed
-- [x] Experimental artifact surface marked in [`PUBLIC_API.md`](../../PUBLIC_API.md) and the contracts
+- [x] Experimental artifact surface defined in [`PUBLIC_API.md`](../../PUBLIC_API.md) § Experimental Surface
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged
