@@ -36,6 +36,7 @@ func main() {
 		ExitErrHandler: exitErrHandler,
 		Commands: []*cli.Command{
 			cmd.RunCommand(),
+			cmd.InitCommand(),
 			cmd.InspectCommand(),
 			cmd.StatsCommand(),
 			cmd.ListCommand(),

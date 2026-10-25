@@ -50,6 +50,7 @@ quarry inspect run run-001 --tui
 ## Command Groups
 
 - `run`: execute work (the only command that runs jobs)
+- `init`: create a script project (package manifest, example script, and storage directory)
 - `inspect`: deep view of a single entity (run, proxy)
 - `stats`: aggregated facts (runs, proxies, metrics)
 - `list`: thin enumerations (runs, events, pools)
@@ -185,7 +186,7 @@ QUARRY_BROWSER_ENDPOINT="$WS" quarry run --script ./detail.ts ...
 ```
 
 When an explicit endpoint is set, transparent reuse is bypassed entirely.
-When fan-out is enabled (`--depth > 0`), all child runs automatically share
+With fan-out enabled (`--depth > 0`), all child runs automatically share
 the root run's browser connection.
 
 Quarry performs a health check against the browser endpoint before launching
@@ -297,6 +298,24 @@ The flags are mutually exclusive:
 - Use `--job-json` to load from a file
 - Using both is an error
 - If neither is specified, defaults to `{}`
+
+### `init`
+
+Creates a script project in a directory, by default the current one:
+
+```
+quarry init my-scraper
+cd my-scraper
+npm install
+```
+
+The `init` command writes `package.json`, `.npmrc`, `mise.toml`, `.gitignore`,
+and an example script, `links.ts`, and creates the `quarry-data/` storage directory.
+The manifest is an ES module package that depends on the SDK at the CLI's
+version and on the Puppeteer packages the executor loads. `init` writes
+nothing when any of those files already exists, and it installs nothing:
+its output lists the commands to run next, ending with a `quarry run` of
+the example script.
 
 ### `inspect`
 
