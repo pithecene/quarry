@@ -1022,7 +1022,7 @@ freezes it with the other contracts. Lode's side follows its own gate.
 - [x] v0.14.0 shipped
 - [ ] v0.14.0 Carried Forward items that change a run contract outside
       the experimental artifact surface landed
-- [x] Experimental artifact surface marked in [`PUBLIC_API.md`](../../PUBLIC_API.md) and the contracts
+- [x] Experimental artifact surface defined in [`PUBLIC_API.md`](../../PUBLIC_API.md) § Experimental Surface
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged

@@ -93,8 +93,7 @@ Event sinks are in-repo modules that implement the `EventSink` interface
   regardless of event sink configuration.
 - Event sinks are not adapters. They are not selected via `--adapter` flags.
 - Event sinks are selected via `--event-sink` and related flags.
-- When no event sinks are configured, events are written to Lode only
-  (identical to pre-v0.13.0 behavior).
+- When no event sinks are configured, events are written to Lode only.
 
 ### Delivery Semantics
 
@@ -293,7 +292,7 @@ that embed the Quarry runtime as a unit of work.
 
 The orchestrator invokes `runtime.NewRunOrchestrator(config).Execute(ctx)`
 as an atomic unit of work. The runtime owns everything inside this boundary
-(executor lifecycle, IPC, policy, Lode persistence, and, from v0.14.0, run
+(executor lifecycle, IPC, policy, Lode persistence, and run
 finalization: the start record, metrics persistence, and the end record;
 CONTRACT_RUN.md §Run Finalization). The orchestrator owns everything
 outside that boundary (scheduling, retries, fan-out, and notification) and

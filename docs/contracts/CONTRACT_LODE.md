@@ -242,7 +242,7 @@ These are runtime configuration options passed via CLI flags (`--storage-endpoin
 ## Listing Order and Cursors
 
 Quarry's read side relies on the following Lode listing guarantees, which
-Lode's `CONTRACT_READ_API.md` makes normative from v0.10.0:
+Lode's `CONTRACT_READ_API.md` makes normative:
 
 - Listings are sorted on every store: datasets by ID, partitions by path,
   manifests by (partition, ID). A reader must not assume store order and
@@ -265,10 +265,8 @@ Lode's `CONTRACT_READ_API.md` makes normative from v0.10.0:
   store factory is called. Quarry's `WithRetry(3)` and
   `WithRetryObserver` registration are valid values and unaffected.
 
-Error text changed in v0.10.0 (`lode: invalid argument: <value>`,
-`invalid path`, one extra nesting level on manifest read failures);
-`errors.Is` classification is unchanged and Quarry matches on sentinels,
-never on message text.
+Quarry matches Lode errors on their sentinels with `errors.Is`, never on
+message text.
 
 ---
 

@@ -282,7 +282,7 @@ Semantics:
 - Per-enqueue `source`/`category` overrides apply to the immediate child only;
   grandchildren inherit from their parent unless they also specify overrides.
 
-### Config File (v0.4.x+)
+### Config File
 
 `quarry run` supports an optional `--config <path>` flag that loads a YAML
 config file providing project-level defaults for run flags.

@@ -117,8 +117,8 @@ auto-emit terminal → [cleanup] → run_result → return
 
 ### Hook Contract Rules
 
-- All hooks are optional. Scripts that do not export hooks behave identically
-  to pre-0.9.0.
+- All hooks are optional. A script that exports no hooks runs as though
+  each hook did nothing.
 - Hook exports must be functions. Non-function exports of hook names cause
   a load-time validation error.
 - `cleanup` is **not called** on `prepare`-skip paths (no context exists).
