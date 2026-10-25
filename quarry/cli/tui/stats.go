@@ -67,6 +67,8 @@ func (m StatsModel) View() string {
 		content = m.renderStatsTasks()
 	case "stats_proxies":
 		content = m.renderStatsProxies()
+	case "stats_metrics":
+		content = m.renderStatsMetrics()
 	case "stats_executors":
 		content = m.renderStatsExecutors()
 	default:
@@ -206,6 +208,54 @@ func (m StatsModel) renderStatsExecutors() string {
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxes...))
 
 	return b.String()
+}
+
+// renderStatsMetrics renders one row per metrics group, so the view fits a
+// 24-row terminal.
+func (m StatsModel) renderStatsMetrics() string {
+	data, ok := m.data.(*reader.MetricsSnapshot)
+	if !ok {
+		return "Invalid data type for stats_metrics"
+	}
+
+	type count struct {
+		label string
+		value int64
+	}
+	groups := []struct {
+		title  string
+		counts []count
+	}{
+		{"Runs", []count{{"started", data.RunsStarted}, {"completed", data.RunsCompleted}, {"failed", data.RunsFailed}, {"crashed", data.RunsCrashed}}},
+		{"Events", []count{{"received", data.EventsReceived}, {"persisted", data.EventsPersisted}, {"dropped", data.EventsDropped}}},
+		{"Executor", []count{{"launched", data.ExecutorLaunchSuccess}, {"launch failures", data.ExecutorLaunchFailure}, {"crashes", data.ExecutorCrash}, {"IPC decode errors", data.IPCDecodeErrors}}},
+		{"Storage", []count{{"writes", data.LodeWriteSuccess}, {"write failures", data.LodeWriteFailure}, {"write retries", data.LodeWriteRetry}}},
+	}
+
+	var b strings.Builder
+	b.WriteString(TitleStyle.Render("Contract Metrics"))
+	b.WriteString("\n\n")
+
+	for _, g := range groups {
+		parts := make([]string, 0, len(g.counts))
+		for _, c := range g.counts {
+			parts = append(parts, fmt.Sprintf("%s %s", ValueStyle.Render(fmt.Sprintf("%d", c.value)), c.label))
+		}
+		fmt.Fprintf(&b, "%s %s\n", LabelStyle.Render(fmt.Sprintf("%-9s", g.title+":")), strings.Join(parts, "  "))
+	}
+
+	b.WriteString("\n")
+	for _, d := range []struct{ label, value string }{
+		{"Run:", data.RunID},
+		{"Snapshot:", data.Ts},
+		{"Policy:", data.Policy},
+		{"Executor:", data.Executor},
+		{"Storage:", data.StorageBackend},
+	} {
+		fmt.Fprintf(&b, "%s %s\n", LabelStyle.Render(fmt.Sprintf("%-9s", d.label)), ValueStyle.Render(d.value))
+	}
+
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (m StatsModel) renderStatBox(label string, value int, color lipgloss.Color) string {

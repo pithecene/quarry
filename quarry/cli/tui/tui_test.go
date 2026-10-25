@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/pithecene/quarry/cli/reader"
 )
 
 func TestIsTUISupported(t *testing.T) {
@@ -24,6 +27,7 @@ func TestIsTUISupported(t *testing.T) {
 		{"stats_tasks", true},
 		{"stats_proxies", true},
 		{"stats_executors", true},
+		{"stats_metrics", true},
 
 		// Not supported: list commands
 		{"list_runs", false},
@@ -61,9 +65,9 @@ func TestSupportedTUIViews(t *testing.T) {
 
 	views := SupportedTUIViews()
 
-	// Should have exactly 10 supported views (5 inspect + 5 stats)
-	if len(views) != 10 {
-		t.Errorf("SupportedTUIViews() returned %d views, expected 10", len(views))
+	// Should have exactly 11 supported views (5 inspect + 6 stats)
+	if len(views) != 11 {
+		t.Errorf("SupportedTUIViews() returned %d views, expected 11", len(views))
 	}
 
 	// All returned views should be supported
@@ -80,5 +84,28 @@ func TestRun_UnsupportedViewType(t *testing.T) {
 	err := Run("list_runs", nil)
 	if err == nil {
 		t.Error("Expected error for unsupported view type")
+	}
+}
+
+func TestRenderStatsStatic_Metrics(t *testing.T) {
+	t.Parallel()
+
+	out := RenderStatsStatic("stats_metrics", &reader.MetricsSnapshot{RunID: "run-001", Executor: "executor.js", RunsStarted: 3})
+	if strings.Contains(out, "Unknown view type") || strings.Contains(out, "Invalid data type") {
+		t.Fatalf("stats_metrics did not render: %q", out)
+	}
+	for _, want := range []string{"Contract Metrics", "Runs:", "Storage:", "run-001", "executor.js"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered stats_metrics lacks %q", want)
+		}
+	}
+}
+
+func TestRenderStatsStatic_MetricsFitsTerminal(t *testing.T) {
+	t.Parallel()
+
+	view := NewStatsModel("stats_metrics", &reader.MetricsSnapshot{RunID: "run-001"}).View()
+	if n := strings.Count(view, "\n") + 1; n > 24 {
+		t.Errorf("stats_metrics view is %d lines, more than a 24-row terminal", n)
 	}
 }
