@@ -1,6 +1,6 @@
-# Quarry Run Identity & Lineage
+# Quarry Run Identity and Lineage — Contract
 
-This document freezes the identity and lineage rules for runs.
+This document defines the identity and lineage rules for runs.
 
 This is a contract document. Implementations must conform.
 
