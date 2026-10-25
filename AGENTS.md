@@ -79,6 +79,7 @@ Quarry is **TypeScript-first, ESM-only, modern by default**.
 - Import specifier rules (by package type):
   - **Bundled packages** (e.g. `sdk/`): extensionless imports, no `.js` specifiers
   - **Node ESM packages** (e.g. `executor-node/`): `.js` specifiers required for relative imports after TS compilation
+  - **Type-stripped Node tools** (e.g. `scripts/release/`): run as `.ts` by Node without compilation, so `.ts` specifiers and erasable syntax only
 - ES2022+ semantics
 
 ### Types

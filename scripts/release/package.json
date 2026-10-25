@@ -1,0 +1,9 @@
+{
+  "name": "@pithecene/quarry-release",
+  "private": true,
+  "description": "Release gates, publishing, and pointer convergence for the release workflow",
+  "type": "module",
+  "engines": {
+    "node": ">=24.13.0"
+  }
+}
