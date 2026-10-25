@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SDK on JSR**: The JSR package now depends on `puppeteer` with the supported range `^24 || ^25`. It previously required `^25.14.0`, the development version, because JSR derives the range of each bare npm import from `package.json` and took the devDependency. With the earlier range, `npx jsr add` installed Puppeteer 25 even on Node 22.6 through 22.11, which Puppeteer 25 does not support. `sdk/jsr.json` maps the import to the peer range, and a test keeps the two equal.
 - **Metrics TUI**: `quarry stats metrics --tui` renders the metrics snapshot, grouped as run lifecycle, ingestion, executor, and storage counts. It previously showed `Unknown view type: stats_metrics`.
 
 ---
