@@ -45,9 +45,8 @@ In the same directory, create an ES module project, then install the SDK and the
 ```bash
 npm init -y
 npm pkg set type=module
-npx jsr add @pithecene/quarry-sdk
-
 npm install proxy-agent
+npx jsr add @pithecene/quarry-sdk
 npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
