@@ -72,6 +72,15 @@ describe('spawnRun', () => {
     expect(await goneWithin(Number(result.stdout.trim()))).toBe(true)
   })
 
+  it('kills a descendant that ignores SIGTERM once the timed-out leader exits', async () => {
+    // The worker ignores SIGTERM and does not hold the output pipes, so the
+    // leader's exit alone would let it run on.
+    const script = '(trap "" TERM; exec sleep 30) >/dev/null 2>&1 & echo $!; wait'
+    const result = await spawnRun('sh', ['-c', script], { timeoutMs: 200 })
+    expect(result.timedOut).toBe(true)
+    expect(await goneWithin(Number(result.stdout.trim()))).toBe(true)
+  })
+
   it('passes SIGTERM on to the running command and then exits by it', async () => {
     // A child process runs spawnRun, so the signal does not reach vitest.
     const harness = spawn(

@@ -37,13 +37,19 @@ type Pointer = {
   /** Names what a published version is, e.g. `published release of @scope/pkg`. */
   readonly target: string
   readonly isPublished: (version: string) => Promise<Lookup>
-  /** Points the pointer at `version`; a rejection or failure leaves it unchanged. */
+  /**
+   * Points the pointer at `version`, rejecting on failure. A pointer made of
+   * several aliases can be left partly moved; no registry offers a
+   * transaction to roll back, so the step fails and the next run, which
+   * converges every alias, repairs it.
+   */
   readonly point: (version: string) => Promise<void>
 }
 
 /**
  * Points `pointer` at the highest published version. Returns false if the
- * pointer could not be converged; it is then unchanged.
+ * pointer could not be converged: unchanged when its target is unknown,
+ * possibly partly moved when a write failed (see `Pointer.point`).
  */
 const converge = async (
   ctx: Context,

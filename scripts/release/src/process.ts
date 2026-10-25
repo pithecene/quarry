@@ -106,6 +106,10 @@ export const spawnRun: Run = (command, args, options = {}) =>
       reject(error)
     })
     child.on('close', (code) => {
+      // Once termination has begun, the leader's exit does not end the
+      // group: a descendant that ignores SIGTERM would survive the cleared
+      // SIGKILL timer. Whatever remains is killed now.
+      if (timedOut || stopping !== undefined) killGroup('SIGKILL')
       cleanup()
       if (stopping !== undefined) {
         process.kill(process.pid, stopping)
