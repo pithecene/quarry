@@ -949,12 +949,15 @@ Each decision is judged by a number in its PR, not by argument:
 
 ### Carried Forward
 
-Not shipped in v0.14.0. The items that change a run contract must land
-before the v1.0 freeze.
+Not shipped in v0.14.0. The items that change a run contract outside the
+experimental artifact surface (v1.0 § Experimental Artifact Surface) must
+land before the v1.0 freeze.
 
 - [ ] [`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md): `file_write_ack` carries the resolved storage
       key, the runtime alone builds keys with Hive encoding for sidecar
-      keys, and SDK `buildStorageKey` is removed (B1)
+      keys, and SDK `buildStorageKey` is removed (B1). This is part of the
+      experimental artifact surface (v1.0 § Experimental Artifact
+      Surface), so it does not gate the freeze.
 - [ ] Measurements on the dogfood dataset (about 11k runs): store calls
       per `list runs` page (B2/C) and `quarry prune --dry-run` candidate
       counts by outcome (A/D)
@@ -973,8 +976,8 @@ before the v1.0 freeze.
 - The `sdk/` reader runs `quarry` from `PATH` by default and accepts an
   explicit path (`quarryPath`).
 - The event reader returns events only. Artifact bytes remain Known
-  Limitation 3, and #255 holds the open question of where Quarry stores
-  them.
+  Limitation 3. Their replacement streams them into Lode Volumes and is
+  designed on #255 (v1.0 § Experimental Artifact Surface).
 
 ---
 
@@ -986,6 +989,20 @@ Freeze the run contracts (`CONTRACT_RUN`, `CONTRACT_EMIT`, `CONTRACT_IPC`,
 `CONTRACT_LODE`, `CONTRACT_POLICY`) and the SDK surface. v1.0 adds nothing;
 it is the point after which the v1.x host is built *on* the contracts
 rather than *in* them.
+
+### Experimental Artifact Surface
+
+**Decision:** the artifact byte path is experimental by default
+and excluded from the v1.0 compatibility commitment, as Lode v1.0
+excludes Volume (Lode `V1_API_DECISIONS.md` D9).
+[`PUBLIC_API.md`](../PUBLIC_API.md) § Experimental Surface defines the surface.
+
+The main use case, Panthalassa, acquires raw provider files that the
+current path cannot carry, and the replacement, designed on #255, depends
+on measurements from Panthalassa's source samples. Experimental status is
+not a target: if the replacement has run against those samples, with
+tests and usage sufficient for the freeze, before v1.0 is tagged, v1.0
+freezes it with the other contracts. Lode's side follows its own gate.
 
 ### Deliverables
 
@@ -1003,7 +1020,9 @@ rather than *in* them.
 ### Mini-milestones
 
 - [x] v0.14.0 shipped
-- [ ] v0.14.0 Carried Forward items that change a run contract landed
+- [ ] v0.14.0 Carried Forward items that change a run contract outside
+      the experimental artifact surface landed
+- [x] Experimental artifact surface marked in [`PUBLIC_API.md`](../PUBLIC_API.md) and the contracts
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged
