@@ -9,9 +9,7 @@
 
 **A CLI-first web extraction runtime for browser-driven crawling and durable ingestion**
 
-Quarry is a web extraction runtime for imperative, browser-backed scraping workflows. It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
-
-Quarry executes user-authored Puppeteer scripts under a strict runtime contract, streams observations incrementally, and hands off persistence to an external substrate (typically [Lode](https://github.com/pithecene/lode)). It is intentionally *not* a crawler framework, workflow engine, or low-code platform.
+Quarry runs a Puppeteer script you write under a strict runtime contract, streams what the script observes as events, and hands persistence to an external storage layer (typically [Lode](https://github.com/pithecene/lode)). It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
 
 ---
 
@@ -29,7 +27,7 @@ mise install github:pithecene/quarry@0.14.0
 # Full image (includes Chromium + fonts)
 docker pull ghcr.io/pithecene/quarry:0.14.0
 
-# Slim image (no browser — BYO Chromium via --browser-ws-endpoint)
+# Slim image (no browser; bring your own Chromium through --browser-ws-endpoint)
 docker pull ghcr.io/pithecene/quarry:0.14.0-slim
 ```
 
@@ -52,8 +50,8 @@ See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
 - Designed for **imperative Puppeteer scripts**
 - Explicit about **ordering, backpressure, and failure**
 - Agnostic to storage, retries, scheduling, and downstream processing
-- **Not** a crawling DSL or workflow orchestrator
-- **Not** a SaaS scraper or low-code pipeline
+
+Quarry is not a crawler framework, a crawling DSL, a workflow orchestrator, a hosted scraping service, or a low-code pipeline.
 
 Quarry's responsibility ends at **observing and emitting what happened**.
 
@@ -61,7 +59,7 @@ Quarry's responsibility ends at **observing and emitting what happened**.
 
 ## Conceptual Model
 
-Quarry enforces a clean boundary between extraction logic and ingestion mechanics:
+Quarry enforces a fixed boundary between extraction logic and ingestion mechanics:
 
 ```
 User Script (Puppeteer, imperative)
@@ -75,9 +73,9 @@ Ingestion Policy (strict, buffered, streaming)
 Persistence Substrate (e.g. Lode)
 ```
 
-Scripts **emit observations**.  
-Policies decide how those observations are handled.  
-Persistence decides what survives.
+Scripts **emit observations**.
+The ingestion policy decides how the runtime buffers and writes them, and which advisory events it may drop.
+The persistence layer stores what the policy writes.
 
 Four components carry out this model:
 
@@ -120,27 +118,22 @@ Quarry owns **only** the extraction step.
 
 ## Quick Example
 
-Quarry scripts are **freestanding programs**, not libraries.
+A Quarry script is a **freestanding program**, not a library. This one reads a catalog page and emits one item for each entry on it.
 
-They should:
-- Accept all inputs via the job payload
-- Use real Puppeteer objects (`page`, `browser`)
-- Emit all outputs via `emit.*`
-- Avoid shared global state
-- Remain agnostic to durability and retries
-
-### Example
+### Script
 
 ```ts
 import type { QuarryContext } from '@pithecene/quarry-sdk'
 
-export default async function run(ctx: QuarryContext): Promise<void> {
+export default async function run(ctx: QuarryContext<{ url: string }>): Promise<void> {
   await ctx.page.goto(ctx.job.url)
 
-  const products = await ctx.page.evaluate(() => {
-    // scrape DOM
-    return []
-  })
+  const products = await ctx.page.$$eval('.product', (cards) =>
+    cards.map((card) => ({
+      name: card.querySelector('.name')?.textContent?.trim() ?? '',
+      price: card.querySelector('.price')?.textContent?.trim() ?? ''
+    }))
+  )
 
   for (const product of products) {
     await ctx.emit.item({
@@ -153,7 +146,35 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 }
 ```
 
-Scripts are imperative, explicit, and boring by design.
+Scripts are imperative, explicit, and simple by design. A script should:
+
+- Accept all inputs through the job payload
+- Use real Puppeteer objects (`page`, `browser`)
+- Emit all outputs through `emit.*`
+- Avoid shared global state
+- Remain agnostic to durability and retries
+
+### Run the Script
+
+Save the script as `products.ts` and run it with the filesystem storage backend:
+
+```bash
+quarry run \
+  --script products.ts \
+  --run-id products-001 \
+  --source example-store \
+  --job '{"url": "https://shop.example.com/products"}' \
+  --storage-backend fs \
+  --storage-path ./quarry-data
+```
+
+Quarry writes the run's events under `./quarry-data`. List the run to confirm it succeeded:
+
+```bash
+quarry list runs --storage-backend fs --storage-path ./quarry-data --source example-store
+```
+
+The [run guide](docs/guides/run.md) describes the run lifecycle and its terminal states.
 
 ---
 
