@@ -12,15 +12,16 @@ contracts under [`docs/contracts/`](docs/contracts/) state the rules.
 | Tool | Version | Source |
 |------|---------|--------|
 | Go | 1.27.3 | [`quarry/go.mod`](quarry/go.mod) |
-| Node.js | 23+ or 22.6+ | Native TS support (see note) |
+| Node.js | 22.18+ (22.6+ with a flag) | Native TS support (see note) |
 | pnpm | 10.28.2 | `package.json#packageManager` |
 
 **Node.js version note:** Quarry scripts are TypeScript and use Node's native
-type-stripping. Node 23+ enables this by default. Node 22.6–22.x requires
-`--experimental-strip-types` flag (set via `NODE_OPTIONS`). The SDK and
+type stripping. Node 22.18 and later 22.x releases, and Node 23.6 and later,
+enable it by default. Releases 22.6 through 22.17 and 23.0 through 23.5
+require the `--experimental-strip-types` flag, set through `NODE_OPTIONS`. The SDK and
 executor accept puppeteer `^24 || ^25`. Puppeteer 25 requires Node 22.12+,
 so on Node 22.6–22.11 stay on puppeteer 24. With puppeteer 25, browser
-downloads honour `HTTP_PROXY`/`HTTPS_PROXY` only if `proxy-agent` is
+downloads honor `HTTP_PROXY`/`HTTPS_PROXY` only if `proxy-agent` is
 installed alongside it (it became an optional peer dependency).
 
 Quarry is **TypeScript-first** and **ESM-only**.
@@ -31,11 +32,15 @@ Quarry is **TypeScript-first** and **ESM-only**.
 
 ### Via mise (recommended)
 
+Run `mise use` in your script project. It installs the CLI, pins the version
+in the project's `mise.toml`, and, with mise's shell activation
+(`mise activate`) configured, puts `quarry` on your `PATH` there:
+
 ```bash
-mise install github:pithecene/quarry@0.14.0
+mise use github:pithecene/quarry@0.14.0
 ```
 
-Or pin in your `mise.toml`:
+The resulting `mise.toml` entry:
 
 ```toml
 [tools]
@@ -45,26 +50,43 @@ Or pin in your `mise.toml`:
 ### Via Docker
 
 ```bash
-# Full image — includes Chrome for Testing + fonts (amd64 only, recommended)
+# Full image: includes Chrome for Testing and fonts (amd64 only, recommended)
 docker pull ghcr.io/pithecene/quarry:0.14.0
 
-# Slim image — no browser, multi-arch (BYO Chromium via --browser-ws-endpoint)
+# Slim image: no browser, multi-arch (bring your own Chromium through --browser-ws-endpoint)
 docker pull ghcr.io/pithecene/quarry:0.14.0-slim
 ```
 See the [container guide](docs/guides/container.md) for `docker run` and Docker Compose examples.
 
 ### SDK
 
-Install the SDK in your script project:
+Scripts run as ES modules, and the executor loads Puppeteer, `puppeteer-extra`,
+and the stealth plugin from the script's project. Create the project and
+install the SDK with those packages. On Node 22.6 through 22.11, install
+`puppeteer@24` in place of `puppeteer` in either command below. Both commands
+install `proxy-agent` before the SDK, which brings in Puppeteer, so that Puppeteer's browser download
+honors `HTTP_PROXY` and `HTTPS_PROXY` when a proxy is configured.
 
 ```bash
+npm init -y
+npm pkg set type=module
+npm install proxy-agent
 npx jsr add @pithecene/quarry-sdk
+npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
-Or via pnpm with GitHub Packages:
+Or install from GitHub Packages with pnpm. GitHub Packages serves the
+`@pithecene` scope from its own registry and requires a GitHub token with the
+`read:packages` scope. The `.npmrc` lines below read that token from the
+`GITHUB_TOKEN` environment variable:
 
 ```bash
-pnpm add @pithecene/quarry-sdk
+npm init -y
+npm pkg set type=module
+echo "@pithecene:registry=https://npm.pkg.github.com" >> .npmrc
+echo '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}' >> .npmrc
+pnpm add proxy-agent
+pnpm add @pithecene/quarry-sdk puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
 ### From source
@@ -91,10 +113,14 @@ task build
 
 ### 2. Run an Example
 
+A source build runs the workspace executor, which resolves the Puppeteer
+packages from the workspace's `executor-node/` package:
+
 ```bash
 mkdir -p ./quarry-data
 
 ./quarry/quarry run \
+  --executor ./executor-node/dist/bin/executor.js \
   --script ./examples/demo.ts \
   --run-id my-first-run \
   --source demo \
@@ -805,9 +831,11 @@ change.
 4. **No transactional storage writes**: S3 and S3-compatible providers do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler. External orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
-7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error, and with no storage flag `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers, through `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them. Backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See the [integration guide](docs/guides/integration.md).
+7. **Adapters and sinks**: Quarry provides a webhook adapter, a Redis Pub/Sub adapter, and a Redis Streams event sink. It has no orchestration host. A Temporal activity can call the Quarry runtime directly, as the [Temporal guide](docs/guides/temporal.md) describes. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release. Config-based logical names are under consideration.
+10. **Stored-data reads**: Only `quarry list runs`, `quarry list events`, and `quarry stats metrics` read storage, and only when both `--storage-backend` and `--storage-path` are given. The other `list`, `inspect`, and `stats` commands return stub data. The SDK's `listRuns` and `readRun` call the `quarry` CLI, so the CLI must be installed (§ Reading Runs).
+11. **Runs written before v0.14.0**: These runs have no run records until `quarry index rebuild` backfills them. A backfilled run has no start time or recorded outcome, and its state follows its terminal event.
 
 ---
 
@@ -938,7 +966,7 @@ SDK and runtime versions must match (lockstep versioning).
 
 | Component | Channel | Install |
 |-----------|---------|---------|
-| CLI binary | GitHub Releases | `mise install github:pithecene/quarry@0.14.0` |
+| CLI binary | GitHub Releases | `mise use github:pithecene/quarry@0.14.0` |
 | Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.14.0` |
 | Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.14.0-slim` |
 | SDK | JSR | `npx jsr add @pithecene/quarry-sdk` |

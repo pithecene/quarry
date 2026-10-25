@@ -45,11 +45,9 @@ In the same directory, create an ES module project, then install the SDK and the
 ```bash
 npm init -y
 npm pkg set type=module
+npm install proxy-agent
 npx jsr add @pithecene/quarry-sdk
 npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
-
-# Behind an HTTP proxy, Puppeteer also needs proxy-agent to download its browser
-npm install proxy-agent
 ```
 
 See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
