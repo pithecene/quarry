@@ -54,7 +54,7 @@ proxies:
 ### Job-level selection
 
 Proxy selection is configured per invocation via CLI flags (not via the
-config file). The `proxy:` key in `quarry.yaml` provides defaults; CLI
+config file). The `proxy:` key in `quarry.yaml` provides defaults. CLI
 flags override them.
 
 ```bash
@@ -146,9 +146,9 @@ proxies:
 
 With `recency_window: 3`, the last 3 selected endpoints are excluded from the candidate pool. This prevents immediate reuse without sacrificing randomness.
 
-If the window is >= the number of endpoints, selection degrades to LRU (least-recently-used) ordering — effectively round-robin-like but without a fixed sequence.
+If the window is >= the number of endpoints, selection degrades to LRU (least-recently-used) ordering, which behaves like round-robin without a fixed sequence.
 
-Only applies to the `random` strategy; ignored for `round_robin` and `sticky`.
+Applies only to the `random` strategy and is ignored for `round_robin` and `sticky`.
 
 ### Sticky
 

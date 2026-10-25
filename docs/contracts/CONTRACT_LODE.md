@@ -32,9 +32,9 @@ logical `category` partition key.
 ## Required Partition Keys
 
 Lode must support partitioning by:
-- `source` (origin system/provider; required)
-- `category` (logical data type within a source; required; default `category=default`)
-- `day` (derived from run start time; see below)
+- `source` (origin system/provider, required)
+- `category` (logical data type within a source, required, default `category=default`)
+- `day` (derived from the run's start time, as described below)
 - `run_id`
 - `event_type`
 
@@ -45,13 +45,15 @@ Additional keys are allowed, but the above must be present.
 - `category` is required. If no meaningful category exists for a source,
   use `category=default`.
 - `day` is derived from the **run start time**, not individual event timestamps.
-  Events may span dates, but must remain in the run's `day` partition.
+  Events may extend across dates, but must remain in the run's `day` partition.
 
 ### Recommended Layout Ordering
 
 For Hive-style layouts, the preferred order is:
 
-`source / category / day / run_id / event_type`
+```text
+source / category / day / run_id / event_type
+```
 
 ---
 
@@ -70,16 +72,16 @@ Quarry configures Lode with bounded CAS retry (`WithRetry(3)`) on the
 write path. On `ErrSnapshotConflict`, the Lode commit is retried up to 3
 times with jittered exponential backoff (10ms base, 2s max).
 
-- Data files are written once; only the manifest re-parent and pointer CAS
+- Data files are written once. Only the manifest re-parent and pointer CAS
   are retried.
 - Non-conflict errors are fatal (no retry).
 - Each retry increments `lode_write_retry_total` via Lode's
   `WithRetryObserver` callback. The counter records retries, not write
-  calls: an uncontended write contributes 0; a write that conflicts once
+  calls: an uncontended write contributes 0. A write that conflicts once
   and then succeeds contributes 1.
 - Retries incurred by the metrics write itself (`WriteMetrics`) are NOT
   counted. The persisted metrics record is a snapshot taken before that
-  write begins and cannot contain the count of its own retries; excluding
+  write begins and cannot contain the count of its own retries. Excluding
   them keeps the persisted record identical to the collector's final value.
 
 ---
@@ -156,7 +158,7 @@ Checksum validation is a downstream consumer responsibility.
 A metrics snapshot is written at run completion under `event_type=metrics`,
 by the runtime inside `Execute`, before the end record ([CONTRACT_RUN.md](CONTRACT_RUN.md)
 §Run Finalization).
-Write is best-effort — failure produces a warning but does not change run outcome.
+Write is best-effort. Failure produces a warning but does not change run outcome.
 
 ### Metrics Record Schema
 
@@ -249,7 +251,7 @@ Lode's [CONTRACT_READ_API.md](https://github.com/pithecene/lode/blob/main/docs/c
   must not re-sort.
 - `PartitionListOptions.Prefix` narrows a partition listing to a string
   prefix of the Hive path. A layout that cannot honour a prefix returns
-  `ErrPartitionPrefixNotSupported`; Quarry's Hive layout supports it.
+  `ErrPartitionPrefixNotSupported`. Quarry's Hive layout supports it.
 - `DatasetListOptions.StartAfter`, `PartitionListOptions.StartAfter`, and
   `ManifestListOptions.StartAfter` are exclusive cursors over the full
   sorted key (dataset ID, partition path, or `(partition, ID)`). `Limit`
@@ -258,10 +260,10 @@ Lode's [CONTRACT_READ_API.md](https://github.com/pithecene/lode/blob/main/docs/c
   wide prefix re-enumerates it on every page. Narrow the prefix before
   paging.
 - `Store.List` matches a string prefix on every backend (filesystem,
-  memory, S3); keys, prefixes, and S3 prefixes containing a backslash are
+  memory, S3). Keys, prefixes, and S3 prefixes containing a backslash are
   `ErrInvalidPath` on every platform.
-- Refused caller values — nil store factory, out-of-range `WithRetry*`
-  options — are classified `ErrInvalidArgument` and reported before the
+- Refused caller values (a nil store factory, out-of-range `WithRetry*`
+  options) are classified `ErrInvalidArgument` and reported before the
   store factory is called. Quarry's `WithRetry(3)` and
   `WithRetryObserver` registration are valid values and unaffected.
 
@@ -288,7 +290,7 @@ codec, no compressor, no checksum, and Lode's default path names.
 - Retention (`Expire`, `Sweep`) is available only on writer handles, so
   `quarry prune` opens a writer with the settings above.
 - A dataset written before v0.12.0 has manifests in format 1.0.0, which
-  record no settings, and opens under the default path names; no migration is
+  record no settings, and opens under the default path names. No migration is
   required. Lode v0.10.0, which Quarry v0.13.7 uses, and Lode v0.11.0 read
   and extend datasets that Lode v0.12.0 has written, and Lode v0.11.0 also
   expires and sweeps them, so a rollback to an earlier Quarry release needs
@@ -307,7 +309,7 @@ datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/start.json
 datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/end.json
 ```
 
-- Records are written with `Store.Put`, not `Dataset.Write`; they are not
+- Records are written with `Store.Put`, not `Dataset.Write`. They are not
   Lode records, have no manifest, and are scoped by `--storage-dataset`
   like everything else the run writes. `Store.Put` is create-only on every
   backend, so a record is never overwritten.
@@ -318,7 +320,7 @@ datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/end.json
   selectors: `source`, then `source` and `category`, then `source`,
   `category`, and `day`. A selector cannot skip an earlier one.
 - `Store.List` guarantees no order and no continuation, so readers sort the
-  matching start-record keys lexicographically and cut pages on them; the
+  matching start-record keys lexicographically and cut pages on them. The
   cursor is the last start-record key returned. Exactly one start record
   exists per run, so a page boundary is a run boundary.
 
@@ -333,7 +335,7 @@ exactly as the partition tree stores it, so a record can neither escape
 the namespace nor create an ambiguous prefix. One builder in
 `quarry/lode` computes these keys.
 
-`run` rejects, before anything is written, values that cannot form a safe
+The `run` command rejects, before anything is written, values that cannot form a safe
 key, as a configuration error:
 
 - `source`, `category`, `run_id`: empty, `.`, or `..` (Hive encoding
@@ -341,8 +343,8 @@ key, as a configuration error:
   segment (split on `/` or `\`). Sidecar file paths (§Sidecar File
   Inventory) still interpolate these values unencoded, so such a segment
   could place one run's files under another run's partition.
-- Sidecar file paths, and the key the SDK reports from `storage.put()`,
-  are built from the raw values. For a value that Hive encoding changes
+- The runtime builds sidecar file paths, and the key the SDK reports from
+  `storage.put()`, from the raw values. For a value that Hive encoding changes
   (one containing `/`, `\`, `%`, a space, and so on), the sidecar file
   path therefore differs from the run's partition prefix. Run records and
   the partition tree always agree.
@@ -365,7 +367,7 @@ re-deriving keys.
 
 Sidecar files written via `storage.put()` land at Hive-partitioned paths
 under `files/`, bypassing the Dataset segment/manifest machinery. These files
-are **not** tracked by Lode's `Manifest.Files` — they are the caller's
+are **not** tracked by Lode's `Manifest.Files`. They are the caller's
 responsibility.
 
 Quarry tracks sidecar files in Lode snapshot `Metadata` under the
@@ -382,7 +384,7 @@ Quarry tracks sidecar files in Lode snapshot `Metadata` under the
 
 - File refs accumulate in the client as files are written via `PutFile`.
 - Refs are flushed into snapshot `Metadata` on `WriteEvents` and
-  `WriteMetrics` calls only — these are consumer-facing commit boundaries.
+  `WriteMetrics` calls only. These are consumer-facing commit boundaries.
 - Chunk writes (`WriteChunks`) do **not** flush file refs, because chunk
   snapshots are intermediate and not inspected by downstream consumers.
 - On successful write, pending refs are drained. On write failure, pending
@@ -408,7 +410,7 @@ Retention removes whole runs, chosen by their state and age. Quarry
 chooses the runs, because only Quarry knows a run's outcome. Lode's
 `Dataset.Expire` removes their snapshots (Lode [CONTRACT_RETENTION.md](https://github.com/pithecene/lode/blob/main/docs/contracts/CONTRACT_RETENTION.md)), and
 Quarry deletes the objects it owns. The `quarry/retention` package
-implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) exposes it.
+implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `prune` Command) exposes it.
 
 ### Selection
 
@@ -419,7 +421,7 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
   first.
 - A run's state is the state that `list runs` reports: `succeeded`,
   `failed`, or `unterminated`. The policy gives each state an age at
-  which its runs are removed. A state without an age is kept.
+  which its runs are removed. The prune keeps every run in a state without an age.
 - A terminated run's age is measured from its end record's `ended_at`.
   An unterminated run's age is measured from the later of its start
   record's `started_at` and the instant its most recent snapshot began
@@ -441,26 +443,26 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
 1. Preview the expiry of the run's partition prefix (the start record's
    `partition`) as a dry run. If the run holds the dataset's head, has a
    snapshot with files outside its partition, or the head is uncommitted
-   or absent, the run is kept, nothing of it is deleted, and the report
+   or absent, the prune keeps the run, deletes nothing of it, and the report
    gives the reason. Lode never expires the head, so the run that
    committed most recently is removed only by a later prune.
 2. Gather the run's sidecar files and their `.meta.json` companions
    (§Sidecar File Inventory): every path that the run's snapshots record,
    and, when Hive encoding leaves the run's source, category, day, and
-   run ID unchanged, every direct child of its sidecar prefix. A deeper
-   path can belong to a run whose ID continues the prefix, such as
+   run ID unchanged, every direct child of its sidecar prefix. A path
+   more than one level down can belong to a run whose ID continues the prefix, such as
    `r/files/x` beneath run `r`, so it is never listed. Without that
    condition, a direct child could also belong to another run, so the
    prefix is not listed, and a file written after the run's last commit
    remains. A recorded path outside the run's sidecar prefix is reported
    and left in place. A recorded inventory in any other form names files
-   that cannot be found, so the run is kept, nothing of it is deleted,
+   that cannot be found, so the prune keeps the run, deletes nothing of it,
    and the report gives the reason. The paths are gathered first because
    the recorded ones are in the manifests that step 3 deletes.
 3. Expire the snapshots that the preview selected with `Dataset.Expire`,
    naming their IDs and the partition prefix, and then list the partition
    again. A snapshot that committed after the preview was not judged by
-   it, so it is never expired; if one remains, the run is kept with its
+   it, so it is never expired. If one remains, the prune keeps the run with its
    sidecar files and records. A run with no snapshot in the preview (one
    that committed nothing) has nothing to expire, and Lode requires no
    head for a dataset without snapshots, so such a run loses only its
@@ -481,7 +483,7 @@ the next prune that selects the run, with one exception: if it stops
 after step 3 for a run whose key Hive encoding changes, the recorded
 sidecar paths are gone with the manifests, and those files remain. If step 3 is interrupted after Lode
 deleted the run's last manifest, the next prune no longer finds the
-snapshot's residual data; `Dataset.Sweep` removes it.
+snapshot's residual data, and `Dataset.Sweep` removes it.
 
 ### Sweep
 
@@ -489,7 +491,7 @@ When a grace period is given, a prune ends with `Dataset.Sweep` over the
 whole dataset, whatever the selectors. It completes interrupted expiries
 and removes the data of writes that never committed, such as the last
 batch of a killed run, once that data is older than the grace period.
-The grace period must exceed the longest single write; it never removes
+The grace period must exceed the longest single write. The sweep never removes
 data that a manifest describes.
 
 ### Concurrency
@@ -498,6 +500,6 @@ A prune can run while runs are written to the dataset. A run that the
 policy selects is presumed final: a terminated run is final by
 [CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization, and an unterminated run has written
 nothing for at least its age. If such a run nevertheless commits during
-the prune, step 3 keeps its new snapshot and the run's records remain;
-only a commit after that final listing is not detected. A prune does not coordinate with readers of the run.
+the prune, step 3 keeps its new snapshot and the run's records remain.
+Only a commit after that final listing goes undetected. A prune does not coordinate with readers of the run.
 

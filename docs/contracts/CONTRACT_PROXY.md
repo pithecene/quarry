@@ -127,14 +127,14 @@ Owns:
 
 ### Random
 - Select uniformly at random.
-- Secure RNG optional; deterministic RNG allowed.
+- A secure RNG is optional, and a deterministic RNG is allowed.
 
 ### Random with Recency Window
 - When `recency_window` is set on a pool with `random` strategy, maintain a ring buffer of the last N selected endpoint indices.
 - Exclude ring buffer entries from the candidate pool before random selection.
 - If all endpoints are excluded (window >= endpoint count), select the least-recently-used (oldest in ring). Never blocks.
 - Ring buffer is updated only on committed selections (peek does not advance).
-- Recency state is in-memory only; does not persist across process restarts.
+- Recency state is in-memory only and does not persist across process restarts.
 
 ### Sticky
 - Maintain a map from **sticky key** → endpoint.

@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: The documentation is organized by audience. The implementation plan, the release readiness records, and the ingress models exploration move to `docs/plans/`, and `CLI_PARITY.json` moves to `docs/maintainers/`.
 - **Contracts**: The contracts state invariants only. They no longer mark the release that introduced a section, restate the experimental standing that `PUBLIC_API.md` § Experimental Surface defines, or list planned adapters and hosts. `AGENTS.md` § Contract Rules states the rule.
 - **Contracts**: Every contract is titled in the form "Quarry <Subject> — Contract" and opens with "This document defines". `CONTRACT_LODE.md` is titled "Quarry Lode Storage — Contract".
-- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed; its list of components moves to the README. The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
+- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed. Its list of components moves to the README. The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
+- **Docs**: The README, `PUBLIC_API.md`, the guides, the contracts, and this changelog follow Chicago style: no semicolons or dashes as sentence punctuation, no contractions, active voice where an agent acts, and headline-style headings. Headings that were a bare code name now name what they describe, such as "The `list runs` Command", and every section reference that named one follows it.
 
 ### Fixed
 
@@ -78,15 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **CLI**: `quarry stats metrics` reads from S3-compatible providers (Cloudflare R2, MinIO). The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS; it now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
+- **CLI**: `quarry stats metrics` reads from S3-compatible providers (Cloudflare R2, MinIO). The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS. It now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
 - **Packaging**: npm `latest` and the `ghcr.io/pithecene/quarry` `:latest`/`:slim` tags always point at the newest published release. Publishing an older patch release after a newer one (as with v0.13.5 after v0.13.6) no longer moves them backwards (#252)
 - **Storage**: Storage errors are classified by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind, e.g. a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied` instead of `ErrPermissionDenied`
 
 ### Security
 
 - **Deps**: Upgrade `github.com/klauspost/compress` to v1.18.7 (transitive via Lode), resolving the `s2` integer-overflow / out-of-bounds write advisory (Dependabot #60, GHSA-259r-337f-4rfw)
-- **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing; the SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
-- **Deps**: Upgrade puppeteer to 25.14.0 in development dependencies and the container image (Chrome for Testing 155.0.8059.79), resolving the `extract-zip` symlink advisories (Dependabot #47, #53) for the images and the default toolchain: `@puppeteer/browsers` 3.x no longer depends on `extract-zip`. Self-managed installs that stay on puppeteer 24 remain exposed (see `SUPPORT.md` § Open Security Advisories). The SDK and executor peer range widens to `puppeteer ^24 || ^25`, so existing puppeteer 24 installs keep working; puppeteer 25 requires Node 22.12+, and needs `proxy-agent` installed alongside it for proxied browser downloads (now an optional peer; added to the workspace dev dependencies)
+- **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing. The SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
+- **Deps**: Upgrade puppeteer to 25.14.0 in development dependencies and the container image (Chrome for Testing 155.0.8059.79), resolving the `extract-zip` symlink advisories (Dependabot #47, #53) for the images and the default toolchain: `@puppeteer/browsers` 3.x no longer depends on `extract-zip`. Self-managed installs that stay on puppeteer 24 remain exposed (see `SUPPORT.md` § Open Security Advisories). The SDK and executor peer range widens to `puppeteer ^24 || ^25`, so existing puppeteer 24 installs keep working. Puppeteer 25 requires Node 22.12+, and needs `proxy-agent` installed alongside it for proxied browser downloads (now an optional peer, added to the workspace dev dependencies)
 
 ---
 
@@ -94,8 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Docs**: Roadmap added to `IMPLEMENTATION_PLAN.md` — v0.13.6 (Lode v0.10.0), v0.14.0 (read side #240, retention #239, compression) as six decided architecture points (runtime-owned run lifecycle, one key builder and a `runs/` namespace for Quarry-written objects, run records as the run index with an operator-run backfill, record-driven retention, a rewritten CLI read contract, design record on #245), v1.0 (contract freeze), v1.x (first-party `quarry serve` host). Temporal section demoted to a deferred host; `CONTRACT_INTEGRATION.md` orchestration paradigm generalized so the runtime stays host-agnostic; `PUBLIC_API.md` Known Limitation 7 states what reads exist today and points at the planned reader
-- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.10.0. Additive listing API — sorted listings on every store, `PartitionListOptions.Prefix`, `StartAfter` cursors for dataset/partition/manifest listings, `ErrPartitionPrefixNotSupported`, `ErrInvalidArgument` for refused option values — recorded in `CONTRACT_LODE.md` § Listing Order and Cursors as the basis for the v0.14 read side. Error message text for invalid arguments/paths and nested manifest read failures changed upstream; Quarry matches on sentinels, so no behavior change. Upstream fixes carried: all-or-nothing filesystem `Put`, stream writes no longer hang when `Put` fails fast, filesystem `ReadRange` no longer allocates the full requested length, filesystem `List` matches string prefixes like memory/S3
+- **Docs**: Roadmap added to `IMPLEMENTATION_PLAN.md`: v0.13.6 (Lode v0.10.0), v0.14.0 (read side #240, retention #239, compression) as six decided architecture points (runtime-owned run lifecycle, one key builder and a `runs/` namespace for Quarry-written objects, run records as the run index with an operator-run backfill, record-driven retention, a rewritten CLI read contract, design record on #245), v1.0 (contract freeze), v1.x (first-party `quarry serve` host). Temporal section demoted to a deferred host. `CONTRACT_INTEGRATION.md` orchestration paradigm generalized so the runtime stays host-agnostic. `PUBLIC_API.md` Known Limitation 7 states what reads exist today and points at the planned reader
+- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.10.0. The additive listing API (sorted listings on every store, `PartitionListOptions.Prefix`, `StartAfter` cursors for dataset/partition/manifest listings, `ErrPartitionPrefixNotSupported`, and `ErrInvalidArgument` for refused option values) is recorded in `CONTRACT_LODE.md` § Listing Order and Cursors as the basis for the v0.14 read side. Error message text for invalid arguments/paths and nested manifest read failures changed upstream. Quarry matches on sentinels, so no behavior change. Upstream fixes carried: all-or-nothing filesystem `Put`, stream writes no longer hang when `Put` fails fast, filesystem `ReadRange` no longer allocates the full requested length, filesystem `List` matches string prefixes like memory/S3
 
 ---
 
@@ -103,23 +104,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images; the `v0.13.5` tag was re-pointed at the commit carrying the rename and the release re-run (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR — update imports from `@pithecene-io/quarry-sdk` — and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
+- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images. The `v0.13.5` tag was re-pointed at the commit carrying the rename and the release re-run (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR (update imports from `@pithecene-io/quarry-sdk`), and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
 
 ### Added
 
-- **Metrics**: `lode_write_retry_total` is now populated. Quarry registers Lode's `WithRetryObserver` on the write path, so each CAS retry increments the counter; the CLI no longer prints it as "(not implemented)" and `CONTRACT_LODE.md` no longer marks it reserved
+- **Metrics**: `lode_write_retry_total` is now populated. Quarry registers Lode's `WithRetryObserver` on the write path, so each CAS retry increments the counter. The CLI no longer prints it as "(not implemented)" and `CONTRACT_LODE.md` no longer marks it reserved
 
 ### Security
 
-- **Deps**: Resolve open Dependabot alerts in the JS toolchain — refresh dev dependencies within range (vitest 4.1.12, puppeteer 24.43.1), add explicit `vite@^7.3.7` dev dependency (auto-installed vitest peer ignored overrides), bump executor `esbuild` to `^0.28.2`, and override `esbuild` → 0.28.2 and `basic-ftp` → 6.2.3. Patches source-map-js, brace-expansion, ip-address, js-yaml, nanoid, fflate, postcss, ws, vite, vitest, esbuild, and basic-ftp advisories. `extract-zip` (via `@puppeteer/browsers`) has no upstream fix and remains open
-- **Container**: The image's `deps` stage installs its own npm tree, independent of `pnpm-lock.yaml`; it now pins `puppeteer@24.43.1` with a matching Chrome for Testing 148.0.7778.97 and restates the `basic-ftp` → 6.2.3 override as an npm root override so the shipped runtime carries the same patched dependencies
+- **Deps**: Resolve open Dependabot alerts in the JS toolchain. Refresh dev dependencies within range (vitest 4.1.12, puppeteer 24.43.1), add explicit `vite@^7.3.7` dev dependency (auto-installed vitest peer ignored overrides), bump executor `esbuild` to `^0.28.2`, and override `esbuild` → 0.28.2 and `basic-ftp` → 6.2.3. Patches source-map-js, brace-expansion, ip-address, js-yaml, nanoid, fflate, postcss, ws, vite, vitest, esbuild, and basic-ftp advisories. `extract-zip` (via `@puppeteer/browsers`) has no upstream fix and remains open
+- **Container**: The image's `deps` stage installs its own npm tree, independent of `pnpm-lock.yaml`. It now pins `puppeteer@24.43.1` with a matching Chrome for Testing 148.0.7778.97 and restates the `basic-ftp` → 6.2.3 override as an npm root override so the shipped runtime carries the same patched dependencies
 - **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.9.1, which bumps `aws-sdk-go-v2/service/s3` and `eventstream` to resolve the EventStream denial-of-service advisory
 - **Deps**: Bump `flatted` override to 3.4.2 (prototype pollution) (#238)
 
 ### Fixed
 
-- **Storage**: `store.Put()` errors from sidecar file writes are now wrapped by `WrapWriteError` with path context and classified — new `ErrPathExists` sentinel covers immutability violations (`"path exists"`, `"already exists"`, `"file exists"`, `EEXIST`) (#237)
-- **CLI**: `QuerySidecarFiles()` unions `sidecar_files` metadata across a run's snapshots; `InspectRunResponse` gains an `omitempty` `SidecarFileSummary` list so `inspect` can enumerate files without prefix-scanning (#237)
+- **Storage**: `store.Put()` errors from sidecar file writes are now wrapped by `WrapWriteError` with path context and classified. New `ErrPathExists` sentinel covers immutability violations (`"path exists"`, `"already exists"`, `"file exists"`, `EEXIST`) (#237)
+- **CLI**: `QuerySidecarFiles()` unions `sidecar_files` metadata across a run's snapshots. `InspectRunResponse` gains an `omitempty` `SidecarFileSummary` list so `inspect` can enumerate files without prefix-scanning (#237)
 
 ---
 
@@ -127,14 +128,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Storage**: Sidecar file metadata inventory — files written via `storage.put()` are now tracked in Lode snapshot `Metadata` under the `sidecar_files` key. Downstream consumers can enumerate files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of prefix-scanning storage (#234)
-- **Storage**: `SidecarFileRef` type — each tracked file includes `path`, `filename`, `content_type`, and `size` fields
-- **Tests**: Lode sentinel error path validation — targeted integration tests for `lode.ErrPathExists` (immutability enforcement on double-write) and `lode.ErrNotFound` (stale snapshot ID), providing evidence for Lode V1_READINESS §5 (#234)
+- **Storage**: Sidecar file metadata inventory. Files written via `storage.put()` are now tracked in Lode snapshot `Metadata` under the `sidecar_files` key. Downstream consumers can enumerate files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of prefix-scanning storage (#234)
+- **Storage**: `SidecarFileRef` type. Each tracked file includes `path`, `filename`, `content_type`, and `size` fields
+- **Tests**: Lode sentinel error path validation. Targeted integration tests for `lode.ErrPathExists` (immutability enforcement on double-write) and `lode.ErrNotFound` (stale snapshot ID), providing evidence for Lode V1_READINESS §5 (#234)
 - **Tests**: End-to-end test for `file_write` → event flush → `sidecar_files` metadata pipeline, proving the full ingestion path from IPC frame to consumer-visible snapshot (#235)
 
 ### Fixed
 
-- **Storage**: File inventory is only flushed on event and metrics writes (consumer-facing commit boundaries), not on chunk writes. Prevents file refs from being drained into artifact snapshots that consumers don't inspect for metadata (#234)
+- **Storage**: File inventory is only flushed on event and metrics writes (consumer-facing commit boundaries), not on chunk writes. Prevents file refs from being drained into artifact snapshots that consumers do not inspect for metadata (#234)
 
 ---
 
@@ -142,8 +143,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Security**: Harden CI workflow permissions — add explicit `permissions: contents: read` to `ci.yml`, `nightly.yml`, and `release-dry-run.yml`, enforcing least-privilege GITHUB_TOKEN scope (resolves 19 CodeQL code-scanning alerts) (#232)
-- **Security**: Patch vulnerable transitive devDependencies via `pnpm.overrides` — `flatted` 3.4.0 (DoS), `minimatch` 3.1.4 (ReDoS), `rollup` 4.59.0 (path traversal), `basic-ftp` 5.2.0 (path traversal) (#232)
+- **Security**: Harden CI workflow permissions. Add explicit `permissions: contents: read` to `ci.yml`, `nightly.yml`, and `release-dry-run.yml`, enforcing least-privilege GITHUB_TOKEN scope (resolves 19 CodeQL code-scanning alerts) (#232)
+- **Security**: Patch vulnerable transitive devDependencies via `pnpm.overrides`. `flatted` 3.4.0 (DoS), `minimatch` 3.1.4 (ReDoS), `rollup` 4.59.0 (path traversal), `basic-ftp` 5.2.0 (path traversal) (#232)
 
 ---
 
@@ -151,16 +152,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Runtime**: `QUARRY_BROWSER_ENDPOINT` env var — binds to `--browser-ws-endpoint` flag, enabling container Compose configs to set external browser endpoints via environment instead of mounting YAML config files (#229)
-- **Runtime**: Pre-run browser health gate — verifies external browser reachability via `/json/version` before launching the executor; warns on failure but does not block the run, preserving compatibility with tokenized and path-prefixed browser services (#229)
-- **Build**: `task version:bump V=X.Y.Z` — single command updates all lockstep version targets, rebuilds SDK and executor bundle, and verifies lockstep (#229)
+- **Runtime**: `QUARRY_BROWSER_ENDPOINT` env var. Binds to `--browser-ws-endpoint` flag, enabling container Compose configs to set external browser endpoints via environment instead of mounting YAML config files (#229)
+- **Runtime**: Pre-run browser health gate. Verifies external browser reachability via `/json/version` before launching the executor. Warns on failure but does not block the run, preserving compatibility with tokenized and path-prefixed browser services (#229)
+- **Build**: `task version:bump V=X.Y.Z`. Single command updates all lockstep version targets, rebuilds SDK and executor bundle, and verifies lockstep (#229)
 - **Docs**: Multi-crawler deployment topology and browser endpoint documentation in container guide (#229)
 
 ### Fixed
 
-- **Runtime**: Browser health gate no longer hard-fails on external WS endpoints with non-root paths or query parameters — downgraded from fatal to warning to avoid false-rejecting tokenized browser pool services
-- **Build**: Release tarball now includes built SDK — added `pnpm run build` before `pnpm pack` in release workflow (#228)
-- **Build**: `scripts/version-bump.sh` and `Taskfile.yaml` version tasks now use portable sed/grep — replaces GNU-specific `grep -P` and `sed -i` with POSIX-compatible alternatives for macOS support
+- **Runtime**: Browser health gate no longer hard-fails on external WS endpoints with non-root paths or query parameters. Downgraded from fatal to warning to avoid false-rejecting tokenized browser pool services
+- **Build**: Release tarball now includes built SDK. Added `pnpm run build` before `pnpm pack` in release workflow (#228)
+- **Build**: `scripts/version-bump.sh` and `Taskfile.yaml` version tasks now use portable sed/grep. Replaces GNU-specific `grep -P` and `sed -i` with POSIX-compatible alternatives for macOS support
 
 ### Changed
 
@@ -173,14 +174,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Build**: Embed git commit SHA in binary via ldflags — `quarry --version` now shows the short commit hash instead of `unknown` across all build paths (Taskfile, CI release, Dockerfile) (#225)
+- **Build**: Embed git commit SHA in binary via ldflags. `quarry --version` now shows the short commit hash instead of `unknown` across all build paths (Taskfile, CI release, Dockerfile) (#225)
 - **Docs**: Sweep stale v0.12.2 version references in README.md, SUPPORT.md, and IMPLEMENTATION_PLAN.md that were missed in the v0.13.0 release
 - **Tests**: Update hardcoded `ContractVersion` in Redis Streams adapter test fixtures to match current release
 
 ### Changed
 
-- **Build**: Add `docker:build` Taskfile task — local Docker builds now automatically embed the commit SHA via `--build-arg`
-- **Build**: Extract `COMMIT` var in Taskfile — single resolution point for all Go and Docker build paths
+- **Build**: Add `docker:build` Taskfile task. Local Docker builds now automatically embed the commit SHA via `--build-arg`
+- **Build**: Extract `COMMIT` var in Taskfile. Single resolution point for all Go and Docker build paths
 
 ---
 
@@ -188,10 +189,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Integration**: Pluggable Redis Streams event sink — publishes every event in real time via `XADD` during run execution, enabling downstream consumers to watch events across all runs on a single stream (#222, #223)
-- **CLI**: `--event-sink` repeatable flag to activate event sinks (`lode`, `redis`); multiple sinks fan out with independent delivery semantics (#223)
+- **Integration**: Pluggable Redis Streams event sink. Publishes every event in real time via `XADD` during run execution, enabling downstream consumers to watch events across all runs on a single stream (#222, #223)
+- **CLI**: `--event-sink` repeatable flag to activate event sinks (`lode`, `redis`). Multiple sinks fan out with independent delivery semantics (#223)
 - **CLI**: Redis Streams event sink flags: `--event-sink-redis-url`, `--event-sink-redis-stream-key`, `--event-sink-redis-max-len`, `--event-sink-redis-ttl`, `--event-sink-redis-timeout`, `--event-sink-redis-retries`, `--event-sink-redis-delivery` (#223)
-- **Runtime**: Fan-out event sink with per-sink delivery classification — `mandatory` sinks fail the run on error; `best_effort` sinks log warnings and continue (#223)
+- **Runtime**: Fan-out event sink with per-sink delivery classification. `mandatory` sinks fail the run on error. `best_effort` sinks log warnings and continue (#223)
 - **Contracts**: CONTRACT_INTEGRATION.md updated with Event Sink Model (scope, delivery semantics, failure behavior, fan-out inheritance) (#223)
 - **Contracts**: CONTRACT_CLI.md updated with event sink flag specifications (#223)
 - **Docs**: Integration guide updated with Redis Streams event sink section, comparison table, and YAML config example (#223)
@@ -207,7 +208,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Executor**: Annotate bare JSON import errors with actionable hint — Node ESM requires `with { type: 'json' }` but many runtimes accept bare imports; `loadScript()` now appends a clear explanation and fix (#219, #218)
+- **Executor**: Annotate bare JSON import errors with actionable hint. Node ESM requires `with { type: 'json' }` but many runtimes accept bare imports. `loadScript()` now appends a clear explanation and fix (#219, #218)
 
 ### Fixed
 
@@ -219,8 +220,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Lode**: Upgraded Lode dependency from v0.8.0 to v0.9.0 — adds opt-in CAS retry on snapshot conflict (#215)
-- **Lode**: Write-path datasets now configured with `WithRetryCount(3)` — concurrent runs to the same partition retry up to 3 times with jittered exponential backoff instead of failing terminally (#215, #213)
+- **Lode**: Upgraded Lode dependency from v0.8.0 to v0.9.0. Adds opt-in CAS retry on snapshot conflict (#215)
+- **Lode**: Write-path datasets now configured with `WithRetryCount(3)`. Concurrent runs to the same partition retry up to 3 times with jittered exponential backoff instead of failing terminally (#215, #213)
 - **IPC**: Reduced IPC overhead and eliminated batcher busy-wait spin loop (#205)
 - **Internal**: Extracted `iox` package for deferred-close resource cleanup helpers (#209)
 
@@ -235,9 +236,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **SDK**: `createStorageBatcher` utility for bounded-concurrency `storage.put()` pipelining — wraps serial puts with configurable concurrency (default 16), fail-fast semantics, and `flush()` drain (#196)
-- **SDK**: `ctx.memory` API — `snapshot()` returns heap, browser, and cgroup memory usage with composite pressure level; `isAbove(level)` provides boolean threshold check; cgroup v2/v1 auto-detection (#196)
-- **IPC**: `file_write_ack` frame for end-to-end storage error propagation — first bidirectional IPC frame; backend write failures reject the `storage.put()` promise as recoverable errors (#197)
+- **SDK**: `createStorageBatcher` utility for bounded-concurrency `storage.put()` pipelining. Wraps serial puts with configurable concurrency (default 16), fail-fast semantics, and `flush()` drain (#196)
+- **SDK**: `ctx.memory` API. `snapshot()` returns heap, browser, and cgroup memory usage with composite pressure level. `isAbove(level)` provides boolean threshold check. Cgroup v2/v1 auto-detection (#196)
+- **IPC**: `file_write_ack` frame for end-to-end storage error propagation. First bidirectional IPC frame. Backend write failures reject the `storage.put()` promise as recoverable errors (#197)
 
 ### Changed
 
@@ -250,7 +251,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **CLI**: `--dry-run` flag for script validation without execution (#191)
-- **CLI**: `--report` flag for structured exit reporting — writes JSON report to file on exit (#189)
+- **CLI**: `--report` flag for structured exit reporting. Writes JSON report to file on exit (#189)
 - **SDK**: `storage.put()` now returns `StoragePutResult` with `key` field containing the storage path (#190)
 
 ---
@@ -259,20 +260,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Executor**: `--resolve-from` CLI flag for workspace module resolution — registers an ESM resolve hook that retries bare-specifier resolution from a specified directory, preserving ESM import conditions (#178)
-- **Executor**: `registerResolveFromHook()` extracted into `src/resolve-from.ts` — centralizes hook code to prevent copy drift between executor, test fixture, and unit tests
+- **Executor**: `--resolve-from` CLI flag for workspace module resolution. Registers an ESM resolve hook that retries bare-specifier resolution from a specified directory, preserving ESM import conditions (#178)
+- **Executor**: `registerResolveFromHook()` extracted into `src/resolve-from.ts`. Centralizes hook code to prevent copy drift between executor, test fixture, and unit tests
 
 ### Fixed
 
-- **Runtime**: Detect zombie/dead browser server processes before attempting health check — avoids wasting 2s on a connection to a dead process; kill stale process groups only after verifying PID ownership via `/proc` cmdline check (#181, #182)
-- **Executor**: Add `--disable-dev-shm-usage` to all Chromium launch paths — prevents renderer crashes from `/dev/shm` exhaustion in containerized environments (#183, #185)
-- **Executor**: Tolerate transient `/json/list` polling failures in browser server idle monitor — requires 3 consecutive failures before exit instead of crashing on the first; non-OK HTTP responses now correctly count as failures (#183, #185)
+- **Runtime**: Detect zombie/dead browser server processes before attempting health check. Avoids wasting 2s on a connection to a dead process. Kill stale process groups only after verifying PID ownership via `/proc` cmdline check (#181, #182)
+- **Executor**: Add `--disable-dev-shm-usage` to all Chromium launch paths. Prevents renderer crashes from `/dev/shm` exhaustion in containerized environments (#183, #185)
+- **Executor**: Tolerate transient `/json/list` polling failures in browser server idle monitor. Requires 3 consecutive failures before exit instead of crashing on the first. Non-OK HTTP responses now correctly count as failures (#183, #185)
 
 ### Changed
 
 - **Testing**: Integration test fixture now imports production hook module instead of embedding a copy
 - **Testing**: Resolve-from integration test uses unique OS temp directories (`mkdtempSync`) to prevent cross-run interference
-- **Executor**: Chromium launch args centralized into `chromiumArgs()` helper (`browser-args.ts`); idle poll evaluation extracted into pure `evaluateIdlePoll()` function (`browser-idle.ts`) with 18 unit tests
+- **Executor**: Chromium launch args centralized into `chromiumArgs()` helper (`browser-args.ts`). Idle poll evaluation extracted into pure `evaluateIdlePoll()` function (`browser-idle.ts`) with 18 unit tests
 
 ---
 
@@ -280,10 +281,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **SDK**: `prepare` lifecycle hook — transform or filter job payloads before browser launch; return `{ action: 'skip' }` to short-circuit a run without acquiring a browser (#175)
-- **SDK**: `beforeTerminal` lifecycle hook — outcome-aware hook that fires after script execution but before the terminal event, with emit still open; useful for emitting summary items or final metadata (#175)
+- **SDK**: `prepare` lifecycle hook. Transform or filter job payloads before browser launch. Return `{ action: 'skip' }` to short-circuit a run without acquiring a browser (#175)
+- **SDK**: `beforeTerminal` lifecycle hook. Outcome-aware hook that fires after script execution but before the terminal event, with emit still open. Useful for emitting summary items or final metadata (#175)
 - **SDK**: `PrepareResult`, `PrepareHook`, `TerminalSignal`, `BeforeTerminalHook` type exports (#175)
-- **Executor**: Malformed `prepare` return validation — null, undefined, non-object, or missing `action` returns produce a diagnostic crash instead of an unhandled TypeError (#175)
+- **Executor**: Malformed `prepare` return validation. Null, undefined, non-object, or missing `action` returns produce a diagnostic crash instead of an unhandled TypeError (#175)
 - **Docs**: Lifecycle hooks documented in PUBLIC_API.md, run guide, and emit guide (#175)
 - **Docs**: `CONTRACT_RUN.md` updated with lifecycle hook execution model and `prepare`-skip early return semantics
 - **Docs**: `CONTRACT_EMIT.md` updated with `skipped` and `reason` fields on `run_complete` summary
@@ -296,7 +297,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **SDK**: `createBatcher` utility for batching `emit.enqueue()` calls — accumulates items and emits fewer, larger enqueue events with `params.items`, reducing child run count for high fan-out workloads (#170)
+- **SDK**: `createBatcher` utility for batching `emit.enqueue()` calls. Accumulates items and emits fewer, larger enqueue events with `params.items`, reducing child run count for high fan-out workloads (#170)
 
 ### Changed
 
@@ -313,12 +314,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **IPC**: Eliminate stdout guard proxy to fix drain deadlock — `Object.create(process.stdout)` caused `_events` divergence after listener cleanup, silently breaking drain delivery and hanging the executor under backpressure; replaced with split contract (separate stream + writeFn) (#164)
+- **IPC**: Eliminate stdout guard proxy to fix drain deadlock. `Object.create(process.stdout)` caused `_events` divergence after listener cleanup, silently breaking drain delivery and hanging the executor under backpressure. Replaced with split contract (separate stream + writeFn) (#164)
 
 ### Added
 
-- **IPC**: Backpressure integration test that deterministically proves drain path is exercised — spawns child, withholds parent reads until pipe fills, asserts `backpressure_events > 0` (#164)
-- **AGENTS.md**: Stream & EventEmitter discipline guardrail — bans `Object.create()` on EventEmitter instances, requires composition over prototype delegation (#164)
+- **IPC**: Backpressure integration test that deterministically proves drain path is exercised. Spawns child, withholds parent reads until pipe fills, asserts `backpressure_events > 0` (#164)
+- **AGENTS.md**: Stream & EventEmitter discipline guardrail. Bans `Object.create()` on EventEmitter instances, requires composition over prototype delegation (#164)
 
 ---
 
@@ -326,15 +327,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Container**: Full image uses Chrome for Testing tarball instead of distro Chromium — pins browser version to puppeteer compatibility matrix (#159)
-- **Container**: Full image is now **amd64-only** — Chrome for Testing does not publish linux-arm64 builds; arm64 users should use the slim image with an external browser sidecar (#159)
+- **Container**: Full image uses Chrome for Testing tarball instead of distro Chromium. Pins browser version to puppeteer compatibility matrix (#159)
+- **Container**: Full image is now **amd64-only**. Chrome for Testing does not publish linux-arm64 builds. Arm64 users should use the slim image with an external browser sidecar (#159)
 
 ### Fixed
 
-- **IPC**: Protect IPC channel from stray stdout writes — third-party code (puppeteer-extra, stealth plugin) writing to `process.stdout` caused the Go `FrameDecoder` to interpret text as a length prefix, deriving huge payload sizes and blocking indefinitely; stdout guard now captures the real `write` for IPC and redirects stray writes to stderr with a diagnostic warning (#161)
-- **Container**: Retain `ca-certificates` in full runtime image — previous purge of build-time download tools accidentally removed the TLS trust store, breaking HTTPS at runtime (#160)
-- **Container**: Add `libasound2` to Chrome shared-library set — missing ALSA dependency could cause Chrome to fail at dynamic link time (#160)
-- **Container**: Fail fast when building full image on non-amd64 — prevents silent production of images with a wrong-architecture Chrome binary (#160)
+- **IPC**: Protect IPC channel from stray stdout writes. Third-party code (puppeteer-extra, stealth plugin) writing to `process.stdout` caused the Go `FrameDecoder` to interpret text as a length prefix, deriving payload sizes of gigabytes and blocking indefinitely. Stdout guard now captures the real `write` for IPC and redirects stray writes to stderr with a diagnostic warning (#161)
+- **Container**: Retain `ca-certificates` in full runtime image. Previous purge of build-time download tools accidentally removed the TLS trust store, breaking HTTPS at runtime (#160)
+- **Container**: Add `libasound2` to Chrome shared-library set. Missing ALSA dependency could cause Chrome to fail at dynamic link time (#160)
+- **Container**: Fail fast when building full image on non-amd64. Prevents silent production of images with a wrong-architecture Chrome binary (#160)
 
 ---
 
@@ -342,13 +343,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Distribution**: Containerized distribution via GHCR — `ghcr.io/pithecene-io/quarry:0.7.1` (full, with system Chromium + fonts) and `ghcr.io/pithecene-io/quarry:0.7.1-slim` (no browser, BYO Chromium via `--browser-ws-endpoint`) (#152)
+- **Distribution**: Containerized distribution via GHCR. `ghcr.io/pithecene-io/quarry:0.7.1` (full, with system Chromium + fonts) and `ghcr.io/pithecene-io/quarry:0.7.1-slim` (no browser, BYO Chromium via `--browser-ws-endpoint`) (#152)
 - **CI**: Dockerfile lint check (`docker build --check`) in PR and main CI workflows (#152)
-- **Testing**: Integration test for terminal frame visibility at pipe boundary — pins the stdout flush race that caused false `executor_crash` classification (#153)
+- **Testing**: Integration test for terminal frame visibility at pipe boundary. Pins the stdout flush race that caused false `executor_crash` classification (#153)
 
 ### Fixed
 
-- **Executor**: Drain stdout before `process.exit()` to prevent false `executor_crash` — `process.exit()` was discarding buffered stdout data before it reached the OS pipe, causing the Go runtime to see EOF without a terminal event and classify successful runs as `executor_crash` (#153)
+- **Executor**: Drain stdout before `process.exit()` to prevent false `executor_crash`. `process.exit()` was discarding buffered stdout data before it reached the OS pipe, causing the Go runtime to see EOF without a terminal event and classify successful runs as `executor_crash` (#153)
 
 ---
 
@@ -356,15 +357,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Runtime**: Transparent browser reuse across `quarry run` invocations — Chromium persists as a detached process and auto-terminates after idle timeout, eliminating cold-start cost for sequential runs (#149)
+- **Runtime**: Transparent browser reuse across `quarry run` invocations. Chromium persists as a detached process and auto-terminates after idle timeout, eliminating cold-start cost for sequential runs (#149)
 - **CLI**: `--no-browser-reuse` flag and `no_browser_reuse` config option to disable transparent browser reuse (#149)
 - **Runtime**: `QUARRY_BROWSER_IDLE_TIMEOUT` environment variable for configuring browser server idle timeout (default 60s) (#149)
-- **Executor**: `--browser-server` mode — self-managing browser server with idle monitoring via `/json/list` polling and graceful shutdown (#149)
-- **Policy**: `streaming` ingestion policy — combines strict's no-drop guarantee with buffered's batched write efficiency for long-running crawl workloads (#140)
+- **Executor**: `--browser-server` mode. Self-managing browser server with idle monitoring via `/json/list` polling and graceful shutdown (#149)
+- **Policy**: `streaming` ingestion policy. Combines strict's no-drop guarantee with buffered's batched write efficiency for long-running crawl workloads (#140)
 - **Policy**: Configurable flush triggers: `--flush-count` (event count threshold) and `--flush-interval` (time-based periodic flush) (#140)
 - **Policy**: Capacity-triggered emergency flush prevents deadlock when internal buffer bounds are reached before configured triggers fire (#140)
-- **Policy**: Backpressure-based flow control — ingestion blocks when buffer is full rather than dropping events (#140)
-- **Proxy**: `recency_window` pool option — maintains a ring buffer of recently-used endpoint indices and excludes them from random selection, reducing endpoint reuse (#143)
+- **Policy**: Backpressure-based flow control. Ingestion blocks when buffer is full rather than dropping events (#140)
+- **Proxy**: `recency_window` pool option. Maintains a ring buffer of recently-used endpoint indices and excludes them from random selection, reducing endpoint reuse (#143)
 - **Proxy**: LRU fallback when recency window >= endpoint count (selection never blocks) (#143)
 - **Testing**: E2E browser reuse tests gated behind `-e2e` flag for mutual test exclusivity (#149)
 - **Testing**: Performance benchmarks for all ingestion policies (strict, buffered, streaming) with contention analysis (#144)
@@ -373,8 +374,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Metrics**: `flush_triggers` counter added to metrics snapshot — per-trigger-type flush counts (`count`, `interval`, `termination`, `capacity`) for streaming policy observability (#140)
-- **Internal**: `statsRecorder` converted from mutex-based to `sync/atomic` counters — 3.7x improvement in 8-goroutine contention benchmarks (#144)
+- **Metrics**: `flush_triggers` counter added to metrics snapshot. Per-trigger-type flush counts (`count`, `interval`, `termination`, `capacity`) for streaming policy observability (#140)
+- **Internal**: `statsRecorder` converted from mutex-based to `sync/atomic` counters. 3.7x improvement in 8-goroutine contention benchmarks (#144)
 - **AGENTS.md**: Release checklist expanded with changelog promotion and golden fixture update steps (#148)
 
 ---
@@ -384,7 +385,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Runtime**: SDK/CLI version mismatches are now classified as `version_mismatch` instead of `executor_crash`, with an actionable error message directing users to align their SDK and CLI versions (#132)
-- **Lode**: Upgraded to Lode v0.7.1 — fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene/lode#108)
+- **Lode**: Upgraded to Lode v0.7.1. Fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene/lode#108)
 
 ### Changed
 
@@ -401,14 +402,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CLI**: `--browser-ws-endpoint` flag — connect to an externally managed browser instead of launching Chromium per run, eliminating ~180x cold-start overhead for multi-run workloads (#127)
-- **Emit**: Per-enqueue `source` and `category` partition overrides — child runs can target different Lode partitions via `emit.enqueue({ source, category })` (#129)
+- **CLI**: `--browser-ws-endpoint` flag. Connect to an externally managed browser instead of launching Chromium per run, eliminating ~180x cold-start overhead for multi-run workloads (#127)
+- **Emit**: Per-enqueue `source` and `category` partition overrides. Child runs can target different Lode partitions via `emit.enqueue({ source, category })` (#129)
 - **Docs**: Browser reuse documented in CLI guide, configuration reference, and PUBLIC_API.md (#130)
 - **Docs**: Enqueue partition overrides documented in CONTRACT_EMIT.md and emit guide (#130)
 
 ### Changed
 
-- **Runtime**: `storage.put()` now **fails fast** when FileWriter is not configured — previously logged a warning and silently discarded data (#128)
+- **Runtime**: `storage.put()` now **fails fast** when FileWriter is not configured. Previously logged a warning and silently discarded data (#128)
 - **Runtime**: Metrics persistence timeout increased from 10s to 30s to match policy flush timeout (#128)
 - **Docs**: Fan-out support level downgraded from `Supported` to `Experimental` in SUPPORT.md (#130)
 
@@ -422,8 +423,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Runtime**: Fan-out operator for derived work execution — `emit.enqueue()` events now trigger child runs at runtime, enabling discovery-driven extraction chains (list → detail → asset) without external orchestrators (#117)
-- **CLI**: `--depth` flag to set maximum fan-out recursion depth (root = depth 0); required for fan-out activation (#117)
+- **Runtime**: Fan-out operator for derived work execution. `emit.enqueue()` events now trigger child runs at runtime, enabling discovery-driven extraction chains (list → detail → asset) without external orchestrators (#117)
+- **CLI**: `--depth` flag to set maximum fan-out recursion depth (root = depth 0). Required for fan-out activation (#117)
 - **CLI**: `--max-runs` flag to cap total child runs (required when `--depth > 0` as a safety rail against unbounded fan-out) (#117)
 - **CLI**: `--parallel` flag to control concurrent child run execution (default: 1, sequential) (#117)
 - **Docs**: Derived work execution design replacing crawl mode concept (#116)
@@ -432,7 +433,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Lode**: Decoupled Lode from `cli/reader` dependency — cleaner module boundaries (#113)
+- **Lode**: Decoupled Lode from `cli/reader` dependency. Cleaner module boundaries (#113)
 
 ---
 
@@ -440,7 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Release**: Published npm packages on GitHub Packages now include `dist/` directory — previous releases (v0.4.1, v0.5.0) shipped empty tarballs with no type declarations or runtime code (#110, #111)
+- **Release**: Published npm packages on GitHub Packages now include `dist/` directory. Previous releases (v0.4.1, v0.5.0) shipped empty tarballs with no type declarations or runtime code (#110, #111)
 
 ---
 
@@ -448,10 +449,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Adapter**: Redis pub/sub adapter — publishes `RunCompletedEvent` as JSON to a configurable Redis channel after run completion (#107)
+- **Adapter**: Redis pub/sub adapter. Publishes `RunCompletedEvent` as JSON to a configurable Redis channel after run completion (#107)
 - **Adapter**: `--adapter-channel` CLI flag for Redis pub/sub channel name (default: `quarry:run_completed`) (#107)
 - **Adapter**: Redis adapter config in YAML: `adapter.channel` field (#107)
-- **Adapter**: Webhook adapter — HTTP POST with retries, custom headers, timeout (#103)
+- **Adapter**: Webhook adapter. HTTP POST with retries, custom headers, timeout (#103)
 - **Adapter**: `Adapter` interface and `RunCompletedEvent` type in `quarry/adapter/` (#103)
 - **Adapter**: CLI flags: `--adapter`, `--adapter-url`, `--adapter-header`, `--adapter-timeout`, `--adapter-retries` (#103)
 - **Contracts**: CONTRACT_INTEGRATION.md updated with runtime adapter reference, Redis and webhook (#103, #107)
@@ -469,11 +470,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Config**: `--config` flag for YAML project-level defaults — reduces CLI flag repetition across invocations (#104)
+- **Config**: `--config` flag for YAML project-level defaults. Reduces CLI flag repetition across invocations (#104)
 - **Config**: `${VAR}` and `${VAR:-default}` environment variable expansion in YAML config files (#104)
 - **Config**: Inline proxy pool definitions via `proxies:` key in YAML config, replacing deprecated `--proxy-config` JSON file (#104)
 - **Config**: Unknown YAML keys rejected via `KnownFields(true)` to catch typos early (#104)
-- **Testing**: Hardened config edge cases — env expansion boundaries, whitespace/comments-only YAML, Duration validation, retries nil vs zero
+- **Testing**: Hardened config edge cases. Env expansion boundaries, whitespace/comments-only YAML, Duration validation, retries nil vs zero
 
 ### Changed
 
@@ -492,11 +493,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Storage**: `ctx.storage.put()` — sidecar file uploads via Lode Store, enabling scripts to write files directly to addressable storage paths outside the event pipeline (#99)
+- **Storage**: `ctx.storage.put()`. Sidecar file uploads via Lode Store, enabling scripts to write files directly to addressable storage paths outside the event pipeline (#99)
 - **IPC**: New `file_write` IPC frame type for executor→runtime file transfer (#99)
-- **SDK**: `StorageAPI` on `QuarryContext` — `put({ filename, content_type, data })` (#99)
+- **SDK**: `StorageAPI` on `QuarryContext`. `put({ filename, content_type, data })` (#99)
 - **Storage**: Content type persistence via companion `.meta.json` files (#99)
-- **SDK**: Terminal guard enforcement on `storage.put()` — writes rejected after `run_complete` / `run_error` (#99)
+- **SDK**: Terminal guard enforcement on `storage.put()`. Writes rejected after `run_complete` / `run_error` (#99)
 - **Contracts**: Updated CONTRACT_IPC.md and CONTRACT_EMIT.md for storage mechanics (#99)
 
 ---
@@ -514,7 +515,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Lode**: Fixed nil-map panic in S3 client constructor — `NewLodeS3Client` failed to initialize artifact offset and chunk-tracking maps, causing runtime panic on first `WriteChunks` call (#92)
+- **Lode**: Fixed nil-map panic in S3 client constructor. `NewLodeS3Client` failed to initialize artifact offset and chunk-tracking maps, causing runtime panic on first `WriteChunks` call (#92)
 
 ### Changed
 
@@ -530,7 +531,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Storage**: S3-compatible provider support — new `--storage-endpoint` and `--storage-s3-path-style` CLI flags for Cloudflare R2, MinIO, and other S3-compatible backends (#87)
+- **Storage**: S3-compatible provider support. New `--storage-endpoint` and `--storage-s3-path-style` CLI flags for Cloudflare R2, MinIO, and other S3-compatible backends (#87)
 - **Docs**: S3-compatible storage flags and R2 examples added to cli.md, configuration.md, and PUBLIC_API.md (#89)
 - **Docs**: S3-compatible provider support section added to CONTRACT_LODE.md (#87)
 
@@ -546,8 +547,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Release**: Cross-compiled platform binaries (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64) included in GitHub Releases (#82)
-- **Release**: mise install support — `mise install github:pithecene-io/quarry@<version>` (#82)
-- **Release**: JSR publishing via OIDC (zero-secret) — `npx jsr add @pithecene-io/quarry-sdk` (#83)
+- **Release**: mise install support. `mise install github:pithecene-io/quarry@<version>` (#82)
+- **Release**: JSR publishing via OIDC (zero-secret). `npx jsr add @pithecene-io/quarry-sdk` (#83)
 - **Release**: Dual SDK distribution on JSR (public) and GitHub Packages (restricted) (#82, #83)
 - **Release**: Checksums manifest (`checksums.txt`) included in every release (#82)
 - **Docs**: Installation docs updated across README, PUBLIC_API.md, and SDK README (#82)
@@ -566,7 +567,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Refactor**: Cleanup passes across SDK, executor, and Go runtime — extract helpers, reduce duplication, declarative validation (#76, #77, #78, #79)
+- **Refactor**: Cleanup passes across SDK, executor, and Go runtime. Extract helpers, reduce duplication, declarative validation (#76, #77, #78, #79)
 
 ### Fixed
 
@@ -578,7 +579,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Metrics**: Runtime metrics surface per CONTRACT_METRICS.md — run lifecycle, ingestion drops, executor failures, storage write counters (#65)
+- **Metrics**: Runtime metrics surface per CONTRACT_METRICS.md. Run lifecycle, ingestion drops, executor failures, storage write counters (#65)
 - **Metrics**: Persist metrics snapshot to Lode at run end as `record_kind=metrics` record (#67)
 - **CLI**: `stats metrics` subcommand with Lode-backed reader for querying persisted metrics (#68)
 - **Lode**: Policy name recorded in event and artifact commit Lode records (#71)
@@ -590,7 +591,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Lode**: Upgraded Lode dependency from v0.2.0 to v0.4.1 (#64)
 - **Docs**: Phase 6 (dogfooding) clarified as post-release validation exercise (#70)
-- **Docs**: v0.3.0 deliverables reworded — dogfooding is a prerequisite, not a gate (#70)
+- **Docs**: v0.3.0 deliverables reworded. Dogfooding is a prerequisite, not a gate (#70)
 
 ### Fixed
 
@@ -628,7 +629,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **CLI**: `--job` description clarified as "inline JSON object" to distinguish from `--job-json`
-- **CLI**: Job payload (`--job` and `--job-json`) now **requires** a top-level JSON object; arrays, primitives, and null are rejected with actionable error messages
+- **CLI**: Job payload (`--job` and `--job-json`) now **requires** a top-level JSON object. Arrays, primitives, and null are rejected with actionable error messages
 - **CLI**: Normalized help text for job, storage, and policy flags for consistency
 - **Docs**: CLI parity artifact (`docs/CLI_PARITY.json`) added as machine-checkable source of truth
 
@@ -680,11 +681,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Runtime Requirements:**
 - Go 1.25.6 or later (for building from source)
-- Node.js 23+ or 22.6+ (for script execution; 22.6 requires `--experimental-strip-types`)
+- Node.js 23+ or 22.6+ (for script execution, 22.6 requires `--experimental-strip-types`)
 - pnpm 10.28.2 (for development)
 
 **Puppeteer:**
-- Puppeteer is a peer dependency; install it in your project:
+- Puppeteer is a peer dependency. Install it in your project:
   ```bash
   npm install puppeteer
   ```
@@ -695,10 +696,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### References
 
-- [PUBLIC_API.md](PUBLIC_API.md) — User-facing API documentation
-- [SUPPORT.md](SUPPORT.md) — Support posture and maturity level
-- [docs/contracts/](docs/contracts/) — Normative contract specifications
-- [docs/guides/](docs/guides/) — User guides and explanations
+- [PUBLIC_API.md](PUBLIC_API.md): User-facing API documentation
+- [SUPPORT.md](SUPPORT.md): Support posture and maturity level
+- [docs/contracts/](docs/contracts/): Normative contract specifications
+- [docs/guides/](docs/guides/): User guides and explanations
 
 ---
 

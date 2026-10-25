@@ -63,7 +63,7 @@ These payloads must:
 ### Run Request (Runtime → Executor)
 If present, the run request includes optional fields:
 - `proxy` (optional): `ProxyEndpoint`
-- `storage` (optional): `StoragePartition` — Hive partition metadata
+- `storage` (optional): `StoragePartition`, the Hive partition metadata
   for SDK-side key computation. When present, `storage.put()` returns the
   resolved storage key without a bidirectional IPC round-trip.
 
@@ -119,7 +119,7 @@ ProxyEndpointRedacted:
 - **Single emission**: The executor emits exactly one run_result frame per run,
   after the terminal event.
 - **Duplicate handling**: If multiple run_result frames are received, only the
-  first is processed; subsequent frames are ignored.
+  first is processed. Subsequent frames are ignored.
 - **Exit code authority**: Exit codes are authoritative for outcome classification.
   If exit code conflicts with run_result status, exit code wins. The run_result
   provides supplementary context (message, error_type, stack) but does not
@@ -156,14 +156,14 @@ Artifacts larger than 16 MiB must be chunked (see below).
 
 Artifacts are transmitted as:
 1) One or more **artifact chunk frames** (bytes).
-2) An `artifact` event (metadata envelope) — the **commit record**.
+2) An `artifact` event (metadata envelope), which is the **commit record**.
 
 Chunk rules:
 - **Chunk size**: up to 8 MiB of raw bytes.
-- **Ordering**: strictly in order; chunk `seq` starts at 1.
+- **Ordering**: strictly in order. Chunk `seq` starts at 1.
 - **Completion**: the final chunk has `is_last: true`.
 - **Reassembly**: consumer reassembles using `artifact_id` and `seq`.
-  Reassembly does not require the artifact event; `is_last` signals
+  Reassembly does not require the artifact event. `is_last` signals
   when all bytes have arrived.
 
 Chunk frame payload layout (msgpack-encoded envelope):
@@ -214,10 +214,10 @@ at Hive-partitioned paths.
 
 File write frame payload layout (msgpack-encoded):
 - `type` = `file_write`
-- `write_id` (uint32) — monotonic correlation ID, starts at 1. Zero means no ack expected (legacy).
-- `filename` (string) — flat filename, no path separators or `..`
-- `content_type` (string) — MIME type
-- `data` (bytes) — file contents
+- `write_id` (uint32): monotonic correlation ID, starts at 1. Zero means no ack expected (legacy).
+- `filename` (string): flat filename, no path separators or `..`
+- `content_type` (string): MIME type
+- `data` (bytes): file contents
 
 Constraints:
 - **Maximum data size**: 8 MiB (same limit as artifact chunks).
@@ -234,7 +234,7 @@ Constraints:
 
 After processing a `file_write` frame, the runtime sends a `file_write_ack`
 frame back to the executor via stdin. This is the only bidirectional IPC
-in Quarry; all other frames flow executor→runtime via stdout.
+in Quarry. All other frames flow executor→runtime via stdout.
 
 ### Two-Phase Stdin
 
@@ -248,9 +248,9 @@ via `write_id`.
 
 File write ack frame payload (msgpack-encoded):
 - `type` = `file_write_ack`
-- `write_id` (uint32) — correlation ID from the `file_write` frame
-- `ok` (bool) — `true` if the backend write succeeded
-- `error` (string | null) — error message when `ok` is `false`
+- `write_id` (uint32): correlation ID from the `file_write` frame
+- `ok` (bool): `true` if the backend write succeeded
+- `error` (string | null): error message when `ok` is `false`
 
 Same wire format as all IPC frames: 4-byte big-endian length prefix + msgpack payload.
 
@@ -258,7 +258,7 @@ Same wire format as all IPC frames: 4-byte big-endian length prefix + msgpack pa
 
 On storage backend failure (`PutFile()` error), the runtime:
 1. Sends `file_write_ack { ok: false, error: "..." }` to executor stdin.
-2. Does **NOT** return a stream error — the ingestion loop continues.
+2. Does **NOT** return a stream error: the ingestion loop continues.
 3. Increments the `lode_write_failure` metric.
 4. Logs the error.
 
@@ -274,7 +274,7 @@ try {
 ### Backward Compatibility
 
 - **Old runtime + new executor**: Runtime closes stdin after metadata. AckReader
-  detects EOF without having received any ack frames — detected as "no ack
+  detects EOF without having received any ack frames, which it treats as "no ack
   support". All pending and future `waitForAck()` calls resolve immediately.
   StdioSink falls back to fire-and-forget.
 - **New runtime + old executor**: Old executor must be updated to use two-phase
@@ -316,6 +316,6 @@ This makes loss explicit and avoids hidden queues.
 
 ## Invariants
 
-- Frame boundaries are authoritative; no frame may contain multiple envelopes.
+- Frame boundaries are authoritative. No frame may contain multiple envelopes.
 - The runtime must not attempt to resynchronize after invalid framing.
 - Event envelopes must be decoded before ingestion policy handling.

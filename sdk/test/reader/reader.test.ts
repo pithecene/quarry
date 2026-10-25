@@ -1,7 +1,7 @@
 /**
  * Unit tests for the run reader. A fake `quarry` executable records its
  * arguments and replies with canned output, so these tests verify the CLI
- * invocation (CONTRACT_CLI.md §list runs, §list events) and the error
+ * invocation (CONTRACT_CLI.md §The `list runs` Command and §The `list events` Command) and the error
  * handling without a Go build.
  */
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'

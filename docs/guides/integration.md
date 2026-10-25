@@ -85,7 +85,7 @@ Include enough information for consumers to:
 ### Failure and Retry Considerations
 
 1. **Publisher failures**: If publishing fails after storage commit, the run
-   data exists but consumers won't be notified. Implement retry with backoff.
+   data exists but consumers will not be notified. Implement retry with backoff.
 
 2. **Consumer failures**: Consumers should be idempotent. Processing the same
    run twice should produce the same result (or be a no-op).
@@ -251,7 +251,7 @@ semantics.
 ### Provider Examples (Optional)
 
 The patterns above are provider-agnostic. This section shows concrete examples
-for common event bus implementations. These are **non-prescriptive**; use
+for common event bus implementations. These are **non-prescriptive**. Use
 whatever infrastructure fits your environment.
 
 <details>
@@ -289,7 +289,7 @@ Downstream consumer group processes messages with automatic offset management.
 redis-cli PUBLISH quarry-runs '{"run_id":"run-001","source":"my-source","outcome":"success"}'
 ```
 
-Subscribers receive messages in real-time; no persistence guarantees.
+Subscribers receive messages in real time, with no guarantee of persistence.
 
 </details>
 
@@ -423,6 +423,6 @@ create duplicate records in target systems.
 
 ## Related Documents
 
-- [Run contract](../contracts/CONTRACT_RUN.md) — run lifecycle and terminal states
-- [Storage contract](../contracts/CONTRACT_LODE.md) — storage interaction semantics
-- [Run guide](run.md) — run lifecycle for script authors and operators
+- [Run contract](../contracts/CONTRACT_RUN.md): run lifecycle and terminal states
+- [Storage contract](../contracts/CONTRACT_LODE.md): storage interaction semantics
+- [Run guide](run.md): run lifecycle for script authors and operators

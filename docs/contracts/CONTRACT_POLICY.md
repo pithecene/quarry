@@ -63,26 +63,26 @@ If a policy cannot accept non-droppable events, it must fail the run.
 
 Buffered policies support configurable flush semantics via `FlushMode`:
 
-### `at_least_once` (default)
+### The `at_least_once` Mode (Default)
 
 - Writes events, then chunks.
 - On any failure, **preserves all buffers**.
 - Retry may cause duplicate writes.
 - Guarantees no data loss.
 
-### `chunks_first`
+### The `chunks_first` Mode
 
 - Writes chunks before events.
 - If chunks fail, events are not attempted (no duplicates for events).
 - If chunks succeed but events fail, chunks may duplicate on retry.
 - Clears only successfully written buffers.
 
-### `two_phase`
+### The `two_phase` Mode
 
 - Tracks per-buffer success to minimize duplicates.
-- Events written successfully are marked; not re-written on retry.
+- Events written successfully are marked and not rewritten on retry.
 - Events added after partial flush go to a secondary buffer.
-- Most complex; requires internal state tracking.
+- The most complex mode, because it requires internal state tracking.
 
 All modes must satisfy the no-silent-loss invariant.
 
@@ -114,7 +114,7 @@ The buffer is flushed when **any** of the following conditions is met:
 | **Run termination** | — | Flush on `run_complete`, `run_error`, or runtime termination (best effort). |
 
 At least one of `--flush-count` or `--flush-interval` must be specified.
-Both may be specified; the first trigger to fire wins.
+Both may be specified. The first trigger to fire wins.
 
 ### Ordering
 
@@ -141,8 +141,8 @@ to `chunks_first` semantics applied per flush cycle.
 
 In addition to the base policy counters, streaming policy must surface:
 
-- `flush_count` — number of flush cycles completed (already in `Stats`)
-- `flush_trigger` — counter per trigger type (`count`, `interval`, `termination`)
+- `flush_count`: number of flush cycles completed (already in `Stats`)
+- `flush_trigger`: counter per trigger type (`count`, `interval`, `termination`)
 
 These are additive to [CONTRACT_METRICS.md](CONTRACT_METRICS.md) and do not rename existing metrics.
 

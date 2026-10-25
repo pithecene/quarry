@@ -1,6 +1,6 @@
 /**
  * Run reader: lists runs and reads their events by invoking the `quarry`
- * CLI and parsing its JSON output (CONTRACT_CLI.md §list runs, §list events).
+ * CLI and parsing its JSON output (CONTRACT_CLI.md §The `list runs` Command and §The `list events` Command).
  * The CLI is the only implementation of the storage layout, so this module
  * never reads storage itself.
  */
@@ -229,7 +229,7 @@ const optional =
 
 const RUN_STATES: readonly RunState[] = ['succeeded', 'failed', 'unterminated']
 
-// Field rules for RunSummary (CONTRACT_CLI.md §list runs).
+// Field rules for RunSummary (CONTRACT_CLI.md §The `list runs` Command).
 const runSummaryFields: Record<string, FieldCheck> = {
   run_id: isString,
   job_id: optional(isString),

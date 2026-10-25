@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-banner-dark.png">
-  <img alt="Quarry — browser-driven extraction, durably ingested. Banner art after Auguste Lepère, Fontainebleau Forest: Sandstone Quarry (1890), Cleveland Museum of Art, CC0" src="docs/assets/quarry-banner-light.png" width="100%">
+  <img alt="Quarry: browser-driven extraction, durably ingested. Banner art after Auguste Lepère, Fontainebleau Forest: Sandstone Quarry (1890), Cleveland Museum of Art, CC0" src="docs/assets/quarry-banner-light.png" width="100%">
 </picture>
 
 # Quarry
@@ -159,17 +159,17 @@ Scripts are imperative, explicit, and boring by design.
 
 ## Key Concepts
 
-- **Emit API** — all script output flows through `emit.*` → [emit guide](docs/guides/emit.md)
-- **Policies** — strict, buffered, or streaming ingestion control → [policy guide](docs/guides/policy.md)
-- **Storage** — FS and S3 backends via Lode → [storage guide](docs/guides/lode.md)
-- **Proxies** — pool-based rotation with multiple strategies → [proxy guide](docs/guides/proxy.md)
-- **Streaming** — chunked artifacts with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
-- **Configuration** — YAML project defaults via `--config` → [configuration reference](docs/guides/configuration.md)
-- **Browser Reuse** — transparent Chromium persistence across sequential runs → [configuration reference](docs/guides/configuration.md)
-- **Container Deployment** — full/slim images, shared browser pools, multi-crawler topologies → [container guide](docs/guides/container.md)
-- **Integration** — webhook and Redis adapters for downstream triggers → [integration guide](docs/guides/integration.md)
-- **Fan-Out** — derived work execution via `emit.enqueue()` → [emit guide](docs/guides/emit.md)
-- **Run Lifecycle** — terminal states and exit codes → [run guide](docs/guides/run.md)
+- **Emit API**: all script output flows through `emit.*` → [emit guide](docs/guides/emit.md)
+- **Policies**: strict, buffered, or streaming ingestion control → [policy guide](docs/guides/policy.md)
+- **Storage**: FS and S3 backends via Lode → [storage guide](docs/guides/lode.md)
+- **Proxies**: pool-based rotation with multiple strategies → [proxy guide](docs/guides/proxy.md)
+- **Streaming**: chunked artifacts with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
+- **Configuration**: YAML project defaults via `--config` → [configuration reference](docs/guides/configuration.md)
+- **Browser Reuse**: transparent Chromium persistence across sequential runs → [configuration reference](docs/guides/configuration.md)
+- **Container Deployment**: full/slim images, shared browser pools, multi-crawler topologies → [container guide](docs/guides/container.md)
+- **Integration**: webhook and Redis adapters for downstream triggers → [integration guide](docs/guides/integration.md)
+- **Fan-Out**: derived work execution via `emit.enqueue()` → [emit guide](docs/guides/emit.md)
+- **Run Lifecycle**: terminal states and exit codes → [run guide](docs/guides/run.md)
 
 ---
 

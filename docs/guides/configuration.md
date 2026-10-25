@@ -49,7 +49,7 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 | `--run-id` | string | Unique run identifier |
 | `--source` | string | Source identifier (Lode partition key) |
 | `--storage-backend` | `fs` or `s3` | Storage backend |
-| `--storage-path` | string | `fs`: directory path; `s3`: `bucket/prefix` |
+| `--storage-path` | string | `fs`: directory path, `s3`: `bucket/prefix` |
 
 > **Note:** `--source`, `--storage-backend`, and `--storage-path` can be
 > provided via `--config` file instead of CLI flags. They are required at
@@ -72,8 +72,8 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 |------|------|---------|
 | `--storage-dataset` | string | Lode dataset ID (default: `"quarry"`) |
 | `--storage-backend` | `fs` or `s3` | Backend type |
-| `--storage-path` | string | `fs`: local directory; `s3`: `bucket/optional-prefix` |
-| `--storage-region` | string | AWS region (S3 only; uses default credential chain) |
+| `--storage-path` | string | `fs`: local directory, `s3`: `bucket/optional-prefix` |
+| `--storage-region` | string | AWS region (S3 only, uses default credential chain) |
 | `--storage-endpoint` | string | Custom S3 endpoint URL (for R2, MinIO, etc.) |
 | `--storage-s3-path-style` | bool | Force path-style addressing (required by R2, MinIO) |
 
@@ -91,7 +91,7 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 Buffered policy requires at least one of `--buffer-events` or `--buffer-bytes` to be set (> 0).
 
 Streaming policy requires at least one of `--flush-count` or `--flush-interval` to be set.
-Both may be specified; the first trigger to fire wins.
+Both may be specified. The first trigger to fire wins.
 
 ### Proxy
 
@@ -170,8 +170,8 @@ at runtime. `--max-runs` is mandatory as a safety rail.
 
 When scripts import workspace packages (`@myorg/db`, `shared-utils`) that
 are not resolvable from the script's own directory, `--resolve-from` tells
-the executor where to look. Must be an existing directory; absolutized at
-parse time. See the [CLI contract](../contracts/CONTRACT_CLI.md) for semantics.
+the executor where to look. The path must name an existing directory, and
+the CLI makes it absolute when it parses the flag. See the [CLI contract](../contracts/CONTRACT_CLI.md) for semantics.
 
 ### Browser Reuse
 
@@ -202,7 +202,7 @@ See the [CLI guide](cli.md) for usage examples.
 
 | Flag | Type | Purpose |
 |------|------|---------|
-| `--executor` | path | Override executor binary (auto-resolved in bundled binary; only needed for local development builds) |
+| `--executor` | path | Override executor binary (auto-resolved in the bundled binary and needed only for local development builds) |
 
 ---
 
@@ -218,7 +218,7 @@ by the Node executor process, not the Go runtime.
 | `QUARRY_NO_SANDBOX` | disabled | Disable Chromium sandbox (required in containers/CI). Set to `1` to enable. |
 | `QUARRY_BROWSER_ENDPOINT` | — | WebSocket URL of an externally managed browser (equivalent to `--browser-ws-endpoint` flag). Preferred for container deployments. |
 | `QUARRY_BROWSER_IDLE_TIMEOUT` | `60` | Seconds before the reusable browser server self-terminates once no run is using it. Read by both the Go runtime (to pass to the browser server) and the executor (as its idle timer). |
-| `QUARRY_RESOLVE_FROM` | — | Absolute path to `node_modules` for ESM resolution fallback. Set automatically by the Go runtime when `--resolve-from` is specified; not typically set manually. |
+| `QUARRY_RESOLVE_FROM` | — | Absolute path to `node_modules` for ESM resolution fallback. Set automatically by the Go runtime when `--resolve-from` is specified, and rarely set by hand. |
 
 ### Usage
 
@@ -378,8 +378,8 @@ adapter:
 The config file supports `${VAR}` and `${VAR:-default}` syntax. Expansion
 is applied to the raw YAML text before parsing.
 
-- `${VAR}` — expands to the value of `VAR`, or empty string if unset
-- `${VAR:-default}` — expands to `default` if `VAR` is unset or empty
+- `${VAR}`: expands to the value of `VAR`, or empty string if unset
+- `${VAR:-default}`: expands to `default` if `VAR` is unset or empty
 
 Unset variables without defaults are not errors. Required secrets will
 fail at downstream validation (e.g., proxy endpoint auth pair validation).
@@ -470,7 +470,7 @@ quarry run (Go runtime)
 The Go runtime merges CLI flags and config file values (CLI wins), resolves
 all configuration, selects a proxy endpoint (if configured), and passes a
 fully resolved run context to the executor via stdin. The executor reads
-only its own environment variables for browser hardening — it does not
+only its own environment variables for browser hardening. It does not
 access CLI flags or config files.
 
 ---

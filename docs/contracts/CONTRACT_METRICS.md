@@ -58,7 +58,7 @@ Outcome-to-metric mapping:
 | `version_mismatch` | `runs_failed_total` |
 | `executor_crash` | `runs_crashed_total` |
 
-`version_mismatch` increments `runs_failed_total` (not `runs_crashed_total`)
+The `version_mismatch` outcome increments `runs_failed_total` (not `runs_crashed_total`)
 because it is a configuration error, not an executor fault. It also does NOT
 increment `executor_crash_total`.
 
@@ -66,7 +66,7 @@ increment `executor_crash_total`.
 - `events_received_total` (counter)
 - `events_persisted_total` (counter)
 - `events_dropped_total` (counter, by event type)
-- `flush_triggers` (counter, by trigger type — streaming policy only)
+- `flush_triggers` (counter, by trigger type, streaming policy only)
 
 #### Flush Triggers (streaming policy)
 
@@ -116,7 +116,7 @@ Optional dimensions:
 - Metrics must be derived from runtime-owned sources, not executor counters.
 - Metrics snapshots must be persisted as Lode `record_kind=metrics` records
   (see [CONTRACT_LODE.md](CONTRACT_LODE.md)) to support stats reads across processes.
-- No exporter is required; exposure via CLI is mandatory.
+- No exporter is required. Exposure via CLI is mandatory.
 
 ### Data Sources
 
@@ -124,11 +124,11 @@ A read command that has no Lode-backed reader returns stub data.
 
 - `stats metrics` reads the latest metrics record from storage when
   `--storage-backend` and `--storage-path` are both given, and returns stub
-  data when no storage flag is given ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
+  data when no storage flag is given ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `stats metrics` Command).
 - `list runs` reads run records from storage in the same way, with the
-  same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`). `list events`
+  same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `list runs` Command). `list events`
   requires the storage flags and has no stub ([CONTRACT_CLI.md](CONTRACT_CLI.md)
-  §`list events`).
+  §The `list events` Command).
 - Every other `stats`, `inspect`, and `list` command returns stub data
   only. No global reader configuration exists, and the commands read
   storage only through their own storage flags.

@@ -90,7 +90,7 @@ func selectorFrom(c *cli.Context) runreader.Selector {
 	return runreader.Selector{Source: c.String("source"), Category: c.String("category"), Day: c.String("day")}
 }
 
-// listRunsFromRecords lists runs from run records (CONTRACT_CLI.md §list runs).
+// listRunsFromRecords lists runs from run records (CONTRACT_CLI.md §The `list runs` Command).
 func listRunsFromRecords(c *cli.Context, r *render.Renderer) error {
 	rr, err := newRunReader(c)
 	if err != nil {
