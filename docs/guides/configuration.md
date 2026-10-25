@@ -1,7 +1,10 @@
 # Configuration Reference
 
-This document is a consolidated reference for all Quarry configuration surfaces.
-For command details, see [`docs/guides/cli.md`](cli.md). For proxy setup, see [`docs/guides/proxy.md`](proxy.md).
+Quarry takes its settings from command-line flags, environment variables,
+and a YAML config file. This reference lists the settings of each layer,
+explains which layer takes precedence, and ends with common recipes. The
+[CLI guide](cli.md) describes the commands, and the
+[proxy guide](proxy.md) describes proxy setup.
 
 ---
 
@@ -27,7 +30,7 @@ to reduce flag repetition across invocations.
 
 ## CLI Flags
 
-All flags are passed to `quarry run`. See [`docs/guides/cli.md`](cli.md) for full
+All flags are passed to `quarry run`. See the [CLI guide](cli.md) for full
 command reference.
 
 ### Config File
@@ -101,7 +104,7 @@ Both may be specified; the first trigger to fire wins.
 | `--proxy-domain` | string | Domain for sticky derivation (scope=domain) |
 | `--proxy-origin` | string | Origin for sticky derivation (scope=origin, format: `scheme://host:port`) |
 
-See [`docs/guides/proxy.md`](proxy.md) for pool configuration format and selection behavior.
+See the [proxy guide](proxy.md) for pool configuration format and selection behavior.
 
 ### Adapter (Event-Bus Notification)
 
@@ -114,7 +117,7 @@ See [`docs/guides/proxy.md`](proxy.md) for pool configuration format and selecti
 | `--adapter-timeout` | duration | `10s` | Per-request/publish timeout |
 | `--adapter-retries` | int | `3` | Retry attempts |
 
-See [`docs/guides/integration.md`](integration.md) for adapter usage patterns.
+See the [integration guide](integration.md) for adapter usage patterns.
 
 ### Event Sinks (Real-Time Event Delivery)
 
@@ -134,7 +137,7 @@ Event sinks receive events in real time during a run (unlike adapters, which
 fire once after a run completes). When no `--event-sink` flags are set, events
 go to Lode only (default behavior). Each sink declares a delivery mode:
 `mandatory` (failure may fail the run) or `best_effort` (failure logged,
-run continues). See [`docs/contracts/CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) for semantics.
+run continues). See the [integration contract](../contracts/CONTRACT_INTEGRATION.md) for semantics.
 
 ### Fan-Out (Derived Work Execution)
 
@@ -168,7 +171,7 @@ at runtime. `--max-runs` is mandatory as a safety rail.
 When scripts import workspace packages (`@myorg/db`, `shared-utils`) that
 are not resolvable from the script's own directory, `--resolve-from` tells
 the executor where to look. Must be an existing directory; absolutized at
-parse time. See [`docs/contracts/CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md) for semantics.
+parse time. See the [CLI contract](../contracts/CONTRACT_CLI.md) for semantics.
 
 ### Browser Reuse
 
@@ -193,7 +196,7 @@ server.
 Use `--no-browser-reuse` (or `no_browser_reuse: true` in config) to revert
 to per-run browser launch.
 
-See [`docs/guides/cli.md`](cli.md) for usage examples.
+See the [CLI guide](cli.md) for usage examples.
 
 ### Advanced (development only)
 
@@ -297,7 +300,7 @@ policy:
   flush_mode: at_least_once
   buffer_events: 1000
   buffer_bytes: 10485760
-  # Streaming policy example (v0.7.0):
+  # Streaming policy example:
   # name: streaming
   # flush_count: 10
   # flush_interval: 5s
@@ -354,7 +357,7 @@ adapter:
   timeout: 10s
   retries: 3
 
-# Event sinks for real-time event delivery (v0.13.0+).
+# Event sinks for real-time event delivery.
 # When absent, events go to Lode only (default behavior).
 # events:
 #   sinks:
@@ -415,7 +418,7 @@ Prefer defining pools in the YAML config file under `proxies:`.
 ]
 ```
 
-See [`docs/guides/proxy.md`](proxy.md) for the full pool configuration schema.
+See the [proxy guide](proxy.md) for the full pool configuration schema.
 
 ### Job Payload
 

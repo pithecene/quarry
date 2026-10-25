@@ -20,7 +20,7 @@ Non-goals:
 - Does not define user script behavior.
 - Does not define provider-specific configuration details.
 - Does not define orchestrator-specific workflow semantics (for Temporal,
-  see `guides/temporal.md`).
+  see [guides/temporal.md](../guides/temporal.md)).
 
 ---
 
@@ -72,7 +72,7 @@ via `--adapter` flags — they depend on the runtime as a library.
 
 > Temporal is an orchestration integration, not a notification adapter.
 > See [Orchestration Integration Semantics](#orchestration-integration-semantics)
-> and `guides/temporal.md`.
+> and [guides/temporal.md](../guides/temporal.md).
 
 ---
 
@@ -252,7 +252,7 @@ Ordering and fan-out strategies are out of scope.
 ## Invocation Ordering
 
 The adapter is invoked **after** `Execute` returns, so all of the following
-have happened (CONTRACT_RUN.md §Run Finalization):
+have happened ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization):
 1. Run execution completes (success or failure)
 2. Policy flush completes
 3. Metrics are persisted to Lode
@@ -261,7 +261,7 @@ have happened (CONTRACT_RUN.md §Run Finalization):
 Notification is not skipped when finalization is incomplete: a run whose
 start record failed is notified as `executor_crash` (it never started),
 and a run whose end record failed is notified with its real outcome while
-the failure is surfaced as CONTRACT_RUN.md requires.
+the failure is surfaced as [CONTRACT_RUN.md](CONTRACT_RUN.md) requires.
 
 This ensures consumers can read the data referenced in the event payload.
 Adapter publish is the last step before CLI output and exit.
@@ -294,7 +294,7 @@ The orchestrator invokes `runtime.NewRunOrchestrator(config).Execute(ctx)`
 as an atomic unit of work. The runtime owns everything inside this boundary
 (executor lifecycle, IPC, policy, Lode persistence, and run
 finalization: the start record, metrics persistence, and the end record;
-CONTRACT_RUN.md §Run Finalization). The orchestrator owns everything
+[CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization). The orchestrator owns everything
 outside that boundary (scheduling, retries, fan-out, and notification) and
 receives the same storage contents as the CLI without persisting anything
 itself.

@@ -15,7 +15,7 @@ This is a contract document. Implementations must conform.
 
 Non-goals:
 - Does not define policy implementations.
-- Does not define storage layout (see CONTRACT_LODE.md).
+- Does not define storage layout (see [CONTRACT_LODE.md](CONTRACT_LODE.md)).
 
 ---
 
@@ -144,7 +144,7 @@ In addition to the base policy counters, streaming policy must surface:
 - `flush_count` — number of flush cycles completed (already in `Stats`)
 - `flush_trigger` — counter per trigger type (`count`, `interval`, `termination`)
 
-These are additive to CONTRACT_METRICS.md and do not rename existing metrics.
+These are additive to [CONTRACT_METRICS.md](CONTRACT_METRICS.md) and do not rename existing metrics.
 
 ---
 

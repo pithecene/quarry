@@ -19,7 +19,7 @@ This is a contract document. Implementations must conform.
 
 Non-goals:
 - Does not define storage layouts or ingestion policy behavior.
-- Does not define IPC framing (see CONTRACT_IPC.md).
+- Does not define IPC framing (see [CONTRACT_IPC.md](CONTRACT_IPC.md)).
 
 ---
 
@@ -33,7 +33,7 @@ All fields are required unless marked optional.
   - Must be present in every event.
 - `event_id` (string)
   - Unique ID for the event.
-  - Uniqueness is scoped to a run (see CONTRACT_RUN.md).
+  - Uniqueness is scoped to a run (see [CONTRACT_RUN.md](CONTRACT_RUN.md)).
 - `run_id` (string)
   - Canonical run identifier.
 - `seq` (integer)
@@ -75,7 +75,7 @@ Required payload fields:
 - `size_bytes` (integer)
 
 The **artifact event is the commit record** for an artifact. Artifact bytes
-may be transmitted before this event (see CONTRACT_IPC.md for ordering,
+may be transmitted before this event (see [CONTRACT_IPC.md](CONTRACT_IPC.md) for ordering,
 chunking, and `is_last` signaling).
 
 Orphaned bytes (no corresponding artifact event) are eligible for GC.
@@ -167,7 +167,7 @@ the event envelope, sequence numbering, and policy pipeline entirely.
   (`run_complete` or `run_error`) throws `TerminalEventError`.
 - **Not events**: file writes do not produce event envelopes and are
   not counted in `seq`.
-- Files are transported as `file_write` IPC frames (see CONTRACT_IPC.md).
+- Files are transported as `file_write` IPC frames (see [CONTRACT_IPC.md](CONTRACT_IPC.md)).
 
 ### Error Propagation
 
@@ -175,7 +175,7 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 (e.g. S3, local filesystem) fails, the returned promise **rejects** with
 the error message from the runtime.
 
-This is implemented via `file_write_ack` frames (see CONTRACT_IPC.md §File
+This is implemented via `file_write_ack` frames (see [CONTRACT_IPC.md](CONTRACT_IPC.md) §File
 Write Acknowledgement). The error is **recoverable**: the run continues and
 the script decides how to handle the failure:
 
@@ -204,7 +204,7 @@ datasets/{dataset}/partitions/source={source}/category={category}/day={day}/run_
 ```
 
 All components are known at executor startup and passed via the `storage`
-field in the executor stdin payload (see CONTRACT_IPC.md). The SDK computes
+field in the executor stdin payload (see [CONTRACT_IPC.md](CONTRACT_IPC.md)). The SDK computes
 the key deterministically — no bidirectional IPC round-trip is needed.
 
 When storage partition metadata is not provided (e.g. older CLI versions),
@@ -320,4 +320,4 @@ Errors are classified by **origin** and **impact**.
 - The script may still be running, but the run is terminated by the runtime.
 
 In all cases, a failed run must be distinguishable by downstream consumers using
-run metadata (see CONTRACT_RUN.md).
+run metadata (see [CONTRACT_RUN.md](CONTRACT_RUN.md)).

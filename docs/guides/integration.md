@@ -1,8 +1,10 @@
 # Downstream Integration Guide
 
-This guide describes patterns for triggering downstream ETL or processing systems
-after Quarry runs complete. It is **non-normative**; the authoritative contracts
-remain in [`docs/contracts/`](../contracts/).
+When a run finishes, a downstream system often needs to process its data.
+This guide describes two ways to start that work: an event bus that Quarry
+notifies, which is recommended, and polling storage, which is the
+fallback. The [integration contract](../contracts/CONTRACT_INTEGRATION.md)
+states the rules.
 
 ---
 
@@ -50,7 +52,7 @@ Transform / Load
 The event should be published **after** the storage commit is durable.
 This ensures consumers can read the data referenced in the event.
 
-Per [`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md), the visibility boundary is:
+Per the [run contract](../contracts/CONTRACT_RUN.md), the visibility boundary is:
 
 - `run_complete` or `run_error` is emitted
 - All preceding events are persisted
@@ -93,7 +95,7 @@ Include enough information for consumers to:
 
 4. **Dead letter queue**: Route failed events to a DLQ for manual inspection.
 
-### Webhook Adapter (v0.5.0+)
+### Webhook Adapter
 
 Quarry ships a built-in webhook adapter that POSTs a JSON event to a
 configurable URL after each run completes.
@@ -141,7 +143,7 @@ run exits with its normal outcome code.
 | `--adapter-retries` | `3` | Retry attempts with exponential backoff |
 | `--adapter-header` | | Custom header (repeatable, `key=value` format) |
 
-### Redis Pub/Sub Adapter (v0.5.0+)
+### Redis Pub/Sub Adapter
 
 Quarry ships a built-in Redis pub/sub adapter that publishes a JSON event
 to a configurable Redis channel after each run completes.
@@ -183,7 +185,7 @@ adapter:
   retries: 3
 ```
 
-### Redis Streams Event Sink (v0.13.0+)
+### Redis Streams Event Sink
 
 Unlike the adapters above, which fire once after a run completes, the Redis
 Streams **event sink** publishes every event in real time as the executor
@@ -243,29 +245,8 @@ events:
 | `--event-sink-redis-retries` | `2` | Retry attempts with exponential backoff |
 | `--event-sink-redis-delivery` | `mandatory` | `mandatory` or `best_effort` |
 
-See [`docs/contracts/CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) §Event Sink Model for full
+See the [integration contract](../contracts/CONTRACT_INTEGRATION.md) §Event Sink Model for full
 semantics.
-
-### Interim Pattern (v0.4.x)
-
-Before v0.5.0, use a shell wrapper to trigger downstream notifications:
-
-```bash
-#!/bin/bash
-# Wrapper: run + notify
-quarry run ... "$@"
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -eq 0 ]; then OUTCOME="success"; else OUTCOME="failure"; fi
-
-curl -X POST "$WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d "{\"event_type\":\"run_completed\",\"run_id\":\"$RUN_ID\",\"outcome\":\"$OUTCOME\"}"
-
-exit $EXIT_CODE
-```
-
-This is superseded by `--adapter webhook` in v0.5.0.
 
 ### Provider Examples (Optional)
 
@@ -429,8 +410,8 @@ partial reads.
 ### Assuming immediate availability
 
 After `quarry run` exits, data visibility depends on the storage backend's
-consistency model. Consumers must respect the visibility boundary defined in
-[`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md) and implement idempotent processing to handle edge cases
+consistency model. Consumers must respect the visibility boundary defined in the
+[run contract](../contracts/CONTRACT_RUN.md) and implement idempotent processing to handle edge cases
 where data appears after the run signal.
 
 ### Processing without idempotency
@@ -442,6 +423,6 @@ create duplicate records in target systems.
 
 ## Related Documents
 
-- [`CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md) — Run lifecycle and terminal states
-- [`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md) — Storage interaction semantics
-- `guides/run.md` — User-facing run lifecycle guide
+- [Run contract](../contracts/CONTRACT_RUN.md) — run lifecycle and terminal states
+- [Storage contract](../contracts/CONTRACT_LODE.md) — storage interaction semantics
+- [Run guide](run.md) — run lifecycle for script authors and operators

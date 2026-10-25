@@ -1,7 +1,9 @@
 # Proxy Support
 
-This document describes proxy configuration and usage in Quarry.
-It is informational; normative behavior is defined in [`docs/contracts/CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md).
+Quarry can send a run's browser traffic through a proxy chosen from a
+named pool. This guide explains how to define pools, select one for a run,
+choose a rotation strategy, and troubleshoot. The
+[proxy contract](../contracts/CONTRACT_PROXY.md) states the rules.
 
 ---
 
@@ -69,8 +71,8 @@ quarry run \
 
 ## CLI Selection
 
-**Recommended:** Define proxy pools in a `quarry.yaml` config file (see
-[`docs/guides/configuration.md`](configuration.md)) and use `--config quarry.yaml`.
+**Recommended:** Define proxy pools in a `quarry.yaml` config file (see the
+[configuration reference](configuration.md)) and use `--config quarry.yaml`.
 
 **Legacy:** You can also select proxies using a separate JSON config file
 via `--proxy-config`. This method is deprecated and will emit a warning:

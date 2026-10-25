@@ -98,7 +98,7 @@ Continuous persistence with bounded buffer, batched writes, and backpressure.
 
 ## Contention Analysis
 
-Prior to v0.7.0, `statsRecorder` used a `sync.Mutex` for all counter
+Before it moved to atomic counters, `statsRecorder` used a `sync.Mutex` for all counter
 operations. This caused severe contention scaling:
 
 | Goroutines | Mutex-based (ns/op) | Atomic-based (ns/op) | Improvement |
@@ -130,7 +130,7 @@ All benchmarks use a no-op or configurable-delay sink to isolate policy
 overhead from I/O. Real-world performance will be dominated by sink
 latency (network/disk), not policy overhead.
 
-## Run Listing: Records vs Partitions (v0.14.0)
+## Run Listing: Records vs Partitions
 
 Store work to find runs and their states, measured by
 `TestMeasure_ListRunsVsPartitionEnumeration` in `quarry/reader`:

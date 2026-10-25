@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: The documentation is organized by audience. The implementation plan, the release readiness records, and the ingress models exploration move to `docs/plans/`, and `CLI_PARITY.json` moves to `docs/maintainers/`.
 - **Contracts**: The contracts state invariants only. They no longer mark the release that introduced a section, restate the experimental standing that `PUBLIC_API.md` § Experimental Surface defines, or list planned adapters and hosts. `AGENTS.md` § Contract Rules states the rule.
 - **Contracts**: Every contract is titled in the form "Quarry <Subject> — Contract" and opens with "This document defines". `CONTRACT_LODE.md` is titled "Quarry Lode Storage — Contract".
+- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed; its list of components moves to the README. The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
 
 ### Fixed
 

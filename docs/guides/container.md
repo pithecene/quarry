@@ -1,7 +1,11 @@
 # Container Usage
 
-This document covers running Quarry via container images.
-For CLI flags and configuration, see [`docs/guides/cli.md`](cli.md) and [`docs/guides/configuration.md`](configuration.md).
+Quarry publishes two container images: a full image that includes
+Chromium, and a slim image that connects to a browser running elsewhere.
+This guide shows how to run them with `docker run` and Docker Compose,
+including S3 storage, a Redis adapter, and a shared browser pool. The
+[CLI guide](cli.md) and the [configuration reference](configuration.md)
+describe the flags.
 
 ---
 

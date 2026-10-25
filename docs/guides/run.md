@@ -1,7 +1,9 @@
 # Runs, Jobs, and Attempts
 
-This document explains Quarry’s run lifecycle at a user level.
-The authoritative contract is [`docs/contracts/CONTRACT_RUN.md`](../contracts/CONTRACT_RUN.md).
+A run is one execution of a script against one job. This guide explains
+how runs relate to jobs and attempts, which lifecycle hooks a script can
+export, how a run ends, and how fan-out starts child runs. The
+[run contract](../contracts/CONTRACT_RUN.md) states the rules.
 
 ---
 
@@ -9,13 +11,16 @@ The authoritative contract is [`docs/contracts/CONTRACT_RUN.md`](../contracts/CO
 
 - **Job**: logical unit of work.
 - **Run**: a single execution attempt of a job.
-- **Attempt**: a counter for retries of the same job.
+- **Attempt**: the number of a run among the runs of one job, starting at 1.
+  Quarry does not retry a run. A caller that retries a job starts a new run
+  with the next attempt number (`--attempt`) and the failed run as its
+  parent (`--parent-run-id`).
 
 ---
 
 ## Lineage
 
-Retries create **new runs** with a parent run reference. The original job
+A retry is a **new run** that names the failed run as its parent. The job
 ID stays the same across retries.
 
 ---
@@ -34,7 +39,7 @@ building external wrappers.
 
 **Skip path:** `prepare` returns `{ action: 'skip' }` → emit `run_complete({skipped})` → done. No browser, no context, no other hooks.
 
-See [`PUBLIC_API.md`](../../PUBLIC_API.md) for the full hook reference with signatures and examples.
+See the [SDK and setup guide](../../PUBLIC_API.md) for the full hook reference with signatures and examples.
 
 ---
 
