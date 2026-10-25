@@ -68,10 +68,12 @@ install the SDK with those packages:
 npm init -y
 npm pkg set type=module
 npx jsr add @pithecene/quarry-sdk
-npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
-# Behind an HTTP proxy, Puppeteer also needs proxy-agent to download its browser
-npm install proxy-agent
+# Behind an HTTP proxy, install proxy-agent first so Puppeteer can download its browser
+# npm install proxy-agent
+
+# On Node 22.6 through 22.11, install puppeteer@24 in place of puppeteer
+npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
 Or via pnpm with GitHub Packages:
@@ -955,7 +957,7 @@ SDK and runtime versions must match (lockstep versioning).
 
 | Component | Channel | Install |
 |-----------|---------|---------|
-| CLI binary | GitHub Releases | `mise install github:pithecene/quarry@0.14.0` |
+| CLI binary | GitHub Releases | `mise use github:pithecene/quarry@0.14.0` |
 | Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.14.0` |
 | Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.14.0-slim` |
 | SDK | JSR | `npx jsr add @pithecene/quarry-sdk` |
