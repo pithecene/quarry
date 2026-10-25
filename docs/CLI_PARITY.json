@@ -357,67 +357,7 @@
             }
           }
         },
-        "job": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
-        },
-        "task": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
-        },
         "proxy": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
-        },
-        "executor": {
           "flags": {
             "format": {
               "type": "string",
@@ -462,67 +402,7 @@
             }
           }
         },
-        "jobs": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
-        },
-        "tasks": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
-        },
         "proxies": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
-        },
-        "executors": {
           "flags": {
             "format": {
               "type": "string",
@@ -782,53 +662,7 @@
             }
           }
         },
-        "jobs": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for list commands - returns error"
-            }
-          }
-        },
         "pools": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for list commands - returns error"
-            }
-          }
-        },
-        "executors": {
           "flags": {
             "format": {
               "type": "string",

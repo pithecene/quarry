@@ -44,25 +44,6 @@ func (r *StubReader) InspectRun(runID string) *InspectRunResponse {
 	}
 }
 
-// InspectJob returns stub job details.
-func (r *StubReader) InspectJob(jobID string) *InspectJobResponse {
-	return &InspectJobResponse{
-		JobID:  jobID,
-		State:  "completed",
-		RunIDs: []string{"stub-run-001", "stub-run-002"},
-	}
-}
-
-// InspectTask returns stub task details.
-func (r *StubReader) InspectTask(taskID string) *InspectTaskResponse {
-	runID := "stub-run-001"
-	return &InspectTaskResponse{
-		TaskID: taskID,
-		State:  "completed",
-		RunID:  &runID,
-	}
-}
-
 // InspectProxy returns stub proxy pool details.
 func (r *StubReader) InspectProxy(poolName string) *InspectProxyPoolResponse {
 	now := time.Now()
@@ -83,16 +64,6 @@ func (r *StubReader) InspectProxy(poolName string) *InspectProxyPoolResponse {
 	}
 }
 
-// InspectExecutor returns stub executor details.
-func (r *StubReader) InspectExecutor(executorID string) *InspectExecutorResponse {
-	now := time.Now()
-	return &InspectExecutorResponse{
-		ExecutorID: executorID,
-		State:      "idle",
-		LastSeenAt: &now,
-	}
-}
-
 // StatsRuns returns stub run statistics.
 func (r *StubReader) StatsRuns() *RunStats {
 	return &RunStats{
@@ -100,26 +71,6 @@ func (r *StubReader) StatsRuns() *RunStats {
 		Running:   5,
 		Succeeded: 90,
 		Failed:    5,
-	}
-}
-
-// StatsJobs returns stub job statistics.
-func (r *StubReader) StatsJobs() *JobStats {
-	return &JobStats{
-		Total:     50,
-		Running:   2,
-		Succeeded: 45,
-		Failed:    3,
-	}
-}
-
-// StatsTasks returns stub task statistics.
-func (r *StubReader) StatsTasks() *TaskStats {
-	return &TaskStats{
-		Total:     200,
-		Running:   10,
-		Succeeded: 180,
-		Failed:    10,
 	}
 }
 
@@ -139,16 +90,6 @@ func (r *StubReader) StatsProxies() []ProxyStats {
 			Failures:   1,
 			LastUsedAt: &now,
 		},
-	}
-}
-
-// StatsExecutors returns stub executor statistics.
-func (r *StubReader) StatsExecutors() *ExecutorStats {
-	return &ExecutorStats{
-		Total:   10,
-		Running: 3,
-		Idle:    6,
-		Failed:  1,
 	}
 }
 
@@ -208,30 +149,12 @@ func (r *StubReader) ListRuns(opts ListRunsOptions) []ListRunItem {
 	return runs
 }
 
-// ListJobs returns stub job list.
-func (r *StubReader) ListJobs() []ListJobItem {
-	return []ListJobItem{
-		{JobID: "job-001", State: "completed"},
-		{JobID: "job-002", State: "running"},
-		{JobID: "job-003", State: "pending"},
-	}
-}
-
 // ListPools returns stub proxy pool list.
 func (r *StubReader) ListPools() []ListPoolItem {
 	return []ListPoolItem{
 		{Name: "default", Strategy: "round_robin"},
 		{Name: "premium", Strategy: "sticky"},
 		{Name: "backup", Strategy: "random"},
-	}
-}
-
-// ListExecutors returns stub executor list.
-func (r *StubReader) ListExecutors() []ListExecutorItem {
-	return []ListExecutorItem{
-		{ExecutorID: "exec-001", State: "running"},
-		{ExecutorID: "exec-002", State: "idle"},
-		{ExecutorID: "exec-003", State: "idle"},
 	}
 }
 

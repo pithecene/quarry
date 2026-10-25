@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -25,35 +26,18 @@ func Run(viewType string, data any) error {
 }
 
 // IsTUISupported returns true if the view type supports TUI mode.
-// Per CONTRACT_CLI.md, only inspect and stats commands support TUI.
+// Per CONTRACT_CLI.md, only the listed inspect and stats commands support TUI.
 func IsTUISupported(viewType string) bool {
-	supportedPrefixes := []string{
-		"inspect_",
-		"stats_",
-	}
-
-	for _, prefix := range supportedPrefixes {
-		if strings.HasPrefix(viewType, prefix) {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(SupportedTUIViews(), viewType)
 }
 
 // SupportedTUIViews returns a list of view types that support TUI.
 func SupportedTUIViews() []string {
 	return []string{
 		"inspect_run",
-		"inspect_job",
-		"inspect_task",
 		"inspect_proxy",
-		"inspect_executor",
 		"stats_runs",
-		"stats_jobs",
-		"stats_tasks",
 		"stats_proxies",
-		"stats_executors",
 		"stats_metrics",
 	}
 }

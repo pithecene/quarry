@@ -27,13 +27,11 @@ func isStderrTTY() bool {
 func ListCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
-		Usage: "List entities (runs, jobs, pools, executors)",
+		Usage: "List entities (runs, events, pools)",
 		Subcommands: []*cli.Command{
 			listRunsCommand(),
 			listEventsCommand(),
-			listJobsCommand(),
 			listPoolsCommand(),
-			listExecutorsCommand(),
 		},
 	}
 }
@@ -108,28 +106,6 @@ func listRunsAction(c *cli.Context) error {
 	return r.Render(results)
 }
 
-func listJobsCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "jobs",
-		Usage:  "List jobs",
-		Flags:  ReadOnlyFlags(),
-		Action: listJobsAction,
-	}
-}
-
-func listJobsAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return cli.Exit("--tui is not supported for list commands", 1)
-	}
-
-	return r.Render(reader.ListJobs())
-}
-
 func listPoolsCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "pools",
@@ -150,26 +126,4 @@ func listPoolsAction(c *cli.Context) error {
 	}
 
 	return r.Render(reader.ListPools())
-}
-
-func listExecutorsCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "executors",
-		Usage:  "List executors",
-		Flags:  ReadOnlyFlags(),
-		Action: listExecutorsAction,
-	}
-}
-
-func listExecutorsAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return cli.Exit("--tui is not supported for list commands", 1)
-	}
-
-	return r.Render(reader.ListExecutors())
 }

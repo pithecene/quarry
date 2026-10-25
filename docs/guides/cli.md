@@ -48,9 +48,9 @@ quarry inspect run run-001 --tui
 ## Command Groups
 
 - `run`: execute work (the only command that runs jobs)
-- `inspect`: deep view of a single entity (run, job, task, proxy, executor)
-- `stats`: aggregated facts (runs, jobs, tasks, proxies, executors)
-- `list`: thin enumerations (runs, jobs, pools, executors)
+- `inspect`: deep view of a single entity (run, proxy)
+- `stats`: aggregated facts (runs, proxies, metrics)
+- `list`: thin enumerations (runs, events, pools)
 - `index`: maintain the run records `list runs` reads (`index rebuild`)
 - `prune`: remove whole runs by state and age
 - `debug`: opt-in diagnostics (read-only by default)
@@ -302,10 +302,7 @@ Deep view of a single entity.
 
 Subcommands:
 - `inspect run <run-id>`
-- `inspect job <job-id>`
-- `inspect task <task-id>`
 - `inspect proxy <pool-name>`
-- `inspect executor <executor-id>`
 
 Examples:
 
@@ -321,10 +318,7 @@ Aggregated facts derived from the read path.
 
 Subcommands:
 - `stats runs`
-- `stats jobs`
-- `stats tasks`
 - `stats proxies`
-- `stats executors`
 - `stats metrics`
 
 Examples:
@@ -350,9 +344,7 @@ Thin enumerations (not inspect-level detail).
 Subcommands:
 - `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
 - `list events <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
-- `list jobs`
 - `list pools`
-- `list executors`
 
 Notes:
 - `--limit` defaults to `0` (no limit).

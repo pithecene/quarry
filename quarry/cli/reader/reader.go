@@ -13,28 +13,10 @@ func InspectRun(runID string) *InspectRunResponse {
 	return defaultReader.InspectRun(runID)
 }
 
-// InspectJob returns details for a specific job.
-// Delegates to the package-level reader.
-func InspectJob(jobID string) *InspectJobResponse {
-	return defaultReader.InspectJob(jobID)
-}
-
-// InspectTask returns details for a specific task.
-// Delegates to the package-level reader.
-func InspectTask(taskID string) *InspectTaskResponse {
-	return defaultReader.InspectTask(taskID)
-}
-
 // InspectProxy returns details for a specific proxy pool.
 // Delegates to the package-level reader.
 func InspectProxy(poolName string) *InspectProxyPoolResponse {
 	return defaultReader.InspectProxy(poolName)
-}
-
-// InspectExecutor returns details for a specific executor.
-// Delegates to the package-level reader.
-func InspectExecutor(executorID string) *InspectExecutorResponse {
-	return defaultReader.InspectExecutor(executorID)
 }
 
 // StatsRuns returns run statistics.
@@ -43,28 +25,10 @@ func StatsRuns() *RunStats {
 	return defaultReader.StatsRuns()
 }
 
-// StatsJobs returns job statistics.
-// Delegates to the package-level reader.
-func StatsJobs() *JobStats {
-	return defaultReader.StatsJobs()
-}
-
-// StatsTasks returns task statistics.
-// Delegates to the package-level reader.
-func StatsTasks() *TaskStats {
-	return defaultReader.StatsTasks()
-}
-
 // StatsProxies returns proxy statistics.
 // Delegates to the package-level reader.
 func StatsProxies() []ProxyStats {
 	return defaultReader.StatsProxies()
-}
-
-// StatsExecutors returns executor statistics.
-// Delegates to the package-level reader.
-func StatsExecutors() *ExecutorStats {
-	return defaultReader.StatsExecutors()
 }
 
 // StatsMetrics returns contract metrics snapshot.
@@ -79,22 +43,10 @@ func ListRuns(opts ListRunsOptions) []ListRunItem {
 	return defaultReader.ListRuns(opts)
 }
 
-// ListJobs returns a list of jobs.
-// Delegates to the package-level reader.
-func ListJobs() []ListJobItem {
-	return defaultReader.ListJobs()
-}
-
 // ListPools returns a list of proxy pools.
 // Delegates to the package-level reader.
 func ListPools() []ListPoolItem {
 	return defaultReader.ListPools()
-}
-
-// ListExecutors returns a list of executors.
-// Delegates to the package-level reader.
-func ListExecutors() []ListExecutorItem {
-	return defaultReader.ListExecutors()
 }
 
 // DebugResolveProxy resolves a proxy endpoint from a pool.

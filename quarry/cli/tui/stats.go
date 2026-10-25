@@ -61,16 +61,10 @@ func (m StatsModel) View() string {
 	switch m.viewType {
 	case "stats_runs":
 		content = m.renderStatsRuns()
-	case "stats_jobs":
-		content = m.renderStatsJobs()
-	case "stats_tasks":
-		content = m.renderStatsTasks()
 	case "stats_proxies":
 		content = m.renderStatsProxies()
 	case "stats_metrics":
 		content = m.renderStatsMetrics()
-	case "stats_executors":
-		content = m.renderStatsExecutors()
 	default:
 		content = fmt.Sprintf("Unknown view type: %s", m.viewType)
 	}
@@ -98,50 +92,6 @@ func (m StatsModel) renderStatsRuns() string {
 	}
 
 	// Join boxes horizontally
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxes...))
-
-	return b.String()
-}
-
-func (m StatsModel) renderStatsJobs() string {
-	data, ok := m.data.(*reader.JobStats)
-	if !ok {
-		return "Invalid data type for stats_jobs"
-	}
-
-	var b strings.Builder
-	b.WriteString(TitleStyle.Render("Job Statistics"))
-	b.WriteString("\n\n")
-
-	boxes := []string{
-		m.renderStatBox("Total", data.Total, lipgloss.Color("#3B82F6")),
-		m.renderStatBox("Running", data.Running, warningColor),
-		m.renderStatBox("Succeeded", data.Succeeded, successColor),
-		m.renderStatBox("Failed", data.Failed, errorColor),
-	}
-
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxes...))
-
-	return b.String()
-}
-
-func (m StatsModel) renderStatsTasks() string {
-	data, ok := m.data.(*reader.TaskStats)
-	if !ok {
-		return "Invalid data type for stats_tasks"
-	}
-
-	var b strings.Builder
-	b.WriteString(TitleStyle.Render("Task Statistics"))
-	b.WriteString("\n\n")
-
-	boxes := []string{
-		m.renderStatBox("Total", data.Total, lipgloss.Color("#3B82F6")),
-		m.renderStatBox("Running", data.Running, warningColor),
-		m.renderStatBox("Succeeded", data.Succeeded, successColor),
-		m.renderStatBox("Failed", data.Failed, errorColor),
-	}
-
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxes...))
 
 	return b.String()
@@ -184,28 +134,6 @@ func (m StatsModel) renderStatsProxies() string {
 				ValueStyle.Render(proxy.LastUsedAt.Format("2006-01-02 15:04:05")))
 		}
 	}
-
-	return b.String()
-}
-
-func (m StatsModel) renderStatsExecutors() string {
-	data, ok := m.data.(*reader.ExecutorStats)
-	if !ok {
-		return "Invalid data type for stats_executors"
-	}
-
-	var b strings.Builder
-	b.WriteString(TitleStyle.Render("Executor Statistics"))
-	b.WriteString("\n\n")
-
-	boxes := []string{
-		m.renderStatBox("Total", data.Total, lipgloss.Color("#3B82F6")),
-		m.renderStatBox("Running", data.Running, warningColor),
-		m.renderStatBox("Idle", data.Idle, successColor),
-		m.renderStatBox("Failed", data.Failed, errorColor),
-	}
-
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, boxes...))
 
 	return b.String()
 }

@@ -30,20 +30,6 @@ type InspectRunResponse struct {
 	SidecarFiles []SidecarFileSummary `json:"sidecar_files,omitempty"`
 }
 
-// InspectJobResponse per CONTRACT_CLI.md.
-type InspectJobResponse struct {
-	JobID  string   `json:"job_id"`
-	State  string   `json:"state"`
-	RunIDs []string `json:"run_ids"`
-}
-
-// InspectTaskResponse per CONTRACT_CLI.md.
-type InspectTaskResponse struct {
-	TaskID string  `json:"task_id"`
-	State  string  `json:"state"`
-	RunID  *string `json:"run_id"`
-}
-
 // ProxySticky represents proxy sticky configuration per CONTRACT_PROXY.md.
 // Scope must be one of: "job", "domain", "origin".
 type ProxySticky struct {
@@ -69,31 +55,8 @@ type InspectProxyPoolResponse struct {
 	Runtime     ProxyRuntime `json:"runtime"`
 }
 
-// InspectExecutorResponse per CONTRACT_CLI.md.
-type InspectExecutorResponse struct {
-	ExecutorID string     `json:"executor_id"`
-	State      string     `json:"state"`
-	LastSeenAt *time.Time `json:"last_seen_at"`
-}
-
 // RunStats per CONTRACT_CLI.md.
 type RunStats struct {
-	Total     int `json:"total"`
-	Running   int `json:"running"`
-	Succeeded int `json:"succeeded"`
-	Failed    int `json:"failed"`
-}
-
-// JobStats per CONTRACT_CLI.md.
-type JobStats struct {
-	Total     int `json:"total"`
-	Running   int `json:"running"`
-	Succeeded int `json:"succeeded"`
-	Failed    int `json:"failed"`
-}
-
-// TaskStats per CONTRACT_CLI.md.
-type TaskStats struct {
 	Total     int `json:"total"`
 	Running   int `json:"running"`
 	Succeeded int `json:"succeeded"`
@@ -108,14 +71,6 @@ type ProxyStats struct {
 	LastUsedAt *time.Time `json:"last_used_at"`
 }
 
-// ExecutorStats per CONTRACT_CLI.md.
-type ExecutorStats struct {
-	Total   int `json:"total"`
-	Running int `json:"running"`
-	Idle    int `json:"idle"`
-	Failed  int `json:"failed"`
-}
-
 // ListRunItem per CONTRACT_CLI.md.
 type ListRunItem struct {
 	RunID     string    `json:"run_id"`
@@ -123,22 +78,10 @@ type ListRunItem struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
-// ListJobItem per CONTRACT_CLI.md.
-type ListJobItem struct {
-	JobID string `json:"job_id"`
-	State string `json:"state"`
-}
-
 // ListPoolItem per CONTRACT_CLI.md.
 type ListPoolItem struct {
 	Name     string `json:"name"`
 	Strategy string `json:"strategy"`
-}
-
-// ListExecutorItem per CONTRACT_CLI.md.
-type ListExecutorItem struct {
-	ExecutorID string `json:"executor_id"`
-	State      string `json:"state"`
 }
 
 // MetricsSnapshot per CONTRACT_METRICS.md and CONTRACT_CLI.md.

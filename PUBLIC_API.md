@@ -576,14 +576,14 @@ quarry run --dry-run --script ./my-script.ts --run-id test --source test \
 
 ```bash
 quarry inspect run <run-id>     # Inspect a specific run
-quarry inspect job <job-id>     # Inspect a specific job
+quarry inspect proxy <pool>     # Inspect a proxy pool
 ```
 
 ### Stats Command
 
 ```bash
 quarry stats runs               # Run statistics
-quarry stats jobs               # Job statistics
+quarry stats proxies            # Proxy statistics
 quarry stats metrics            # Contract metrics (requires --storage-backend, --storage-path)
 ```
 

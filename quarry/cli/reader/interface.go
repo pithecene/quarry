@@ -8,24 +8,16 @@ package reader
 type Reader interface {
 	// Inspect operations
 	InspectRun(runID string) *InspectRunResponse
-	InspectJob(jobID string) *InspectJobResponse
-	InspectTask(taskID string) *InspectTaskResponse
 	InspectProxy(poolName string) *InspectProxyPoolResponse
-	InspectExecutor(executorID string) *InspectExecutorResponse
 
 	// Stats operations
 	StatsRuns() *RunStats
-	StatsJobs() *JobStats
-	StatsTasks() *TaskStats
 	StatsProxies() []ProxyStats
-	StatsExecutors() *ExecutorStats
 	StatsMetrics() *MetricsSnapshot
 
 	// List operations
 	ListRuns(opts ListRunsOptions) []ListRunItem
-	ListJobs() []ListJobItem
 	ListPools() []ListPoolItem
-	ListExecutors() []ListExecutorItem
 
 	// Debug operations
 	DebugResolveProxy(pool string, commit bool) (*ResolveProxyResponse, error)

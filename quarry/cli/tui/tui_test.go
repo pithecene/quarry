@@ -16,24 +16,24 @@ func TestIsTUISupported(t *testing.T) {
 	}{
 		// Supported: inspect commands
 		{"inspect_run", true},
-		{"inspect_job", true},
-		{"inspect_task", true},
 		{"inspect_proxy", true},
-		{"inspect_executor", true},
 
 		// Supported: stats commands
 		{"stats_runs", true},
-		{"stats_jobs", true},
-		{"stats_tasks", true},
 		{"stats_proxies", true},
-		{"stats_executors", true},
 		{"stats_metrics", true},
+
+		// Not supported: removed views
+		{"inspect_job", false},
+		{"inspect_task", false},
+		{"inspect_executor", false},
+		{"stats_jobs", false},
+		{"stats_tasks", false},
+		{"stats_executors", false},
 
 		// Not supported: list commands
 		{"list_runs", false},
-		{"list_jobs", false},
 		{"list_pools", false},
-		{"list_executors", false},
 
 		// Not supported: debug commands
 		{"debug_ipc", false},
@@ -65,9 +65,9 @@ func TestSupportedTUIViews(t *testing.T) {
 
 	views := SupportedTUIViews()
 
-	// Should have exactly 11 supported views (5 inspect + 6 stats)
-	if len(views) != 11 {
-		t.Errorf("SupportedTUIViews() returned %d views, expected 11", len(views))
+	// Should have exactly 5 supported views (2 inspect + 3 stats)
+	if len(views) != 5 {
+		t.Errorf("SupportedTUIViews() returned %d views, expected 5", len(views))
 	}
 
 	// All returned views should be supported
