@@ -2,6 +2,9 @@
   "name": "@pithecene/quarry-sdk",
   "license": "Apache-2.0",
   "exports": "./src/index.ts",
+  "imports": {
+    "puppeteer": "npm:puppeteer@^24 || ^25"
+  },
   "publish": {
     "include": ["src/**/*.ts", "jsr.json", "README.md"],
     "exclude": ["**/*.test.ts", "**/*.spec.ts"]
