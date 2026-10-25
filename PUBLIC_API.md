@@ -76,10 +76,15 @@ npx jsr add @pithecene/quarry-sdk
 npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
-Or via pnpm with GitHub Packages:
+Or install from GitHub Packages with pnpm. GitHub Packages serves the
+`@pithecene` scope from its own registry and requires a GitHub token with the
+`read:packages` scope, configured as an npm auth token for that registry:
 
 ```bash
-pnpm add @pithecene/quarry-sdk
+npm init -y
+npm pkg set type=module
+echo "@pithecene:registry=https://npm.pkg.github.com" >> .npmrc
+pnpm add @pithecene/quarry-sdk puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
 ### From source
