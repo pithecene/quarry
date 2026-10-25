@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { once } from 'node:events'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { lastLine, spawnRun } from '../src/process.ts'
@@ -8,11 +9,28 @@ const PROCESS_TS = fileURLToPath(new URL('../src/process.ts', import.meta.url))
 
 const node = (script: string) => [process.execPath, ['-e', script]] as const
 
-/** Whether a process with this pid exists. */
+/**
+ * Whether a process with this pid is still running. A killed process whose
+ * parent has not reaped it yet is a zombie: signal 0 still finds it, but it no
+ * longer runs. Orphans are reparented when the harness exits, and a runner's
+ * reaper may take longer than the test waits, so on Linux a zombie counts as
+ * gone.
+ */
 const isAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0)
-    return true
+  } catch {
+    return false
+  }
+  return !isZombie(pid)
+}
+
+/** Whether /proc reports the process as a zombie (Linux only). */
+const isZombie = (pid: number): boolean => {
+  try {
+    // The state follows the parenthesized command name, which may contain spaces.
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    return stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3) === 'Z'
   } catch {
     return false
   }
