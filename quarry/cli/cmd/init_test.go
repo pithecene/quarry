@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,7 +58,7 @@ func TestInit_WritesProject(t *testing.T) {
 	if strings.Join(resp.Created, ",") != strings.Join(want, ",") {
 		t.Fatalf("created = %v, want %v", resp.Created, want)
 	}
-	if len(resp.Next) != 3 || resp.Next[0] != "cd "+dir || resp.Next[1] != "npm install" {
+	if len(resp.Next) != 3 || resp.Next[0] != "cd '"+dir+"'" || resp.Next[1] != "npm install" {
 		t.Fatalf("next = %v", resp.Next)
 	}
 	if info, err := os.Stat(filepath.Join(dir, initStorageDir)); err != nil || !info.IsDir() {
@@ -119,8 +120,12 @@ func TestInit_ReusesAnExistingStorageDirectory(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, initStorageDir), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runInit(t, dir); err != nil {
+	resp, err := runInit(t, dir)
+	if err != nil {
 		t.Fatalf("init with an existing storage directory: %v", err)
+	}
+	if slices.Contains(resp.Created, initStorageDir+"/") {
+		t.Fatalf("created = %v reports the reused storage directory", resp.Created)
 	}
 }
 
@@ -179,5 +184,22 @@ func readJSON(t *testing.T, path string, v any) {
 	}
 	if err := json.Unmarshal(data, v); err != nil {
 		t.Fatalf("decode %s: %v", path, err)
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"my-scraper":        "my-scraper",
+		"./a/b_c.d":         "./a/b_c.d",
+		"My Scraper":        "'My Scraper'",
+		"it's":              `'it'\''s'`,
+		"$(rm -rf x)":       "'$(rm -rf x)'",
+		"~/scripts":         "'~/scripts'",
+		"semi;colon&amp|pi": "'semi;colon&amp|pi'",
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

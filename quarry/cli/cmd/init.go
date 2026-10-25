@@ -199,7 +199,11 @@ func writeInitProject(dir string, files []initFile) ([]string, error) {
 		}
 		created = append(created, f.path)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, initStorageDir), 0o755); err != nil {
+	err := os.Mkdir(filepath.Join(dir, initStorageDir), 0o755)
+	if errors.Is(err, os.ErrExist) {
+		return created, nil // an existing storage directory is reused, not created
+	}
+	if err != nil {
 		return created, fmt.Errorf("create %s: %w", initStorageDir, err)
 	}
 	return append(created, initStorageDir+"/"), nil
@@ -240,5 +244,17 @@ func initNextSteps(dir string) []string {
 	if dir == "." {
 		return steps
 	}
-	return append([]string{"cd " + dir}, steps...)
+	return append([]string{"cd " + shellQuote(dir)}, steps...)
+}
+
+// shellSafe matches a word that a POSIX shell reads literally.
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_./+:=@%-]+$`)
+
+// shellQuote quotes s for a POSIX shell, so that a printed command runs as
+// shown for any directory name.
+func shellQuote(s string) string {
+	if shellSafe.MatchString(s) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

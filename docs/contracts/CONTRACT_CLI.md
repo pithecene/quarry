@@ -469,8 +469,10 @@ Response:
 ```
 InitResponse:
   directory: string
-  created: string[]   (the paths written, in order)
-  next: string[]      (the commands to run next)
+  created: string[]   (the paths created, in order; a reused storage
+                       directory is not listed)
+  next: string[]      (the commands to run next, with the directory
+                       quoted for a POSIX shell)
 ```
 
 In table format, the paths written go to stderr and the next commands are
