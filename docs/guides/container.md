@@ -33,8 +33,13 @@ and run as a non-root `quarry` user.
 
 ## Standalone `docker run`
 
+The image runs as the non-root `quarry` user, which cannot write a host
+directory that another user owns. Pass `--user` with your own IDs so that
+the run can write the bind-mounted storage directory:
+
 ```bash
-docker run --rm \
+mkdir -p data
+docker run --rm --user "$(id -u):$(id -g)" \
   -v ./scripts:/work/scripts:ro \
   -v ./data:/work/data \
   ghcr.io/pithecene/quarry:0.14.0 \

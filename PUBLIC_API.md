@@ -60,6 +60,10 @@ See the [container guide](docs/guides/container.md) for `docker run` and Docker 
 
 ### SDK
 
+The `quarry init` command creates a new project with everything below
+(the [CLI guide](docs/guides/cli.md) § `init`). These steps set up a project
+by hand or add Quarry to an existing one.
+
 Scripts run as ES modules, and the executor loads Puppeteer, `puppeteer-extra`,
 and the stealth plugin from the script's project. Create the project and
 install the SDK with those packages. On Node 22.6 through 22.11, install
