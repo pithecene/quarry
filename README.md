@@ -47,9 +47,7 @@ npm init -y
 npm pkg set type=module
 npx jsr add @pithecene/quarry-sdk
 
-# Behind an HTTP proxy, install proxy-agent first so Puppeteer can download its browser
-# npm install proxy-agent
-
+npm install proxy-agent
 npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 

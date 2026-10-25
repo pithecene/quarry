@@ -63,15 +63,15 @@ See the [container guide](docs/guides/container.md) for `docker run` and Docker 
 Scripts run as ES modules, and the executor loads Puppeteer, `puppeteer-extra`,
 and the stealth plugin from the script's project. Create the project and
 install the SDK with those packages. On Node 22.6 through 22.11, install
-`puppeteer@24` in place of `puppeteer` in either command below. Behind an HTTP
-proxy, install `proxy-agent` first, so Puppeteer can download its browser
-through the proxy.
+`puppeteer@24` in place of `puppeteer` in either command below. Both commands
+install `proxy-agent` before Puppeteer, so that Puppeteer's browser download
+honors `HTTP_PROXY` and `HTTPS_PROXY` when a proxy is configured.
 
 ```bash
 npm init -y
 npm pkg set type=module
 npx jsr add @pithecene/quarry-sdk
-
+npm install proxy-agent
 npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
@@ -85,7 +85,8 @@ npm init -y
 npm pkg set type=module
 echo "@pithecene:registry=https://npm.pkg.github.com" >> .npmrc
 echo '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}' >> .npmrc
-pnpm add @pithecene/quarry-sdk puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
+pnpm add @pithecene/quarry-sdk proxy-agent
+pnpm add puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
 ### From source
