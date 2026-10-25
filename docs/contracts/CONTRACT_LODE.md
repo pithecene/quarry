@@ -1,6 +1,6 @@
 # Quarry Lode Storage — Contract
 
-This document freezes Quarry's minimal expectations of Lode.
+This document defines Quarry's minimal expectations of Lode.
 
 This is a contract document. Implementations must conform.
 

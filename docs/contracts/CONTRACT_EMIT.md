@@ -1,6 +1,6 @@
 # Quarry Emit — Contract
 
-This document freezes the **emit contract** between user scripts and the Quarry
+This document defines the **emit contract** between user scripts and the Quarry
 runtime boundary. It defines the **event envelope**, **event types**, **ordering**,
 **versioning**, and **error semantics**.
 

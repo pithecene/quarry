@@ -1,6 +1,6 @@
 # Quarry CLI — Contract
 
-This document freezes the **CLI surface** and **read-only guarantees** for
+This document defines the **CLI surface** and **read-only guarantees** for
 Quarry. It defines the command topology, required invariants, and the
 request/response shapes exposed by the runtime.
 

@@ -1,7 +1,7 @@
 # Quarry Metrics — Contract
 
 This document defines the **metrics surface** required of the Quarry runtime.
-It freezes the **metric names, semantics, and required visibility** for
+It specifies the **metric names, semantics, and required visibility** for
 CLI stats and operational observability.
 
 This is a contract document. Implementations must conform.

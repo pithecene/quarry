@@ -1,6 +1,6 @@
 # Quarry Ingestion Policy — Contract
 
-This document freezes the semantics expected of ingestion policies.
+This document defines the semantics expected of ingestion policies.
 
 This is a contract document. Implementations must conform.
 
