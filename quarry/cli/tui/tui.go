@@ -54,5 +54,6 @@ func SupportedTUIViews() []string {
 		"stats_tasks",
 		"stats_proxies",
 		"stats_executors",
+		"stats_metrics",
 	}
 }

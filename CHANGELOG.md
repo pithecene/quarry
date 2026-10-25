@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Metrics contract**: `CONTRACT_METRICS.md` § Data Source Progression states which read commands read storage today (`stats metrics`, `list runs`, and `list events`) and that the others return stub data. It no longer claims that every `stats` command reads Lode through a global reader configuration, which never shipped.
 - **Docs**: `IMPLEMENTATION_PLAN.md` records what v0.13.6 and v0.14.0 shipped. Retention shipped as `quarry prune`, and Lode v0.12.0 enforces each dataset's compressor, so the planned `quarry.json` pin is dropped. The items v0.14.0 did not ship, among them the storage key in `file_write_ack`, the run deadline, and the compressor option, are listed under Carried Forward.
 
+### Fixed
+
+- **Metrics TUI**: `quarry stats metrics --tui` renders the metrics snapshot, grouped as run lifecycle, ingestion, executor, and storage counts. It previously showed `Unknown view type: stats_metrics`.
+
 ---
 
 ## [0.14.0] - 2026-10-24
