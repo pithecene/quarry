@@ -9,18 +9,21 @@
 
 **A CLI-first web extraction runtime for browser-driven crawling and durable ingestion**
 
-Quarry is a web extraction runtime for imperative, browser-backed scraping workflows. It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
-
-Quarry executes user-authored Puppeteer scripts under a strict runtime contract, streams observations incrementally, and hands off persistence to an external substrate (typically [Lode](https://github.com/pithecene/lode)). It is intentionally *not* a crawler framework, workflow engine, or low-code platform.
+Quarry runs a Puppeteer script you write under a strict runtime contract, streams what the script observes as events, and hands persistence to an external storage layer (typically [Lode](https://github.com/pithecene/lode)). It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
 
 ---
 
 ## Installation
 
+These steps require Node.js 22.18 or later, which runs TypeScript scripts with native type stripping by default. They also use [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured, so the installed CLI is on your `PATH`. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain and covers earlier Node 22 releases.
+
 ### CLI
 
+Create a directory for your scripts and install the CLI there with mise, which records the version in the directory's `mise.toml` and puts `quarry` on your `PATH` inside it:
+
 ```bash
-mise install github:pithecene/quarry@0.14.0
+mkdir quarry-scripts && cd quarry-scripts
+mise use github:pithecene/quarry@0.14.0
 ```
 
 ### Docker
@@ -29,7 +32,7 @@ mise install github:pithecene/quarry@0.14.0
 # Full image (includes Chromium + fonts)
 docker pull ghcr.io/pithecene/quarry:0.14.0
 
-# Slim image (no browser — BYO Chromium via --browser-ws-endpoint)
+# Slim image (no browser; bring your own Chromium through --browser-ws-endpoint)
 docker pull ghcr.io/pithecene/quarry:0.14.0-slim
 ```
 
@@ -37,8 +40,16 @@ See the [container guide](docs/guides/container.md) for Docker Compose examples.
 
 ### SDK
 
+In the same directory, create an ES module project, then install the SDK and the Puppeteer packages the executor loads:
+
 ```bash
+npm init -y
+npm pkg set type=module
 npx jsr add @pithecene/quarry-sdk
+npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
+
+# Behind an HTTP proxy, Puppeteer also needs proxy-agent to download its browser
+npm install proxy-agent
 ```
 
 See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
@@ -52,8 +63,8 @@ See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
 - Designed for **imperative Puppeteer scripts**
 - Explicit about **ordering, backpressure, and failure**
 - Agnostic to storage, retries, scheduling, and downstream processing
-- **Not** a crawling DSL or workflow orchestrator
-- **Not** a SaaS scraper or low-code pipeline
+
+Quarry is not a crawler framework, a crawling DSL, a workflow orchestrator, a hosted scraping service, or a low-code pipeline.
 
 Quarry's responsibility ends at **observing and emitting what happened**.
 
@@ -61,7 +72,7 @@ Quarry's responsibility ends at **observing and emitting what happened**.
 
 ## Conceptual Model
 
-Quarry enforces a clean boundary between extraction logic and ingestion mechanics:
+Quarry enforces a fixed boundary between extraction logic and ingestion mechanics:
 
 ```
 User Script (Puppeteer, imperative)
@@ -75,9 +86,9 @@ Ingestion Policy (strict, buffered, streaming)
 Persistence Substrate (e.g. Lode)
 ```
 
-Scripts **emit observations**.  
-Policies decide how those observations are handled.  
-Persistence decides what survives.
+Scripts **emit observations**.
+The ingestion policy decides how the runtime buffers and writes them, and which advisory events it may drop.
+The persistence layer stores what the policy writes.
 
 Four components carry out this model:
 
@@ -120,32 +131,27 @@ Quarry owns **only** the extraction step.
 
 ## Quick Example
 
-Quarry scripts are **freestanding programs**, not libraries.
+A Quarry script is a **freestanding program**, not a library. This one reads a page and emits one item for each link on it.
 
-They should:
-- Accept all inputs via the job payload
-- Use real Puppeteer objects (`page`, `browser`)
-- Emit all outputs via `emit.*`
-- Avoid shared global state
-- Remain agnostic to durability and retries
-
-### Example
+### Script
 
 ```ts
 import type { QuarryContext } from '@pithecene/quarry-sdk'
 
-export default async function run(ctx: QuarryContext): Promise<void> {
+export default async function run(ctx: QuarryContext<{ url: string }>): Promise<void> {
   await ctx.page.goto(ctx.job.url)
 
-  const products = await ctx.page.evaluate(() => {
-    // scrape DOM
-    return []
-  })
+  const links = await ctx.page.$$eval('a', (anchors) =>
+    anchors.map((anchor) => ({
+      text: anchor.textContent?.trim() ?? '',
+      href: anchor.href
+    }))
+  )
 
-  for (const product of products) {
+  for (const link of links) {
     await ctx.emit.item({
-      item_type: 'product',
-      data: product
+      item_type: 'link',
+      data: link
     })
   }
 
@@ -153,7 +159,36 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 }
 ```
 
-Scripts are imperative, explicit, and boring by design.
+Scripts are imperative, explicit, and simple by design. A script should:
+
+- Accept all inputs through the job payload
+- Use real Puppeteer objects (`page`, `browser`)
+- Emit all outputs through `emit.*`
+- Avoid shared global state
+- Remain agnostic to durability and retries
+
+### Run the Script
+
+Save the script as `links.ts` in the project directory, create a storage directory, and run the script with the filesystem storage backend:
+
+```bash
+mkdir -p ./quarry-data
+quarry run \
+  --script links.ts \
+  --run-id links-001 \
+  --source example \
+  --job '{"url": "https://example.com"}' \
+  --storage-backend fs \
+  --storage-path ./quarry-data
+```
+
+Quarry writes the run's events under `./quarry-data`. List the run to confirm it succeeded:
+
+```bash
+quarry list runs --storage-backend fs --storage-path ./quarry-data --source example
+```
+
+The [run guide](docs/guides/run.md) describes the run lifecycle and its terminal states.
 
 ---
 
