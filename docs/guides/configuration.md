@@ -74,8 +74,8 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 | `--storage-backend` | `fs` or `s3` | Backend type |
 | `--storage-path` | string | `fs`: local directory, `s3`: `bucket/optional-prefix` |
 | `--storage-region` | string | AWS region (S3 only, uses default credential chain) |
-| `--storage-endpoint` | string | Custom S3 endpoint URL (for R2, MinIO, etc.) |
-| `--storage-s3-path-style` | bool | Force path-style addressing (required by R2, MinIO) |
+| `--storage-endpoint` | string | Custom S3 endpoint URL for an S3-compatible provider |
+| `--storage-s3-path-style` | bool | Force path-style addressing (required by many S3-compatible providers) |
 
 ### Policy
 
@@ -292,7 +292,7 @@ storage:
   backend: s3
   path: my-bucket/quarry-data
   region: us-east-1
-  endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com
+  endpoint: https://s3.example.com
   s3_path_style: true
 
 policy:
@@ -306,14 +306,14 @@ policy:
   # flush_interval: 5s
 
 proxies:
-  iproyal_nyc:
+  provider_pool:
     strategy: round_robin
     endpoints:
       - protocol: https
-        host: geo.iproyal.com
+        host: gateway.proxy.example.com
         port: 12321
-        username: ${IPROYAL_USER}
-        password: ${IPROYAL_PASS}
+        username: ${PROXY_USER}
+        password: ${PROXY_PASS}
 
   rotating_pool:
     strategy: random
@@ -346,7 +346,7 @@ proxies:
         port: 8080
 
 proxy:
-  pool: iproyal_nyc
+  pool: provider_pool
   strategy: round_robin
 
 adapter:
@@ -447,7 +447,7 @@ Resolution order:
 
 Set `--storage-region` if the bucket is not in your SDK's default region.
 
-For S3-compatible providers (R2, MinIO), set credentials via environment
+For an S3-compatible provider, set credentials via environment
 variables and use `--storage-endpoint` to point at the provider's endpoint.
 
 ---
@@ -532,7 +532,7 @@ quarry run \
   --flush-interval 30s
 ```
 
-### S3-compatible provider (Cloudflare R2)
+### S3-Compatible Provider
 
 ```bash
 quarry run \
@@ -541,14 +541,14 @@ quarry run \
   --source my-source \
   --storage-backend s3 \
   --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com \
+  --storage-endpoint https://s3.example.com \
   --storage-s3-path-style
 ```
 
 Credentials via environment variables:
 ```bash
-export AWS_ACCESS_KEY_ID=<r2-access-key>
-export AWS_SECRET_ACCESS_KEY=<r2-secret-key>
+export AWS_ACCESS_KEY_ID=<access-key>
+export AWS_SECRET_ACCESS_KEY=<secret-key>
 ```
 
 ### Proxy with stealth in CI

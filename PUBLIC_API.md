@@ -571,8 +571,8 @@ quarry run --dry-run --script ./my-script.ts --run-id test --source test \
 | Flag | Description |
 |------|-------------|
 | `--storage-region <region>` | AWS region (uses default chain if omitted) |
-| `--storage-endpoint <url>` | Custom S3 endpoint URL (e.g. Cloudflare R2, MinIO) |
-| `--storage-s3-path-style` | Force path-style addressing (required by R2, MinIO) |
+| `--storage-endpoint <url>` | Custom S3 endpoint URL for an S3-compatible provider |
+| `--storage-s3-path-style` | Force path-style addressing (required by many S3-compatible providers) |
 
 ### Inspect Command
 
@@ -802,10 +802,10 @@ change.
 1. **Single executor type**: Only Node.js executor supported
 2. **No built-in retries**: Retry logic is caller's responsibility
 3. **No streaming reads**: Artifacts must fit in memory (note: the `streaming` *ingestion policy* is unrelated: it controls write batching, not read access)
-4. **No transactional storage writes**: S3 and S3-compatible providers (R2, MinIO) do not provide transactional guarantees across writes
+4. **No transactional storage writes**: S3 and S3-compatible providers do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler. External orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
-7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error, and with no storage flag `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers (R2, MinIO) via `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them. Backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See the [integration guide](docs/guides/integration.md).
+7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error, and with no storage flag `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers, through `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them. Backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release. Config-based logical names are under consideration.
 
@@ -846,14 +846,14 @@ Uses AWS default credential chain. IAM permissions required:
 - `s3:GetObject`
 - `s3:ListBucket`
 
-### S3-Compatible Providers (R2, MinIO)
+### S3-Compatible Providers
 
 Quarry supports S3-compatible storage providers via custom endpoint and path-style flags:
 
 ```bash
 --storage-backend s3 \
 --storage-path my-bucket/quarry-data \
---storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com \
+--storage-endpoint https://s3.example.com \
 --storage-s3-path-style
 ```
 

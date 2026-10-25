@@ -127,8 +127,8 @@ Optional flags:
 Storage flags:
 - `--storage-dataset <name>` (Lode dataset ID, default: `"quarry"`)
 - `--storage-region <region>` (AWS region, uses default chain if omitted)
-- `--storage-endpoint <url>` (custom S3 endpoint for R2, MinIO, etc.)
-- `--storage-s3-path-style` (force path-style addressing, required by R2/MinIO)
+- `--storage-endpoint <url>` (custom endpoint for an S3-compatible provider)
+- `--storage-s3-path-style` (force path-style addressing, which many S3-compatible providers require)
 
 Adapter flags (event-bus notification):
 - `--adapter <type>` (event-bus adapter, e.g. `webhook`, `redis`)
@@ -244,7 +244,7 @@ quarry run \
   --job '{"source":"demo"}'
 ```
 
-S3-compatible storage example (Cloudflare R2):
+S3-compatible storage example:
 
 ```
 quarry run \
@@ -253,7 +253,7 @@ quarry run \
   --source my-source \
   --storage-backend s3 \
   --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com \
+  --storage-endpoint https://s3.example.com \
   --storage-s3-path-style \
   --job '{"url":"https://example.com"}'
 ```
@@ -332,7 +332,7 @@ quarry stats runs --tui
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data --run-id run-001
 quarry stats metrics --storage-backend s3 --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style
+  --storage-endpoint https://s3.example.com --storage-s3-path-style
 ```
 
 The `stats metrics` command accepts the same S3 flags as `run` (`--storage-region`,
@@ -370,7 +370,7 @@ Examples:
 ```
 quarry list runs --storage-backend fs --storage-path ./quarry-data --source demo
 quarry list runs --storage-backend s3 --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style \
+  --storage-endpoint https://s3.example.com --storage-s3-path-style \
   --source demo --category default --state succeeded --limit 100
 quarry list events --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 --run-id run-001

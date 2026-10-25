@@ -529,8 +529,8 @@ Optional flags:
 - `--storage-backend=fs|s3`: storage backend for Lode reads
 - `--storage-path=<path>`: storage path (fs: directory, s3: bucket/prefix)
 - `--storage-region=<region>`: AWS region for S3 backend
-- `--storage-endpoint=<url>`: custom S3 endpoint for S3-compatible providers (e.g. Cloudflare R2, MinIO), with the same meaning as on `run`
-- `--storage-s3-path-style`: force path-style S3 addressing (required by R2, MinIO), with the same meaning as on `run`
+- `--storage-endpoint=<url>`: custom S3 endpoint for S3-compatible providers, with the same meaning as on `run`
+- `--storage-s3-path-style`: force path-style S3 addressing (required by many S3-compatible providers), with the same meaning as on `run`
 - `--run-id=<id>`: read metrics for a specific run
 - `--source=<source>`: filter by source partition
 
@@ -575,7 +575,7 @@ Usage examples:
 quarry stats metrics --storage-backend fs --storage-path /data/quarry
 quarry stats metrics --storage-backend fs --storage-path /data/quarry --run-id run-001
 quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-region us-west-2
-quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style
+quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-endpoint https://s3.example.com --storage-s3-path-style
 quarry stats metrics --format json
 ```
 

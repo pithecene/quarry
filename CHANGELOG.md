@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Contracts**: Every contract is titled in the form "Quarry <Subject> — Contract" and opens with "This document defines". `CONTRACT_LODE.md` is titled "Quarry Lode Storage — Contract".
 - **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed. Its list of components moves to the README. The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
 - **Docs**: The README, `PUBLIC_API.md`, the guides, the contracts, and this changelog follow Chicago style: no semicolons or dashes as sentence punctuation, no contractions, active voice where an agent acts, and headline-style headings. Headings that were a bare code name now name what they describe, such as "The `list runs` Command", and every section reference that named one follows it.
+- **Docs**: Examples no longer name particular vendors or subjects. S3-compatible providers are described generically, with `https://s3.example.com` as the example endpoint, the proxy examples use a placeholder provider, and the README pipeline extracts the catalog of an example store. The CLI help for `--storage-endpoint` and `--storage-s3-path-style` changes to match.
 
 ### Fixed
 
@@ -63,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Browser server lifetime**: The reusable browser server no longer shuts down under a run in progress. It counted only pages that had navigated, so a run whose page was still `about:blank`, or one that connected as the idle timeout expired, could lose its browser. Each run now holds a connection to the server, over a Unix socket in the discovery directory, until it ends. The server shuts down only after it has had no connection for the idle timeout.
 - **Orphaned browser**: A browser left running by a reusable browser server that was killed, as with `SIGKILL`, is closed by the next server to start.
 - **Prune option errors**: `quarry prune` refuses options it cannot act on, such as no age flag, with the plain reason and exit code 1. It no longer renders an empty report or advises a rerun that would be refused again.
-- **S3 checksum warnings**: Reads from S3-compatible stores that send no checksum, such as R2 and MinIO, no longer log a warning to stderr for each response. The SDK still validates every checksum a store sends.
+- **S3 checksum warnings**: Reads from S3-compatible stores that send no checksum no longer log a warning to stderr for each response. The SDK still validates every checksum a store sends.
 
 ### Upgrade Notes
 
@@ -79,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **CLI**: `quarry stats metrics` reads from S3-compatible providers (Cloudflare R2, MinIO). The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS. It now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
+- **CLI**: `quarry stats metrics` reads from S3-compatible providers. The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS. It now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
 - **Packaging**: npm `latest` and the `ghcr.io/pithecene/quarry` `:latest`/`:slim` tags always point at the newest published release. Publishing an older patch release after a newer one (as with v0.13.5 after v0.13.6) no longer moves them backwards (#252)
 - **Storage**: Storage errors are classified by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind, e.g. a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied` instead of `ErrPermissionDenied`
 
@@ -531,8 +532,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Storage**: S3-compatible provider support. New `--storage-endpoint` and `--storage-s3-path-style` CLI flags for Cloudflare R2, MinIO, and other S3-compatible backends (#87)
-- **Docs**: S3-compatible storage flags and R2 examples added to cli.md, configuration.md, and PUBLIC_API.md (#89)
+- **Storage**: S3-compatible provider support. New `--storage-endpoint` and `--storage-s3-path-style` CLI flags for S3-compatible backends (#87)
+- **Docs**: S3-compatible storage flags and examples added to cli.md, configuration.md, and PUBLIC_API.md (#89)
 - **Docs**: S3-compatible provider support section added to CONTRACT_LODE.md (#87)
 
 ### Fixed

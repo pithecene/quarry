@@ -74,10 +74,10 @@ EXAMPLES:
     --storage-backend s3 --storage-path my-bucket/prefix \
     --storage-region us-east-1
 
-  # Run with Cloudflare R2 (S3-compatible)
+  # Run with an S3-compatible provider
   quarry run --script ./script.ts --run-id run-005 --source my-source \
     --storage-backend s3 --storage-path my-bucket/prefix \
-    --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com \
+    --storage-endpoint https://s3.example.com \
     --storage-s3-path-style
 
 ADVANCED:
@@ -230,11 +230,11 @@ ADVANCED:
 			},
 			&cli.StringFlag{
 				Name:  "storage-endpoint",
-				Usage: "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+				Usage: "Custom S3 endpoint URL for S3-compatible providers",
 			},
 			&cli.BoolFlag{
 				Name:  "storage-s3-path-style",
-				Usage: "Force path-style addressing for S3 (required by R2, MinIO)",
+				Usage: "Force path-style addressing for S3 (required by many S3-compatible providers)",
 			},
 			// Browser reuse flags
 			&cli.BoolFlag{

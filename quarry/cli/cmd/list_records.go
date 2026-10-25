@@ -26,8 +26,8 @@ func storageReadFlags() []cli.Flag {
 		&cli.StringFlag{Name: "storage-backend", Usage: "Storage backend: fs or s3"},
 		&cli.StringFlag{Name: "storage-path", Usage: "Storage path (fs: directory, s3: bucket/prefix)"},
 		&cli.StringFlag{Name: "storage-region", Usage: "AWS region for S3 backend"},
-		&cli.StringFlag{Name: "storage-endpoint", Usage: "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)"},
-		&cli.BoolFlag{Name: "storage-s3-path-style", Usage: "Force path-style addressing for S3 (required by R2, MinIO)"},
+		&cli.StringFlag{Name: "storage-endpoint", Usage: "Custom S3 endpoint URL for S3-compatible providers"},
+		&cli.BoolFlag{Name: "storage-s3-path-style", Usage: "Force path-style addressing for S3 (required by many S3-compatible providers)"},
 	}
 }
 

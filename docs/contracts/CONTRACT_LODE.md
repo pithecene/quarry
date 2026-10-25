@@ -229,7 +229,7 @@ Deduplication is explicitly out of scope and left to downstream consumers.
 
 ## S3-Compatible Provider Support
 
-The S3 storage backend supports S3-compatible providers (Cloudflare R2, MinIO, etc.)
+The S3 storage backend supports S3-compatible providers
 via custom endpoint and path-style addressing options.
 
 - **Custom endpoint**: overrides the default AWS S3 endpoint URL.

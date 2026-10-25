@@ -184,13 +184,13 @@
         "storage-endpoint": {
           "type": "string",
           "required": false,
-          "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+          "description": "Custom S3 endpoint URL for S3-compatible providers",
           "dependsOn": ["storage-backend=s3"]
         },
         "storage-s3-path-style": {
           "type": "bool",
           "required": false,
-          "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+          "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
           "dependsOn": ["storage-backend=s3"]
         },
         "adapter": {
@@ -465,13 +465,13 @@
             "storage-endpoint": {
               "type": "string",
               "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "description": "Custom S3 endpoint URL for S3-compatible providers",
               "dependsOn": ["storage-backend=s3"]
             },
             "storage-s3-path-style": {
               "type": "bool",
               "required": false,
-              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
             "run-id": {
@@ -536,13 +536,13 @@
             "storage-endpoint": {
               "type": "string",
               "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "description": "Custom S3 endpoint URL for S3-compatible providers",
               "dependsOn": ["storage-backend=s3"]
             },
             "storage-s3-path-style": {
               "type": "bool",
               "required": false,
-              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -615,13 +615,13 @@
             "storage-endpoint": {
               "type": "string",
               "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "description": "Custom S3 endpoint URL for S3-compatible providers",
               "dependsOn": ["storage-backend=s3"]
             },
             "storage-s3-path-style": {
               "type": "bool",
               "required": false,
-              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -723,13 +723,13 @@
             "storage-endpoint": {
               "type": "string",
               "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+              "description": "Custom S3 endpoint URL for S3-compatible providers",
               "dependsOn": ["storage-backend=s3"]
             },
             "storage-s3-path-style": {
               "type": "bool",
               "required": false,
-              "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
             "format": {
@@ -810,13 +810,13 @@
         "storage-endpoint": {
           "type": "string",
           "required": false,
-          "description": "Custom S3 endpoint URL for S3-compatible providers (e.g. Cloudflare R2, MinIO)",
+          "description": "Custom S3 endpoint URL for S3-compatible providers",
           "dependsOn": ["storage-backend=s3"]
         },
         "storage-s3-path-style": {
           "type": "bool",
           "required": false,
-          "description": "Force path-style addressing for S3 (required by R2, MinIO)",
+          "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
           "dependsOn": ["storage-backend=s3"]
         },
         "source": {

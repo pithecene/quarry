@@ -95,22 +95,22 @@ Quarry is designed to be composed **around**, not extended **from**:
 ```bash
 # Extract
 quarry run \
-  --script streeteasy.ts \
-  --run-id "streeteasy-$(date +%s)" \
-  --source nyc-rent \
-  --category streeteasy \
-  --job '{"url": "https://streeteasy.com/rentals"}' \
+  --script products.ts \
+  --run-id "products-$(date +%s)" \
+  --source example-store \
+  --category products \
+  --job '{"url": "https://shop.example.com/products"}' \
   --storage-backend fs \
   --storage-path /var/quarry/data \
   --policy buffered
 
 # Transform (outside Quarry)
-nyc-rent-transform \
-  --input /var/quarry/data/source=nyc-rent \
+catalog-transform \
+  --input /var/quarry/data/source=example-store \
   --output /var/quarry/normalized
 
 # Index / analyze (outside Quarry)
-nyc-rent-index \
+catalog-index \
   --input /var/quarry/normalized
 ```
 
@@ -137,15 +137,15 @@ import type { QuarryContext } from '@pithecene/quarry-sdk'
 export default async function run(ctx: QuarryContext): Promise<void> {
   await ctx.page.goto(ctx.job.url)
 
-  const listings = await ctx.page.evaluate(() => {
+  const products = await ctx.page.evaluate(() => {
     // scrape DOM
     return []
   })
 
-  for (const listing of listings) {
+  for (const product of products) {
     await ctx.emit.item({
-      item_type: 'listing',
-      data: listing
+      item_type: 'product',
+      data: product
     })
   }
 

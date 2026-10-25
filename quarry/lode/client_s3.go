@@ -20,11 +20,11 @@ type S3Config struct {
 	Prefix string
 	// Region is the AWS region (optional, uses default chain if empty).
 	Region string
-	// Endpoint is a custom S3 endpoint URL for S3-compatible providers
-	// (e.g. Cloudflare R2, MinIO). Empty uses the default AWS endpoint.
+	// Endpoint is a custom S3 endpoint URL for an S3-compatible provider.
+	// Empty uses the default AWS endpoint.
 	Endpoint string
 	// UsePathStyle forces path-style addressing (bucket in path, not subdomain).
-	// Required by most S3-compatible providers (R2, MinIO, etc.).
+	// Required by most S3-compatible providers.
 	UsePathStyle bool
 }
 
@@ -75,7 +75,7 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 // S3-compatible providers.
 //
 // It also silences the SDK's warning that a response carried no checksum
-// it supports. Stores such as R2 and MinIO often send none, and the SDK
+// it supports. Many S3-compatible stores send none, and the SDK
 // logs the warning on every such read, flooding stderr. Validation is
 // unchanged: the SDK still validates every checksum a store sends.
 func s3ClientOptions(s3cfg S3Config) []func(*s3.Options) {
