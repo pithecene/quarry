@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: `IMPLEMENTATION_PLAN.md` records what v0.13.6 and v0.14.0 shipped. Retention shipped as `quarry prune`, and Lode v0.12.0 enforces each dataset's compressor, so the planned `quarry.json` pin is dropped. The items v0.14.0 did not ship, among them the storage key in `file_write_ack`, the run deadline, and the compressor option, are listed under Carried Forward.
 - **Docs**: The documentation is organized by audience. The implementation plan, the release readiness records, and the ingress models exploration move to `docs/plans/`, and `CLI_PARITY.json` moves to `docs/maintainers/`.
 - **Contracts**: The contracts state invariants only. They no longer mark the release that introduced a section, restate the experimental standing that `PUBLIC_API.md` § Experimental Surface defines, or list planned adapters and hosts. `AGENTS.md` § Contract Rules states the rule.
+- **Contracts**: Every contract is titled in the form "Quarry <Subject> — Contract". `CONTRACT_LODE.md` is titled "Quarry Lode Storage — Contract".
 
 ### Fixed
 

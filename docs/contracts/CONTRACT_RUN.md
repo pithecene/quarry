@@ -1,4 +1,4 @@
-# Quarry Run Identity & Lineage
+# Quarry Run Identity and Lineage — Contract
 
 This document freezes the identity and lineage rules for runs.
 

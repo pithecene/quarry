@@ -1,4 +1,4 @@
-# Quarry Lode Expectations
+# Quarry Lode Storage — Contract
 
 This document freezes Quarry's minimal expectations of Lode.
 

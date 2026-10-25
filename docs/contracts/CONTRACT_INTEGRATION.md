@@ -1,4 +1,4 @@
-# Quarry Integration Contract
+# Quarry Integration — Contract
 
 This document defines the **integration boundary** for downstream notification
 adapters and orchestration integrations used by the Quarry runtime.

@@ -1,4 +1,4 @@
-# Quarry Ingestion Policy Semantics
+# Quarry Ingestion Policy — Contract
 
 This document freezes the semantics expected of ingestion policies.
 
