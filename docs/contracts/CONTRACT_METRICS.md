@@ -124,11 +124,11 @@ A read command that has no Lode-backed reader returns stub data.
 
 - `stats metrics` reads the latest metrics record from storage when
   `--storage-backend` and `--storage-path` are both given, and returns stub
-  data when no storage flag is given ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `stats metrics` Command).
+  data when no storage flag is given ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
 - `list runs` reads run records from storage in the same way, with the
-  same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `list runs` Command). `list events`
+  same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`). `list events`
   requires the storage flags and has no stub ([CONTRACT_CLI.md](CONTRACT_CLI.md)
-  §The `list events` Command).
+  §`list events`).
 - Every other `stats`, `inspect`, and `list` command returns stub data
   only. No global reader configuration exists, and the commands read
   storage only through their own storage flags.

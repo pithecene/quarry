@@ -410,7 +410,7 @@ Retention removes whole runs, chosen by their state and age. Quarry
 chooses the runs, because only Quarry knows a run's outcome. Lode's
 `Dataset.Expire` removes their snapshots (Lode [CONTRACT_RETENTION.md](https://github.com/pithecene/lode/blob/main/docs/contracts/CONTRACT_RETENTION.md)), and
 Quarry deletes the objects it owns. The `quarry/retention` package
-implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `prune` Command) exposes it.
+implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) exposes it.
 
 ### Selection
 

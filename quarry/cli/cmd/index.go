@@ -11,7 +11,7 @@ import (
 )
 
 // IndexCommand returns the index command, which maintains Quarry's run
-// records (CONTRACT_CLI.md §The `index` Command).
+// records (CONTRACT_CLI.md §index).
 func IndexCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "index",

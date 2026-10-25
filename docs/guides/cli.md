@@ -90,7 +90,7 @@ If `--tui` is provided for other commands, the CLI returns an error.
 
 ## Command Reference
 
-### The `run` Command
+### `run`
 
 Executes a single script run. This is the only command that performs work.
 
@@ -298,7 +298,7 @@ The flags are mutually exclusive:
 - Using both is an error
 - If neither is specified, defaults to `{}`
 
-### The `inspect` Commands
+### `inspect`
 
 Deep view of a single entity.
 
@@ -314,7 +314,7 @@ quarry inspect proxy default
 quarry inspect run run-001 --tui
 ```
 
-### The `stats` Commands
+### `stats`
 
 Aggregated facts derived from the read path.
 
@@ -339,7 +339,7 @@ The `stats metrics` command accepts the same S3 flags as `run` (`--storage-regio
 `--storage-endpoint`, `--storage-s3-path-style`), so data written to an
 S3-compatible provider is read back from the same provider.
 
-### The `list` Commands
+### `list`
 
 Thin enumerations (not inspect-level detail).
 
@@ -376,7 +376,7 @@ quarry list events --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 --run-id run-001
 ```
 
-### The `index` Command
+### `index`
 
 The command `index rebuild <storage flags> [--dry-run]` backfills run records for runs
 written before v0.14.0. It writes only what the stored data shows and never
@@ -390,7 +390,7 @@ quarry index rebuild --storage-backend fs --storage-path ./quarry-data --dry-run
 quarry index rebuild --storage-backend fs --storage-path ./quarry-data
 ```
 
-### The `prune` Command
+### `prune`
 
 The command `prune <storage flags> [selectors] <age flags> [--dry-run]` removes whole
 runs: their partitions, sidecar files, and run records. Each age flag
@@ -417,7 +417,7 @@ quarry prune --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 --run-id run-001 --succeeded-days 0
 ```
 
-### The `debug` Commands
+### `debug`
 
 Opt-in diagnostics. Read-only by default.
 
@@ -433,7 +433,7 @@ quarry debug resolve proxy default --proxy-config ./proxies.json --commit
 quarry debug ipc --verbose
 ```
 
-### The `version` Command
+### `version`
 
 Reports the canonical project version (lockstep across all components).
 

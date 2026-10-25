@@ -24,13 +24,13 @@ Runs are append-only and immutable once complete.
 
 ## Canonical Identifiers
 
-### The `run_id` Field
+### `run_id`
 - Unique, stable identifier for a run.
 - Must be globally unique across all time and jobs.
 - Appears in every event envelope.
 - run_id generation strategy is implementation-defined but must be collision-resistant (e.g., UUIDv7, ULID).
 
-### The `job_id` Field
+### `job_id`
 - Identifier for the logical job.
 - Stable across retries.
 - Optional in the emit envelope if unknown at emit-time.
@@ -92,7 +92,7 @@ acquire browser → create context
 auto-emit terminal → [cleanup] → run_result → return
 ```
 
-### The `prepare` Hook
+### `prepare`
 
 - Invoked **before** browser acquisition.
 - Receives the raw job payload and run metadata.
@@ -236,7 +236,7 @@ existed receive backfilled records (§Backfilled Run Records).
 
 ### Backfilled Run Records
 
-The `quarry index rebuild` command ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `index rebuild` Command) writes records for
+The `quarry index rebuild` command ([CONTRACT_CLI.md](CONTRACT_CLI.md) §index rebuild) writes records for
 runs that have partitions but no start record. It is the only reader
 that finds runs by scanning the partition tree, and it writes only what
 the stored data shows:
@@ -269,7 +269,7 @@ run the rebuild after such writers have stopped writing to the dataset.
 
 ### Reading Run Records
 
-Readers ([CONTRACT_CLI.md](CONTRACT_CLI.md) §The `list runs` Command) apply these rules:
+Readers ([CONTRACT_CLI.md](CONTRACT_CLI.md) §list runs) apply these rules:
 
 - A run is listed if and only if its start record exists. An end record
   without a start record (left by a start-record write that failed without being persisted) is

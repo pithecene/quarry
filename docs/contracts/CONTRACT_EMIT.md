@@ -58,14 +58,14 @@ The envelope must be **stable** and **parseable without schema discovery**.
 
 ## Event Types
 
-### 1) The `item` Event
+### 1) `item`
 Represents a durable, structured output record.
 
 Required payload fields:
 - `item_type` (string): caller-defined type label
 - `data` (object): the record payload
 
-### 2) The `artifact` Event
+### 2) `artifact`
 Represents a binary or large payload.
 
 Required payload fields:
@@ -80,14 +80,14 @@ chunking, and `is_last` signaling).
 
 Orphaned bytes (no corresponding artifact event) are eligible for GC.
 
-### 3) The `checkpoint` Event
+### 3) `checkpoint`
 Represents an explicit script checkpoint.
 
 Required payload fields:
 - `checkpoint_id` (string)
 - `note` (string, optional)
 
-### 4) The `enqueue` Event (Optional, Advisory)
+### 4) `enqueue` (optional advisory)
 Suggests the runtime consider enqueueing additional work.
 
 Required payload fields:
@@ -110,7 +110,7 @@ Runtime interpretation:
   Deduplication and depth limits are applied by the fan-out operator.
   The contract itself is unchanged. Runtime behavior depends on CLI flags.
 
-### 5) The `rotate_proxy` Event (Optional, Advisory)
+### 5) `rotate_proxy` (optional advisory)
 Suggests the runtime consider rotating proxy/session identity.
 
 Required payload fields:
@@ -119,7 +119,7 @@ Required payload fields:
 Semantics:
 - Advisory only, neither guaranteed nor required.
 
-### 6) The `log` Event
+### 6) `log`
 Structured log event emitted by script.
 
 Required payload fields:
@@ -127,7 +127,7 @@ Required payload fields:
 - `message` (string)
 - `fields` (object, optional)
 
-### 7) The `run_error` Event
+### 7) `run_error`
 Represents a script-level error that should terminate the run.
 
 Required payload fields:
@@ -135,7 +135,7 @@ Required payload fields:
 - `message` (string)
 - `stack` (string, optional)
 
-### 8) The `run_complete` Event
+### 8) `run_complete`
 Represents normal completion of the script.
 
 Required payload fields:

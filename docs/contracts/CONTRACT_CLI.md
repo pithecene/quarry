@@ -29,8 +29,8 @@ Non-goals:
   **read-only** with respect to execution, datasets, and persisted state.
   `index rebuild` only creates backfilled run records: it never
   overwrites a record and never writes or deletes partition data
-  (§The `index rebuild` Command). `prune` only deletes whole runs that its flags select
-  (§The `prune` Command).
+  (§index rebuild). `prune` only deletes whole runs that its flags select
+  (§prune).
 - A small set of `debug` commands may mutate **ephemeral runtime mechanics**
   only when explicitly requested and documented.
 - The CLI talks **only** to the Go runtime.
@@ -127,7 +127,7 @@ Unsupported (must error with `--tui`):
 
 ---
 
-## The `run` Command (Execution)
+## `run` (execution)
 
 The `quarry run` command is the **only** command that executes work.
 It must conform to [CONTRACT_RUN.md](CONTRACT_RUN.md) and emit observability defined by
@@ -436,12 +436,12 @@ Node 20.6+).
 
 ---
 
-## The `inspect` Commands (Single-Entity Introspection)
+## `inspect` (single-entity introspection)
 
 The `inspect` commands return a deep view of a single entity and are read-only.
 Data is sourced from the runtime’s read path (see [CONTRACT_LODE.md](CONTRACT_LODE.md)).
 
-### The `inspect run <run-id>` Command
+### `inspect run <run-id>`
 
 Request:
 ```
@@ -473,7 +473,7 @@ The `sidecar_files` field lists files written via `storage.put()` during the
 run. File refs are collected from Lode snapshot metadata (see [CONTRACT_LODE.md](CONTRACT_LODE.md)
 § Sidecar File Inventory). The field is omitted when no sidecar files exist.
 
-### The `inspect proxy <pool-name>` Command
+### `inspect proxy <pool-name>`
 
 Response:
 ```
@@ -493,12 +493,12 @@ the executor only applies resolved endpoints (see [CONTRACT_PROXY.md](CONTRACT_P
 
 ---
 
-## The `stats` Commands (Aggregated Facts)
+## `stats` (aggregated facts)
 
 The `stats` commands return aggregated, derived facts. They must not expose
 internal counters from executors. Stats are derived from Lode.
 
-### The `stats runs` Command
+### `stats runs`
 
 Response:
 ```
@@ -509,7 +509,7 @@ RunStats:
   failed: number
 ```
 
-### The `stats proxies` Command
+### `stats proxies`
 
 Response:
 ```
@@ -520,7 +520,7 @@ ProxyStats:
   last_used_at: time | null
 ```
 
-### The `stats metrics` Command
+### `stats metrics`
 
 Returns the most recent metrics snapshot.
 
@@ -581,11 +581,11 @@ quarry stats metrics --format json
 
 ---
 
-## The `list` Commands (Enumeration)
+## `list` (enumeration)
 
 The `list` commands return thin slices (not inspect-level detail).
 
-### The `list runs` Command
+### `list runs`
 
 With `--storage-backend` and `--storage-path`, runs are listed
 from their run records ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Records, §Reading Run Records).
@@ -656,7 +656,7 @@ without storage is an error, and any storage flag given without both
 `--storage-backend` and `--storage-path` is an error, never a fallback to
 stub data.
 
-### The `list events` Command
+### `list events`
 
 Lists one run's events, read from storage.
 
@@ -683,7 +683,7 @@ item schema. The run's partitions are addressed from its start record's
 
 A run with no start record is an error (`run not found`).
 
-### The `list pools` Command
+### `list pools`
 
 Response must include:
 - `name`
@@ -691,9 +691,9 @@ Response must include:
 
 ---
 
-## The `index` Command (Run Records)
+## `index` (run records)
 
-### The `index rebuild` Command
+### `index rebuild`
 
 Backfills run records for runs written before v0.14.0, which `list runs`
 cannot otherwise find ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Backfilled Run Records). It scans
@@ -739,7 +739,7 @@ rendered.
 
 ---
 
-## The `prune` Command (Run Retention)
+## `prune` (run retention)
 
 Removes whole runs, chosen by state and age, as [CONTRACT_LODE.md](CONTRACT_LODE.md) §Run
 Retention defines: the run's snapshots, sidecar files, and run records.
@@ -817,7 +817,7 @@ with exit code 1 after the partial report is rendered. A rerun resumes it.
 
 ---
 
-## The `debug` Commands (Diagnostic, Opt-In)
+## `debug` (sharp tools, opt-in)
 
 The `debug` commands are opt-in diagnostic tools and **must not execute work**.
 They are read-only by default. Any mutation must be:
@@ -827,7 +827,7 @@ They are read-only by default. Any mutation must be:
 - observable in logs and inspection surfaces
 - limited to runtime mechanics (never datasets, runs, or policies)
 
-### The `debug resolve proxy <pool>` Command
+### `debug resolve proxy <pool>`
 
 Purpose:
 - test selector logic
@@ -861,7 +861,7 @@ It must not write to Lode, change datasets, or affect runs or policies.
 This is the only allowed mutation outside `run` and must be observable in
 logs and inspection surfaces.
 
-### The `debug ipc` Command
+### `debug ipc`
 
 Response:
 ```
@@ -877,7 +877,7 @@ No payload dumping unless `--verbose` is provided.
 
 ---
 
-## The `version` Command
+## `version`
 
 The `version` command reports the canonical project version.
 It must not contact the executor.
