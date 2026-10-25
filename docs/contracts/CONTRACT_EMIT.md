@@ -80,6 +80,9 @@ chunking, and `is_last` signaling).
 
 Orphaned bytes (no corresponding artifact event) are eligible for GC.
 
+The transmission and storage of artifact bytes are experimental
+(PUBLIC_API.md §Experimental Surface). The event itself is not.
+
 ### 3) `checkpoint`
 Represents an explicit script checkpoint.
 
@@ -158,6 +161,7 @@ purposes. These fields are set by the executor, not by user code.
 
 Scripts may write sidecar files via `storage.put()`. These files bypass
 the event envelope, sequence numbering, and policy pipeline entirely.
+This section is experimental (PUBLIC_API.md §Experimental Surface).
 
 ### Semantics
 

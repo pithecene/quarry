@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Docs**: `IMPLEMENTATION_PLAN.md` records that artifact and byte acquisition (`emit.artifact`, `ctx.storage.put`, and their frames and storage) will be experimental in v1.0, as Lode v1.0 treats Volume. Its replacement, which streams bytes into Lode Volumes, is designed on #255 against Panthalassa's measured source samples.
+- **Experimental surface**: The artifact byte path is experimental. `PUBLIC_API.md` § Experimental Surface defines it: artifact bytes, `ctx.storage.put` and `createStorageBatcher`, the `artifact_chunk`, `file_write`, and `file_write_ack` frames, and the stored chunk records and sidecar files. v1.0 excludes it from its compatibility commitment unless its replacement, which streams bytes into Lode Volumes (#255), is ready first. The `artifact` event and its commit record are not experimental, and behavior is unchanged.
 - **Docs**: `IMPLEMENTATION_PLAN.md` records what v0.13.6 and v0.14.0 shipped. Retention shipped as `quarry prune`, and Lode v0.12.0 enforces each dataset's compressor, so the planned `quarry.json` pin is dropped. The items v0.14.0 did not ship, among them the storage key in `file_write_ack`, the run deadline, and the compressor option, are listed under Carried Forward.
 
 ---

@@ -992,37 +992,17 @@ rather than *in* them.
 
 ### Experimental Artifact Surface
 
-Artifact and byte acquisition is experimental in v1.0 and excluded from
-its compatibility commitment, as Lode v1.0 excludes Volume (Lode
-`V1_API_DECISIONS.md` D9). The experimental surface comprises
-`emit.artifact`, `ctx.storage.put`, the `artifact_chunk`, `file_write`,
-and `file_write_ack` frames ([`CONTRACT_IPC.md`](contracts/CONTRACT_IPC.md)), and the storage of artifact
-bytes and sidecar files ([`CONTRACT_LODE.md`](contracts/CONTRACT_LODE.md)). The `artifact` event remains
-the commit record and is frozen with the other events. Data that any
-release writes remains readable.
+**Decision:** the artifact byte path is experimental by default
+and excluded from the v1.0 compatibility commitment, as Lode v1.0
+excludes Volume (Lode `V1_API_DECISIONS.md` D9).
+[`PUBLIC_API.md`](../PUBLIC_API.md) § Experimental Surface defines the surface.
 
-The reason is the main use case. Panthalassa acquires raw provider files
-(GRIB2, NetCDF, and compressed AIS archives) that must be retained for
-replay and identified by content. The current path cannot carry them:
-an artifact must fit in memory, and its bytes are stored base64-encoded.
-The replacement streams bytes into Lode Volumes, and its design depends
-on measurements from Panthalassa's source samples: object sizes, range
-support, whether a length is known before the transfer, and the content
-digest. Freezing the current path before those measurements exist would
-fix a design that is known to be replaced.
-
-The replacement is designed on #255 and leaves experimental when it has
-run against Panthalassa's samples. The same work supplies the downstream
-evidence for Lode's Volume stability gate (Lode `V1_READINESS.md` §4).
-Experimental status is the default, not a target. If the replacement
-ships and has run against Panthalassa's samples, with tests and usage
-sufficient for the freeze, before v1.0 is tagged, v1.0 freezes it with
-the other contracts instead. Lode's side follows its own gate.
-
-Retention has no notion of a pinned input: `quarry prune` selects runs by
-state and age, or one run by `--run-id`. An operator must therefore not
-run it against a dataset that holds inputs retained for replay. A pin or exclusion mechanism is part of the
-#255 design.
+The main use case, Panthalassa, acquires raw provider files that the
+current path cannot carry, and the replacement, designed on #255, depends
+on measurements from Panthalassa's source samples. Experimental status is
+not a target: if the replacement has run against those samples, with
+tests and usage sufficient for the freeze, before v1.0 is tagged, v1.0
+freezes it with the other contracts. Lode's side follows its own gate.
 
 ### Deliverables
 
@@ -1034,8 +1014,6 @@ run it against a dataset that holds inputs retained for replay. A pin or exclusi
   limitation is retired by the v0.14.0 reader (shipped before v1.0); the
   scheduling limitation stays in force, restated as "planned: the v1.x
   first-party host", and is retired only when `quarry serve` ships.
-- [`PUBLIC_API.md`](../PUBLIC_API.md) and the affected contracts mark the experimental artifact
-  surface as such.
 - `.grove.yaml` intent revised deliberately if the host changes the
   project's stated shape; not by drift.
 
@@ -1044,7 +1022,7 @@ run it against a dataset that holds inputs retained for replay. A pin or exclusi
 - [x] v0.14.0 shipped
 - [ ] v0.14.0 Carried Forward items that change a run contract outside
       the experimental artifact surface landed
-- [ ] Experimental artifact surface marked in [`PUBLIC_API.md`](../PUBLIC_API.md) and the contracts
+- [x] Experimental artifact surface marked in [`PUBLIC_API.md`](../PUBLIC_API.md) and the contracts
 - [ ] Readiness sign-off
 - [ ] Known Limitations and `.grove.yaml` revised
 - [ ] v1.0.0 tagged

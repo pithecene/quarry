@@ -103,6 +103,8 @@ types without inspecting `event_type` or payload structure.
 ## Artifact Chunk Storage
 
 Artifact binary data is stored as chunk records under `event_type=artifact`.
+The chunk records are experimental (PUBLIC_API.md §Experimental Surface).
+The commit record is not.
 
 ### Chunk Record Schema
 
@@ -366,6 +368,8 @@ re-deriving keys.
 ---
 
 ## Sidecar File Inventory
+
+Sidecar files are experimental (PUBLIC_API.md §Experimental Surface).
 
 Sidecar files written via `storage.put()` land at Hive-partitioned paths
 under `files/`, bypassing the Dataset segment/manifest machinery. These files

@@ -232,7 +232,8 @@ After a terminal event, further emit calls are undefined behavior.
 ## Emit API
 
 `emit.*` is the **primary output mechanism** for scripts. For sidecar
-file uploads, see the Storage API below.
+file uploads, see the Storage API below. The artifact byte path is
+experimental (§Experimental Surface).
 
 ### Primary Methods
 
@@ -312,7 +313,7 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 ### Storage API
 
 `storage.put()` writes sidecar files directly to addressable storage paths,
-bypassing the event pipeline.
+bypassing the event pipeline. It is experimental (§Experimental Surface).
 
 ```typescript
 // Write a file to storage (e.g., images, CSVs, raw HTML)
@@ -769,6 +770,28 @@ Quarry ships container images via GHCR:
 - **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.14.0-slim` — no browser (BYO via `--browser-ws-endpoint`)
 
 For `docker run`, Docker Compose, and sidecar patterns, see [docs/guides/container.md](docs/guides/container.md).
+
+---
+
+## Experimental Surface
+
+The artifact byte path is experimental. A later release may change it
+incompatibly, and v1.0 excludes it from its compatibility commitment
+unless its replacement is ready first. It consists of:
+
+- The bytes passed to `emit.artifact`, and how they are transmitted and
+  stored.
+- `ctx.storage.put` and `createStorageBatcher`, including the storage key
+  that `put` returns.
+- The IPC frames that carry them: `artifact_chunk`, `file_write`, and
+  `file_write_ack` (CONTRACT_IPC.md).
+- The stored artifact chunk records and sidecar files (CONTRACT_LODE.md).
+
+The `artifact` event, including its stored commit record, is not
+experimental. The replacement, which streams bytes into Lode Volumes, is
+designed on [#255](https://github.com/pithecene/quarry/issues/255), and that
+design also settles how data written by the current path is read after the
+change.
 
 ---
 
