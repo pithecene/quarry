@@ -1,4 +1,4 @@
-# Quarry Run Identity and Lineage — Contract
+# Quarry Run Identity and Lineage Contract
 
 This document defines the identity and lineage rules for runs.
 

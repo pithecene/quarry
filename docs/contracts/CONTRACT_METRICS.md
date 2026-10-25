@@ -1,4 +1,4 @@
-# Quarry Metrics — Contract
+# Quarry Metrics Contract
 
 This document defines the **metrics surface** required of the Quarry runtime.
 It specifies the **metric names, semantics, and required visibility** for

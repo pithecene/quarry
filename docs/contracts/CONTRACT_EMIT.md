@@ -1,4 +1,4 @@
-# Quarry Emit — Contract
+# Quarry Emit Contract
 
 This document defines the **emit contract** between user scripts and the Quarry
 runtime boundary. It defines the **event envelope**, **event types**, **ordering**,

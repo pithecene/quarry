@@ -1,4 +1,4 @@
-# Quarry Proxy — Contract
+# Quarry Proxy Contract
 
 This document defines the **proxy configuration, selection, and application**
 contract across the Go runtime, Node executor, and SDK.

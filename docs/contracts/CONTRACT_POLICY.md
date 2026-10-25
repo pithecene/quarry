@@ -1,4 +1,4 @@
-# Quarry Ingestion Policy — Contract
+# Quarry Ingestion Policy Contract
 
 This document defines the semantics expected of ingestion policies.
 
