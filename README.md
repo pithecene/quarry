@@ -17,8 +17,11 @@ Quarry runs a Puppeteer script you write under a strict runtime contract, stream
 
 ### CLI
 
+Create a directory for your scripts and install the CLI there with [mise](https://mise.jdx.dev). mise records the version in the directory's `mise.toml` and puts `quarry` on your `PATH` inside it:
+
 ```bash
-mise install github:pithecene/quarry@0.14.0
+mkdir quarry-scripts && cd quarry-scripts
+mise use github:pithecene/quarry@0.14.0
 ```
 
 ### Docker
@@ -35,7 +38,7 @@ See the [container guide](docs/guides/container.md) for Docker Compose examples.
 
 ### SDK
 
-Create an ES module project for your scripts, then install the SDK and the Puppeteer packages the executor loads:
+In the same directory, create an ES module project, then install the SDK and the Puppeteer packages the executor loads:
 
 ```bash
 npm init -y
@@ -161,7 +164,7 @@ Scripts are imperative, explicit, and simple by design. A script should:
 
 ### Run the Script
 
-Save the script as `links.ts` in that project, create a storage directory, and run the script with the filesystem storage backend:
+Save the script as `links.ts` in the project directory, create a storage directory, and run the script with the filesystem storage backend:
 
 ```bash
 mkdir -p ./quarry-data
