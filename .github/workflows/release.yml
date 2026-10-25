@@ -26,17 +26,25 @@ jobs:
         if: ${{ steps.regex-match.outputs.match != '' }}
         uses: actions/checkout@v4
 
+      # The release tool runs on the pinned Node, which strips TypeScript
+      # types natively; it needs no install.
+      - name: 🧰 Setup Node
+        if: ${{ steps.regex-match.outputs.match != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+
       # Non-release v* tags (e.g. v1.2.3-rc.1) are no-ops for the whole
       # workflow, so they are not subject to the monotonic gate either.
       - name: 🔎 Releases Are Monotonic
         if: ${{ steps.regex-match.outputs.match != '' }}
-        run: scripts/release/assert-highest-tag.sh "$GITHUB_REF_NAME"
+        run: node scripts/release/src/cli.ts assert-highest-tag "$GITHUB_REF_NAME"
 
       - name: 🔎 Release Published
         if: ${{ steps.regex-match.outputs.match != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/release/assert-release-published.sh "$GITHUB_REF_NAME"
+        run: node scripts/release/src/cli.ts assert-release-published "$GITHUB_REF_NAME"
 
   version_lockstep:
     name: 🔒 Version Lockstep
@@ -326,13 +334,13 @@ jobs:
       - name: 📦 Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/release/publish-npm.sh sdk
+        run: node scripts/release/src/cli.ts publish-npm sdk
 
   publish_jsr:
     name: 📦 Publish SDK (JSR)
     runs-on: ubuntu-latest
     needs: [hold]
-    # Sized for publish-jsr.sh's three 8-minute attempts plus backoff.
+    # Sized for publish-jsr's three 8-minute attempts plus backoff.
     timeout-minutes: 35
     permissions:
       contents: read
@@ -348,7 +356,7 @@ jobs:
         run: pnpm install
 
       - name: 📦 Publish
-        run: scripts/release/publish-jsr.sh sdk "${GITHUB_REF_NAME#v}"
+        run: node scripts/release/src/cli.ts publish-jsr sdk "${GITHUB_REF_NAME#v}"
 
   container:
     name: 🐳 Container Images
@@ -448,4 +456,4 @@ jobs:
       - name: 🏷️ Converge release pointers
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/release/converge-pointers.sh sdk ghcr.io/pithecene/quarry
+        run: node scripts/release/src/cli.ts converge-pointers sdk ghcr.io/pithecene/quarry

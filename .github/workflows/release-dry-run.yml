@@ -35,10 +35,15 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      - name: 🧰 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+
       - name: 🔎 Releases Are Monotonic
         env:
           VERSION: ${{ inputs.version }}
-        run: scripts/release/assert-highest-tag.sh "$VERSION"
+        run: node scripts/release/src/cli.ts assert-highest-tag "$VERSION"
 
   version_lockstep:
     name: 🔒 Version Lockstep
