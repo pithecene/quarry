@@ -48,9 +48,9 @@ owns their lifecycle.
 **Orchestration integrations** embed the runtime as a unit of work within
 a host. The host owns scheduling, retries, and delivery guarantees. A host
 may be first-party (a long-lived `quarry` process) or an external
-orchestrator; the runtime must not depend on which. Orchestration
+orchestrator. The runtime must not depend on which. Orchestration
 integrations do NOT implement the `Adapter` interface and are NOT selected
-via `--adapter` flags — they depend on the runtime as a library.
+via `--adapter` flags. They depend on the runtime as a library.
 
 ---
 
@@ -58,7 +58,7 @@ via `--adapter` flags — they depend on the runtime as a library.
 
 - Adapters are in-repo modules under [`quarry/adapter/`](../../quarry/adapter/).
 - The runtime owns adapter lifecycle and selection.
-- Users do not write runtime code; users only provide configuration.
+- Users do not write runtime code. Users only provide configuration.
 - Adapter notification is **best-effort**: failures are logged to stderr
   but do not fail the run. Run data is already persisted before the
   adapter is invoked.
@@ -117,7 +117,7 @@ not contribute to the error result.
   `StrictPolicy`, this fails the run with `policy_failure`.
 - A `best_effort` sink failure is logged to stderr with the sink label and
   error. The run continues unaffected.
-- Close errors from any sink are collected; close always attempts all sinks.
+- Close errors from any sink are collected. Close always attempts all sinks.
 
 ### Fan-Out Inheritance
 
@@ -184,12 +184,12 @@ Each stream entry contains flat fields: `run_id`, `event_type`, `seq`,
 
 | Flag | Description |
 |------|-------------|
-| `--event-sink <type>` | Event sink type (`lode`, `redis`); repeatable |
+| `--event-sink <type>` | Event sink type (`lode`, `redis`), repeatable |
 | `--event-sink-lode-delivery <mode>` | Delivery mode for Lode sink (default `mandatory`) |
 | `--event-sink-redis-url <url>` | Redis URL (required when `--event-sink redis` is set) |
 | `--event-sink-redis-stream-key <key>` | Stream key (default `quarry:events`) |
-| `--event-sink-redis-max-len <n>` | Max stream length; -1 disables (default `100000`) |
-| `--event-sink-redis-ttl <duration>` | Key TTL; -1 disables (default `24h`) |
+| `--event-sink-redis-max-len <n>` | Max stream length, -1 disables (default `100000`) |
+| `--event-sink-redis-ttl <duration>` | Key TTL, -1 disables (default `24h`) |
 | `--event-sink-redis-timeout <duration>` | Per-operation timeout (default `2s`) |
 | `--event-sink-redis-retries <n>` | Retry attempts (default `2`) |
 | `--event-sink-redis-delivery <mode>` | Delivery mode for Redis sink (default `mandatory`) |
@@ -216,7 +216,7 @@ events:
 
 - Adapter delivery is **best-effort with retries**. The adapter retries on
   transient failures (5xx, network errors) but may ultimately fail.
-  A failed publish is logged to stderr; the run outcome is unaffected.
+  A failed publish is logged to stderr. The run outcome is unaffected.
 - On success, delivery may be duplicated (retries after ambiguous
   failure). Consumers should use `run_id` as the idempotency key.
 
@@ -224,7 +224,7 @@ Adapters must not:
 - alter the event payload,
 - silently drop events without observable failure.
 
-Event sink delivery semantics are defined per-sink; see
+Event sink delivery semantics are defined per-sink. See
 [Event Sink Model](#event-sink-model).
 
 ---
@@ -272,7 +272,7 @@ Adapter publish is the last step before CLI output and exit.
 
 - Adapter failures must be observable via stderr warnings.
 - Adapter failure does not change the run exit code.
-- Backpressure must block or fail explicitly; no silent loss is permitted.
+- Backpressure must block or fail explicitly. No silent loss is permitted.
 
 ---
 
@@ -293,8 +293,8 @@ that embed the Quarry runtime as a unit of work.
 The orchestrator invokes `runtime.NewRunOrchestrator(config).Execute(ctx)`
 as an atomic unit of work. The runtime owns everything inside this boundary
 (executor lifecycle, IPC, policy, Lode persistence, and run
-finalization: the start record, metrics persistence, and the end record;
-[CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization). The orchestrator owns everything
+finalization: the start record, metrics persistence, and the end record, as
+[CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization defines). The orchestrator owns everything
 outside that boundary (scheduling, retries, fan-out, and notification) and
 receives the same storage contents as the CLI without persisting anything
 itself.
@@ -312,14 +312,14 @@ to orchestrator-native error semantics:
 | `policy_failure` | Non-retryable error |
 | `version_mismatch` | Non-retryable error |
 
-`policy_failure` and `version_mismatch` are non-retryable because they
+The outcomes `policy_failure` and `version_mismatch` are non-retryable because they
 indicate systemic configuration problems that retries cannot resolve.
 
 ### Lineage Preservation
 
 The orchestrator must set `RunMeta` fields per `RunMeta.Validate()` rules:
 
-- Each execution gets a unique `run_id`.
+- Each execution receives a unique `run_id`.
 - `attempt` starts at 1 and increments on each retry.
 - `parent_run_id` links retries to the previous execution's `run_id`.
 - `attempt == 1` must have `parent_run_id == nil` (initial run).

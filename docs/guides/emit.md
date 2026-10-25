@@ -24,7 +24,7 @@ Some advisory types exist (`enqueue`, `rotate_proxy`), but they are optional.
 
 ---
 
-## When To Emit What
+## When to Emit What
 
 - **Records**: use `item` for the primary outputs of a run.
 - **Large content**: use `artifact` for files, blobs, or large text.
@@ -51,11 +51,11 @@ sequence numbers and does not reorder types.
 The `enqueue` and `rotateProxy` emit methods are **advisory**. They express
 intent but carry no delivery or execution guarantee.
 
-- `emit.enqueue({ target, params, source?, category? })` — suggests additional
+- `emit.enqueue({ target, params, source?, category? })`: suggests additional
   work to the runtime. The runtime may ignore it, deduplicate it, or defer it.
   Optional `source` and `category` override the child run's partition keys
   (default: inherit from root).
-- `emit.rotateProxy({ reason? })` — hints that the current proxy should be
+- `emit.rotateProxy({ reason? })`: hints that the current proxy should be
   rotated. The runtime applies rotation only if a proxy pool is configured
   and the strategy supports mid-run changes.
 
@@ -72,7 +72,7 @@ When `quarry run` is invoked with `--depth <n>` (where n > 0), the runtime
 - Child runs can themselves emit enqueue events (up to the depth limit).
 
 Without `--depth`, enqueue remains purely advisory. The emit contract is
-unchanged; the runtime's interpretation depends on CLI flags.
+unchanged. The runtime's interpretation depends on CLI flags.
 
 ### Batching for High Fan-Out
 
@@ -101,7 +101,7 @@ Each flush emits a single enqueue event. The child script receives
 
 ## Convenience Log Methods
 
-`emit.debug()`, `emit.info()`, `emit.warn()`, and `emit.error()` are
+The methods `emit.debug()`, `emit.info()`, `emit.warn()`, and `emit.error()` are
 shortcuts for `emit.log()` with a preset level:
 
 ```typescript
@@ -116,7 +116,7 @@ All four methods accept `(message: string, fields?: Record<string, unknown>)`.
 
 ## Sidecar File Uploads
 
-For files that don't fit the `emit.artifact()` chunked-streaming model,
+For files that do not fit the `emit.artifact()` chunked-streaming model,
 scripts can write directly to storage via `ctx.storage.put()`:
 
 ```typescript
@@ -171,4 +171,4 @@ is never lost silently.
 ## Versioning Notes
 
 The emit envelope includes a contract version string. Contract changes are
-additive only; breaking changes require explicit version bumps.
+additive only. Breaking changes require explicit version bumps.

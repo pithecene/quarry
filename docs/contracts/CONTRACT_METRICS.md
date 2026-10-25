@@ -58,7 +58,7 @@ Outcome-to-metric mapping:
 | `version_mismatch` | `runs_failed_total` |
 | `executor_crash` | `runs_crashed_total` |
 
-`version_mismatch` increments `runs_failed_total` (not `runs_crashed_total`)
+The `version_mismatch` outcome increments `runs_failed_total` (not `runs_crashed_total`)
 because it is a configuration error, not an executor fault. It also does NOT
 increment `executor_crash_total`.
 
@@ -66,7 +66,7 @@ increment `executor_crash_total`.
 - `events_received_total` (counter)
 - `events_persisted_total` (counter)
 - `events_dropped_total` (counter, by event type)
-- `flush_triggers` (counter, by trigger type — streaming policy only)
+- `flush_triggers` (counter, by trigger type, streaming policy only)
 
 #### Flush Triggers (streaming policy)
 
@@ -116,7 +116,7 @@ Optional dimensions:
 - Metrics must be derived from runtime-owned sources, not executor counters.
 - Metrics snapshots must be persisted as Lode `record_kind=metrics` records
   (see [CONTRACT_LODE.md](CONTRACT_LODE.md)) to support stats reads across processes.
-- No exporter is required; exposure via CLI is mandatory.
+- No exporter is required. Exposure via CLI is mandatory.
 
 ### Data Sources
 

@@ -64,7 +64,7 @@ Bounded buffer with drop rules and batch flushes.
 **Key findings:**
 - Amortized ingestion cost is ~27-43ns/event (mode-dependent).
 - `at_least_once` mode is ~60% slower than others due to buffer preservation
-  semantics on flush; acceptable for its stronger durability guarantee.
+  semantics on flush, a cost acceptable for its stronger durability guarantee.
 - Drop pressure path (droppable events hitting full buffer) costs only 25ns
   with zero allocations.
 - Flush cost scales linearly with batch size (~288ns/event at batch=10,
@@ -88,13 +88,13 @@ Continuous persistence with bounded buffer, batched writes, and backpressure.
 | FlushUnderLoad | 1,253 | 46 | 0 |
 
 **Key findings:**
-- Ingestion is ~13ns/event (fastest of all policies) — append-only into a
+- Ingestion is ~13ns/event (fastest of all policies), because it appends to a
   pre-allocated buffer with no sync write.
 - Buffer swap strategy decouples ingestion from sink latency: with a 1ms
   sink delay, streaming achieves ~21us/op vs strict's ~1ms/op (50x faster).
 - Flush cost is dominated by the buffer swap + write, not the count threshold.
 - Concurrent ingestion (224ns) is higher than strict (28ns) due to mutex
-  contention on the shared buffer; this is inherent to batched buffering.
+  contention on the shared buffer. This is inherent to batched buffering.
 
 ## Contention Analysis
 
@@ -139,7 +139,7 @@ Store work to find runs and their states, measured by
 cd quarry && go test ./reader -run Measure -v
 ```
 
-200 runs over 10 days, each written through the real write path (two to
+The benchmark writes 200 runs over 10 days, each through the real write path (two to
 four event batches, a chunk batch, and a metrics record), a quarter of
 them without an end record:
 
@@ -152,7 +152,7 @@ them without an end record:
 Run records list two keys per finished run and one per unterminated run,
 regardless of what the run wrote. The partition tree lists a data object and a
 manifest per batch per event type, so its size grows with every flush a
-run makes; the runs here flush only a few times, and runs that flush on
+run makes. The runs here flush only a few times, and runs that flush on
 an interval grow it further. On S3, the number of keys listed bounds the number of
 `ListObjectsV2` requests (at most 1,000 keys each). Records also give the
 outcome, which the partition tree cannot: it shows only whether a

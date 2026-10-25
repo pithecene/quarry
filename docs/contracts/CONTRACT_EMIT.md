@@ -62,8 +62,8 @@ The envelope must be **stable** and **parseable without schema discovery**.
 Represents a durable, structured output record.
 
 Required payload fields:
-- `item_type` (string) — caller-defined type label
-- `data` (object) — the record payload
+- `item_type` (string): caller-defined type label
+- `data` (object): the record payload
 
 ### 2) `artifact`
 Represents a binary or large payload.
@@ -95,11 +95,11 @@ Required payload fields:
 - `params` (object)
 
 Optional payload fields:
-- `source` (string) — override the child run's source partition key (default: inherit from root)
-- `category` (string) — override the child run's category partition key (default: inherit from root)
+- `source` (string): override the child run's source partition key (default: inherit from root)
+- `category` (string): override the child run's category partition key (default: inherit from root)
 
 Semantics:
-- Advisory only; not guaranteed or required.
+- Advisory only, neither guaranteed nor required.
 - No feedback channel is implied.
 - `source` and `category` are partition hints only. They do not affect dedup
   (dedup is by `(target, params)` only).
@@ -108,7 +108,7 @@ Runtime interpretation:
 - Default (`--depth 0`): advisory only, as above.
 - With `--depth > 0`: runtime schedules and executes as child runs.
   Deduplication and depth limits are applied by the fan-out operator.
-  The contract itself is unchanged; runtime behavior depends on CLI flags.
+  The contract itself is unchanged. Runtime behavior depends on CLI flags.
 
 ### 5) `rotate_proxy` (optional advisory)
 Suggests the runtime consider rotating proxy/session identity.
@@ -117,13 +117,13 @@ Required payload fields:
 - `reason` (string, optional)
 
 Semantics:
-- Advisory only; not guaranteed or required.
+- Advisory only, neither guaranteed nor required.
 
 ### 6) `log`
 Structured log event emitted by script.
 
 Required payload fields:
-- `level` (string) — `debug|info|warn|error`
+- `level` (string): `debug|info|warn|error`
 - `message` (string)
 - `fields` (object, optional)
 
@@ -146,8 +146,8 @@ Required payload fields:
 When the `prepare` hook returns `{ action: 'skip' }`, the executor emits
 `run_complete` with the following reserved fields in `summary`:
 
-- `skipped` (boolean) — `true` when the run was skipped by `prepare`
-- `reason` (string, optional) — skip reason provided by the hook
+- `skipped` (boolean): `true` when the run was skipped by `prepare`
+- `reason` (string, optional): skip reason provided by the hook
 
 Scripts should not use `skipped` or `reason` as summary keys for other
 purposes. These fields are set by the executor, not by user code.
@@ -171,7 +171,7 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 
 ### Error Propagation
 
-`storage.put()` reflects the backend write result. If the storage backend
+The promise that `storage.put()` returns reflects the backend write result. If the storage backend
 (e.g. S3, local filesystem) fails, the returned promise **rejects** with
 the error message from the runtime.
 
@@ -189,7 +189,7 @@ try {
 
 ### Return Value
 
-`storage.put()` returns `Promise<StoragePutResult>`:
+The `storage.put()` method returns `Promise<StoragePutResult>`:
 
 ```typescript
 interface StoragePutResult {
@@ -205,7 +205,7 @@ datasets/{dataset}/partitions/source={source}/category={category}/day={day}/run_
 
 All components are known at executor startup and passed via the `storage`
 field in the executor stdin payload (see [CONTRACT_IPC.md](CONTRACT_IPC.md)). The SDK computes
-the key deterministically — no bidirectional IPC round-trip is needed.
+the key deterministically. No bidirectional IPC round-trip is needed.
 
 When storage partition metadata is not provided (e.g. older CLI versions),
 the key is an empty string.
@@ -224,12 +224,12 @@ the key is an empty string.
 
 ### Storage Batcher (`createStorageBatcher`)
 
-`createStorageBatcher` is an SDK-level utility that dispatches multiple
+The `createStorageBatcher` function is an SDK-level utility that dispatches multiple
 `storage.put()` calls with bounded concurrency. It does not modify the
 underlying IPC protocol or serialization semantics.
 
 - Each file write still produces one `file_write` IPC frame.
-- Calls queue through the existing serialization chain — the batcher
+- Calls queue through the existing serialization chain: the batcher
   eliminates user-code latency between successive puts.
 - Concurrency is bounded (default: 16). At most N promises are in-flight
   at any time.
@@ -249,7 +249,7 @@ await batch.flush()
 
 ## Memory Pressure API (`ctx.memory`)
 
-`ctx.memory` provides a pull-based memory pressure API for proactive
+The `ctx.memory` object provides a pull-based memory pressure API for proactive
 memory management in container-constrained workloads.
 
 ### Sources
@@ -274,7 +274,7 @@ level across all available sources.
 
 ### Semantics
 
-- **Pull-based**: scripts call `snapshot()` when they want; no push events.
+- **Pull-based**: scripts call `snapshot()` when they want, and no events are pushed.
 - **SDK-local**: no IPC round-trips. Browser metrics require a CDP call (~1-5ms).
 - **Graceful degradation**: unavailable sources return `null`.
 - **No protocol changes**: memory pressure is entirely SDK-side.

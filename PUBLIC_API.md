@@ -18,7 +18,7 @@ contracts under [`docs/contracts/`](docs/contracts/) state the rules.
 **Node.js version note:** Quarry scripts are TypeScript and use Node's native
 type-stripping. Node 23+ enables this by default. Node 22.6–22.x requires
 `--experimental-strip-types` flag (set via `NODE_OPTIONS`). The SDK and
-executor accept puppeteer `^24 || ^25`; puppeteer 25 requires Node 22.12+,
+executor accept puppeteer `^24 || ^25`. Puppeteer 25 requires Node 22.12+,
 so on Node 22.6–22.11 stay on puppeteer 24. With puppeteer 25, browser
 downloads honour `HTTP_PROXY`/`HTTPS_PROXY` only if `proxy-agent` is
 installed alongside it (it became an optional peer dependency).
@@ -128,7 +128,7 @@ This is the **only** supported entry point shape.
 ### Lifecycle Hooks
 
 Scripts may export **optional lifecycle hooks** alongside the default function.
-All hooks are optional — scripts that export none behave identically to today.
+All hooks are optional. A script that exports none runs as it would without hooks.
 
 ```typescript
 import type { QuarryContext, PrepareResult, TerminalSignal, RunMeta } from "@pithecene/quarry-sdk";
@@ -191,7 +191,7 @@ auto-emit terminal → [cleanup] → run_result → return
 | `beforeTerminal` | Before terminal emit | `(signal, ctx)` | Swallowed |
 | `cleanup` | After terminal attempt | `(ctx)` | Swallowed |
 
-**`prepare` return values:**
+**Return values of `prepare`:**
 
 | Return | Behavior |
 |--------|----------|
@@ -200,7 +200,7 @@ auto-emit terminal → [cleanup] → run_result → return
 | `{ action: "skip" }` | Skip run — emit `run_complete({skipped: true})` |
 | `{ action: "skip", reason }` | Skip run — emit `run_complete({skipped: true, reason})` |
 
-> **Note:** When `prepare` returns `skip`, **no other hooks run** — there is no
+> **Note:** When `prepare` returns `skip`, **no other hooks run**. There is no
 > browser, no context, and no cleanup. The run completes immediately.
 
 ### Context Object
@@ -222,10 +222,10 @@ The `QuarryContext` provides:
 
 A script terminates in one of these ways:
 
-1. **Normal return** — Executor emits `run_complete` automatically
-2. **Throw error** — Executor emits `run_error` automatically
-3. **Explicit `emit.runComplete()`** — Script signals success
-4. **Explicit `emit.runError()`** — Script signals failure
+1. **Normal return**: Executor emits `run_complete` automatically
+2. **Throw error**: Executor emits `run_error` automatically
+3. **Explicit `emit.runComplete()`**: Script signals success
+4. **Explicit `emit.runError()`**: Script signals failure
 
 After a terminal event, further emit calls are undefined behavior.
 
@@ -233,7 +233,7 @@ After a terminal event, further emit calls are undefined behavior.
 
 ## Emit API
 
-`emit.*` is the **primary output mechanism** for scripts. For sidecar
+The `emit.*` API is the **primary output mechanism** for scripts. For sidecar
 file uploads, see the Storage API below. The artifact byte path is
 experimental (§Experimental Surface).
 
@@ -288,7 +288,7 @@ await ctx.emit.rotateProxy({ reason: "rate limited" });
 ### Batching Enqueue Calls
 
 For high fan-out workloads that discover hundreds or thousands of items,
-`createBatcher` groups items into fewer, larger enqueue events — reducing
+`createBatcher` groups items into fewer, larger enqueue events, which reduces
 child run count and scheduling overhead.
 
 ```typescript
@@ -309,12 +309,12 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 
 - `size` must be a positive integer (throws `RangeError` otherwise)
 - Each flush emits a single `enqueue` event with `params: { items: T[] }`
-- Call `flush()` before `runComplete()` — items buffered after a terminal event are lost
+- Call `flush()` before `runComplete()`: the batcher discards items buffered after a terminal event
 - Optional `source` and `category` in options override partition keys for all batched enqueue events
 
 ### Storage API
 
-`storage.put()` writes sidecar files directly to addressable storage paths,
+The `storage.put()` method writes sidecar files directly to addressable storage paths,
 bypassing the event pipeline. It is experimental (§Experimental Surface).
 
 ```typescript
@@ -342,7 +342,7 @@ Rules:
 - Shares ordering and fail-fast with `emit.*`
 - Cannot be called after a terminal event (`run_complete` / `run_error`)
 - Returns `StoragePutResult` with the resolved `key`
-- Promise rejects on backend write failure — errors are recoverable
+- Promise rejects on backend write failure: errors are recoverable
 
 Files land at Hive-partitioned paths under the storage root:
 ```
@@ -367,7 +367,7 @@ normative specification.
 ### Batching File Uploads
 
 For workloads that write many files, `createStorageBatcher` dispatches
-multiple `storage.put()` calls with bounded concurrency — eliminating
+multiple `storage.put()` calls with bounded concurrency, which eliminates
 user-code latency between puts without creating unbounded promise counts.
 
 ```typescript
@@ -388,13 +388,13 @@ export default async function run(ctx: QuarryContext): Promise<void> {
 ```
 
 - `concurrency` defaults to 16 (must be a positive integer)
-- `flush()` must be called before terminal events — buffered writes are lost otherwise
+- Call `flush()` before terminal events, or the batcher discards the buffered writes
 - Fail-fast: first error rejects all queued writes and poisons the batcher
 - Reusable after a successful `flush()`
 
 ### Memory Pressure API
 
-`ctx.memory` provides pull-based memory monitoring for container-constrained
+The `ctx.memory` API provides pull-based memory monitoring for container-constrained
 workloads. Reports node heap, browser heap, and cgroup usage with pressure
 classification.
 
@@ -475,7 +475,7 @@ CLI flags always override config file values.
 > The payload **must** be a top-level JSON object. Arrays, primitives, and null are rejected.
 
 > **Streaming policy:** At least one of `--flush-count` or `--flush-interval` must be specified
-> when `--policy=streaming`. Both may be specified; the first trigger to fire wins.
+> when `--policy=streaming`. Both may be specified. The first trigger to fire wins.
 > See the [policy guide](docs/guides/policy.md) for details.
 
 **Adapter flags (event-bus notification):**
@@ -493,7 +493,7 @@ CLI flags always override config file values.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--event-sink <type>` | | Event sink type (`lode`, `redis`); repeatable |
+| `--event-sink <type>` | | Event sink type (`lode`, `redis`), repeatable |
 | `--event-sink-lode-delivery` | `mandatory` | Delivery mode for Lode event sink |
 | `--event-sink-redis-url <url>` | | Redis URL (required when `--event-sink` includes `redis`) |
 | `--event-sink-redis-stream-key` | `quarry:events` | Redis Streams key |
@@ -520,7 +520,7 @@ CLI flags always override config file values.
 
 | Flag | Env Var | Description |
 |------|---------|-------------|
-| `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips per-run Chromium launch; see the [CLI guide](docs/guides/cli.md)) |
+| `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips the per-run Chromium launch, as the [CLI guide](docs/guides/cli.md) describes) |
 | `--no-browser-reuse` | — | Disable transparent browser reuse across runs (forces per-run Chromium launch) |
 
 By default, Quarry transparently reuses a persistent Chromium process across sequential runs.
@@ -564,15 +564,15 @@ quarry run --dry-run --script ./my-script.ts --run-id test --source test \
 
 | Flag | Description |
 |------|-------------|
-| `--executor <path>` | Override executor path (auto-resolved in bundled binary; only needed for local development builds) |
+| `--executor <path>` | Override executor path (auto-resolved in the bundled binary and needed only for local development builds) |
 
 **Storage flags (S3 / S3-compatible):**
 
 | Flag | Description |
 |------|-------------|
 | `--storage-region <region>` | AWS region (uses default chain if omitted) |
-| `--storage-endpoint <url>` | Custom S3 endpoint URL (e.g. Cloudflare R2, MinIO) |
-| `--storage-s3-path-style` | Force path-style addressing (required by R2, MinIO) |
+| `--storage-endpoint <url>` | Custom S3 endpoint URL for an S3-compatible provider |
+| `--storage-s3-path-style` | Force path-style addressing (required by many S3-compatible providers) |
 
 ### Inspect Command
 
@@ -706,14 +706,14 @@ export async function beforeTerminal(
 
 ### "Module not found" for SDK
 
-Ensure SDK is built:
+Build the SDK first:
 ```bash
 pnpm -C sdk run build
 ```
 
 ### "Executor not found"
 
-The executor is auto-resolved but must be built first:
+The CLI resolves the executor automatically, but you must build it first:
 ```bash
 pnpm -C executor-node run build
 ```
@@ -768,8 +768,8 @@ executor runs under Node ESM.
 
 Quarry ships container images via GHCR:
 
-- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.14.0` — includes Chrome for Testing + fonts
-- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.14.0-slim` — no browser (BYO via `--browser-ws-endpoint`)
+- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.14.0`, which includes Chrome for Testing and fonts
+- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.14.0-slim`, which has no browser (bring your own through `--browser-ws-endpoint`)
 
 For `docker run`, Docker Compose, and sidecar patterns, see the [container guide](docs/guides/container.md).
 
@@ -801,13 +801,13 @@ change.
 
 1. **Single executor type**: Only Node.js executor supported
 2. **No built-in retries**: Retry logic is caller's responsibility
-3. **No streaming reads**: Artifacts must fit in memory (note: the `streaming` *ingestion policy* is unrelated — it controls write batching, not read access)
-4. **No transactional storage writes**: S3 and S3-compatible providers (R2, MinIO) do not provide transactional guarantees across writes
-5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler; external orchestration is the caller's responsibility
+3. **No streaming reads**: Artifacts must fit in memory (note: the `streaming` *ingestion policy* is unrelated: it controls write batching, not read access)
+4. **No transactional storage writes**: S3 and S3-compatible providers do not provide transactional guarantees across writes
+5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler. External orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
-7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error; with no storage flag, `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers (R2, MinIO) via `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them; backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See the [integration guide](docs/guides/integration.md).
+7. **Integration adapters and sinks**: Webhook, Redis Pub/Sub, and Redis Streams are available. NATS and SNS adapters are planned. Three commands read persisted data, each only when both `--storage-backend` and `--storage-path` are given (a storage flag given without both is an error, and with no storage flag `list runs` and `stats metrics` return shape-correct stub values, as do all other `list`/`inspect`/`stats` commands): `quarry list runs` lists runs from their run records, `quarry list events` returns one run's events, and `quarry stats metrics` returns the latest metrics record. They read the filesystem backend or S3, including S3-compatible providers, through `--storage-endpoint`/`--storage-s3-path-style`, as on `run`. Runs written before v0.14.0 have no run records until `quarry index rebuild` backfills them. Backfilled runs have no start time or recorded outcome, and their state follows their terminal event. `quarry prune` removes whole runs by state and age, including runs that never terminated, and keeps the run that holds the dataset's head until another run commits. The SDK reads the same data through `listRuns` and `readRun`, which run the `quarry` CLI and so require it to be installed (§Reading Runs). Temporal is an orchestration host, not an adapter, and is deferred until dogfooded. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
-9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release; config-based logical names are under consideration.
+9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release. Config-based logical names are under consideration.
 
 ---
 
@@ -846,14 +846,14 @@ Uses AWS default credential chain. IAM permissions required:
 - `s3:GetObject`
 - `s3:ListBucket`
 
-### S3-Compatible Providers (R2, MinIO)
+### S3-Compatible Providers
 
 Quarry supports S3-compatible storage providers via custom endpoint and path-style flags:
 
 ```bash
 --storage-backend s3 \
 --storage-path my-bucket/quarry-data \
---storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com \
+--storage-endpoint https://s3.example.com \
 --storage-s3-path-style
 ```
 
@@ -872,11 +872,11 @@ processing after runs complete, see the [integration guide](docs/guides/integrat
 
 ### Reading Runs
 
-`listRuns` and `readRun` read persisted runs from Node.js programs, such as
+The functions `listRuns` and `readRun` read persisted runs from Node.js programs, such as
 an ETL job that ingests finished runs. They run the `quarry` CLI
-(`list runs` and `list events` with `--format json`; the [CLI contract](docs/contracts/CONTRACT_CLI.md)) and
+(`list runs` and `list events` with `--format json`, as the [CLI contract](docs/contracts/CONTRACT_CLI.md) defines them) and
 return its JSON, so they read exactly what the CLI reads. The `quarry` executable must
-be installed; pass `quarryPath` when it is not on `PATH`.
+be installed, and `quarryPath` names it when it is not on `PATH`.
 
 ```typescript
 import { listRuns, readRun } from "@pithecene/quarry-sdk";

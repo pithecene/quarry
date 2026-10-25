@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/quarry-banner-dark.png">
-  <img alt="Quarry — browser-driven extraction, durably ingested. Banner art after Auguste Lepère, Fontainebleau Forest: Sandstone Quarry (1890), Cleveland Museum of Art, CC0" src="docs/assets/quarry-banner-light.png" width="100%">
+  <img alt="Quarry: browser-driven extraction, durably ingested. Banner art after Auguste Lepère, Fontainebleau Forest: Sandstone Quarry (1890), Cleveland Museum of Art, CC0" src="docs/assets/quarry-banner-light.png" width="100%">
 </picture>
 
 # Quarry
@@ -95,22 +95,22 @@ Quarry is designed to be composed **around**, not extended **from**:
 ```bash
 # Extract
 quarry run \
-  --script streeteasy.ts \
-  --run-id "streeteasy-$(date +%s)" \
-  --source nyc-rent \
-  --category streeteasy \
-  --job '{"url": "https://streeteasy.com/rentals"}' \
+  --script products.ts \
+  --run-id "products-$(date +%s)" \
+  --source example-store \
+  --category products \
+  --job '{"url": "https://shop.example.com/products"}' \
   --storage-backend fs \
   --storage-path /var/quarry/data \
   --policy buffered
 
 # Transform (outside Quarry)
-nyc-rent-transform \
-  --input /var/quarry/data/source=nyc-rent \
+catalog-transform \
+  --input /var/quarry/data/source=example-store \
   --output /var/quarry/normalized
 
 # Index / analyze (outside Quarry)
-nyc-rent-index \
+catalog-index \
   --input /var/quarry/normalized
 ```
 
@@ -137,15 +137,15 @@ import type { QuarryContext } from '@pithecene/quarry-sdk'
 export default async function run(ctx: QuarryContext): Promise<void> {
   await ctx.page.goto(ctx.job.url)
 
-  const listings = await ctx.page.evaluate(() => {
+  const products = await ctx.page.evaluate(() => {
     // scrape DOM
     return []
   })
 
-  for (const listing of listings) {
+  for (const product of products) {
     await ctx.emit.item({
-      item_type: 'listing',
-      data: listing
+      item_type: 'product',
+      data: product
     })
   }
 
@@ -159,17 +159,17 @@ Scripts are imperative, explicit, and boring by design.
 
 ## Key Concepts
 
-- **Emit API** — all script output flows through `emit.*` → [emit guide](docs/guides/emit.md)
-- **Policies** — strict, buffered, or streaming ingestion control → [policy guide](docs/guides/policy.md)
-- **Storage** — FS and S3 backends via Lode → [storage guide](docs/guides/lode.md)
-- **Proxies** — pool-based rotation with multiple strategies → [proxy guide](docs/guides/proxy.md)
-- **Streaming** — chunked artifacts with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
-- **Configuration** — YAML project defaults via `--config` → [configuration reference](docs/guides/configuration.md)
-- **Browser Reuse** — transparent Chromium persistence across sequential runs → [configuration reference](docs/guides/configuration.md)
-- **Container Deployment** — full/slim images, shared browser pools, multi-crawler topologies → [container guide](docs/guides/container.md)
-- **Integration** — webhook and Redis adapters for downstream triggers → [integration guide](docs/guides/integration.md)
-- **Fan-Out** — derived work execution via `emit.enqueue()` → [emit guide](docs/guides/emit.md)
-- **Run Lifecycle** — terminal states and exit codes → [run guide](docs/guides/run.md)
+- **Emit API**: all script output flows through `emit.*` → [emit guide](docs/guides/emit.md)
+- **Policies**: strict, buffered, or streaming ingestion control → [policy guide](docs/guides/policy.md)
+- **Storage**: FS and S3 backends via Lode → [storage guide](docs/guides/lode.md)
+- **Proxies**: pool-based rotation with multiple strategies → [proxy guide](docs/guides/proxy.md)
+- **Streaming**: chunked artifacts with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
+- **Configuration**: YAML project defaults via `--config` → [configuration reference](docs/guides/configuration.md)
+- **Browser Reuse**: transparent Chromium persistence across sequential runs → [configuration reference](docs/guides/configuration.md)
+- **Container Deployment**: full/slim images, shared browser pools, multi-crawler topologies → [container guide](docs/guides/container.md)
+- **Integration**: webhook and Redis adapters for downstream triggers → [integration guide](docs/guides/integration.md)
+- **Fan-Out**: derived work execution via `emit.enqueue()` → [emit guide](docs/guides/emit.md)
+- **Run Lifecycle**: terminal states and exit codes → [run guide](docs/guides/run.md)
 
 ---
 

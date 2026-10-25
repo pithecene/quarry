@@ -80,9 +80,9 @@ Buffered policies support configurable flush semantics via `FlushMode`:
 ### `two_phase`
 
 - Tracks per-buffer success to minimize duplicates.
-- Events written successfully are marked; not re-written on retry.
+- Events written successfully are marked and not rewritten on retry.
 - Events added after partial flush go to a secondary buffer.
-- Most complex; requires internal state tracking.
+- The most complex mode, because it requires internal state tracking.
 
 All modes must satisfy the no-silent-loss invariant.
 
@@ -114,7 +114,7 @@ The buffer is flushed when **any** of the following conditions is met:
 | **Run termination** | — | Flush on `run_complete`, `run_error`, or runtime termination (best effort). |
 
 At least one of `--flush-count` or `--flush-interval` must be specified.
-Both may be specified; the first trigger to fire wins.
+Both may be specified. The first trigger to fire wins.
 
 ### Ordering
 
@@ -141,8 +141,8 @@ to `chunks_first` semantics applied per flush cycle.
 
 In addition to the base policy counters, streaming policy must surface:
 
-- `flush_count` — number of flush cycles completed (already in `Stats`)
-- `flush_trigger` — counter per trigger type (`count`, `interval`, `termination`)
+- `flush_count`: number of flush cycles completed (already in `Stats`)
+- `flush_trigger`: counter per trigger type (`count`, `interval`, `termination`)
 
 These are additive to [CONTRACT_METRICS.md](CONTRACT_METRICS.md) and do not rename existing metrics.
 

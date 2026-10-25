@@ -129,7 +129,7 @@ Unsupported (must error with `--tui`):
 
 ## `run` (execution)
 
-`quarry run` is the **only** command that executes work.
+The `quarry run` command is the **only** command that executes work.
 It must conform to [CONTRACT_RUN.md](CONTRACT_RUN.md) and emit observability defined by
 [CONTRACT_EMIT.md](CONTRACT_EMIT.md) and [CONTRACT_POLICY.md](CONTRACT_POLICY.md).
 
@@ -147,12 +147,12 @@ The `run` command exit code is determined by execution outcome:
 | 3 | `policy_failure` | Ingestion policy failed (non-retryable) |
 | 3 | `version_mismatch` | SDK/CLI contract version mismatch (non-retryable) |
 
-`policy_failure` and `version_mismatch` share exit code 3 because both
+The outcomes `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
 
 ### Structured Exit Report
 
-`quarry run` supports an optional `--report` flag that writes a structured
+The `quarry run` command supports an optional `--report` flag that writes a structured
 JSON report on exit, making every run machine-auditable.
 
 | Flag | Type | Default | Description |
@@ -169,7 +169,7 @@ JSON report on exit, making every run machine-auditable.
 
 ### Dry-Run Validation
 
-`quarry run` supports a `--dry-run` flag that validates script loadability
+The `quarry run` command supports a `--dry-run` flag that validates script loadability
 without executing a run. No browser is launched, no storage is written,
 and no policy/proxy/adapter config is required.
 
@@ -191,7 +191,7 @@ and no policy/proxy/adapter config is required.
 
 ### Streaming Policy Flags
 
-`quarry run` supports a `streaming` ingestion policy with configurable flush
+The `quarry run` command supports a `streaming` ingestion policy with configurable flush
 triggers. At least one of `--flush-count` or `--flush-interval` must be
 specified when `--policy=streaming`.
 
@@ -201,15 +201,15 @@ specified when `--policy=streaming`.
 | `--flush-interval` | duration | | Flush every T duration (e.g. `5s`, `30s`) |
 
 Semantics:
-- Both may be specified; the first trigger to fire wins.
-- Buffer is bounded internally; if full before a trigger fires, ingestion
+- Both may be specified. The first trigger to fire wins.
+- Buffer is bounded internally. If full before a trigger fires, ingestion
   blocks until the next flush (events are never dropped).
 - On run termination, a final flush is always attempted (best effort).
 - Flush trigger counts are surfaced in `stats metrics` (see [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
 
 ### Adapter Flags
 
-`quarry run` supports optional event-bus adapter notification.
+The `quarry run` command supports optional event-bus adapter notification.
 See [CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) for semantics.
 
 | Flag | Type | Default | Description |
@@ -226,7 +226,7 @@ The run exit code is determined by execution outcome, never by adapter status.
 
 ### Event Sink Flags
 
-`quarry run` supports optional event sink configuration for real-time
+The `quarry run` command supports optional event sink configuration for real-time
 event delivery during a run. See [CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) §Event Sink Model
 for semantics.
 
@@ -255,7 +255,7 @@ Semantics:
 
 ### Fan-Out Flags
 
-`quarry run` supports optional derived work execution via enqueue events.
+The `quarry run` command supports optional derived work execution via enqueue events.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -264,7 +264,7 @@ Semantics:
 | `--parallel` | int | `1` | Max concurrent child runs |
 
 Semantics:
-- `--depth 0` (default): enqueue events are advisory only; no child runs.
+- `--depth 0` (default): enqueue events are advisory only, and no child run starts.
 - `--depth > 0`: enqueue events trigger child runs up to the specified depth.
 - `--max-runs` is mandatory when `--depth > 0` (safety rail).
 - `--parallel > 1` without `--depth > 0` emits a stderr warning (no-op).
@@ -274,17 +274,17 @@ Semantics:
 - Child runs inherit the root run's `--source` and `--category` by default.
   Per-child overrides are supported via `emit.enqueue({ source, category })`.
 - `target` is resolved as a file path relative to CWD (same as `--script`).
-  Target resolution semantics may change; do not depend on path resolution details.
+  Target resolution semantics may change. Do not depend on path resolution details.
 
 **Caveats:**
 - `storage.put()` in child scripts requires that storage is properly configured
   on the root run. A missing FileWriter will fail the child run immediately.
-- Per-enqueue `source`/`category` overrides apply to the immediate child only;
+- Per-enqueue `source`/`category` overrides apply to the immediate child only.
   grandchildren inherit from their parent unless they also specify overrides.
 
 ### Config File
 
-`quarry run` supports an optional `--config <path>` flag that loads a YAML
+The `quarry run` command supports an optional `--config <path>` flag that loads a YAML
 config file providing project-level defaults for run flags.
 
 | Flag | Type | Default | Description |
@@ -336,7 +336,7 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   check (`/json/version`) before launching the executor. If the browser is
   unreachable, the run fails with `OutcomeExecutorCrash` and a descriptive
   message.
-- Fan-out (`--depth > 0`) uses the reusable browser if available; falls back
+- Fan-out (`--depth > 0`) uses the reusable browser if available and falls back
   to `LaunchManagedBrowser` when reuse is disabled.
 - Proxy mismatch between runs causes a graceful fallback to per-run browser
   launch (the reusable browser is not killed).
@@ -407,7 +407,7 @@ This is a permitted side-effect, not a background service.
 
 ### Module Resolution
 
-`quarry run` supports a `--resolve-from` flag for workspace and monorepo
+The `quarry run` command supports a `--resolve-from` flag for workspace and monorepo
 setups where scripts import bare specifiers (`@myorg/db`, `shared-utils`)
 that cannot be resolved from the script's directory.
 
@@ -438,7 +438,7 @@ Node 20.6+).
 
 ## `inspect` (single-entity introspection)
 
-`inspect` commands return a deep view of a single entity and are read-only.
+The `inspect` commands return a deep view of a single entity and are read-only.
 Data is sourced from the runtime’s read path (see [CONTRACT_LODE.md](CONTRACT_LODE.md)).
 
 ### `inspect run <run-id>`
@@ -495,7 +495,7 @@ the executor only applies resolved endpoints (see [CONTRACT_PROXY.md](CONTRACT_P
 
 ## `stats` (aggregated facts)
 
-`stats` commands return aggregated, derived facts. They must not expose
+The `stats` commands return aggregated, derived facts. They must not expose
 internal counters from executors. Stats are derived from Lode.
 
 ### `stats runs`
@@ -525,16 +525,16 @@ ProxyStats:
 Returns the most recent metrics snapshot.
 
 Optional flags:
-- `--storage-dataset=<name>` — Lode dataset ID (default: `"quarry"`)
-- `--storage-backend=fs|s3` — storage backend for Lode reads
-- `--storage-path=<path>` — storage path (fs: directory, s3: bucket/prefix)
-- `--storage-region=<region>` — AWS region for S3 backend
-- `--storage-endpoint=<url>` — custom S3 endpoint for S3-compatible providers (e.g. Cloudflare R2, MinIO); same meaning as on `run`
-- `--storage-s3-path-style` — force path-style S3 addressing (required by R2, MinIO); same meaning as on `run`
-- `--run-id=<id>` — read metrics for a specific run
-- `--source=<source>` — filter by source partition
+- `--storage-dataset=<name>`: Lode dataset ID (default: `"quarry"`)
+- `--storage-backend=fs|s3`: storage backend for Lode reads
+- `--storage-path=<path>`: storage path (fs: directory, s3: bucket/prefix)
+- `--storage-region=<region>`: AWS region for S3 backend
+- `--storage-endpoint=<url>`: custom S3 endpoint for S3-compatible providers, with the same meaning as on `run`
+- `--storage-s3-path-style`: force path-style S3 addressing (required by many S3-compatible providers), with the same meaning as on `run`
+- `--run-id=<id>`: read metrics for a specific run
+- `--source=<source>`: filter by source partition
 
-Both `--storage-backend` and `--storage-path` must be provided together;
+Both `--storage-backend` and `--storage-path` must be provided together.
 any storage flag given without both is an error.
 When provided, metrics are read from Lode storage. When no storage flag is
 given, stub data is returned (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
@@ -575,7 +575,7 @@ Usage examples:
 quarry stats metrics --storage-backend fs --storage-path /data/quarry
 quarry stats metrics --storage-backend fs --storage-path /data/quarry --run-id run-001
 quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-region us-west-2
-quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style
+quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-endpoint https://s3.example.com --storage-s3-path-style
 quarry stats metrics --format json
 ```
 
@@ -583,7 +583,7 @@ quarry stats metrics --format json
 
 ## `list` (enumeration)
 
-`list` commands return thin slices (not inspect-level detail).
+The `list` commands return thin slices (not inspect-level detail).
 
 ### `list runs`
 
@@ -597,7 +597,7 @@ Storage-backed flags:
   `--storage-endpoint`, `--storage-s3-path-style`)
 - `--source`, `--category`, `--day`: leading selectors, in that order
   ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Record Namespace). `--category` requires
-  `--source`, and `--day` requires `--category`; omitting all three lists
+  `--source`, and `--day` requires `--category`. Omitting all three lists
   the whole dataset
 - `--state=succeeded|failed|unterminated`
 - `--limit=<n>` (0 = no limit)
@@ -629,11 +629,11 @@ Run:
   event_count: number | null # null when unterminated or backfilled
 ```
 
-`table` renders `runs` only and prints `More runs: --after <cursor>` to
+The `table` format renders `runs` only and prints `More runs: --after <cursor>` to
 stderr when another page exists.
 
 Ordering and paging: runs are ordered by record key (source, category,
-day, run ID) on every backend. `next` is the key of the last run returned;
+day, run ID) on every backend. `next` is the key of the last run returned.
 passing it as `--after` returns the runs after it. `next` is present only
 when another run matching the request exists. The cursor is a key
 position, not a reference to a stored run: listing resumes at the first
@@ -641,7 +641,7 @@ start-record key after it, so paging stays correct when the run it names
 is deleted between pages (for example, by retention). A value that does
 not have the shape of a start-record key under the selected prefix, with
 each key component encoded exactly as the write path encodes it, is an
-error; a well-formed key that names no run is accepted, and listing
+error. A well-formed key that names no run is accepted, and listing
 resumes after its position. With `--state`, a page holds up to `--limit`
 matching runs.
 
@@ -650,7 +650,7 @@ Selector values are rejected when they are `.`, `..`, or contain a `.` or
 segments, which would widen the prefix beyond the selected runs.
 
 Stub flags and response (no storage): `--state=running|failed|succeeded`,
-`--limit=<n>`; each item includes `run_id`, `state`, and `started_at`. Using a
+`--limit=<n>`. Each item includes `run_id`, `state`, and `started_at`. Using a
 storage-only flag (`--source`, `--category`, `--day`, or `--after`)
 without storage is an error, and any storage flag given without both
 `--storage-backend` and `--storage-path` is an error, never a fallback to
@@ -673,13 +673,13 @@ RunEvents:
   events: object[]     # stored event records, in seq order
 ```
 
-`events` holds the run's stored records of `record_kind` `event` and
+The `events` field holds the run's stored records of `record_kind` `event` and
 `artifact_event` ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Record Types), ordered by `seq`.
 Artifact chunks and the metrics record are not events and are omitted.
-Item payloads are returned as stored; Quarry does not know a script's
+Item payloads are returned as stored. Quarry does not know a script's
 item schema. The run's partitions are addressed from its start record's
 `partition`. `table` renders one summary row per record (`seq`, `type`,
-`record_kind`, `ts`, `event_id`); `json` and `yaml` carry the full records.
+`record_kind`, `ts`, `event_id`), and `json` and `yaml` carry the full records.
 
 A run with no start record is an error (`run not found`).
 
@@ -733,7 +733,7 @@ RebuiltRun:
   skipped: string   # why the run was not indexed; omitted otherwise
 ```
 
-`table` renders `runs` and prints the totals to stderr. A store error
+The `table` format renders `runs` and prints the totals to stderr. A store error
 terminates the rebuild with exit code 1 after the partial report is
 rendered.
 
@@ -748,22 +748,22 @@ Flags:
 - `--storage-backend`, `--storage-path` (required) and the other storage
   flags as on `list runs`
 - `--source`, `--category`, `--day`: leading selectors, as on `list runs`
-- `--run-id`: prune only this run; requires `--source`, `--category`, and
+- `--run-id`: prune only this run, which requires `--source`, `--category`, and
   `--day`. A run that no longer exists is not an error
 - `--succeeded-days=<n>`, `--failed-days=<n>`: prune runs in that state
-  whose end record is at least `n` days old; `0` prunes every such run
+  whose end record is at least `n` days old. `0` prunes every such run
 - `--unterminated-days=<n>`: prune unterminated runs that started, and
-  last wrote, at least `n` days ago; `n` must be at least 1 and should
+  last wrote, at least `n` days ago. `n` must be at least 1 and should
   exceed the longest run
 - A day count must lie between 0 and the largest count a duration holds
-  (106751); any other value is an error
+  (106751). Any other value is an error
 - `--sweep-grace=<duration>`: after the runs, sweep the whole dataset,
   reclaiming data of writes that never committed once it is older than the
-  duration; `0` (the default) skips the sweep
+  duration. `0` (the default) skips the sweep
 - `--dry-run`: report what would be removed, without removing anything
 - `--format`, `--no-color`
 
-At least one age flag is required; a state whose flag is not set is kept.
+At least one age flag is required. The prune keeps every run in a state whose flag is not set.
 A selector or `--run-id` given with an empty value is an error, because
 an empty selector would widen the prune instead of narrowing it.
 
@@ -810,16 +810,16 @@ SweepReport:
   unparseable: string[]    # omitted when none
 ```
 
-The run that holds the dataset's head is kept (`kept` gives the reason)
-and is removed by a later prune once another run commits. `table` renders
+The prune keeps the run that holds the dataset's head (`kept` gives the
+reason), and a later prune removes it once another run commits. `table` renders
 `runs` and prints the totals to stderr. A store error terminates the prune
-with exit code 1 after the partial report is rendered; a rerun resumes it.
+with exit code 1 after the partial report is rendered. A rerun resumes it.
 
 ---
 
 ## `debug` (sharp tools, opt-in)
 
-`debug` commands are opt-in diagnostic tools and **must not execute work**.
+The `debug` commands are opt-in diagnostic tools and **must not execute work**.
 They are read-only by default. Any mutation must be:
 - explicitly requested by a flag
 - ephemeral and non-persistent
@@ -879,7 +879,7 @@ No payload dumping unless `--verbose` is provided.
 
 ## `version`
 
-`version` reports the canonical project version.
+The `version` command reports the canonical project version.
 It must not contact the executor.
 
 Response:
@@ -898,4 +898,4 @@ This includes:
 - IPC contract version ([CONTRACT_IPC.md](CONTRACT_IPC.md))
 
 Version changes require updating the single source constant. There is no separate
-"contract version" — the project version is the contract version.
+"contract version": the project version is the contract version.

@@ -28,7 +28,7 @@ remain immutable once written.
 - `category` is the logical data type within a source (required).
   For one-to-one sources, use `category=default`.
 - `day` is derived from the **run start time** (not individual event timestamps).
-  Events may span dates but remain in the run's `day` partition.
+  Events may extend across dates but remain in the run's `day` partition.
 - Preferred Hive ordering: `source / category / day / run_id / event_type`.
 
 ---
@@ -89,7 +89,7 @@ Validation is the responsibility of downstream consumers.
 - Disk full errors (`ENOSPC`) are surfaced as policy failures.
 - Permission errors (`EACCES`) are surfaced as policy failures.
 - Not-found errors (missing directories) are surfaced at initialization or write time.
-- Quarry does **not** retry failed writes; errors propagate immediately.
+- Quarry does **not** retry failed writes. Errors propagate immediately.
 - The ingestion policy determines whether partial data is preserved on failure.
 - Error messages include actionable context (what operation failed, where).
 
@@ -158,7 +158,7 @@ entry in `Manifest.Metadata` containing an array of file references:
 ```
 
 **Key behaviors:**
-- File refs only appear on event and metrics snapshots — not on chunk snapshots
+- File refs only appear on event and metrics snapshots, not on chunk snapshots
 - If multiple event flushes occur during a run, file refs appear on the
   first event snapshot after each batch of file writes
 - To enumerate all files for a run, union `sidecar_files` across all

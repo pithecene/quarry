@@ -640,15 +640,15 @@ selection for production use.
 Add a third ingestion policy (`streaming`) that combines strict's no-drop
 guarantee with buffered's batched write efficiency. Designed for long-running
 crawl workloads where downstream consumers need near-real-time visibility
-into emitted items without per-event R2 write overhead.
+into emitted items without per-event object-store write overhead.
 
 #### Motivation
 
 With `policy=strict`, each event creates its own Lode snapshot (data file +
-manifest = 2+ R2 PUTs). For a crawl emitting hundreds of items, this means
-hundreds of small R2 round trips that the executor blocks on. The streaming
+manifest = 2+ S3 PUTs). For a crawl emitting hundreds of items, this means
+hundreds of small S3 round trips that the executor blocks on. The streaming
 policy batches events and flushes on configurable triggers (count threshold,
-time interval), reducing R2 PUTs by an order of magnitude while preserving
+time interval), reducing S3 PUTs by an order of magnitude while preserving
 near-real-time downstream visibility.
 
 #### Deliverables
@@ -997,9 +997,9 @@ and excluded from the v1.0 compatibility commitment, as Lode v1.0
 excludes Volume (Lode `V1_API_DECISIONS.md` D9).
 [`PUBLIC_API.md`](../../PUBLIC_API.md) § Experimental Surface defines the surface.
 
-The main use case, Panthalassa, acquires raw provider files that the
-current path cannot carry, and the replacement, designed on #255, depends
-on measurements from Panthalassa's source samples. Experimental status is
+The main use case acquires large raw data files from upstream providers,
+which the current path cannot carry, and the replacement, designed on #255,
+depends on measurements of that use case's source samples. Experimental status is
 not a target: if the replacement has run against those samples, with
 tests and usage sufficient for the freeze, before v1.0 is tagged, v1.0
 freezes it with the other contracts. Lode's side follows its own gate.
@@ -1053,7 +1053,7 @@ that is allowed to idle, not a service that must be up.
   run produces. The host never duplicates it.
 - Known scale constraint: a Lode dataset is one linear history with a
   single `latest` pointer, so every snapshot commit in a dataset
-  serialises on one CAS round trip (~50–100 ms on S3/R2, i.e. on the
+  serialises on one CAS round trip (~50–100 ms on S3, i.e. on the
   order of 10–20 commits/s per dataset before `WithRetryCount` exhausts).
   Lode will not shard the pointer — per-partition histories are
   per-partition datasets by design — so the relief is Quarry's: the host

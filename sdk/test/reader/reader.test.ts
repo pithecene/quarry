@@ -63,7 +63,12 @@ describe('listRuns', () => {
     const fake = await fakeQuarry(JSON.stringify({ runs: [run], next: 'cursor-1' }))
     const page = await listRuns({
       quarryPath: fake.path,
-      storage: { ...storage, dataset: 'other', endpoint: 'https://r2.example', s3PathStyle: true },
+      storage: {
+        ...storage,
+        dataset: 'other',
+        endpoint: 'https://s3.example.com',
+        s3PathStyle: true
+      },
       source: 'demo',
       category: 'default',
       state: 'succeeded',
@@ -78,7 +83,7 @@ describe('listRuns', () => {
       '--storage-backend=fs',
       '--storage-path=/data/quarry',
       '--storage-dataset=other',
-      '--storage-endpoint=https://r2.example',
+      '--storage-endpoint=https://s3.example.com',
       '--storage-s3-path-style',
       '--source=demo',
       '--category=default',

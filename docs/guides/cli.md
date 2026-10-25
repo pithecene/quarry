@@ -76,11 +76,11 @@ Supported formats:
 
 ### Color
 
-`--no-color` affects **table output only**. It does not disable TUI styling.
+The `--no-color` flag affects **table output only**. It does not disable TUI styling.
 
 ### TUI Mode
 
-`--tui` is **opt-in** and **read-only**. It is supported only for:
+The `--tui` flag is **opt-in** and **read-only**. It is supported only for:
 - `inspect` subcommands
 - `stats` subcommands
 
@@ -108,8 +108,8 @@ Optional flags:
 - `--attempt <n>` (default: 1)
 - `--job-id <id>`
 - `--parent-run-id <id>`
-- `--job <json>` (inline JSON object; mutually exclusive with `--job-json`)
-- `--job-json <path>` (load JSON object from file; mutually exclusive with `--job`)
+- `--job <json>` (inline JSON object, mutually exclusive with `--job-json`)
+- `--job-json <path>` (load JSON object from file, mutually exclusive with `--job`)
 - `--quiet`
 - `--policy strict|buffered|streaming`
 - `--flush-mode at_least_once|chunks_first|two_phase`
@@ -127,8 +127,8 @@ Optional flags:
 Storage flags:
 - `--storage-dataset <name>` (Lode dataset ID, default: `"quarry"`)
 - `--storage-region <region>` (AWS region, uses default chain if omitted)
-- `--storage-endpoint <url>` (custom S3 endpoint for R2, MinIO, etc.)
-- `--storage-s3-path-style` (force path-style addressing, required by R2/MinIO)
+- `--storage-endpoint <url>` (custom endpoint for an S3-compatible provider)
+- `--storage-s3-path-style` (force path-style addressing, which many S3-compatible providers require)
 
 Adapter flags (event-bus notification):
 - `--adapter <type>` (event-bus adapter, e.g. `webhook`, `redis`)
@@ -139,37 +139,37 @@ Adapter flags (event-bus notification):
 - `--adapter-retries <n>` (retry attempts with exponential backoff, default: `3`)
 
 Fan-out flags (derived work execution):
-- `--depth <n>` (maximum recursion depth; 0 = disabled, default: `0`)
-- `--max-runs <n>` (total child run cap; required when `--depth > 0`)
+- `--depth <n>` (maximum recursion depth, 0 = disabled, default: `0`)
+- `--max-runs <n>` (total child run cap, required when `--depth > 0`)
 - `--parallel <n>` (concurrent child runs, default: `1`)
 
 Module resolution flags:
-- `--resolve-from <path>` (resolve bare-specifier ESM imports from an alternate `node_modules` directory; for monorepo/container setups)
+- `--resolve-from <path>` (resolve bare-specifier ESM imports from an alternate `node_modules` directory, for monorepo/container setups)
 
 Browser flags:
-- `--browser-ws-endpoint <url>` / `QUARRY_BROWSER_ENDPOINT` (connect to an externally managed browser instead of launching one; see below)
-- `--no-browser-reuse` (disable transparent browser reuse across runs; each run launches its own Chromium)
+- `--browser-ws-endpoint <url>` / `QUARRY_BROWSER_ENDPOINT` (connect to an externally managed browser instead of launching one, as described below)
+- `--no-browser-reuse` (disable transparent browser reuse across runs, so that each run launches its own Chromium)
 
 Advanced flags:
-- `--executor <path>` (auto-resolved by default; override for troubleshooting)
+- `--executor <path>` (resolved automatically by default and overridden only for troubleshooting)
 
 #### Browser Reuse
 
-Quarry has two browser reuse mechanisms — one transparent, one explicit.
+Quarry has two browser reuse mechanisms: one transparent and one explicit.
 
 **Transparent reuse (default):** Quarry automatically starts a long-lived
 browser server on the first `quarry run` invocation. Subsequent runs on the
 same host reuse it through a Unix socket in the runtime directory. The browser
 self-terminates after `QUARRY_BROWSER_IDLE_TIMEOUT` seconds (default: 60)
-once no run is using it. This is analogous to `git credential-cache` — no user
-management required.
+once no run is using it. It works like `git credential-cache` and needs no user
+management.
 
 Use `--no-browser-reuse` (or `no_browser_reuse: true` in config) to disable
 this and launch a fresh Chromium per run.
 
 **Explicit endpoint (`--browser-ws-endpoint` / `QUARRY_BROWSER_ENDPOINT`):**
 Connects to an externally managed browser instead of launching one. Each run
-gets an isolated `BrowserContext` within the shared browser. On cleanup, the
+receives an isolated `BrowserContext` within the shared browser. On cleanup, the
 page and context are closed but the browser stays alive.
 
 ```bash
@@ -198,10 +198,10 @@ a clear error.
 > See [Container Usage](container.md) for multi-crawler deployment patterns.
 
 Output and reporting flags:
-- `--report <path>` (write structured JSON report to file on exit; use `-` for stderr)
+- `--report <path>` (write a structured JSON report to a file on exit, or to stderr with `-`)
 
 Dry-run validation:
-- `--dry-run` (validate script loadability without execution; no browser, no storage)
+- `--dry-run` (check that the script loads, without running it, launching a browser, or writing to storage)
 
 When `--dry-run` is set, `--source`, `--storage-backend`, and `--storage-path`
 are not required. Only `--script` and `--run-id` are needed. The executor is
@@ -244,7 +244,7 @@ quarry run \
   --job '{"source":"demo"}'
 ```
 
-S3-compatible storage example (Cloudflare R2):
+S3-compatible storage example:
 
 ```
 quarry run \
@@ -253,7 +253,7 @@ quarry run \
   --source my-source \
   --storage-backend s3 \
   --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com \
+  --storage-endpoint https://s3.example.com \
   --storage-s3-path-style \
   --job '{"url":"https://example.com"}'
 ```
@@ -332,10 +332,10 @@ quarry stats runs --tui
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data --run-id run-001
 quarry stats metrics --storage-backend s3 --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style
+  --storage-endpoint https://s3.example.com --storage-s3-path-style
 ```
 
-`stats metrics` accepts the same S3 flags as `run` (`--storage-region`,
+The `stats metrics` command accepts the same S3 flags as `run` (`--storage-region`,
 `--storage-endpoint`, `--storage-s3-path-style`), so data written to an
 S3-compatible provider is read back from the same provider.
 
@@ -362,7 +362,7 @@ Notes:
   `next` value as `--after` to retrieve the following page.
 - Runs written before v0.14.0 are listed only after `quarry index rebuild`
   backfills their records. Backfilled runs have no `started_at` or
-  `outcome`; a finished one is `succeeded` if it ended with `run_complete`
+  `outcome`. A finished one is `succeeded` if it ended with `run_complete`
   and `failed` if it ended with `run_error`.
 
 Examples:
@@ -370,7 +370,7 @@ Examples:
 ```
 quarry list runs --storage-backend fs --storage-path ./quarry-data --source demo
 quarry list runs --storage-backend s3 --storage-path my-bucket/quarry \
-  --storage-endpoint https://ACCOUNT_ID.r2.cloudflarestorage.com --storage-s3-path-style \
+  --storage-endpoint https://s3.example.com --storage-s3-path-style \
   --source demo --category default --state succeeded --limit 100
 quarry list events --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 --run-id run-001
@@ -378,7 +378,7 @@ quarry list events --storage-backend fs --storage-path ./quarry-data \
 
 ### `index`
 
-`index rebuild <storage flags> [--dry-run]` backfills run records for runs
+The command `index rebuild <storage flags> [--dry-run]` backfills run records for runs
 written before v0.14.0. It writes only what the stored data shows and never
 modifies runs that the runtime recorded. A rerun writes only missing
 records, so running it again resumes an interrupted rebuild. Run it with
@@ -392,17 +392,17 @@ quarry index rebuild --storage-backend fs --storage-path ./quarry-data
 
 ### `prune`
 
-`prune <storage flags> [selectors] <age flags> [--dry-run]` removes whole
+The command `prune <storage flags> [selectors] <age flags> [--dry-run]` removes whole
 runs: their partitions, sidecar files, and run records. Each age flag
 selects runs in one state by age in days: `--succeeded-days` and
 `--failed-days` count from the run's end, and `--unterminated-days` counts
-from its start or its last write, whichever is later. A state without a flag is kept. An unterminated run may
+from its start or its last write, whichever is later. The prune keeps every run in a state without a flag. An unterminated run may
 still be running, so `--unterminated-days` must be at least 1 and should
 exceed the longest run. `--run-id`, with `--source`, `--category`, and
 `--day`, prunes one run, for example once a consumer has imported it.
 
 The run that committed most recently holds the dataset's head, which Lode
-never removes; the report lists it as kept, and a later prune removes it.
+never removes. The report lists it as kept, and a later prune removes it.
 `--sweep-grace` also reclaims the data of writes that never committed,
 such as the last batch of a killed run. A rerun resumes an interrupted
 prune. Runs written before v0.14.0 are pruned only after `quarry index

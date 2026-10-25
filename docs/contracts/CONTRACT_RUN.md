@@ -14,7 +14,9 @@ This is a contract document. Implementations must conform.
 
 Relationship:
 
-`job` → `run` → `retry run`
+```text
+job → run → retry run
+```
 
 Runs are append-only and immutable once complete.
 
@@ -107,7 +109,7 @@ auto-emit terminal → [cleanup] → run_result → return
 
 - Invoked **after** `afterRun`/`onError` but **before** the terminal event
   (`run_complete` or `run_error`) is auto-emitted.
-- The emit channel is still open; the hook may emit items, logs, or artifacts.
+- The emit channel is still open. The hook may emit items, logs, or artifacts.
 - Receives a `TerminalSignal`: `{ outcome: 'completed' }` on success,
   `{ outcome: 'error', error }` on script failure.
 - **Not invoked** when the script has already emitted a terminal event
@@ -134,7 +136,7 @@ The runtime owns a run's whole lifecycle. `Execute`
    written for the run before it.
 2. Launch the executor, ingest events, and flush the policy. Close the
    policy on every path, including a failed start record. Buffered and
-   streaming policies flush once more on close (bounded at 30 seconds; an
+   streaming policies flush once more on close (bounded at 30 seconds, and an
    interval flush still in progress is canceled and joined, never
    abandoned), so the close occurs here, before the end record. Close is
    one-shot, so a caller's later close writes nothing. The close occurs
@@ -155,7 +157,7 @@ The time bounds in this section assume store operations return. A write
 that is abandoned at a deadline could still be persisted later, after the
 end record, so the runtime never abandons one: a store call that never returns
 blocks the run at that call, as it would block any write. Lode's
-filesystem and S3 stores return; S3 calls also honor cancellation.
+filesystem and S3 stores return, and S3 calls also honor cancellation.
 
 Finalization happens inside `Execute` for every caller: the CLI, fan-out
 child runs, and any embedding host ([CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) §Activity
@@ -196,7 +198,7 @@ Every run has two small JSON records that the runtime writes outside
 Lode's partition tree: a start record and an end record. Their location
 and key encoding are defined in [CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Record Namespace.
 Records are written once and never rewritten. Runs written before records
-existed get backfilled records (§Backfilled Run Records).
+existed receive backfilled records (§Backfilled Run Records).
 
 ### Start Record (`start.json`)
 
@@ -206,14 +208,14 @@ existed get backfilled records (§Backfilled Run Records).
 | `schema_version` | int    | yes      | `1` |
 | `run_id`         | string | yes      | Run identifier |
 | `job_id`         | string | no       | Omitted when unknown |
-| `parent_run_id`  | string | no       | As in the run's lineage (§Lineage Fields); omitted when absent. Fan-out child runs do not carry their enqueueing run here (§Child Runs), so their records omit it |
+| `parent_run_id`  | string | no       | As in the run's lineage (§Lineage Fields), omitted when absent. Fan-out child runs do not carry their enqueueing run here (§Child Runs), so their records omit it |
 | `attempt`        | int    | yes      | Per §Lineage Fields |
 | `dataset`        | string | yes      | Lode dataset ID |
 | `source`         | string | yes      | Partition key (unencoded) |
 | `category`       | string | yes      | Partition key (unencoded) |
 | `day`            | string | yes      | Partition day, `YYYY-MM-DD`, derived from `started_at` |
 | `partition`      | string | yes      | The run's Lode partition prefix relative to the dataset's partition root, Hive-encoded: `source=…/category=…/day=…/run_id=…/`. Every `event_type` partition of the run sits under it |
-| `started_at`     | string \| null | yes | Run start time, RFC 3339 UTC with nanoseconds; `null` on a backfilled record |
+| `started_at`     | string \| null | yes | Run start time, RFC 3339 UTC with nanoseconds, `null` on a backfilled record |
 | `quarry_version` | string | yes      | Version of the writer |
 | `backfilled`     | bool   | yes      | `true` when written by `quarry index rebuild` rather than the runtime |
 
@@ -225,23 +227,23 @@ existed get backfilled records (§Backfilled Run Records).
 | `schema_version`    | int            | yes      | `1` |
 | `run_id`            | string         | yes      | Run identifier |
 | `ended_at`          | string         | yes      | RFC 3339 UTC with nanoseconds |
-| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements); `null` on a backfilled record |
-| `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`); `null` when none was received |
-| `message`           | string         | no       | Outcome message; omitted when empty |
-| `event_count`       | int \| null    | yes      | Events processed; `null` on a backfilled record |
+| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements), `null` on a backfilled record |
+| `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`), `null` when none was received |
+| `message`           | string         | no       | Outcome message, omitted when empty |
+| `event_count`       | int \| null    | yes      | Events processed, `null` on a backfilled record |
 | `metrics_persisted` | bool           | yes      | Whether the metrics record was written |
 | `backfilled`        | bool           | yes      | As on the start record |
 
 ### Backfilled Run Records
 
-`quarry index rebuild` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §index rebuild) writes records for
+The `quarry index rebuild` command ([CONTRACT_CLI.md](CONTRACT_CLI.md) §index rebuild) writes records for
 runs that have partitions but no start record. It is the only reader
 that finds runs by scanning the partition tree, and it writes only what
 the stored data shows:
 
 - **Start record**, for every such run. `day`, `source`, `category`,
   `run_id`, and `partition` come from the run's partition path, which must
-  be the canonical encoding of those values; `attempt`, `job_id`, and
+  be the canonical encoding of those values. `attempt`, `job_id`, and
   `parent_run_id` come from the run's terminal event, or else from its
   first event record in event-type order. `started_at` is `null`. A run
   with no event record (only a metrics record) is skipped and reported.
@@ -250,7 +252,7 @@ the stored data shows:
   `terminal` its type, and `metrics_persisted` whether the run has a
   metrics record. `outcome` and `event_count` are `null`: a terminal event
   does not determine the runtime's outcome (a policy failure can follow
-  `run_complete`). A run with no terminal event, or more than one, gets no
+  `run_complete`). A run with no terminal event, or more than one, receives no
   end record, and the report states the reason.
 
 Both records carry `backfilled: true`. The rebuild never touches a run
@@ -275,7 +277,7 @@ Readers ([CONTRACT_CLI.md](CONTRACT_CLI.md) §list runs) apply these rules:
 - A run's state is `succeeded` when its end record's outcome is
   `success`, `failed` for any other outcome, and `unterminated` when it
   has no end record. Unterminated covers a live run, a killed process, and
-  a run whose end record could not be written; storage cannot tell them
+  a run whose end record could not be written. Storage cannot tell them
   apart, so a reader never presents such a run as running.
 - A backfilled end record has no outcome, so its state follows its
   terminal event: `run_complete` is `succeeded` and `run_error` is
@@ -291,7 +293,7 @@ Readers ([CONTRACT_CLI.md](CONTRACT_CLI.md) §list runs) apply these rules:
 
 ## Idempotency Expectations
 
-- Runs are **append-only**; no event mutation is allowed after emission.
+- Runs are **append-only**. No event mutation is allowed after emission.
 - The runtime and policies must not attempt to deduplicate events.
 - Deduplication is the responsibility of **downstream consumers**.
 
@@ -316,8 +318,8 @@ When `--report <path>` is specified, the runtime writes a structured JSON
 report on exit. `--report -` writes to stderr.
 
 The report is written after `Execute` returns (metrics and the end record
-are persisted; §Run Finalization) and after adapter notification.
-All data is composed from `RunResult` and `metrics.Snapshot` — no additional
+are persisted, per §Run Finalization) and after adapter notification.
+All data is composed from `RunResult` and `metrics.Snapshot`. No additional
 data fetching occurs.
 
 ### Report JSON Structure

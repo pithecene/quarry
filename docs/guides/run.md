@@ -33,9 +33,9 @@ building external wrappers.
 
 **Execution order (happy path):**
 
-`prepare` → acquire browser → `beforeRun` → `script()` → `afterRun` → `beforeTerminal` → auto-emit terminal → `cleanup`
+Hooks run in this order: `prepare` → acquire browser → `beforeRun` → `script()` → `afterRun` → `beforeTerminal` → auto-emit terminal → `cleanup`
 
-**Error path:** replaces `afterRun` with `onError`; other hooks run normally.
+**Error path:** replaces `afterRun` with `onError`. Other hooks run normally.
 
 **Skip path:** `prepare` returns `{ action: 'skip' }` → emit `run_complete({skipped})` → done. No browser, no context, no other hooks.
 
@@ -69,5 +69,5 @@ When `--depth > 0` is set, scripts can trigger **child runs** via
 | `job_id` | Same as parent | New (derived from parent) |
 
 Child runs are tracked internally by the fan-out operator. The root run's
-exit code determines the overall outcome; child run results appear in the
+exit code determines the overall outcome. Child run results appear in the
 fan-out summary.
