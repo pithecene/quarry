@@ -15,7 +15,7 @@ Quarry runs a Puppeteer script you write under a strict runtime contract, stream
 
 ## Installation
 
-These steps require Node.js 22.18 or later, which runs TypeScript scripts with native type stripping by default. They also use [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured, so the installed CLI is on your `PATH`. Behind an HTTP proxy, also install `proxy-agent`, which Puppeteer needs to download its browser through the proxy. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain and covers earlier Node 22 releases.
+These steps require Node.js 22.18 or later, which runs TypeScript scripts with native type stripping by default. They also use [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured, so the installed CLI is on your `PATH`. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain and covers earlier Node 22 releases.
 
 ### CLI
 
@@ -47,6 +47,9 @@ npm init -y
 npm pkg set type=module
 npx jsr add @pithecene/quarry-sdk
 npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
+
+# Behind an HTTP proxy, Puppeteer also needs proxy-agent to download its browser
+npm install proxy-agent
 ```
 
 See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
