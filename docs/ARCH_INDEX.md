@@ -218,7 +218,7 @@ Developer tooling and test harnesses.
 - [`lint-bosun.sh`](../scripts/lint-bosun.sh) — runs Bosun's Go analyzers at the commit [`.bosun-version`](../.bosun-version) pins (`task lint:bosun`)
 - [`version-targets.txt`](../scripts/version-targets.txt) — single list of every place the product version is written
 - [`version-bump.sh`](../scripts/version-bump.sh), [`version-check.sh`](../scripts/version-check.sh), [`version-targets.sh`](../scripts/version-targets.sh) — lockstep bump and drift check over that list
-- [`release/`](../scripts/release/) — release-workflow steps (monotonic tag check, idempotent npm and JSR publishing, convergence of the npm `latest` and GHCR `:latest`/`:slim` pointers) with stubbed-registry tests in [`release/test.sh`](../scripts/release/test.sh)
+- [`release/`](../scripts/release/) — release tool (TypeScript, run directly by the pinned Node): the tag gates, idempotent npm and JSR publishing, and convergence of the npm `latest` and GHCR `:latest`/`:slim` pointers, with vitest tests against a fake world of registries (see [`release/README.md`](../scripts/release/README.md))
 
 ---
 

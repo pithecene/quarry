@@ -22,7 +22,7 @@ tasks:
       - yamllint .
 
   test:
-    desc: Run all tests (Go + TS + release scripts)
+    desc: Run all tests (Go + TS + release tool)
     deps: [go:test, ts:test, scripts:test]
 
   test:race:
@@ -164,14 +164,13 @@ tasks:
   scripts:lint:
     desc: Lint shell scripts (shellcheck) and the release tool (tsc, biome)
     cmds:
-      - shellcheck -x scripts/*.sh scripts/release/*.sh
+      - shellcheck -x scripts/*.sh
       - pnpm exec tsc -p scripts/release
       - pnpm exec biome check scripts/release
 
   scripts:test:
-    desc: Test release scripts against stubbed registries, and the release tool
+    desc: Test the release tool against a fake world of registries
     cmds:
-      - scripts/release/test.sh
       - pnpm exec vitest run --root scripts/release
 
   # ==================
