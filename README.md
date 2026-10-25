@@ -35,8 +35,13 @@ See the [container guide](docs/guides/container.md) for Docker Compose examples.
 
 ### SDK
 
+Create an ES module project for your scripts, then install the SDK and the Puppeteer packages the executor loads:
+
 ```bash
+npm init -y
+npm pkg set type=module
 npx jsr add @pithecene/quarry-sdk
+npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 ```
 
 See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
@@ -118,7 +123,7 @@ Quarry owns **only** the extraction step.
 
 ## Quick Example
 
-A Quarry script is a **freestanding program**, not a library. This one reads a catalog page and emits one item for each entry on it.
+A Quarry script is a **freestanding program**, not a library. This one reads a page and emits one item for each link on it.
 
 ### Script
 
@@ -128,17 +133,17 @@ import type { QuarryContext } from '@pithecene/quarry-sdk'
 export default async function run(ctx: QuarryContext<{ url: string }>): Promise<void> {
   await ctx.page.goto(ctx.job.url)
 
-  const products = await ctx.page.$$eval('.product', (cards) =>
-    cards.map((card) => ({
-      name: card.querySelector('.name')?.textContent?.trim() ?? '',
-      price: card.querySelector('.price')?.textContent?.trim() ?? ''
+  const links = await ctx.page.$$eval('a', (anchors) =>
+    anchors.map((anchor) => ({
+      text: anchor.textContent?.trim() ?? '',
+      href: anchor.href
     }))
   )
 
-  for (const product of products) {
+  for (const link of links) {
     await ctx.emit.item({
-      item_type: 'product',
-      data: product
+      item_type: 'link',
+      data: link
     })
   }
 
@@ -156,14 +161,15 @@ Scripts are imperative, explicit, and simple by design. A script should:
 
 ### Run the Script
 
-Save the script as `products.ts` and run it with the filesystem storage backend:
+Save the script as `links.ts` in that project, create a storage directory, and run the script with the filesystem storage backend:
 
 ```bash
+mkdir -p ./quarry-data
 quarry run \
-  --script products.ts \
-  --run-id products-001 \
-  --source example-store \
-  --job '{"url": "https://shop.example.com/products"}' \
+  --script links.ts \
+  --run-id links-001 \
+  --source example \
+  --job '{"url": "https://example.com"}' \
   --storage-backend fs \
   --storage-path ./quarry-data
 ```
@@ -171,7 +177,7 @@ quarry run \
 Quarry writes the run's events under `./quarry-data`. List the run to confirm it succeeded:
 
 ```bash
-quarry list runs --storage-backend fs --storage-path ./quarry-data --source example-store
+quarry list runs --storage-backend fs --storage-path ./quarry-data --source example
 ```
 
 The [run guide](docs/guides/run.md) describes the run lifecycle and its terminal states.
