@@ -923,7 +923,7 @@ Each decision is judged by a number in its PR, not by argument:
 - [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): `list runs`, `list events`, `index rebuild`, and
       `prune` specified from the data model, with `unterminated` in place
       of `running` (E). Removing the stub-backed views and aligning
-      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Source Progression are carried forward.
+      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Sources are carried forward.
 - [x] Runtime: finalization moved into `Execute`, which writes the start
       and end records (A)
 - [x] `quarry/reader` over run records, which the CLI commands use, with

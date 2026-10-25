@@ -31,8 +31,8 @@ Quarry supports three distinct integration paradigms:
 | Paradigm | Relationship to Runtime | Timing | Direction | Examples |
 |----------|------------------------|--------|-----------|----------|
 | Event Sink | Receives events **during** a run | In-run | Runtime → External | Redis Streams, Lode |
-| Notification Adapter | Invoked **by** runtime after a run | Post-run | Runtime → External | Webhook, Redis Pub/Sub, NATS, SNS |
-| Orchestration Integration | **Wraps** the runtime as embedded activity | External | External → Runtime | First-party host (`quarry serve`, planned), Temporal (deferred) |
+| Notification Adapter | Invoked **by** runtime after a run | Post-run | Runtime → External | Webhook, Redis Pub/Sub |
+| Orchestration Integration | **Wraps** the runtime as embedded activity | External | External → Runtime | A first-party host, Temporal |
 
 **Event sinks** receive events in real time as the executor produces them.
 They implement the `EventSink` interface, are selected via `--event-sink`
@@ -63,14 +63,12 @@ via `--adapter` flags — they depend on the runtime as a library.
   but do not fail the run. Run data is already persisted before the
   adapter is invoked.
 
-### Notification Adapters (v0.5.0+)
+### Notification Adapters
 
-| Adapter | Package | Status |
-|---------|---------|--------|
-| Webhook (HTTP POST) | [`quarry/adapter/webhook`](../../quarry/adapter/webhook/) | Available |
-| Redis (Pub/Sub) | [`quarry/adapter/redis`](../../quarry/adapter/redis/) | Available |
-| NATS | — | Planned |
-| SNS | — | Planned |
+| Adapter | Package |
+|---------|---------|
+| Webhook (HTTP POST) | [`quarry/adapter/webhook`](../../quarry/adapter/webhook/) |
+| Redis (Pub/Sub) | [`quarry/adapter/redis`](../../quarry/adapter/redis/) |
 
 > Temporal is an orchestration integration, not a notification adapter.
 > See [Orchestration Integration Semantics](#orchestration-integration-semantics)
@@ -78,7 +76,7 @@ via `--adapter` flags — they depend on the runtime as a library.
 
 ---
 
-## Event Sink Model (v0.13.0+)
+## Event Sink Model
 
 Event sinks receive events **during** the run through the ingestion policy
 path. They are structurally distinct from notification adapters:
@@ -183,7 +181,7 @@ Each stream entry contains flat fields: `run_id`, `event_type`, `seq`,
 | `--adapter-timeout <duration>` | Notification timeout (default `10s`) |
 | `--adapter-retries <n>` | Retry attempts (default `3`) |
 
-### Event Sink CLI Flags (v0.13.0+)
+### Event Sink CLI Flags
 
 | Flag | Description |
 |------|-------------|
@@ -228,11 +226,11 @@ Adapters must not:
 - silently drop events without observable failure.
 
 Event sink delivery semantics are defined per-sink; see
-[Event Sink Model](#event-sink-model-v0130).
+[Event Sink Model](#event-sink-model).
 
 ---
 
-## Strategy Surface (v0.3.0+)
+## Strategy Surface
 
 Strategy is a contract-defined enum limited to batching and retries.
 
@@ -248,7 +246,7 @@ Allowed values:
 - `bounded`
 - `infinite` (if supported)
 
-Ordering and fan-out strategies are explicitly out of scope for now.
+Ordering and fan-out strategies are out of scope.
 
 ---
 
@@ -259,7 +257,7 @@ have happened (CONTRACT_RUN.md §Run Finalization):
 1. Run execution completes (success or failure)
 2. Policy flush completes
 3. Metrics are persisted to Lode
-4. The run's end record is written, or its write failed (v0.14.0+)
+4. The run's end record is written, or its write failed
 
 Notification is not skipped when finalization is incomplete: a run whose
 start record failed is notified as `executor_crash` (it never started),

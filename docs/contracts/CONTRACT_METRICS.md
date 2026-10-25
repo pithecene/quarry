@@ -116,14 +116,12 @@ Optional dimensions:
 - Metrics must be derived from runtime-owned sources, not executor counters.
 - Metrics snapshots must be persisted as Lode `record_kind=metrics` records
   (see CONTRACT_LODE.md) to support stats reads across processes.
-- No exporter is required for v0.3.0; exposure via CLI is mandatory.
+- No exporter is required; exposure via CLI is mandatory.
 
-### Data Source Progression
+### Data Sources
 
-During 0.x, a read command may return stub data when it has no
-Lode-backed reader. This is a transitional allowance, not a permanent state.
+A read command that has no Lode-backed reader returns stub data.
 
-Current state (v0.14.0):
 - `stats metrics` reads the latest metrics record from storage when
   `--storage-backend` and `--storage-path` are both given, and returns stub
   data when no storage flag is given (CONTRACT_CLI.md §`stats metrics`).

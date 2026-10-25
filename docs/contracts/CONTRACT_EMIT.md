@@ -80,9 +80,6 @@ chunking, and `is_last` signaling).
 
 Orphaned bytes (no corresponding artifact event) are eligible for GC.
 
-The transmission and storage of artifact bytes are experimental
-(PUBLIC_API.md §Experimental Surface). The event itself is not.
-
 ### 3) `checkpoint`
 Represents an explicit script checkpoint.
 
@@ -97,7 +94,7 @@ Required payload fields:
 - `target` (string)
 - `params` (object)
 
-Optional payload fields (v0.6.2+):
+Optional payload fields:
 - `source` (string) — override the child run's source partition key (default: inherit from root)
 - `category` (string) — override the child run's category partition key (default: inherit from root)
 
@@ -107,7 +104,7 @@ Semantics:
 - `source` and `category` are partition hints only. They do not affect dedup
   (dedup is by `(target, params)` only).
 
-Runtime interpretation (v0.6.0+):
+Runtime interpretation:
 - Default (`--depth 0`): advisory only, as above.
 - With `--depth > 0`: runtime schedules and executes as child runs.
   Deduplication and depth limits are applied by the fan-out operator.
@@ -144,7 +141,7 @@ Represents normal completion of the script.
 Required payload fields:
 - `summary` (object, optional)
 
-#### Reserved summary fields (v0.9.0+)
+#### Reserved summary fields
 
 When the `prepare` hook returns `{ action: 'skip' }`, the executor emits
 `run_complete` with the following reserved fields in `summary`:
@@ -161,7 +158,6 @@ purposes. These fields are set by the executor, not by user code.
 
 Scripts may write sidecar files via `storage.put()`. These files bypass
 the event envelope, sequence numbering, and policy pipeline entirely.
-This section is experimental (PUBLIC_API.md §Experimental Surface).
 
 ### Semantics
 
@@ -173,7 +169,7 @@ This section is experimental (PUBLIC_API.md §Experimental Surface).
   not counted in `seq`.
 - Files are transported as `file_write` IPC frames (see CONTRACT_IPC.md).
 
-### Error Propagation (v0.12.0+)
+### Error Propagation
 
 `storage.put()` reflects the backend write result. If the storage backend
 (e.g. S3, local filesystem) fails, the returned promise **rejects** with
@@ -191,7 +187,7 @@ try {
 }
 ```
 
-### Return Value (v0.11.0+)
+### Return Value
 
 `storage.put()` returns `Promise<StoragePutResult>`:
 

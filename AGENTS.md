@@ -34,6 +34,14 @@ If scope feels ambiguous or expanding, **pause and ask**.
 
 ---
 
+## Contract Rules
+
+- A contract (`docs/contracts/CONTRACT_*.md`) states invariants only
+- A contract holds no status, progress, plans, deferred work, or the release that introduced a rule
+- Status belongs in `PUBLIC_API.md`, `docs/plans/`, or `CHANGELOG.md`, and history in git, pull requests, and issues
+
+---
+
 ## Structural Rules
 
 - Small, single-purpose modules
