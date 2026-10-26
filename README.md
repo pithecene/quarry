@@ -15,7 +15,7 @@ Quarry runs a Puppeteer script you write under a strict runtime contract, stream
 
 ## Installation
 
-These steps require Node.js 22.18 or later, which runs TypeScript scripts with native type stripping by default, and [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain, covers earlier Node 22 releases, and describes adding Quarry to an existing project.
+These steps require Node.js 22.18 or later, excluding 23.0 through 23.5, which runs TypeScript scripts with native type stripping by default, and [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain, covers earlier Node 22 releases, and describes adding Quarry to an existing project.
 
 ### Script Project
 
