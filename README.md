@@ -15,15 +15,16 @@ Quarry runs a Puppeteer script you write under a strict runtime contract, stream
 
 ## Installation
 
-These steps require Node.js 22.18 or later, which runs TypeScript scripts with native type stripping by default. They also use [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured, so the installed CLI is on your `PATH`. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain and covers earlier Node 22 releases.
+These steps require Node.js 22.18 or later, excluding 23.0 through 23.5, which runs TypeScript scripts with native type stripping by default, and [mise](https://mise.jdx.dev) with its shell activation (`mise activate`) configured. The [SDK and setup guide](PUBLIC_API.md) lists the full toolchain, covers earlier Node 22 releases, and describes adding Quarry to an existing project.
 
-### CLI
+### Script Project
 
-Create a directory for your scripts and install the CLI there with mise, which records the version in the directory's `mise.toml` and puts `quarry` on your `PATH` inside it:
+The `quarry init` command creates a script project with the SDK, the Puppeteer packages the executor loads, an example script, and a storage directory. Its `mise.toml` pins the CLI and puts `quarry` on your `PATH` inside the project, and mise runs `init` itself at that version:
 
 ```bash
-mkdir quarry-scripts && cd quarry-scripts
-mise use github:pithecene/quarry@0.14.0
+mise exec github:pithecene/quarry@0.14.0 -- quarry init my-scraper
+cd my-scraper
+npm install
 ```
 
 ### Docker
@@ -36,21 +37,7 @@ docker pull ghcr.io/pithecene/quarry:0.14.0
 docker pull ghcr.io/pithecene/quarry:0.14.0-slim
 ```
 
-See the [container guide](docs/guides/container.md) for Docker Compose examples.
-
-### SDK
-
-In the same directory, create an ES module project, then install the SDK and the Puppeteer packages the executor loads:
-
-```bash
-npm init -y
-npm pkg set type=module
-npm install proxy-agent
-npx jsr add @pithecene/quarry-sdk
-npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
-```
-
-See the [SDK and setup guide](PUBLIC_API.md) for setup and usage.
+The full image runs a script without a local Node.js project, as § Run the Script in a Container shows. See the [container guide](docs/guides/container.md) for Docker Compose examples.
 
 ---
 
@@ -129,7 +116,7 @@ Quarry owns **only** the extraction step.
 
 ## Quick Example
 
-A Quarry script is a **freestanding program**, not a library. This one reads a page and emits one item for each link on it.
+A Quarry script is a **freestanding program**, not a library. The project that `quarry init` creates holds this one as `links.ts`. It reads a page and emits one item for each link on it.
 
 ### Script
 
@@ -167,10 +154,9 @@ Scripts are imperative, explicit, and simple by design. A script should:
 
 ### Run the Script
 
-Save the script as `links.ts` in the project directory, create a storage directory, and run the script with the filesystem storage backend:
+From the project directory, run the script with the filesystem storage backend:
 
 ```bash
-mkdir -p ./quarry-data
 quarry run \
   --script links.ts \
   --run-id links-001 \
@@ -187,6 +173,25 @@ quarry list runs --storage-backend fs --storage-path ./quarry-data --source exam
 ```
 
 The [run guide](docs/guides/run.md) describes the run lifecycle and its terminal states.
+
+### Run the Script in a Container
+
+The full image needs only the script and a storage directory. Save the script as `scripts/links.ts`, then run it as your own user, so that the container can write the storage directory:
+
+```bash
+mkdir -p data
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v ./scripts:/work/scripts:ro \
+  -v ./data:/work/data \
+  ghcr.io/pithecene/quarry:0.14.0 \
+  run \
+    --script ./scripts/links.ts \
+    --run-id links-001 \
+    --source example \
+    --job '{"url": "https://example.com"}' \
+    --storage-backend fs \
+    --storage-path ./data
+```
 
 ---
 
