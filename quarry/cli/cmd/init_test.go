@@ -81,7 +81,7 @@ func TestInit_WritesProject(t *testing.T) {
 		t.Fatalf("sdk dependency = %q", got)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "package.json"))
-	if err != nil || !strings.Contains(string(raw), `"node": ">=22.18"`) {
+	if err != nil || !strings.Contains(string(raw), `"node": ">=22.18 <23 || >=23.6"`) {
 		t.Fatalf("package.json escapes or omits the Node range: %s", raw)
 	}
 	npmrc, err := os.ReadFile(filepath.Join(dir, ".npmrc"))

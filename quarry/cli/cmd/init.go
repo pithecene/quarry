@@ -23,12 +23,12 @@ type InitResponse struct {
 	Next      []string `json:"next"`
 }
 
-// initNodeRange is the Node.js floor of a generated project: native type
-// stripping is on by default from 22.18, and Puppeteer 25 requires 22.12. The
-// .npmrc sets engine-strict, so npm install fails at once on an earlier Node.js
-// instead of installing a Puppeteer that cannot run. init starts no process,
-// so it cannot check the version itself.
-const initNodeRange = ">=22.18"
+// initNodeRange is the Node.js range of a generated project: native type
+// stripping is on by default from 22.18 and 23.6, and Puppeteer 25 requires
+// 22.12. The .npmrc sets engine-strict, so npm install fails at once on any
+// other Node.js instead of installing a project that cannot run. init starts
+// no process, so it cannot check the version itself.
+const initNodeRange = ">=22.18 <23 || >=23.6"
 
 // initStorageDir is the storage directory init creates and the example run
 // command writes to.

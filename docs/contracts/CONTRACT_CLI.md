@@ -449,7 +449,8 @@ Files written:
   depends on the SDK from JSR at a caret range of the CLI's version
   (`^X.Y.Z` for CLI X.Y.Z) and on `proxy-agent`. It depends on `puppeteer`,
   `puppeteer-extra`, and `puppeteer-extra-plugin-stealth` at the executor's
-  peer ranges. Its `engines` field requires Node.js 22.18 or later, and its
+  peer ranges. Its `engines` field requires Node.js 22.18 or later, excluding 23.0
+  through 23.5, and its
   `allowScripts` approves
   Puppeteer's install script, which downloads the browser
 - `.npmrc`: the `@jsr` scope's registry, and `engine-strict=true`
@@ -465,8 +466,8 @@ Rules:
 - `init` installs nothing and starts no process. Its response lists the
   commands that install the project and run the example script
 - `init` takes at most one directory
-- The project requires Node.js 22.18 or later, where type stripping is on by
-  default, and Puppeteer 25 requires 22.12. With `engine-strict`, `npm install`
+- The project requires Node.js 22.18 or later, excluding 23.0 through 23.5,
+  where type stripping is on by default, and Puppeteer 25 requires 22.12. With `engine-strict`, `npm install`
   fails on an earlier Node.js before it installs anything
 
 Response:
