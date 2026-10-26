@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Breaking Changes
+---
 
-- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
+## [0.14.1] - 2026-10-25
 
 ### Added
 
@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SDK on JSR**: The JSR package now depends on `puppeteer` with the supported range `^24 || ^25`. It previously required `^25.14.0`, the development version, because JSR derives the range of each bare npm import from `package.json` and took the devDependency. With the earlier range, `npx jsr add` installed Puppeteer 25 even on Node 22.6 through 22.11, which Puppeteer 25 does not support. `sdk/jsr.json` maps the import to the peer range, and a test keeps the two equal.
 - **Metrics TUI**: `quarry stats metrics --tui` renders the metrics snapshot, grouped as run lifecycle, ingestion, executor, and storage counts. It previously showed `Unknown view type: stats_metrics`.
+
+### Removed
+
+- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
 
 ---
 
@@ -712,7 +716,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/pithecene/quarry/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/pithecene/quarry/compare/v0.13.7...v0.14.0
 [0.13.7]: https://github.com/pithecene/quarry/compare/v0.13.6...v0.13.7
 [0.13.6]: https://github.com/pithecene/quarry/compare/v0.13.5...v0.13.6
