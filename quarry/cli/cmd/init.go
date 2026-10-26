@@ -231,7 +231,7 @@ func existingInitPaths(dir string, files []initFile) []string {
 			existing = append(existing, f.path)
 		}
 	}
-	if info, err := os.Lstat(filepath.Join(dir, initStorageDir)); err == nil && !info.IsDir() {
+	if info, err := os.Stat(filepath.Join(dir, initStorageDir)); err == nil && !info.IsDir() { // Stat follows a link to a directory
 		existing = append(existing, initStorageDir)
 	}
 	return existing

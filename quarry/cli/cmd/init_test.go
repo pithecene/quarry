@@ -215,3 +215,26 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestInit_ReusesASymlinkedStorageDirectory(t *testing.T) {
+	testutil.Serial(t, "runInitCLI swaps the process-wide os.Stdout")
+	dir, target := t.TempDir(), t.TempDir()
+	if err := os.Symlink(target, filepath.Join(dir, initStorageDir)); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := runInit(t, dir)
+	if err != nil || slices.Contains(resp.Created, initStorageDir+"/") {
+		t.Fatalf("init with a symlinked storage directory = %+v, %v", resp, err)
+	}
+}
+
+func TestInit_RefusesAStorageFile(t *testing.T) {
+	testutil.Serial(t, "runInitCLI swaps the process-wide os.Stdout")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, initStorageDir), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runInit(t, dir); err == nil || !strings.Contains(err.Error(), initStorageDir) {
+		t.Fatalf("init over a storage file: err = %v", err)
+	}
+}
