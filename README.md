@@ -214,9 +214,10 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 ## Documentation
 
-Pithecene publishes the guides, the public API reference, and the contracts
-at [pithecene.sh/docs/quarry](https://pithecene.sh/docs/quarry). The repository
-holds the same documents:
+Pithecene publishes the guides, the public API reference, the contracts, and
+the changelog at [pithecene.sh/docs/quarry](https://pithecene.sh/docs/quarry).
+The repository holds those documents and the material that the site does not
+publish, such as the SDK reference, the examples, and the support guide:
 
 | Resource | Path |
 |----------|------|
