@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`quarry init`**: Creates a script project in a directory, by default the current one. Its `package.json` is an ES module package that depends on the SDK at the CLI's version and on the Puppeteer packages the executor loads. It also writes an `.npmrc` for the JSR registry, a `mise.toml` that pins the CLI, a `.gitignore`, and an example script, and it creates the storage directory. It never overwrites a file and installs nothing. Its output lists the commands to run next. `CONTRACT_CLI.md` § init defines it.
+- **`quarry init`**: Creates a script project in a directory, by default the current one. Its `package.json` is an ES module package that depends on the SDK at the CLI's version and on the Puppeteer packages the executor loads. It requires Node.js 22.18 or later, and its `.npmrc` sets `engine-strict`, so `npm install` fails on an earlier Node.js before it installs anything. It also writes an `.npmrc` with the JSR registry, a `mise.toml` that pins the CLI, a `.gitignore`, and an example script, and it creates the storage directory. It never overwrites a file and installs nothing. Its output lists the commands to run next. `CONTRACT_CLI.md` § init defines it.
 
 ### Changed
 

@@ -69,15 +69,24 @@ func TestInit_WritesProject(t *testing.T) {
 		Name         string            `json:"name"`
 		Private      bool              `json:"private"`
 		Type         string            `json:"type"`
+		Engines      map[string]string `json:"engines"`
 		Dependencies map[string]string `json:"dependencies"`
 		AllowScripts map[string]bool   `json:"allowScripts"`
 	}
 	readJSON(t, filepath.Join(dir, "package.json"), &manifest)
-	if manifest.Name != "my-scraper" || !manifest.Private || manifest.Type != "module" || !manifest.AllowScripts["puppeteer"] {
+	if manifest.Name != "my-scraper" || !manifest.Private || manifest.Type != "module" || !manifest.AllowScripts["puppeteer"] || manifest.Engines["node"] != initNodeRange {
 		t.Fatalf("manifest = %+v", manifest)
 	}
 	if got := manifest.Dependencies["@pithecene/quarry-sdk"]; got != "npm:@jsr/pithecene__quarry-sdk@^"+types.Version {
 		t.Fatalf("sdk dependency = %q", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil || !strings.Contains(string(raw), `"node": ">=22.18"`) {
+		t.Fatalf("package.json escapes or omits the Node range: %s", raw)
+	}
+	npmrc, err := os.ReadFile(filepath.Join(dir, ".npmrc"))
+	if err != nil || !strings.Contains(string(npmrc), "engine-strict=true\n") {
+		t.Fatalf(".npmrc = %q, %v", npmrc, err)
 	}
 	mise, err := os.ReadFile(filepath.Join(dir, "mise.toml"))
 	if err != nil || !strings.Contains(string(mise), `"github:pithecene/quarry" = "`+types.Version+`"`) {

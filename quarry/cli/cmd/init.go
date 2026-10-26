@@ -23,6 +23,13 @@ type InitResponse struct {
 	Next      []string `json:"next"`
 }
 
+// initNodeRange is the Node.js floor of a generated project: native type
+// stripping is on by default from 22.18, and Puppeteer 25 requires 22.12. The
+// .npmrc sets engine-strict, so npm install fails at once on an earlier Node.js
+// instead of installing a Puppeteer that cannot run. init starts no process,
+// so it cannot check the version itself.
+const initNodeRange = ">=22.18"
+
 // initStorageDir is the storage directory init creates and the example run
 // command writes to.
 const initStorageDir = "quarry-data"
@@ -143,7 +150,7 @@ func initFiles(dir string) ([]initFile, error) {
 	}
 	return []initFile{
 		{"package.json", manifest},
-		{".npmrc", "@jsr:registry=https://npm.jsr.io\n"},
+		{".npmrc", "@jsr:registry=https://npm.jsr.io\nengine-strict=true\n"},
 		{"mise.toml", fmt.Sprintf("[tools]\n\"github:pithecene/quarry\" = %q\n", types.Version)},
 		{".gitignore", "node_modules/\n" + initStorageDir + "/\n"},
 		{"links.ts", initExampleScript},
@@ -159,17 +166,23 @@ func initPackageJSON(name string) (string, error) {
 	for pkg, rng := range initPeerRanges {
 		deps[pkg] = rng
 	}
-	out, err := json.MarshalIndent(struct {
+	// HTML escaping is off, so that ranges such as >=22.18 stay readable.
+	var out strings.Builder
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	err := enc.Encode(struct {
 		Name         string            `json:"name"`
 		Private      bool              `json:"private"`
 		Type         string            `json:"type"`
+		Engines      map[string]string `json:"engines"`
 		Dependencies map[string]string `json:"dependencies"`
 		AllowScripts map[string]bool   `json:"allowScripts"`
-	}{name, true, "module", deps, map[string]bool{"puppeteer": true}}, "", "  ")
+	}{name, true, "module", map[string]string{"node": initNodeRange}, deps, map[string]bool{"puppeteer": true}})
 	if err != nil {
 		return "", fmt.Errorf("render package.json: %w", err)
 	}
-	return string(out) + "\n", nil
+	return out.String(), nil
 }
 
 // npmPackageName derives a valid npm package name from a directory name.
