@@ -510,3 +510,23 @@ func getFlagDefault(f cli.Flag) any {
 		return nil
 	}
 }
+
+// TestCLIParityInitCommand validates the init command flags against the parity artifact.
+func TestCLIParityInitCommand(t *testing.T) {
+	t.Parallel()
+	parityInit, ok := loadParityArtifact(t).Commands["init"]
+	if !ok {
+		t.Fatal("parity artifact missing 'init' command")
+	}
+	actualFlags := extractFlags(InitCommand())
+	for flagName := range parityInit.Flags {
+		if _, exists := actualFlags[flagName]; !exists {
+			t.Errorf("parity artifact declares flag --%s for 'init' but it does not exist", flagName)
+		}
+	}
+	for flagName := range actualFlags {
+		if _, exists := parityInit.Flags[flagName]; !exists {
+			t.Errorf("CLI 'init' has flag --%s but it is not in parity artifact", flagName)
+		}
+	}
+}

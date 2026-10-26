@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
 
+### Added
+
+- **`quarry init`**: Creates a script project in a directory, by default the current one. Its `package.json` is an ES module package that depends on the SDK at the CLI's version and on the Puppeteer packages the executor loads. It requires Node.js 22.18 or later, excluding 23.0 through 23.5, and its `.npmrc` sets `engine-strict`, so `npm install` fails on an earlier Node.js before it installs anything. It also writes an `.npmrc` with the JSR registry, a `mise.toml` that pins the CLI, a `.gitignore`, and an example script, and it creates the storage directory. It never overwrites a file and installs nothing. Its output lists the commands to run next. `CONTRACT_CLI.md` § init defines it.
+
 ### Changed
 
 - **Experimental surface**: The artifact byte path is experimental. `PUBLIC_API.md` § Experimental Surface defines it: artifact bytes, `ctx.storage.put` and `createStorageBatcher`, the `artifact_chunk`, `file_write`, and `file_write_ack` frames, and the stored chunk records and sidecar files. v1.0 excludes it from its compatibility commitment unless its replacement, which streams bytes into Lode Volumes (#255), is ready first. The `artifact` event and its commit record are not experimental, and behavior is unchanged.

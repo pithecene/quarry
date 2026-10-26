@@ -25,8 +25,10 @@ Non-goals:
 ## Invariants
 
 - The CLI is the **only execution entrypoint**.
-- All commands except `run`, `index rebuild`, and `prune` are
+- All commands except `run`, `init`, `index rebuild`, and `prune` are
   **read-only** with respect to execution, datasets, and persisted state.
+  `init` only creates the files of a script project in its target
+  directory: it never overwrites a file and never touches storage (§init).
   `index rebuild` only creates backfilled run records: it never
   overwrites a record and never writes or deletes partition data
   (§index rebuild). `prune` only deletes whole runs that its flags select
@@ -45,6 +47,7 @@ Non-goals:
 ```
 quarry
 ├─ run
+├─ init
 ├─ inspect
 │  ├─ run <run-id>
 │  └─ proxy <pool-name>
@@ -436,6 +439,52 @@ Node 20.6+).
 
 ---
 
+## `init` (project setup)
+
+Creates a script project in a directory: `quarry init [<directory>]`. The
+directory defaults to the current one and is created when absent.
+
+Files written:
+- `package.json`: a private ES module package (`"type": "module"`). It
+  depends on the SDK from JSR at a caret range of the CLI's version
+  (`^X.Y.Z` for CLI X.Y.Z) and on `proxy-agent`. It depends on `puppeteer`,
+  `puppeteer-extra`, and `puppeteer-extra-plugin-stealth` at the executor's
+  peer ranges. Its `engines` field requires Node.js 22.18 or later, excluding 23.0
+  through 23.5, and its
+  `allowScripts` approves
+  Puppeteer's install script, which downloads the browser
+- `.npmrc`: the `@jsr` scope's registry, and `engine-strict=true`
+- `mise.toml`: the CLI pinned to its own version
+- `.gitignore`: `node_modules/` and the storage directory
+- `links.ts`: an example script
+- `quarry-data/`: the storage directory, created when absent
+
+Rules:
+- When any of those files already exists, `init` writes nothing and exits
+  with status 1, naming the files. An existing storage directory is reused
+- Each file is created exclusively, so `init` never replaces a file
+- `init` installs nothing and starts no process. Its response lists the
+  commands that install the project and run the example script
+- `init` takes at most one directory
+- The project requires Node.js 22.18 or later, excluding 23.0 through 23.5,
+  where type stripping is on by default, and Puppeteer 25 requires 22.12. With `engine-strict`, `npm install`
+  fails on an earlier Node.js before it installs anything
+
+Response:
+```
+InitResponse:
+  directory: string
+  created: string[]   (the paths created, in order; a reused storage
+                       directory is not listed)
+  next: string[]      (the commands to run next, with the directory
+                       quoted for a POSIX shell)
+```
+
+In table format, the paths written go to stderr and the next commands are
+the rows.
+
+---
+
 ## `inspect` (single-entity introspection)
 
 The `inspect` commands return a deep view of a single entity and are read-only.
@@ -535,9 +584,8 @@ Optional flags:
 - `--source=<source>`: filter by source partition
 
 Both `--storage-backend` and `--storage-path` must be provided together.
-any storage flag given without both is an error.
-When provided, metrics are read from Lode storage. When no storage flag is
-given, stub data is returned (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
+Any storage flag given without both is an error. With both flags, metrics
+are read from Lode storage. Without a storage flag, stub data is returned (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
 
 Response:
 ```
@@ -634,9 +682,9 @@ stderr when another page exists.
 
 Ordering and paging: runs are ordered by record key (source, category,
 day, run ID) on every backend. `next` is the key of the last run returned.
-passing it as `--after` returns the runs after it. `next` is present only
+Passing it as `--after` returns the runs after it. `next` is present only
 when another run matching the request exists. The cursor is a key
-position, not a reference to a stored run: listing resumes at the first
+position, not a reference to a stored run. Listing resumes at the first
 start-record key after it, so paging stays correct when the run it names
 is deleted between pages (for example, by retention). A value that does
 not have the shape of a start-record key under the selected prefix, with
@@ -697,9 +745,9 @@ Response must include:
 
 Backfills run records for runs written before v0.14.0, which `list runs`
 cannot otherwise find ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Backfilled Run Records). It scans
-the dataset's partition tree, writes a start record (and, when the stored
-data shows that the run ended, an end record) for each run that has no
-start record, and reports what it wrote. Records are created, never
+the dataset's partition tree and writes a start record for each run that
+has no start record. An end record follows when the stored data shows that
+the run ended, and the command reports what it wrote. Records are created, never
 replaced, so a rerun writes only the records still missing, and rerunning
 an interrupted rebuild resumes it.
 

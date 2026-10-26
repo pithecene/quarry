@@ -334,6 +334,24 @@
         }
       }
     },
+    "init": {
+      "description": "Create a script project with the SDK, Puppeteer, and an example script (writes files)",
+      "flags": {
+        "format": {
+          "type": "string",
+          "aliases": [
+            "f"
+          ],
+          "required": false,
+          "description": "Output format: json, table, yaml"
+        },
+        "no-color": {
+          "type": "bool",
+          "required": false,
+          "description": "Disable colored output (table format only)"
+        }
+      }
+    },
     "inspect": {
       "description": "Deep view of a single entity",
       "subcommands": {
