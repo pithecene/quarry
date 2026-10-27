@@ -60,9 +60,10 @@ Plans and records (for maintainers; not user documentation).
 
 ### docs/maintainers/
 
-Maintainer material read by tests and scripts.
+Maintainer material, some of it read by tests and scripts.
 
 - [`maintainers/CLI_PARITY.json`](maintainers/CLI_PARITY.json) — CLI flag parity tracking (read by `quarry/cli/cmd/parity_test.go` and the lockstep version targets)
+- [`maintainers/DOCS_SITE.md`](maintainers/DOCS_SITE.md) — the documents that pithecene.sh publishes, and how a renamed document reaches the site
 
 ### docs/contracts/
 
