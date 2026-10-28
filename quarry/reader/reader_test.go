@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/ipc"
 	qlode "github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
@@ -33,7 +35,15 @@ type runSpec struct {
 	end                          *qlode.RunEnd     // nil: no end record
 }
 
+// write writes the run with a one-byte artifact chunk.
 func (f *fixture) write(spec runSpec) {
+	f.t.Helper()
+	f.writeWithChunk(spec, []byte("x"))
+}
+
+// writeWithChunk writes the run with the given bytes as its one artifact
+// chunk.
+func (f *fixture) writeWithChunk(spec runSpec, chunk []byte) {
 	f.t.Helper()
 	cfg := qlode.Config{Dataset: "quarry", Source: spec.source, Category: spec.category, Day: spec.day, RunID: spec.runID}
 	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
@@ -59,7 +69,7 @@ func (f *fixture) write(spec runSpec) {
 			f.t.Fatalf("events: %v", err)
 		}
 	}
-	if err := c.WriteChunks(ctx, "quarry", spec.runID, []*types.ArtifactChunk{{ArtifactID: "a1", Seq: 1, IsLast: true, Data: []byte("x")}}); err != nil {
+	if err := c.WriteChunks(ctx, "quarry", spec.runID, []*types.ArtifactChunk{{ArtifactID: "a1", Seq: 1, IsLast: true, Data: chunk}}); err != nil {
 		f.t.Fatalf("chunks: %v", err)
 	}
 	if err := c.WriteMetrics(ctx, metricsSnapshot(spec.runID), time.Now()); err != nil {
@@ -287,6 +297,29 @@ func TestReadEvents_OrderedEventsOnly(t *testing.T) {
 		if e["run_id"] != "r1" {
 			t.Fatalf("event from another run: %v", e)
 		}
+	}
+}
+
+// A run whose artifact chunk is at the IPC maximum reads back. The chunk
+// record carries the chunk as base64 on one JSON line, so a reader with a
+// line ceiling below that record refuses a run the runtime committed.
+func TestReadEvents_ReadsBackAChunkAtMaxChunkSize(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	chunk := bytes.Repeat([]byte("x"), ipc.MaxChunkSize)
+	f.writeWithChunk(runSpec{"src", "cat", "2026-10-21", "r1", []types.EventType{types.EventTypeItem, types.EventTypeRunComplete}, ended(types.OutcomeSuccess, types.EventTypeRunComplete)}, chunk)
+	r := f.reader()
+	ctx := t.Context()
+	p, err := r.ListRuns(ctx, Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, ListOptions{})
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	evs, err := r.ReadEvents(ctx, p.Runs[0])
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(evs) != 2 {
+		t.Fatalf("got %d events, want 2", len(evs))
 	}
 }
 
