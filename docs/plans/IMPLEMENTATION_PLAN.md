@@ -13,8 +13,8 @@ Quarry’s core principle:
 
 Scripts and executors remain **policy-agnostic**.
 
-## Current Status (as of v0.14.1)
-- Latest release: v0.14.1 (see CHANGELOG.md).
+## Current Status (as of v0.14.2)
+- Latest release: v0.14.2 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
 - Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side & retention) →

@@ -23,7 +23,7 @@ These steps require Node.js 22.18 or later, excluding 23.0 through 23.5, which r
 The `quarry init` command creates a script project with the SDK, the Puppeteer packages the executor loads, an example script, and a storage directory. Its `mise.toml` pins the CLI and puts `quarry` on your `PATH` inside the project, and mise runs `init` itself at that version:
 
 ```bash
-mise exec github:pithecene/quarry@0.14.1 -- quarry init my-scraper
+mise exec github:pithecene/quarry@0.14.2 -- quarry init my-scraper
 cd my-scraper
 npm install
 ```
@@ -32,10 +32,10 @@ npm install
 
 ```bash
 # Full image (includes Chromium + fonts)
-docker pull ghcr.io/pithecene/quarry:0.14.1
+docker pull ghcr.io/pithecene/quarry:0.14.2
 
 # Slim image (no browser; bring your own Chromium through --browser-ws-endpoint)
-docker pull ghcr.io/pithecene/quarry:0.14.1-slim
+docker pull ghcr.io/pithecene/quarry:0.14.2-slim
 ```
 
 The full image runs a script without a local Node.js project, as § Run the Script in a Container shows. See the [container guide](docs/guides/container.md) for Docker Compose examples.
@@ -184,7 +184,7 @@ mkdir -p data
 docker run --rm --user "$(id -u):$(id -g)" \
   -v ./scripts:/work/scripts:ro \
   -v ./data:/work/data \
-  ghcr.io/pithecene/quarry:0.14.1 \
+  ghcr.io/pithecene/quarry:0.14.2 \
   run \
     --script ./scripts/links.ts \
     --run-id links-001 \
