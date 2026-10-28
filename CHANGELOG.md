@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.14.2] - 2026-10-28
+
 ### Fixed
 
 - **A run whose artifact chunk is at the IPC maximum reads back**: `list events` on a run that committed a chunk of 8 MiB failed with `bufio.Scanner: token too long`. Lode v0.12.0 bounded a JSON Lines record at 10 MiB, while the chunk record is a line of about 11 MiB. Lode v0.12.2 lifts the bound, and `CONTRACT_LODE.md` § Read-Back Invariant states that every record the runtime commits is readable by the run's readers, whatever the size of its chunks. A reader test writes a chunk at `MaxChunkSize` and reads the run back.
@@ -720,7 +724,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/pithecene/quarry/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/pithecene/quarry/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/pithecene/quarry/compare/v0.13.7...v0.14.0
 [0.13.7]: https://github.com/pithecene/quarry/compare/v0.13.6...v0.13.7
