@@ -139,6 +139,17 @@ The artifact commit event marks the artifact as complete.
 The commit record is the commit boundary. Chunks written without a subsequent
 commit are orphans and may be garbage collected.
 
+### Read-Back Invariant
+
+> Every record that the runtime commits MUST be readable by the run's
+> readers (`list runs`, `list events`, and `stats metrics`), whatever the
+> size of the run's artifact chunks.
+
+A chunk record carries its data as base64 on one JSON line, so a chunk at
+the IPC maximum is a line of about 11 MiB. A reader that bounds a line
+below that refuses a run the runtime reported as complete. The bound on a
+record is the writer's, and a reader MUST NOT add one of its own.
+
 ---
 
 ## Checksum
