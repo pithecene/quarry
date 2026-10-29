@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
 ---
 
 ## [0.14.2] - 2026-10-28
 
 ### Fixed
 
-- **A run whose artifact chunk is at the IPC maximum reads back**: `list events` on a run that committed a chunk of 8 MiB failed with `bufio.Scanner: token too long`. Lode v0.12.0 bounded a JSON Lines record at 10 MiB, while the chunk record is a line of about 11 MiB. Lode v0.12.2 lifts the bound, and `CONTRACT_LODE.md` � Read-Back Invariant states that every record the runtime commits is readable by the run's readers, whatever the size of its chunks. A reader test writes a chunk at `MaxChunkSize` and reads the run back.
+- **A run whose artifact chunk is at the IPC maximum reads back**: `list events` on a run that committed an 8 MiB chunk failed with `bufio.Scanner: token too long`, because Lode v0.12.0 bounded a JSON Lines record at 10 MiB and the chunk's record is about 11 MiB. Lode v0.12.2 lifts the bound. `CONTRACT_LODE.md` § Read-Back Invariant states that the run's readers read every record that the runtime commits, whatever the size of its chunks.
 
 ---
 
@@ -23,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`quarry init`**: Creates a script project in a directory, by default the current one. Its `package.json` is an ES module package that depends on the SDK at the CLI's version and on the Puppeteer packages the executor loads. It requires Node.js 22.18 or later, excluding 23.0 through 23.5, and its `.npmrc` sets `engine-strict`, so `npm install` fails on an earlier Node.js before it installs anything. It also writes an `.npmrc` with the JSR registry, a `mise.toml` that pins the CLI, a `.gitignore`, and an example script, and it creates the storage directory. It never overwrites a file and installs nothing. Its output lists the commands to run next. `CONTRACT_CLI.md` § init defines it.
+- **`quarry init`**: Creates a script project in a directory, by default the current one. Its `package.json` is an ES module package that depends on the SDK at the CLI's version and on the Puppeteer packages the executor loads. It also writes an `.npmrc` with the JSR registry, a `mise.toml` that pins the CLI, a `.gitignore`, and an example script, and it creates the storage directory. It never overwrites a file and installs nothing, and its output lists the commands to run next. `CONTRACT_CLI.md` § init defines it.
+- **The Node.js floor of a new project**: A project that `quarry init` creates requires Node.js 22.18 or later, excluding 23.0 through 23.5. Its `.npmrc` sets `engine-strict`, so `npm install` fails on an earlier Node.js before it installs anything.
 
 ### Changed
 
@@ -31,23 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Metrics contract**: `CONTRACT_METRICS.md` § Data Sources states which read commands read storage today (`stats metrics`, `list runs`, and `list events`) and that the others return stub data. It no longer claims that every `stats` command reads Lode through a global reader configuration, which never shipped.
 - **Docs**: `IMPLEMENTATION_PLAN.md` records what v0.13.6 and v0.14.0 shipped. Retention shipped as `quarry prune`, and Lode v0.12.0 enforces each dataset's compressor, so the planned `quarry.json` pin is dropped. The items v0.14.0 did not ship, among them the storage key in `file_write_ack`, the run deadline, and the compressor option, are listed under Carried Forward.
 - **Docs**: The documentation is organized by audience. The implementation plan, the release readiness records, and the ingress models exploration move to `docs/plans/`, and `CLI_PARITY.json` moves to `docs/maintainers/`.
-- **Contracts**: The contracts state invariants only. They no longer mark the release that introduced a section, restate the experimental standing that `PUBLIC_API.md` § Experimental Surface defines, or list planned adapters and hosts. `AGENTS.md` § Contract Rules states the rule.
+- **Contracts**: The contracts state invariants only. They no longer mark the release that introduced a section, restate the experimental standing that `PUBLIC_API.md` § Experimental Surface defines, or list planned adapters and hosts.
 - **Contracts**: Every contract is titled in the form "Quarry <Subject> Contract" and opens with "This document defines". `CONTRACT_LODE.md` is titled "Quarry Lode Storage Contract".
-- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed. Its list of components moves to the README. The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
+- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed. Its list of components moves to the README.
+- **Release markers and retries**: The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
 - **Docs**: The README, `PUBLIC_API.md`, the guides, the contracts, and this changelog follow Chicago style: no semicolons or dashes as sentence punctuation, no contractions, active voice where an agent acts, and headline-style headings. A heading that is a command or a field in code font remains that name.
 - **Docs**: Examples no longer name particular vendors or subjects. S3-compatible providers are described generically, with `https://s3.example.com` as the example endpoint, the proxy examples use a placeholder provider, and the README pipeline extracts the catalog of an example store. The CLI help for `--storage-endpoint` and `--storage-s3-path-style` changes to match.
 - **Docs**: The README quick start runs end to end. It creates a script project, installs the CLI into it with `mise use`, and installs the SDK and the Puppeteer packages the executor loads (`puppeteer`, `puppeteer-extra`, and `puppeteer-extra-plugin-stealth`). The example script reads `https://example.com` and types its job payload, and the guide runs it with `quarry run` and confirms the run with `quarry list runs`.
 - **Docs**: The README quick start creates its project with `quarry init`, run once through `mise exec`, so a first run takes four commands: `init`, `cd`, `npm install`, and `quarry run`. A new section runs the same script in the full container image without a local Node.js project. The container guide's standalone `docker run` passes `--user` so that the run can write a bind-mounted storage directory, and `PUBLIC_API.md` points to `quarry init` ahead of its manual setup.
-- **Docs**: `PUBLIC_API.md` setup matches what a run needs. The Node.js prerequisite is 22.18 or later, or 22.6 or later with `--experimental-strip-types`. The CLI installs with `mise use`, which puts `quarry` on `PATH`. The SDK step creates an ES module project and installs `proxy-agent` and then the Puppeteer packages the executor loads, and the from-source example passes `--executor` so that it resolves them from the workspace. Known Limitation 7, which covered adapters, stored-data reads, backfill, pruning, and Temporal, is split into limitations on adapters, stored-data reads, and runs written before v0.14.0. The pruning details it repeated are left to the CLI guide.
+- **Docs**: `PUBLIC_API.md` setup matches what a run needs. The Node.js prerequisite is 22.18 or later, or 22.6 or later with `--experimental-strip-types`. The CLI installs with `mise use`, which puts `quarry` on `PATH`. The SDK step creates an ES module project and installs `proxy-agent` and then the Puppeteer packages the executor loads, and the from-source example passes `--executor` so that it resolves them from the workspace.
+- **Known limitations**: Known Limitation 7 of `PUBLIC_API.md`, which covered adapters, stored-data reads, backfill, pruning, and Temporal, splits into limitations on adapters, stored-data reads, and runs written before v0.14.0. The CLI guide keeps the pruning details that it repeated.
+
+### Removed
+
+- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
 
 ### Fixed
 
 - **SDK on JSR**: The JSR package now depends on `puppeteer` with the supported range `^24 || ^25`. It previously required `^25.14.0`, the development version, because JSR derives the range of each bare npm import from `package.json` and took the devDependency. With the earlier range, `npx jsr add` installed Puppeteer 25 even on Node 22.6 through 22.11, which Puppeteer 25 does not support. `sdk/jsr.json` maps the import to the peer range, and a test keeps the two equal.
 - **Metrics TUI**: `quarry stats metrics --tui` renders the metrics snapshot, grouped as run lifecycle, ingestion, executor, and storage counts. It previously showed `Unknown view type: stats_metrics`.
-
-### Removed
-
-- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
 
 ---
 
@@ -102,13 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CLI**: `quarry stats metrics` reads from S3-compatible providers. The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS. It now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
 - **Packaging**: npm `latest` and the `ghcr.io/pithecene/quarry` `:latest`/`:slim` tags always point at the newest published release. Publishing an older patch release after a newer one (as with v0.13.5 after v0.13.6) no longer moves them backwards (#252)
-- **Storage**: Storage errors are classified by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind, e.g. a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied` instead of `ErrPermissionDenied`
+- **Storage**: Storage errors are classified by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind: a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied` instead of `ErrPermissionDenied`
 
 ### Security
 
 - **Deps**: Upgrade `github.com/klauspost/compress` to v1.18.7 (transitive via Lode), resolving the `s2` integer-overflow / out-of-bounds write advisory (Dependabot #60, GHSA-259r-337f-4rfw)
 - **Deps**: Remove the only path to `braces` (Dependabot #59, GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS, no patched release) by replacing `tsd` with vitest's built-in type testing. The SDK's type-level contract tests now run as `vitest run --typecheck.only` with `expectTypeOf`
-- **Deps**: Upgrade puppeteer to 25.14.0 in development dependencies and the container image (Chrome for Testing 155.0.8059.79). This resolves the `extract-zip` symlink advisories (Dependabot #47, #53) for the images and the default toolchain: `@puppeteer/browsers` 3.x no longer depends on `extract-zip`. Self-managed installs that stay on puppeteer 24 remain exposed (see `SUPPORT.md` § Open Security Advisories). The SDK and executor peer range widens to `puppeteer ^24 || ^25`, so existing puppeteer 24 installs keep working. Puppeteer 25 requires Node 22.12+, and needs `proxy-agent` installed alongside it for proxied browser downloads (now an optional peer, added to the workspace dev dependencies)
+- **Deps**: Upgrade puppeteer to 25.14.0 in development dependencies and the container image (Chrome for Testing 155.0.8059.79). This resolves the `extract-zip` symlink advisories (Dependabot #47, #53) for the images and the default toolchain, because `@puppeteer/browsers` 3.x no longer depends on `extract-zip`. Self-managed installs that stay on puppeteer 24 remain exposed (`SUPPORT.md` § Open Security Advisories). The SDK and executor peer range widens to `puppeteer ^24 || ^25`. Puppeteer 25 requires Node 22.12+ and needs `proxy-agent`, now an optional peer, for proxied browser downloads
 
 ---
 
@@ -116,8 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Docs**: Roadmap added to `IMPLEMENTATION_PLAN.md`: v0.13.6 (Lode v0.10.0), v0.14.0 (read side #240, retention #239, compression), v1.0 (contract freeze), and v1.x (first-party `quarry serve` host). It records six decided architecture points for v0.14.0, with the design record on #245. They are a runtime-owned run lifecycle, one key builder and a `runs/` namespace for Quarry-written objects, run records as the run index with an operator-run backfill, record-driven retention, and a rewritten CLI read contract. Temporal section demoted to a deferred host. `CONTRACT_INTEGRATION.md` orchestration paradigm generalized so the runtime stays host-agnostic. `PUBLIC_API.md` Known Limitation 7 states what reads exist today and points at the planned reader
-- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.10.0. The additive listing API adds sorted listings on every store, `PartitionListOptions.Prefix`, `StartAfter` cursors for dataset/partition/manifest listings, `ErrPartitionPrefixNotSupported`, and `ErrInvalidArgument` for refused option values. `CONTRACT_LODE.md` § Listing Order and Cursors records it as the basis for the v0.14 read side. Error message text for invalid arguments/paths and nested manifest read failures changed upstream. Quarry matches on sentinels, so no behavior change. Upstream fixes carried: all-or-nothing filesystem `Put`, stream writes no longer hang when `Put` fails fast, filesystem `ReadRange` no longer allocates the full requested length, filesystem `List` matches string prefixes like memory/S3
+- **Contracts**: `CONTRACT_INTEGRATION.md` generalizes its orchestration paradigm so that the runtime stays independent of any host, and Known Limitation 7 of `PUBLIC_API.md` states the reads that exist today and points at the planned reader
+- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.10.0. Its listing API adds sorted listings on every store, `PartitionListOptions.Prefix`, `StartAfter` cursors for dataset, partition, and manifest listings, `ErrPartitionPrefixNotSupported`, and `ErrInvalidArgument` for refused option values. Upstream error messages for invalid arguments, invalid paths, and nested manifest read failures changed, and Quarry matches on sentinels, so its behavior holds. The upgrade carries an all-or-nothing filesystem `Put`, stream writes that no longer hang when `Put` fails fast, and filesystem `List` prefix matching like memory and S3
 
 ---
 
@@ -125,23 +129,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **Packaging**: The GitHub organization was renamed `pithecene-io` → `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images. The `v0.13.5` tag was re-pointed at the commit carrying the rename and the release re-run (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR (update imports from `@pithecene-io/quarry-sdk`), and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
+- **Packaging**: The GitHub organization was renamed from `pithecene-io` to `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images. The `v0.13.5` tag was re-pointed at the commit carrying the rename and the release re-run (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR (update imports from `@pithecene-io/quarry-sdk`), and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
 
 ### Added
 
 - **Metrics**: `lode_write_retry_total` is now populated. Quarry registers Lode's `WithRetryObserver` on the write path, so each CAS retry increments the counter. The CLI no longer prints it as "(not implemented)" and `CONTRACT_LODE.md` no longer marks it reserved
 
-### Security
-
-- **Deps**: Resolve open Dependabot alerts in the JS toolchain. Refresh dev dependencies within range (vitest 4.1.12, puppeteer 24.43.1), add explicit `vite@^7.3.7` dev dependency (auto-installed vitest peer ignored overrides), bump executor `esbuild` to `^0.28.2`, and override `esbuild` → 0.28.2 and `basic-ftp` → 6.2.3. Patches source-map-js, brace-expansion, ip-address, js-yaml, nanoid, fflate, postcss, ws, vite, vitest, esbuild, and basic-ftp advisories. `extract-zip` (via `@puppeteer/browsers`) has no upstream fix and remains open
-- **Container**: The image's `deps` stage installs its own npm tree, independent of `pnpm-lock.yaml`. It now pins `puppeteer@24.43.1` with a matching Chrome for Testing 148.0.7778.97 and restates the `basic-ftp` → 6.2.3 override as an npm root override so the shipped runtime carries the same patched dependencies
-- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.9.1, which bumps `aws-sdk-go-v2/service/s3` and `eventstream` to resolve the EventStream denial-of-service advisory
-- **Deps**: Bump `flatted` override to 3.4.2 (prototype pollution) (#238)
-
 ### Fixed
 
 - **Storage**: `store.Put()` errors from sidecar file writes are now wrapped by `WrapWriteError` with path context and classified. New `ErrPathExists` sentinel covers immutability violations (`"path exists"`, `"already exists"`, `"file exists"`, `EEXIST`) (#237)
 - **CLI**: `QuerySidecarFiles()` unions `sidecar_files` metadata across a run's snapshots. `InspectRunResponse` gains an `omitempty` `SidecarFileSummary` list so `inspect` can enumerate files without prefix-scanning (#237)
+
+### Security
+
+- **Deps**: Resolve open Dependabot alerts in the JS toolchain. Refresh dev dependencies within range (vitest 4.1.12, puppeteer 24.43.1), add explicit `vite@^7.3.7` dev dependency (auto-installed vitest peer ignored overrides), bump executor `esbuild` to `^0.28.2`, and override `esbuild` to 0.28.2 and `basic-ftp` to 6.2.3. Patches source-map-js, brace-expansion, ip-address, js-yaml, nanoid, fflate, postcss, ws, vite, vitest, esbuild, and basic-ftp advisories. `extract-zip` (via `@puppeteer/browsers`) has no upstream fix and remains open
+- **Container**: The image's `deps` stage installs its own npm tree, independent of `pnpm-lock.yaml`. It now pins `puppeteer@24.43.1` with a matching Chrome for Testing 148.0.7778.97 and restates the override of `basic-ftp` to 6.2.3 as an npm root override so the shipped runtime carries the same patched dependencies
+- **Deps**: Upgrade `github.com/pithecene-io/lode` to v0.9.1, which bumps `aws-sdk-go-v2/service/s3` and `eventstream` to resolve the EventStream denial-of-service advisory
+- **Deps**: Bump `flatted` override to 3.4.2 (prototype pollution) (#238)
+
+### Upgrade Notes
+
+- **The organization's new name**: Import the SDK as `@pithecene/quarry-sdk` in place of `@pithecene-io/quarry-sdk`, pull images from `ghcr.io/pithecene/quarry`, and install the CLI with `mise install github:pithecene/quarry`.
 
 ---
 
@@ -152,7 +160,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Storage**: Sidecar file metadata inventory. Files written via `storage.put()` are now tracked in Lode snapshot `Metadata` under the `sidecar_files` key. Downstream consumers can enumerate files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of prefix-scanning storage (#234)
 - **Storage**: `SidecarFileRef` type. Each tracked file includes `path`, `filename`, `content_type`, and `size` fields
 - **Tests**: Lode sentinel error path validation. Targeted integration tests for `lode.ErrPathExists` (immutability enforcement on double-write) and `lode.ErrNotFound` (stale snapshot ID), providing evidence for Lode V1_READINESS §5 (#234)
-- **Tests**: End-to-end test for `file_write` → event flush → `sidecar_files` metadata pipeline, proving the full ingestion path from IPC frame to consumer-visible snapshot (#235)
 
 ### Fixed
 
@@ -178,31 +185,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Build**: `task version:bump V=X.Y.Z`. Single command updates all lockstep version targets, rebuilds SDK and executor bundle, and verifies lockstep (#229)
 - **Docs**: Multi-crawler deployment topology and browser endpoint documentation in container guide (#229)
 
+### Changed
+
+- **CI**: New `sdk-lockstep` job verifies built `CONTRACT_VERSION` matches source at PR time (#228)
+- **Docs**: Updated cli.md, configuration.md, CONTRACT_CLI.md, PUBLIC_API.md, CLI_PARITY.json with browser endpoint and health gate semantics (#229)
+
 ### Fixed
 
 - **Runtime**: Browser health gate no longer hard-fails on external WS endpoints with non-root paths or query parameters. Downgraded from fatal to warning to avoid false-rejecting tokenized browser pool services
 - **Build**: Release tarball now includes built SDK. Added `pnpm run build` before `pnpm pack` in release workflow (#228)
 - **Build**: `scripts/version-bump.sh` and `Taskfile.yaml` version tasks now use portable sed/grep. Replaces GNU-specific `grep -P` and `sed -i` with POSIX-compatible alternatives for macOS support
 
-### Changed
-
-- **CI**: New `sdk-lockstep` job verifies built `CONTRACT_VERSION` matches source at PR time (#228)
-- **Docs**: Updated cli.md, configuration.md, CONTRACT_CLI.md, PUBLIC_API.md, CLI_PARITY.json with browser endpoint and health gate semantics (#229)
-
 ---
 
 ## [0.13.1] - 2026-03-13
+
+### Changed
+
+- **Build**: Add `docker:build` Taskfile task. Local Docker builds now automatically embed the commit SHA via `--build-arg`
+- **Build**: Extract `COMMIT` var in Taskfile. Single resolution point for all Go and Docker build paths
 
 ### Fixed
 
 - **Build**: Embed git commit SHA in binary via ldflags. `quarry --version` now shows the short commit hash instead of `unknown` across all build paths (Taskfile, CI release, Dockerfile) (#225)
 - **Docs**: Sweep stale v0.12.2 version references in README.md, SUPPORT.md, and IMPLEMENTATION_PLAN.md that were missed in the v0.13.0 release
 - **Tests**: Update hardcoded `ContractVersion` in Redis Streams adapter test fixtures to match current release
-
-### Changed
-
-- **Build**: Add `docker:build` Taskfile task. Local Docker builds now automatically embed the commit SHA via `--build-arg`
-- **Build**: Extract `COMMIT` var in Taskfile. Single resolution point for all Go and Docker build paths
 
 ---
 
@@ -284,17 +291,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Executor**: `--resolve-from` CLI flag for workspace module resolution. Registers an ESM resolve hook that retries bare-specifier resolution from a specified directory, preserving ESM import conditions (#178)
 - **Executor**: `registerResolveFromHook()` extracted into `src/resolve-from.ts`. Centralizes hook code to prevent copy drift between executor, test fixture, and unit tests
 
-### Fixed
-
-- **Runtime**: Detect zombie/dead browser server processes before attempting health check. Avoids wasting 2s on a connection to a dead process. Kill stale process groups only after verifying PID ownership via `/proc` cmdline check (#181, #182)
-- **Executor**: Add `--disable-dev-shm-usage` to all Chromium launch paths. Prevents renderer crashes from `/dev/shm` exhaustion in containerized environments (#183, #185)
-- **Executor**: Tolerate transient `/json/list` polling failures in browser server idle monitor. Requires 3 consecutive failures before exit instead of crashing on the first. Non-OK HTTP responses now correctly count as failures (#183, #185)
-
 ### Changed
 
 - **Testing**: Integration test fixture now imports production hook module instead of embedding a copy
 - **Testing**: Resolve-from integration test uses unique OS temp directories (`mkdtempSync`) to prevent cross-run interference
 - **Executor**: Chromium launch args centralized into `chromiumArgs()` helper (`browser-args.ts`). Idle poll evaluation extracted into pure `evaluateIdlePoll()` function (`browser-idle.ts`) with 18 unit tests
+
+### Fixed
+
+- **Runtime**: Detect zombie/dead browser server processes before attempting health check. Avoids wasting 2s on a connection to a dead process. Kill stale process groups only after verifying PID ownership via `/proc` cmdline check (#181, #182)
+- **Executor**: Add `--disable-dev-shm-usage` to all Chromium launch paths. Prevents renderer crashes from `/dev/shm` exhaustion in containerized environments (#183, #185)
+- **Executor**: Tolerate transient `/json/list` polling failures in browser server idle monitor. Requires 3 consecutive failures before exit instead of crashing on the first. Non-OK HTTP responses now correctly count as failures (#183, #185)
 
 ---
 
@@ -329,6 +336,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.3] - 2026-02-12
 
+### Added
+
+- **IPC**: Backpressure integration test that deterministically proves drain path is exercised. Spawns child, withholds parent reads until pipe fills, asserts `backpressure_events > 0` (#164)
+
 ### Changed
 
 - **Lode**: Upgrade Lode storage library to v0.7.3
@@ -336,11 +347,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **IPC**: Eliminate stdout guard proxy to fix drain deadlock. `Object.create(process.stdout)` caused `_events` divergence after listener cleanup, silently breaking drain delivery and hanging the executor under backpressure. Replaced with split contract (separate stream + writeFn) (#164)
-
-### Added
-
-- **IPC**: Backpressure integration test that deterministically proves drain path is exercised. Spawns child, withholds parent reads until pipe fills, asserts `backpressure_events > 0` (#164)
-- **AGENTS.md**: Stream & EventEmitter discipline guardrail. Bans `Object.create()` on EventEmitter instances, requires composition over prototype delegation (#164)
 
 ---
 
@@ -397,16 +403,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Metrics**: `flush_triggers` counter added to metrics snapshot. Per-trigger-type flush counts (`count`, `interval`, `termination`, `capacity`) for streaming policy observability (#140)
 - **Internal**: `statsRecorder` converted from mutex-based to `sync/atomic` counters. 3.7x improvement in 8-goroutine contention benchmarks (#144)
-- **AGENTS.md**: Release checklist expanded with changelog promotion and golden fixture update steps (#148)
 
 ---
 
 ## [0.6.3] - 2026-02-09
-
-### Fixed
-
-- **Runtime**: SDK/CLI version mismatches are now classified as `version_mismatch` instead of `executor_crash`, with an actionable error message directing users to align their SDK and CLI versions (#132)
-- **Lode**: Upgraded to Lode v0.7.1. Fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene/lode#108)
 
 ### Changed
 
@@ -416,6 +416,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Infra**: Migrated npm/JSR scope from `@justapithecus` to `@pithecene-io` (#137)
 - **Infra**: Migrated Go module path from `github.com/justapithecus/quarry` to `github.com/pithecene-io/quarry` (#137)
 - **Lode**: Upgraded to Lode v0.7.2 (`github.com/pithecene-io/lode`) (#137)
+
+### Fixed
+
+- **Runtime**: SDK/CLI version mismatches are now classified as `version_mismatch` instead of `executor_crash`, with an actionable error message directing users to align their SDK and CLI versions (#132)
+- **Lode**: Upgraded to Lode v0.7.1. Fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene/lode#108)
 
 ---
 
@@ -444,7 +449,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Runtime**: Fan-out operator for derived work execution. `emit.enqueue()` events now trigger child runs at runtime, enabling discovery-driven extraction chains (list → detail → asset) without external orchestrators (#117)
+- **Runtime**: Fan-out operator for derived work execution. `emit.enqueue()` events now trigger child runs at runtime, enabling discovery-driven extraction chains (from a list to a detail page to an asset) without external orchestrators (#117)
 - **CLI**: `--depth` flag to set maximum fan-out recursion depth (root = depth 0). Required for fan-out activation (#117)
 - **CLI**: `--max-runs` flag to cap total child runs (required when `--depth > 0` as a safety rail against unbounded fan-out) (#117)
 - **CLI**: `--parallel` flag to control concurrent child run execution (default: 1, sequential) (#117)
@@ -515,7 +520,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Storage**: `ctx.storage.put()`. Sidecar file uploads via Lode Store, enabling scripts to write files directly to addressable storage paths outside the event pipeline (#99)
-- **IPC**: New `file_write` IPC frame type for executor→runtime file transfer (#99)
+- **IPC**: New `file_write` IPC frame type for file transfer from the executor to the runtime (#99)
 - **SDK**: `StorageAPI` on `QuarryContext`. `put({ filename, content_type, data })` (#99)
 - **Storage**: Content type persistence via companion `.meta.json` files (#99)
 - **SDK**: Terminal guard enforcement on `storage.put()`. Writes rejected after `run_complete` / `run_error` (#99)
@@ -534,17 +539,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.4] - 2026-02-07
 
-### Fixed
+### Added
 
-- **Lode**: Fixed nil-map panic in S3 client constructor. `NewLodeS3Client` failed to initialize artifact offset and chunk-tracking maps, causing runtime panic on first `WriteChunks` call (#92)
+- **Testing**: Regression test `TestNewClient_InitializesMaps` guards against nil-map constructor bugs (#92)
 
 ### Changed
 
 - **Lode**: Extracted shared `newClient()` constructor helper to prevent future initialization drift between FS and S3 client paths (#92)
 
-### Added
+### Fixed
 
-- **Testing**: Regression test `TestNewClient_InitializesMaps` guards against nil-map constructor bugs (#92)
+- **Lode**: Fixed nil-map panic in S3 client constructor. `NewLodeS3Client` failed to initialize artifact offset and chunk-tracking maps, causing runtime panic on first `WriteChunks` call (#92)
 
 ---
 
@@ -606,7 +611,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lode**: Policy name recorded in event and artifact commit Lode records (#71)
 - **Contracts**: CONTRACT_METRICS.md and CONTRACT_INTEGRATION.md added (#63)
 - **Contracts**: Metrics stats persistence requirements defined (#66)
-- **Docs**: Lode v0.2.0 → v0.4.1 compatibility guide (`docs/guides/lode-upgrade.md`) (#70)
+- **Docs**: Compatibility guide from Lode v0.2.0 to v0.4.1 (`docs/guides/lode-upgrade.md`) (#70)
 
 ### Changed
 
@@ -654,7 +659,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI**: Normalized help text for job, storage, and policy flags for consistency
 - **Docs**: CLI parity artifact (`docs/CLI_PARITY.json`) added as machine-checkable source of truth
 
-### Known Issues
+### Known Limitations
 
 - **IPC race condition** ([#56](https://github.com/pithecene/quarry/issues/56)): Fast-completing scripts may intermittently report `executor_crash` outcome despite successful completion. **Fixed in v0.2.1.**
 
@@ -677,50 +682,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Executor**: Embedded Node.js executor in Go binary (~28MB)
 - **Contracts**: IPC, Emit, Run, Policy, Lode, CLI, Proxy contracts frozen
 
-### Changed
-
-- N/A (initial release)
-
-### Fixed
-
-- N/A (initial release)
-
-### Breaking Changes
-
-- None (initial release)
-
 ### Known Limitations
 
-1. **Single executor type**: Only Node.js executor supported
-2. **No built-in retries**: Retry logic is caller's responsibility
-3. **No streaming reads**: Artifacts must fit in memory
-4. **S3 is experimental**: No transactional guarantees across writes
-5. **No job scheduling**: Quarry is an execution runtime, not a scheduler
-6. **Puppeteer required**: All scripts run in a browser context
+- **Single executor type**: Only Node.js executor supported
+- **No built-in retries**: Retry logic is caller's responsibility
+- **No streaming reads**: Artifacts must fit in memory
+- **S3 is experimental**: No transactional guarantees across writes
+- **No job scheduling**: Quarry is an execution runtime, not a scheduler
+- **Puppeteer required**: All scripts run in a browser context
 
 ### Upgrade Notes
 
-**Runtime Requirements:**
-- Go 1.25.6 or later (for building from source)
-- Node.js 23+ or 22.6+ (for script execution, 22.6 requires `--experimental-strip-types`)
-- pnpm 10.28.2 (for development)
-
-**Puppeteer:**
-- Puppeteer is a peer dependency. Install it in your project:
-  ```bash
-  npm install puppeteer
-  ```
-
-**Storage:**
-- `--storage-backend` and `--storage-path` are required flags
-- FS backend path must exist before running
-
-### References
-
-- [PUBLIC_API.md](PUBLIC_API.md): User-facing API documentation
-- [SUPPORT.md](SUPPORT.md): Support posture and maturity level
-- [docs/contracts/](docs/contracts/): Normative contract specifications
-- [docs/guides/](docs/guides/): User guides and explanations
+- **Runtime requirements**: Go 1.25.6 or later builds Quarry from source. Node.js 23 or later runs scripts, and so does Node.js 22.6 or later with `--experimental-strip-types`. Development uses pnpm 10.28.2.
+- **Puppeteer**: Puppeteer is a peer dependency, so a project installs it with `npm install puppeteer`.
+- **Storage**: `--storage-backend` and `--storage-path` are required flags, and the filesystem backend's path must exist before a run.
 
 ---
 
@@ -736,31 +711,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.13.2]: https://github.com/pithecene/quarry/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/pithecene/quarry/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/pithecene/quarry/compare/v0.12.2...v0.13.0
-[0.12.2]: https://github.com/pithecene/quarry/releases/tag/v0.12.2
-[0.12.1]: https://github.com/pithecene/quarry/releases/tag/v0.12.1
-[0.12.0]: https://github.com/pithecene/quarry/releases/tag/v0.12.0
-[0.11.0]: https://github.com/pithecene/quarry/releases/tag/v0.11.0
-[0.10.0]: https://github.com/pithecene/quarry/releases/tag/v0.10.0
-[0.9.0]: https://github.com/pithecene/quarry/releases/tag/v0.9.0
-[0.8.0]: https://github.com/pithecene/quarry/releases/tag/v0.8.0
-[0.7.3]: https://github.com/pithecene/quarry/releases/tag/v0.7.3
-[0.7.2]: https://github.com/pithecene/quarry/releases/tag/v0.7.2
-[0.7.1]: https://github.com/pithecene/quarry/releases/tag/v0.7.1
-[0.7.0]: https://github.com/pithecene/quarry/releases/tag/v0.7.0
-[0.6.3]: https://github.com/pithecene/quarry/releases/tag/v0.6.3
-[0.6.2]: https://github.com/pithecene/quarry/releases/tag/v0.6.2
-[0.6.0]: https://github.com/pithecene/quarry/releases/tag/v0.6.0
-[0.5.1]: https://github.com/pithecene/quarry/releases/tag/v0.5.1
-[0.5.0]: https://github.com/pithecene/quarry/releases/tag/v0.5.0
-[0.4.1]: https://github.com/pithecene/quarry/releases/tag/v0.4.1
-[0.4.0]: https://github.com/pithecene/quarry/releases/tag/v0.4.0
-[0.3.5]: https://github.com/pithecene/quarry/releases/tag/v0.3.5
-[0.3.4]: https://github.com/pithecene/quarry/releases/tag/v0.3.4
-[0.3.3]: https://github.com/pithecene/quarry/releases/tag/v0.3.3
-[0.3.2]: https://github.com/pithecene/quarry/releases/tag/v0.3.2
-[0.3.1]: https://github.com/pithecene/quarry/releases/tag/v0.3.1
-[0.3.0]: https://github.com/pithecene/quarry/releases/tag/v0.3.0
-[0.2.2]: https://github.com/pithecene/quarry/releases/tag/v0.2.2
-[0.2.1]: https://github.com/pithecene/quarry/releases/tag/v0.2.1
-[0.2.0]: https://github.com/pithecene/quarry/releases/tag/v0.2.0
+[0.12.2]: https://github.com/pithecene/quarry/compare/v0.12.1...v0.12.2
+[0.12.1]: https://github.com/pithecene/quarry/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/pithecene/quarry/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/pithecene/quarry/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/pithecene/quarry/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/pithecene/quarry/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/pithecene/quarry/compare/v0.7.3...v0.8.0
+[0.7.3]: https://github.com/pithecene/quarry/compare/v0.7.2...v0.7.3
+[0.7.2]: https://github.com/pithecene/quarry/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/pithecene/quarry/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/pithecene/quarry/compare/v0.6.3...v0.7.0
+[0.6.3]: https://github.com/pithecene/quarry/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/pithecene/quarry/compare/v0.6.0...v0.6.2
+[0.6.0]: https://github.com/pithecene/quarry/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/pithecene/quarry/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/pithecene/quarry/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/pithecene/quarry/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/pithecene/quarry/compare/v0.3.5...v0.4.0
+[0.3.5]: https://github.com/pithecene/quarry/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/pithecene/quarry/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/pithecene/quarry/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/pithecene/quarry/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/pithecene/quarry/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/pithecene/quarry/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/pithecene/quarry/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/pithecene/quarry/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/pithecene/quarry/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pithecene/quarry/releases/tag/v0.1.0
