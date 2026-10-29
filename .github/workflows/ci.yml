@@ -47,6 +47,52 @@ jobs:
           go test ./cli/cmd -run Parity -v
           echo "✅ CLI parity artifact is in sync"
 
+  check:
+    name: 🧾 Internal Check
+    # The release check is private to the maintainers. A pull request that a
+    # fork or Dependabot opens creates no job, rather than a job that fails
+    # for want of access to the check.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The job pulls the internal check's image from the organization's registry.
+      packages: read
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The Go analysis downloads and compiles the module's dependencies,
+      # which this cache keeps between runs, at a path relative to the
+      # workspace so that the cache's version stays the same across runners.
+      - name: 📦 Go Cache
+        uses: actions/cache@v4
+        with:
+          path: .bosun/go
+          key: bosun-go-${{ runner.os }}-${{ hashFiles('quarry/go.sum', 'mise.toml') }}
+          restore-keys: bosun-go-${{ runner.os }}-
+
+      # The check runs as bosun.yaml configures it, in the image that
+      # BOSUN_IMAGE in mise.toml pins by version and digest: the changelog
+      # check and Bosun's Go analyzers on the quarry module.
+      - name: 🧾 Check
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          image="$(sed -n 's/^BOSUN_IMAGE = "\(.*\)"$/\1/p' mise.toml)"
+          [ -n "$image" ] || { echo "mise.toml pins no BOSUN_IMAGE" >&2; exit 1; }
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          mkdir -p .bosun/go
+          docker run --rm -v "$GITHUB_WORKSPACE:/work" -e GITHUB_ACTIONS -e GITHUB_ACTOR \
+            -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build \
+            -e GOLANGCI_LINT_CACHE=/work/.bosun/go/lint "$image" check
+
   lint:
     name: 🧹 Lint
     runs-on: ubuntu-latest

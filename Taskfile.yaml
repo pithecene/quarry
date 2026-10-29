@@ -125,10 +125,15 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
-  lint:bosun:
-    desc: Run Bosun's Go analyzers at the pinned commit (needs read access to Bosun)
+  check:
+    desc: Run the internal check (bosun.yaml) in the image that BOSUN_IMAGE in mise.toml pins (needs read access to it)
     cmds:
-      - scripts/lint-bosun.sh {{.CLI_ARGS}}
+      - mkdir -p .bosun/go
+      - >-
+        docker run --rm -v "{{.ROOT_DIR}}:/work"
+        -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build
+        -e GOLANGCI_LINT_CACHE=/work/.bosun/go/lint
+        "$BOSUN_IMAGE" check
 
   go:test:
     desc: Test Go module

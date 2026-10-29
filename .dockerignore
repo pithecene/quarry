@@ -24,5 +24,5 @@ docs/
 .env
 .env.production
 
-# Private Bosun checkout and runner (scripts/lint-bosun.sh)
+# The internal check's run records and Go caches (task check)
 .bosun/
