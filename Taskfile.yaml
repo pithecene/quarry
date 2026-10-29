@@ -125,8 +125,14 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
+  check:login:
+    desc: Log in to the registry that holds the internal check's image with your GitHub access (needs the read:packages scope)
+    cmds:
+      - gh auth token | docker login ghcr.io -u "$(gh api user --jq .login)" --password-stdin
+
   check:
     desc: Run the internal check (bosun.yaml) in the image that BOSUN_IMAGE in mise.toml pins (needs read access to it)
+    deps: [check:login]
     cmds:
       - mkdir -p .bosun/go
       - >-
