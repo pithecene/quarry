@@ -57,10 +57,6 @@ jobs:
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # The job pulls the internal check's image from the organization's registry.
-      packages: read
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
@@ -81,13 +77,15 @@ jobs:
       # BOSUN_IMAGE in mise.toml pins by version and digest: the changelog
       # check and Bosun's Go analyzers on the quarry module.
       - name: 🧾 Check
+        # A read-only registry token pulls the private image.
         env:
-          TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ secrets.BOSUN_REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.BOSUN_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
           image="$(sed -n 's/^BOSUN_IMAGE = "\(.*\)"$/\1/p' mise.toml)"
           [ -n "$image" ] || { echo "mise.toml pins no BOSUN_IMAGE" >&2; exit 1; }
-          printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
           mkdir -p .bosun/go
           docker run --rm -v "$GITHUB_WORKSPACE:/work" -e GITHUB_ACTIONS -e GITHUB_ACTOR \
             -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build \
