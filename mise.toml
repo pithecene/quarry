@@ -6,8 +6,3 @@ go = "1.27.3"
 node = "24.13.0"
 shellcheck = "0.11.0"
 yamllint = "1.38.0"
-
-[env]
-# The organization's internal check, by version and digest: the one pin for
-# the check job of .github/workflows/ci.yml and `task check`.
-BOSUN_IMAGE = "ghcr.io/pithecene/bosun:0.1.0-rc.2@sha256:078700d19d6fde736c9699baa3a052e8ff009d16f63323200c84ded8ae4231b0"

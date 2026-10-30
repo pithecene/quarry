@@ -27,7 +27,7 @@ Do not update for internal refactors.
 - [`package.json`](../package.json) — monorepo root metadata
 - [`pnpm-workspace.yaml`](../pnpm-workspace.yaml) — monorepo layout
 - `.grove.yaml` — grove stewardship declaration (intent, horizon, phase)
-- [`bosun.yaml`](../bosun.yaml) — the internal check's configuration, which `task check` and CI run in the image that `BOSUN_IMAGE` in `mise.toml` pins
+- [`bosun.yaml`](../bosun.yaml) — the internal check's configuration, which `task check` and CI run in the image that CI's check job pins
 
 ---
 

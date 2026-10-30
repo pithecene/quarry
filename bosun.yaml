@@ -1,8 +1,8 @@
 # Quarry configures the organization's internal check: the release gate holds
 # the changelog to the changelog contract, and the Go analysis runs Bosun's
 # analyzers on the quarry module with their own golangci-lint configuration.
-# CI runs it in the check job of .github/workflows/ci.yml, and `task check`
-# runs it on a workstation.
+# CI runs it in the check job of .github/workflows/ci.yml, inside the image
+# that the job pins, and `task check` runs that image on a workstation.
 version: 1
 go:
   modules:

@@ -49,47 +49,30 @@ jobs:
 
   check:
     name: 🧾 Internal Check
-    # The release check is private to the maintainers. A pull request that a
-    # fork or Dependabot opens creates no job, rather than a job that fails
-    # for want of access to the check.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]')
+    # A fork's pull request receives no secret, so it runs no internal check.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
+    # The internal check's image: the one pin of it in this repository.
+    container:
+      image: ghcr.io/pithecene/bosun:0.1.0-rc.3@sha256:448e8c48c2c8370979e5e9420073b7229d43bdaa8bc3797ad3f4b9d570157c8e
+      credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      # The Go analysis downloads and compiles the module's dependencies,
-      # which this cache keeps between runs, at a path relative to the
-      # workspace so that the cache's version stays the same across runners.
       - name: 📦 Go Cache
         uses: actions/cache@v4
         with:
-          path: .bosun/go
-          key: bosun-go-${{ runner.os }}-${{ hashFiles('quarry/go.sum', 'mise.toml') }}
-          restore-keys: bosun-go-${{ runner.os }}-
+          path: |
+            ~/go/pkg/mod
+            ~/.cache
+          key: bosun-go-${{ hashFiles('quarry/go.sum') }}
+          restore-keys: bosun-go-
 
-      # The check runs as bosun.yaml configures it, in the image that
-      # BOSUN_IMAGE in mise.toml pins by version and digest: the changelog
-      # check and Bosun's Go analyzers on the quarry module.
       - name: 🧾 Check
-        # A read-only registry token pulls the private image.
-        env:
-          REGISTRY_USER: ${{ secrets.BOSUN_REGISTRY_USER }}
-          REGISTRY_TOKEN: ${{ secrets.BOSUN_REGISTRY_TOKEN }}
-        run: |
-          set -euo pipefail
-          image="$(sed -n 's/^BOSUN_IMAGE = "\(.*\)"$/\1/p' mise.toml)"
-          [ -n "$image" ] || { echo "mise.toml pins no BOSUN_IMAGE" >&2; exit 1; }
-          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
-          mkdir -p .bosun/go
-          docker run --rm -v "$GITHUB_WORKSPACE:/work" -e GITHUB_ACTIONS -e GITHUB_ACTOR \
-            -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build \
-            -e GOLANGCI_LINT_CACHE=/work/.bosun/go/lint "$image" check
+        run: bosun check
 
   lint:
     name: 🧹 Lint
