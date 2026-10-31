@@ -106,18 +106,30 @@ record guarantees today.
 
 ### Frames
 
-Two frames replace `artifact_chunk`:
+Three frames replace `artifact_chunk`:
 
-- `artifact_open`: `artifact_id`, `size_bytes`. The runtime creates the
-  Volume with `size_bytes` as its total length before any byte arrives.
-- `artifact_range`: `artifact_id`, `offset`, `data` (at most 8 MiB, as
-  the frame limit requires).
+- `artifact_open`: `artifact_id`, `size_bytes`, and an optional
+  `expected_sha256`. The runtime creates the Volume with `size_bytes` as
+  its total length before any byte arrives.
+- `artifact_range`: `artifact_id`, `range_id`, `offset`, `data` (at most
+  8 MiB, as the frame limit requires). The `range_id` is a correlation ID
+  that counts up from 1 within the run, as `write_id` does for
+  `file_write`.
+- `artifact_range_ack`, from the runtime to the executor: `range_id`,
+  `ok`, and an `error` when `ok` is false. The runtime sends it once the
+  range is committed, or once the range is refused.
 
 Ranges may arrive in any order and must not overlap. The runtime refuses
 a range for an artifact that has no `artifact_open`, and a range that
 ends past `size_bytes`. The `artifact` event stays the commit record. The
 runtime accepts it only when its `size_bytes` equals the opened length
 and committed ranges cover `[0..size_bytes)`, and refuses it otherwise.
+
+An artifact of zero bytes has no byte to store, and a Volume's length is
+positive, so an empty artifact has no Volume. The executor sends no
+`artifact_open` for it, and its record states `size_bytes` 0 and the
+SHA-256 of no bytes. The rule follows from the length, not from a size
+threshold: every artifact with a byte is a Volume.
 
 The executor and the runtime ship in one release, and the frames are part
 of the experimental surface, so the old frame is retired, not kept beside
@@ -149,7 +161,8 @@ The runtime hashes the covered prefix `[0..p)`:
 Bytes that arrive in order, the common case, are never read back. The
 digest is the runtime's own, computed from what it committed, so a
 reader needs no trust in the script. A script may also declare the
-SHA-256 it expects, and the runtime then refuses a mismatch.
+SHA-256 it expects (`expected_sha256` in `artifact_open`), and the
+runtime then refuses an `artifact` event whose computed digest differs.
 
 ---
 
@@ -167,12 +180,14 @@ await writer.writeAt(8_388_608, secondRange)
 const artifactId = await writer.commit()
 ```
 
-- `writeAt` sends `artifact_range` frames of at most 8 MiB and resolves
-  once the runtime has read them, so a script holds one range at a time.
+- `writeAt` sends `artifact_range` frames of at most 8 MiB. It resolves
+  when every frame's `artifact_range_ack` reports `ok`, and rejects with
+  the runtime's error otherwise, so a resolved range is committed and a
+  script holds one range at a time.
 - `commit` emits the `artifact` event.
 - `emit.artifact({ name, content_type, data })` stays, and is a writer
-  with one `writeAt` at offset 0. Every artifact is a Volume: no size
-  threshold switches storage behavior.
+  with one `writeAt` at offset 0. No size threshold switches storage
+  behavior, and an empty `data` follows the zero-length rule of §4.
 
 The script keeps acquisition policy (URLs, authentication, Range
 requests, retries), and the runtime owns storage. A runtime-performed
@@ -201,15 +216,28 @@ and it would serve only sources a plain fetch can reach.
 Lode's Volumes have no retention (Lode `CONTRACT_RETENTION.md` excludes
 them). Lode owns its persisted format, so Lode gains the removal:
 
-- `volume.Remove(ctx, id, factory)` deletes the head pointer first, so
-  the Volume has no snapshot, then its manifests, staged manifests and
-  data. An interrupted removal leaves objects that no pointer reaches, and
-  a second call completes it.
+- `volume.Remove(ctx, id, factory)` first replaces the head pointer with
+  a tombstone through `CompareAndSwap`. A commit that races the removal
+  then fails its own swap, and a commit that reloads the head finds the
+  tombstone and returns an error instead of starting a new history. The
+  removal then deletes the manifests, staged manifests and data, and the
+  tombstone last. An interrupted removal leaves the tombstone, so a second
+  call completes it and no writer resumes in between. The Lode pull
+  request settles the tombstone's form and error.
 
 The prune command (`quarry prune`) removes a run's Volumes before the run's records
 (`CONTRACT_LODE.md` § Order of Operations). It lists the run's `volumes/`
 prefix, so the Volumes of artifacts whose event never arrived are removed
 too, and calls `volume.Remove` for each.
+
+A run writes Volume snapshots between its Dataset writes, and an artifact
+that takes long to acquire writes nothing to the Dataset until its event.
+An unterminated run's age (`CONTRACT_LODE.md` § Selection) is therefore
+measured from the latest of its start, its newest Dataset snapshot and
+its newest Volume snapshot. A Volume snapshot ID carries its creation
+time, as a Dataset snapshot ID does, so selection reads it from the
+pointer of each Volume under the run's prefix. A terminated run writes
+nothing after its end record, so its age stays the end record's.
 
 ---
 
@@ -253,7 +281,7 @@ the runtime in one release, and retires `artifact_chunk` with them.
 | Who downloads | The script, through `artifactWriter` (§5) |
 | The record that links content to a run's Volumes | `artifact_event` with `volume_snapshot_id` and `sha256` (§3) |
 | Deleting Volumes | A Lode primitive, `volume.Remove` (§7) |
-| Small artifacts | One Volume each, with no threshold (§5) |
+| Small artifacts | One Volume each, with no threshold. An empty artifact has none (§4) |
 | Migration | Old records stay readable from chunk records, with no backfill (§6) |
 | Volume layout | Under the run's prefix in the run namespace (§3) |
 | Content identity and deduplication | Downstream, as `CONTRACT_LODE.md` § Scope already states |
