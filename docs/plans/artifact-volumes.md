@@ -126,8 +126,10 @@ record guarantees today.
 Three frames replace `artifact_chunk`:
 
 - `artifact_open`: `artifact_id`, `size_bytes`, and an optional
-  `expected_sha256`. The runtime creates the Volume with `size_bytes` as
-  its total length before any byte arrives.
+  `expected_sha256`. The runtime refuses a `size_bytes` above the maximum
+  artifact size (`MaxArtifactSize`, 1 GiB, as `CONTRACT_IPC.md` § Size
+  Constraints requires), and otherwise creates the Volume with
+  `size_bytes` as its total length before any byte arrives.
 - `artifact_range`: `artifact_id`, `range_id`, `offset`, `data` (at most
   8 MiB, as the frame limit requires). The `range_id` is a correlation ID
   that counts up from 1 within the run, as `write_id` does for
@@ -269,8 +271,12 @@ prune, as a commit after step 3's listing is not
 
 The sweep (`CONTRACT_LODE.md` § Sweep) covers what no run reaches. When a
 grace period is given, it also lists `artifacts/` and removes every
-Volume whose run has no start record, once the Volume's newest object
-is older than the grace period. That catches an object written after a
+Volume whose run has no start record, once the end of the run key's
+`day` is older than the grace period. A staged block's key carries no
+time, and the store interface reads no object's age on every backend.
+The age therefore comes from the key. A run's day is its start's day,
+and the grace period exceeds the longest run, as the sweep already
+requires. That catches an object written after a
 prune's final listing, and a run whose records an earlier prune removed,
 as `Dataset.Sweep` catches the data of writes that never committed.
 
@@ -281,7 +287,11 @@ run's age must exceed the longest run (`CONTRACT_LODE.md` § Selection). A
 live run's last durable write is no older than its start, so its age is
 at most its duration, whatever the gap between its writes, before its
 first range included. Selection also counts the run's newest Volume
-snapshot as a write, so the measured age stays a true last-write age. A
+snapshot as a write, so the measured age stays a true last-write age.
+The same rule covers an `artifact` event still on its way to the
+Dataset after its Volume's last commit. Such an event belongs to a live
+runtime, and a live run is never selected. A prune therefore never
+removes a Volume whose event is pending. A
 Volume snapshot ID carries its creation time, as a Dataset snapshot ID
 does, so selection reads it from the pointer of each Volume under the
 run's prefix. A terminated run writes nothing after its end record, so its age
