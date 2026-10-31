@@ -57,6 +57,7 @@ Plans and records (for maintainers; not user documentation).
 - [`plans/RELEASE_READINESS_v0.3.0.md`](plans/RELEASE_READINESS_v0.3.0.md) — historical release readiness (v0.3.0)
 - [`plans/RELEASE_READINESS_v1.0.md`](plans/RELEASE_READINESS_v1.0.md) — v1.0 release gating and gap analysis
 - [`plans/ingress-models.md`](plans/ingress-models.md) — data ingestion modeling
+- [`plans/artifact-volumes.md`](plans/artifact-volumes.md) — artifact bytes in Lode Volumes (#255, #341)
 
 ### docs/maintainers/
 
