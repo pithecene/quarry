@@ -74,8 +74,14 @@ datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>
   one too.
 - Lode's Dataset never lists this prefix. `Dataset.Sweep` lists only the
   dataset's snapshot and tombstone prefixes.
-- Every backend roots a store at a prefix (`lode.FS(root)`, the S3
-  store's `Prefix`), so placement needs no Lode change.
+- `volume.New` writes under the store it is given (`volumes/<id>/...`),
+  and Quarry holds one store rooted at the dataset's storage root. Lode
+  gains a prefix-scoping factory, `lode.Prefixed(factory, prefix)`, whose
+  store maps every key, listing and range read under `prefix` for any
+  backend. Quarry opens a run's Volumes through
+  `lode.Prefixed(root, <run prefix>)`. The S3 store's `Prefix` and
+  `lode.FS(root)` would serve two backends, but not the memory store or a
+  caller's own.
 
 ### Commit record
 
@@ -84,9 +90,11 @@ Volume reference:
 
 | Field | Type | Description |
 |---|---|---|
-| `volume_snapshot_id` | string | The Volume snapshot whose manifest covers `[0..size_bytes)` |
+| `storage` | string | `"volume"`, or `"empty"` for an artifact of zero bytes (§4). Absent in records written before this change, whose bytes are chunk records |
+| `volume_snapshot_id` | string | With `"volume"` only: the Volume snapshot whose manifest covers `[0..size_bytes)` |
 | `sha256` | string | Hex SHA-256 of the artifact's bytes, computed by the runtime |
-| `storage` | string | `"volume"`. Absent in records written before this change, whose bytes are chunk records |
+
+A reader reads an `"empty"` artifact as zero bytes and opens nothing.
 
 The Volume ID is the `artifact_id` the record already carries, so the
 record does not repeat it.
@@ -126,10 +134,13 @@ runtime accepts it only when its `size_bytes` equals the opened length
 and committed ranges cover `[0..size_bytes)`, and refuses it otherwise.
 
 An artifact of zero bytes has no byte to store, and a Volume's length is
-positive, so an empty artifact has no Volume. The executor sends no
-`artifact_open` for it, and its record states `size_bytes` 0 and the
-SHA-256 of no bytes. The rule follows from the length, not from a size
-threshold: every artifact with a byte is a Volume.
+positive, so an empty artifact has no Volume. The protocol stays the
+same: the executor sends its `artifact_open` with `size_bytes` 0, and
+any `expected_sha256` with it. The runtime creates no Volume, refuses any
+range, checks the expected digest against the SHA-256 of no bytes, and
+writes the record with `storage` `"empty"`. The rule follows from the
+length, not from a size threshold: every artifact with a byte is a
+Volume.
 
 The executor and the runtime ship in one release, and the frames are part
 of the experimental surface, so the old frame is retired, not kept beside
@@ -149,6 +160,10 @@ the new ones.
   1 GiB artifact in 8 MiB ranges has 128 blocks.
 - The manager's per-artifact state is released when the `artifact_event`
   is written.
+- When the run ends, before its end record, the runtime removes the
+  Volume of every artifact it opened whose `artifact_event` was not
+  written, as a script that stops writing leaves committed ranges with no
+  record. A runtime that dies first leaves them to `quarry prune` (§7).
 
 ### Digest
 
@@ -205,7 +220,7 @@ and it would serve only sources a plain fetch can reach.
 - The reader gains an artifact read. It opens the Volume named by an
   `artifact_event` and reads the committed snapshot in ranges, as an
   `io.Reader` or with `ReadAt`.
-- A record without `storage: "volume"` is read from its chunk records, as
+- A record without a `storage` field is read from its chunk records, as
   today. Runs written before the change keep #341's cost, and no backfill
   converts them.
 
@@ -220,10 +235,13 @@ them). Lode owns its persisted format, so Lode gains the removal:
   a tombstone through `CompareAndSwap`. A commit that races the removal
   then fails its own swap, and a commit that reloads the head finds the
   tombstone and returns an error instead of starting a new history. The
-  removal then deletes the manifests, staged manifests and data, and the
-  tombstone last. An interrupted removal leaves the tombstone, so a second
-  call completes it and no writer resumes in between. The Lode pull
-  request settles the tombstone's form and error.
+  removal then deletes the manifests, staged manifests and data, and keeps
+  the tombstone. The tombstone stays as a fence: a writer that held the
+  Volume open through the removal can never commit again, and a second
+  call completes an interrupted removal. Each removed Volume therefore
+  leaves one small object, as Lode's Dataset expiry leaves its own
+  tombstones. The Lode pull request settles the tombstone's form and
+  error.
 
 The prune command (`quarry prune`) removes a run's Volumes before the run's records
 (`CONTRACT_LODE.md` § Order of Operations). It lists the run's `volumes/`
@@ -232,12 +250,16 @@ too, and calls `volume.Remove` for each.
 
 A run writes Volume snapshots between its Dataset writes, and an artifact
 that takes long to acquire writes nothing to the Dataset until its event.
-An unterminated run's age (`CONTRACT_LODE.md` § Selection) is therefore
-measured from the latest of its start, its newest Dataset snapshot and
-its newest Volume snapshot. A Volume snapshot ID carries its creation
-time, as a Dataset snapshot ID does, so selection reads it from the
-pointer of each Volume under the run's prefix. A terminated run writes
-nothing after its end record, so its age stays the end record's.
+What keeps a live run from selection is the rule that an unterminated
+run's age must exceed the longest run (`CONTRACT_LODE.md` § Selection). A
+live run's last durable write is no older than its start, so its age is
+at most its duration, whatever the gap between its writes, before its
+first range included. Selection also counts the run's newest Volume
+snapshot as a write, so the measured age stays a true last-write age. A
+Volume snapshot ID carries its creation time, as a Dataset snapshot ID
+does, so selection reads it from the pointer of each Volume under the
+run's prefix. A terminated run writes nothing after its end record, so its age
+stays the end record's.
 
 ---
 
@@ -245,16 +267,17 @@ nothing after its end record, so its age stays the end record's.
 
 Quarry becomes the first consumer that writes Volumes, which is the
 evidence Lode's Volume gate waits for (Lode `V1_READINESS.md` §4). Lode
-needs one change, `volume.Remove`. `ReadAt` returns a slice, and
-range-sized reads are enough for streaming, so no streaming reader is
-required.
+needs two changes: `lode.Prefixed` (§3) and `volume.Remove` (§7).
+`ReadAt` returns a slice, and range-sized reads are enough for
+streaming, so no streaming reader is required.
 
 ---
 
 ## 9. Order of Work
 
-1. **Lode:** `volume.Remove`, its contract text in `CONTRACT_VOLUME.md`
-   and `CONTRACT_RETENTION.md`, and a release.
+1. **Lode:** `lode.Prefixed` with its text in `CONTRACT_STORAGE.md`,
+   `volume.Remove` with its text in `CONTRACT_VOLUME.md` and
+   `CONTRACT_RETENTION.md`, and a release.
 2. **Quarry reader:** the artifact read, over chunk records as they are
    stored today and over a Volume named by an `artifact_event`. Tests
    write the Volume case directly.
