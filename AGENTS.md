@@ -154,7 +154,7 @@ Quarry is **TypeScript-first, ESM-only, modern by default**.
 - Call `t.Parallel()` as the first statement of every top-level test
 - Never call `t.Parallel()` inside a subtest (`t.Run`); subtests run serially in table order
 - A test that must run serially (it swaps `os.Stdout`, changes a package-level variable, or calls `t.Setenv`) calls `testutil.Serial(t, "<reason>")` from `quarry/internal/testutil` first, with the reason as a string literal
-- Bosun's `testparallel` analyzer, run by `task lint:bosun` (which needs read access to Bosun), checks that every top-level test calls `t.Parallel()` or `testutil.Serial`, that a parallel test does not call `t.Setenv` or another process-wide mutator, and that no subtest calls `t.Parallel()`; it does not check that the call comes first, so review does. Run it before pushing a change to tests
+- Bosun's `testparallel` analyzer, run by `task check` and by CI's check job, checks that every top-level test calls `t.Parallel()` or `testutil.Serial`, that a parallel test does not call `t.Setenv` or another process-wide mutator, and that no subtest calls `t.Parallel()`; it does not check that the call comes first, so review does. Run it before pushing a change to tests
 
 ---
 

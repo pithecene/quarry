@@ -47,6 +47,33 @@ jobs:
           go test ./cli/cmd -run Parity -v
           echo "✅ CLI parity artifact is in sync"
 
+  check:
+    name: 🧾 Internal Check
+    # A fork's pull request receives no secret, so it runs no internal check.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    # The internal check's image: the one pin of it in this repository.
+    container:
+      image: ghcr.io/pithecene/bosun:0.1.0@sha256:269a05c636e4f76da16cce7d8efc0926e5f424e21baf129e3bd77812f113a0ad
+      credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: 📦 Go Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache
+          key: bosun-go-${{ hashFiles('quarry/go.sum') }}
+          restore-keys: bosun-go-
+
+      - name: 🧾 Check
+        run: bosun check
+
   lint:
     name: 🧹 Lint
     runs-on: ubuntu-latest

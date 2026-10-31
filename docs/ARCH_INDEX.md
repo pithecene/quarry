@@ -27,7 +27,7 @@ Do not update for internal refactors.
 - [`package.json`](../package.json) — monorepo root metadata
 - [`pnpm-workspace.yaml`](../pnpm-workspace.yaml) — monorepo layout
 - `.grove.yaml` — grove stewardship declaration (intent, horizon, phase)
-- `.bosun-version` — Bosun commit whose Go analyzers `task lint:bosun` runs
+- [`bosun.yaml`](../bosun.yaml) — the internal check's configuration, which `task check` and CI run in the image that CI's check job pins
 
 ---
 
@@ -221,7 +221,6 @@ Go module root. Contains runtime, CLI, and core types.
 Developer tooling and test harnesses.
 
 - [`run-examples.ts`](../scripts/run-examples.ts) — manifest-driven example runner
-- [`lint-bosun.sh`](../scripts/lint-bosun.sh) — runs Bosun's Go analyzers at the commit [`.bosun-version`](../.bosun-version) pins (`task lint:bosun`)
 - [`version-targets.txt`](../scripts/version-targets.txt) — single list of every place the product version is written
 - [`version-bump.sh`](../scripts/version-bump.sh), [`version-check.sh`](../scripts/version-check.sh), [`version-targets.sh`](../scripts/version-targets.sh) — lockstep bump and drift check over that list
 - [`release/`](../scripts/release/) — release tool (TypeScript, run directly by the pinned Node): the tag gates, idempotent npm and JSR publishing, and convergence of the npm `latest` and GHCR `:latest`/`:slim` pointers, with vitest tests against a fake world of registries (see [`release/README.md`](../scripts/release/README.md))

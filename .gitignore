@@ -36,5 +36,5 @@ ai/out/
 quarry/quarry
 
 
-# Bosun checkout and analysis runner (scripts/lint-bosun.sh)
+# The internal check's run records and Go caches (task check)
 .bosun/

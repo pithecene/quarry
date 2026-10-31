@@ -1,6 +1,9 @@
 version: '3'
 
 vars:
+  # The internal check's image, as CI's check job pins it.
+  BOSUN_IMAGE:
+    sh: grep -m1 -oE 'ghcr.io/pithecene/bosun:[^ "]+' .github/workflows/ci.yml
   TS_PACKAGES: sdk executor-node
   COMMIT:
     sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
@@ -125,10 +128,23 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
-  lint:bosun:
-    desc: Run Bosun's Go analyzers at the pinned commit (needs read access to Bosun)
+  check:login:
+    desc: Log in once to the registry that holds the internal check's image, with the read-only registry token
+    status:
+      - docker manifest inspect "{{.BOSUN_IMAGE}}" > /dev/null 2>&1
     cmds:
-      - scripts/lint-bosun.sh {{.CLI_ARGS}}
+      - docker login ghcr.io
+
+  check:
+    desc: Run the internal check (bosun.yaml) in the image that CI's check job pins (needs read access to it)
+    deps: [check:login]
+    cmds:
+      - mkdir -p .bosun/go
+      - >-
+        docker run --rm -v "{{.ROOT_DIR}}:/work"
+        -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build
+        -e GOLANGCI_LINT_CACHE=/work/.bosun/go/lint
+        "{{.BOSUN_IMAGE}}" check
 
   go:test:
     desc: Test Go module
