@@ -59,16 +59,19 @@ records stay where they are. New runs write no `artifact_chunk` records.
 ### Placement
 
 Each artifact is one Volume, with the artifact ID as its Volume ID. The
-Volume store is rooted at the run's own prefix in Quarry's run namespace
-(`CONTRACT_LODE.md` § Run Record Namespace):
+Volume store is rooted at the run's own prefix in a namespace beside the
+run records (`CONTRACT_LODE.md` § Run Record Namespace):
 
 ```text
-datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...
+datasets/<dataset>/artifacts/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...
 ```
 
 - The run key components are Hive-encoded by the one key builder, as for
   run records, so a run's Volumes can neither escape the run nor share a
   prefix with another run's.
+- The namespace is a sibling of `runs/`, not inside it. Listing runs
+  lists `runs/` and filters for start records, so Volume objects there
+  would make every run listing grow with the bytes retained.
 - The artifact ID is the SDK's UUID. The runtime refuses an artifact ID
   that is not one canonical path segment, and Lode's `volume.New` refuses
   one too.
@@ -95,6 +98,12 @@ Volume reference:
 | `sha256` | string | Hex SHA-256 of the artifact's bytes, computed by the runtime |
 
 A reader reads an `"empty"` artifact as zero bytes and opens nothing.
+
+These fields are the runtime's, not the script's. The `artifact` event a
+script emits keeps its public shape, and sinks and adapters receive it
+unchanged. When the runtime hands the commit to the storage policy, it
+passes the artifact's storage result beside the envelope as a typed
+value, and the Lode client writes its fields into the stored record.
 
 The Volume ID is the `artifact_id` the record already carries, so the
 record does not repeat it.
@@ -160,10 +169,13 @@ the new ones.
   1 GiB artifact in 8 MiB ranges has 128 blocks.
 - The manager's per-artifact state is released when the `artifact_event`
   is written.
-- When the run ends, before its end record, the runtime removes the
-  Volume of every artifact it opened whose `artifact_event` was not
-  written, as a script that stops writing leaves committed ranges with no
-  record. A runtime that dies first leaves them to `quarry prune` (§7).
+- A script that stops writing leaves committed ranges with no record. When
+  the run ends, before its end record, the runtime removes the Volume of
+  every artifact it opened but whose `artifact` event it never received.
+  An event the runtime received keeps its Volume, even when the record's
+  write failed. A remote store can commit a write and then drop its
+  response, so a failed write may still have stored the record. A runtime
+  that dies first leaves its Volumes to `quarry prune` (§7).
 
 ### Digest
 
@@ -251,9 +263,16 @@ again, as step 3 lists the partition again after expiry. A Volume opened
 after the first listing, or a range staged into a removed Volume, leaves
 an object other than a tombstone. The prune then keeps the run's
 records, and the next prune that selects the run removes what remains.
-Only an object written after that final listing goes
-undetected, as only a commit after step 3's listing does
+An object written after that final listing is not seen by this run's
+prune, as a commit after step 3's listing is not
 (`CONTRACT_LODE.md` § Concurrency).
+
+The sweep (`CONTRACT_LODE.md` § Sweep) covers what no run reaches. When a
+grace period is given, it also lists `artifacts/` and removes every
+Volume whose run has no start record, once the Volume's newest object
+is older than the grace period. That catches an object written after a
+prune's final listing, and a run whose records an earlier prune removed,
+as `Dataset.Sweep` catches the data of writes that never committed.
 
 A run writes Volume snapshots between its Dataset writes, and an artifact
 that takes long to acquire writes nothing to the Dataset until its event.
@@ -313,6 +332,6 @@ the runtime in one release, and retires `artifact_chunk` with them.
 | Deleting Volumes | A Lode primitive, `volume.Remove` (§7) |
 | Small artifacts | One Volume each, with no threshold. An empty artifact has none (§4) |
 | Migration | Old records stay readable from chunk records, with no backfill (§6) |
-| Volume layout | Under the run's prefix in the run namespace (§3) |
+| Volume layout | Under the run's prefix in `artifacts/`, beside the run records (§3) |
 | Content identity and deduplication | Downstream, as `CONTRACT_LODE.md` § Scope already states |
 | Chunk trees (many objects per acquisition) | One artifact per object. A tree is many artifacts |
