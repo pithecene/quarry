@@ -246,7 +246,14 @@ them). Lode owns its persisted format, so Lode gains the removal:
 The prune command (`quarry prune`) removes a run's Volumes before the run's records
 (`CONTRACT_LODE.md` § Order of Operations). It lists the run's `volumes/`
 prefix, so the Volumes of artifacts whose event never arrived are removed
-too, and calls `volume.Remove` for each.
+too, and calls `volume.Remove` for each. The prune then lists the prefix
+again, as step 3 lists the partition again after expiry. A Volume opened
+after the first listing, or a range staged into a removed Volume, leaves
+an object other than a tombstone. The prune then keeps the run's
+records, and the next prune that selects the run removes what remains.
+Only an object written after that final listing goes
+undetected, as only a commit after step 3's listing does
+(`CONTRACT_LODE.md` § Concurrency).
 
 A run writes Volume snapshots between its Dataset writes, and an artifact
 that takes long to acquire writes nothing to the Dataset until its event.
