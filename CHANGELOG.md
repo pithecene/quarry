@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Runs commit on Hetzner Object Storage**: a run whose storage is a Hetzner bucket committed only its first snapshot, and every write after it failed with a snapshot conflict. Hetzner refuses the quoted ETag that the S3 adapter sent in `If-Match`, and Lode v0.13.0 sends the bare value, which AWS S3, Cloudflare R2, and Hetzner accept.
 
 ---
 
