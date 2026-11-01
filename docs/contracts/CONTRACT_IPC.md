@@ -28,7 +28,9 @@ Non-goals:
 
 The stream is a sequence of frames. Each frame is one of:
 - an **event frame** (encoded event envelope),
-- an **artifact chunk frame** (binary chunk),
+- an **artifact open frame** (an artifact's identity and size),
+- an **artifact range frame** (one range of an artifact's bytes),
+- an **artifact range acknowledgement frame** (runtime → executor, via stdin),
 - a **file write frame** (sidecar file upload), or
 - a **file write acknowledgement frame** (runtime → executor, via stdin)
 
@@ -42,12 +44,16 @@ All frames use msgpack encoding:
 Rationale: compact, stable, language-agnostic.
 
 Event frames contain the msgpack-encoded EventEnvelope directly.
-Artifact chunk frames contain a msgpack-encoded chunk envelope (see Artifact Chunking).
+Artifact frames contain a msgpack-encoded artifact envelope (see Artifact Frames).
 File write frames contain a msgpack-encoded file write envelope (see File Write Frames).
 
 Decoding discrimination uses the `type` field:
-- `'artifact_chunk'` → artifact chunk frame
+- `'artifact_open'` → artifact open frame
+- `'artifact_range'` → artifact range frame
+- `'artifact_range_ack'` → artifact range acknowledgement frame
 - `'file_write'` → file write frame
+- `'file_write_ack'` → file write acknowledgement frame
+- `'run_result'` → run result control frame
 - all other values (`'item'`, `'log'`, `'run_complete'`, etc.) → event envelope
 
 ---
@@ -148,33 +154,51 @@ The run_result's message, error_type, and stack are still used for context.
 - Maximum frame size: **16 MiB**
 - Frames exceeding this limit are invalid and must be rejected.
 
-Artifacts larger than 16 MiB must be chunked (see below).
+An artifact's bytes travel in range frames of at most 8 MiB each (see
+Artifact Frames).
 
 ---
 
-## Artifact Chunking
+## Artifact Frames
 
-Artifacts are transmitted as:
-1) One or more **artifact chunk frames** (bytes).
-2) An `artifact` event (metadata envelope), which is the **commit record**.
+An artifact is transmitted as:
+1) One **artifact open frame**, which states the artifact's identity and size.
+2) Zero or more **artifact range frames**, each carrying one range of its bytes.
+3) An `artifact` event (metadata envelope), which is the **commit record**.
 
-Chunk rules:
-- **Chunk size**: up to 8 MiB of raw bytes.
-- **Ordering**: strictly in order. Chunk `seq` starts at 1.
-- **Completion**: the final chunk has `is_last: true`.
-- **Reassembly**: consumer reassembles using `artifact_id` and `seq`.
-  Reassembly does not require the artifact event. `is_last` signals
-  when all bytes have arrived.
+The runtime answers each range frame with one **artifact range
+acknowledgement frame** on the executor's stdin (see Artifact Range
+Acknowledgement).
 
-Chunk frame payload layout (msgpack-encoded envelope):
-- `type` = `artifact_chunk`
+Artifact open frame payload layout (msgpack-encoded):
+- `type` = `artifact_open`
+- `artifact_id` (string): one canonical path segment
+- `size_bytes` (integer): the artifact's length, zero for an empty artifact
+- `expected_sha256` (string, optional): the hex SHA-256 the script expects
+  of the bytes
+
+Artifact range frame payload layout (msgpack-encoded):
+- `type` = `artifact_range`
 - `artifact_id` (string)
-- `seq` (integer, starting at 1)
-- `is_last` (boolean)
-- `data` (bytes)
+- `range_id` (uint32): monotonic correlation ID, counting up from 1 within
+  the run, as `write_id` does for file writes
+- `offset` (integer): the range's byte offset within the artifact
+- `data` (bytes): the range's bytes
 
-The `artifact_chunk` envelope is not a normal emit event and does not use
-the standard event envelope. It is a stream-level construct.
+Range rules:
+- **Range size**: up to 8 MiB of raw bytes.
+- **Order**: ranges may arrive in any order.
+- **Coverage**: ranges must not overlap, and a range must end at or before
+  `size_bytes`.
+- **Open first**: a range for an artifact without an open frame is refused.
+
+The runtime stages and commits each range before it reads the next frame,
+so IPC backpressure bounds the bytes in flight to one frame. The runtime
+keeps no artifact bytes of its own.
+
+Artifact frames are not normal emit events and do not use the standard
+event envelope. They are stream-level constructs and are not counted in
+`seq`.
 
 ---
 
@@ -184,24 +208,38 @@ The **artifact event** is the authoritative **commit record** for an artifact.
 
 ### Ordering Guarantees
 
-- Artifact bytes (chunk frames) **MAY** precede the artifact event.
-- The runtime **MUST** accept artifact chunk frames keyed by `artifact_id`
-  even if the corresponding artifact event has not yet been observed.
+- The artifact open frame **MUST** precede the artifact's range frames and
+  its artifact event.
+- The runtime **MUST** accept the artifact event only when its `size_bytes`
+  equals the opened size and the committed ranges cover `[0, size_bytes)`.
+  When the open frame declared `expected_sha256`, the runtime's own
+  SHA-256 of the committed bytes must equal it. An artifact event that
+  fails these checks is a stream error.
 - The runtime **MUST NOT** treat an artifact as "existent" until the
   artifact event is received.
 
-### Orphaned Blobs
+### Empty Artifacts
 
-- If artifact bytes arrive but no artifact event follows (e.g., script crash),
-  the bytes are **orphaned** and eligible for garbage collection.
-- GC strategy is implementation-defined (e.g., blobs older than N hours with
-  no manifest reference).
+An artifact of zero bytes follows the same protocol: the executor sends an
+open frame with `size_bytes` 0 and any `expected_sha256`, and no range
+frame. The runtime stores no bytes for it, refuses any range for it, and
+checks the expected digest against the SHA-256 of no bytes.
+
+### Volumes Without a Record
+
+- If ranges arrive but no artifact event follows (e.g., script crash), the
+  committed ranges are **orphaned**. When the run ends, before its end
+  record, the runtime removes the storage of every artifact it opened but
+  whose artifact event it never received. Storage the runtime could not
+  remove is eligible for garbage collection by `quarry prune`.
+- An artifact event the runtime received keeps its storage, even when the
+  record's write failed.
 
 ### Size Constraints
 
-- Maximum artifact size: implementation-defined (recommended: 1 GiB).
-- Maximum chunk size: 8 MiB (per Artifact Chunking above).
-- Artifacts exceeding the maximum size **MUST** be rejected by the runtime.
+- Maximum artifact size: 1 GiB. The runtime refuses an open frame whose
+  `size_bytes` exceeds it.
+- Maximum range size: 8 MiB (see Artifact Frames).
 
 ---
 
@@ -209,8 +247,8 @@ The **artifact event** is the authoritative **commit record** for an artifact.
 
 File write frames transport sidecar files via `storage.put()`.
 They bypass the event sequence (`seq`), policy pipeline, and artifact
-chunk/manifest machinery. Files are written directly to Lode Store
-at Hive-partitioned paths.
+machinery. Files are written directly to Lode Store at Hive-partitioned
+paths.
 
 File write frame payload layout (msgpack-encoded):
 - `type` = `file_write`
@@ -220,7 +258,7 @@ File write frame payload layout (msgpack-encoded):
 - `data` (bytes): file contents
 
 Constraints:
-- **Maximum data size**: 8 MiB (same limit as artifact chunks).
+- **Maximum data size**: 8 MiB (same limit as artifact ranges).
 - **Single-frame**: file writes are not chunked.
 - **Terminal boundary**: file write frames received after a terminal event
   are rejected with an error ack (`ok: false`, `"run already terminated"`)
@@ -233,8 +271,9 @@ Constraints:
 ## File Write Acknowledgement (Runtime → Executor)
 
 After processing a `file_write` frame, the runtime sends a `file_write_ack`
-frame back to the executor via stdin. This is the only bidirectional IPC
-in Quarry. All other frames flow executor→runtime via stdout.
+frame back to the executor via stdin. The file write and artifact range
+acknowledgements are the only bidirectional IPC in Quarry. All other
+frames flow executor→runtime via stdout.
 
 ### Two-Phase Stdin
 
@@ -286,6 +325,34 @@ Ack latency is bounded by storage backend I/O latency. Terminal conditions:
 - **stdin EOF**: runtime closed pipe → reject all pending promises.
 - **Process exit**: stdin stream ends → same as EOF.
 - **Malformed frame**: ignored (future frame types may appear).
+
+---
+
+## Artifact Range Acknowledgement (Runtime → Executor)
+
+After processing an `artifact_range` frame, the runtime sends an
+`artifact_range_ack` frame to the executor via stdin, on the same
+two-phase stdin as file write acknowledgements and with the same wire
+format.
+
+Artifact range ack frame payload layout (msgpack-encoded):
+- `type` = `artifact_range_ack`
+- `range_id` (uint32): correlation ID from the `artifact_range` frame
+- `ok` (bool): `true` once the range is committed
+- `error` (string | null): error message when `ok` is `false`
+
+The runtime sends the acknowledgement once the range is committed to
+storage, so a range the executor sees acknowledged is durable. It sends
+`ok: false` when it refuses the range (no open frame for the artifact, an
+overlap, a range past `size_bytes`, or a range for an empty artifact) and
+when the storage backend fails. A refused range is recoverable: the
+ingestion loop continues, and the script's write rejects with the
+runtime's error. An artifact event for an artifact whose ranges do not
+cover it is a stream error (see Artifact Commit Semantics).
+
+The executor and the runtime that use these frames ship together, so no
+fire-and-forget fallback exists for a range: a range without an
+acknowledgement before stdin EOF rejects.
 
 ---
 

@@ -29,6 +29,19 @@ const (
 // ArtifactChunkType is the type discriminant for artifact chunk frames.
 const ArtifactChunkType = "artifact_chunk"
 
+// ArtifactOpenType is the type discriminant for artifact open frames, which
+// open an artifact of a stated size before any of its bytes.
+const ArtifactOpenType = "artifact_open"
+
+// ArtifactRangeType is the type discriminant for artifact range frames,
+// which carry one range of an opened artifact's bytes.
+const ArtifactRangeType = "artifact_range"
+
+// ArtifactRangeAckType is the type discriminant for artifact range
+// acknowledgement frames. Sent runtime→executor via stdin once a range is
+// committed or refused.
+const ArtifactRangeAckType = "artifact_range_ack"
+
 // RunResultType is the type discriminant for run result control frames.
 const RunResultType = "run_result"
 
@@ -171,8 +184,9 @@ func probeFrameType(payload []byte) (string, error) {
 }
 
 // DecodeFrame decodes a payload and returns a typed frame.
-// Discriminates based on the type field: "artifact_chunk", "run_result",
-// "file_write", or event types.
+// Discriminates based on the type field: "artifact_chunk", "artifact_open",
+// "artifact_range", "artifact_range_ack", "run_result", "file_write",
+// "file_write_ack", or event types.
 func DecodeFrame(payload []byte) (any, error) {
 	frameType, err := probeFrameType(payload)
 	if err != nil {
@@ -186,6 +200,12 @@ func DecodeFrame(payload []byte) (any, error) {
 	switch frameType {
 	case ArtifactChunkType:
 		return DecodeArtifactChunk(payload)
+	case ArtifactOpenType:
+		return decodeAs[types.ArtifactOpenFrame](payload, "artifact open")
+	case ArtifactRangeType:
+		return decodeAs[types.ArtifactRangeFrame](payload, "artifact range")
+	case ArtifactRangeAckType:
+		return decodeAs[types.ArtifactRangeAckFrame](payload, "artifact range ack")
 	case RunResultType:
 		return DecodeRunResult(payload)
 	case FileWriteType:
@@ -278,4 +298,27 @@ func EncodeFileWriteAck(ack *types.FileWriteAckFrame) ([]byte, error) {
 		return nil, fmt.Errorf("failed to encode file write ack: %w", err)
 	}
 	return EncodeFrame(payload), nil
+}
+
+// EncodeArtifactRangeAck encodes an ArtifactRangeAckFrame as a
+// length-prefixed msgpack frame.
+func EncodeArtifactRangeAck(ack *types.ArtifactRangeAckFrame) ([]byte, error) {
+	payload, err := msgpack.Marshal(ack)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode artifact range ack: %w", err)
+	}
+	return EncodeFrame(payload), nil
+}
+
+// decodeAs decodes a payload as one frame type, naming it in the error.
+func decodeAs[F any](payload []byte, name string) (*F, error) {
+	var frame F
+	if err := msgpack.Unmarshal(payload, &frame); err != nil {
+		return nil, &FrameError{
+			Kind: FrameErrorDecode,
+			Msg:  "failed to decode " + name,
+			Err:  err,
+		}
+	}
+	return &frame, nil
 }
