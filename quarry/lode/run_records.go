@@ -97,8 +97,22 @@ func RunRecordDir(cfg Config) string {
 // datasets/<dataset>/runs/<enc>/.../. With no components it is the whole
 // namespace.
 func RunRecordPrefix(dataset string, components ...string) string {
+	return namespacePrefix(dataset, "runs", components...)
+}
+
+// RunArtifactDir is the run's directory in the artifact namespace, a
+// sibling of the run-record namespace that holds the run's artifact
+// Volumes (docs/plans/artifact-volumes.md §3):
+// datasets/<dataset>/artifacts/<source>/<category>/<day>/<run_id>/.
+func RunArtifactDir(cfg Config) string {
+	return namespacePrefix(cfg.Dataset, "artifacts", cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
+}
+
+// namespacePrefix is a key prefix in one of the dataset's namespaces for
+// the leading components given, each Hive-encoded and followed by "/".
+func namespacePrefix(dataset, namespace string, components ...string) string {
 	var b strings.Builder
-	b.WriteString("datasets/" + dataset + "/runs/")
+	b.WriteString("datasets/" + dataset + "/" + namespace + "/")
 	for _, c := range components {
 		b.WriteString(encode(c) + "/")
 	}

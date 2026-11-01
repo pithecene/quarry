@@ -98,7 +98,7 @@ type Page struct {
 // Reader reads one dataset.
 type Reader struct {
 	dataset string
-	store   lode.Store // one store for listing runs and reading their events
+	store   lode.RangeStore // one store for listing runs and reading their events and artifacts
 }
 
 // New returns a reader for the dataset stored behind factory.

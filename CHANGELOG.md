@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Artifact reads in `quarry/reader`**: `ListArtifacts` returns a run's artifacts as their commit records describe them, and `OpenArtifact` returns one artifact's bytes as a stream and by range. The reader reads the bytes from the chunk records of a run written today, or from the Lode Volume that a commit record names once the runtime writes Volumes. `OpenArtifact` returns the new `ErrArtifactNotFound` for an artifact the run never committed and `ErrArtifactIncomplete` when the stored bytes do not cover the artifact.
+
 ### Fixed
 
 - **Runs commit on Hetzner Object Storage**: a run whose storage is a Hetzner bucket committed only its first snapshot, and every write after it failed with a snapshot conflict. Hetzner refuses the quoted ETag that the S3 adapter sent in `If-Match`, and Lode v0.13.0 sends the bare value, which AWS S3, Cloudflare R2, and Hetzner accept.
