@@ -144,17 +144,30 @@ function generateArtifactEvent(): Buffer {
 }
 
 /**
- * Generate artifact chunk fixture.
+ * Generate artifact open fixture.
  */
-function generateArtifactChunk(): Buffer {
-  const chunk = {
-    type: 'artifact_chunk',
+function generateArtifactOpen(): Buffer {
+  const frame = {
+    type: 'artifact_open',
     artifact_id: 'art-fixture-001',
-    seq: 1,
-    is_last: true,
+    size_bytes: 25,
+    expected_sha256: '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0'
+  }
+  return encodeFrame(msgpackEncode(frame))
+}
+
+/**
+ * Generate artifact range fixture.
+ */
+function generateArtifactRange(): Buffer {
+  const frame = {
+    type: 'artifact_range',
+    artifact_id: 'art-fixture-001',
+    range_id: 1,
+    offset: 0,
     data: Buffer.from('fake png data for testing')
   }
-  return encodeFrame(msgpackEncode(chunk))
+  return encodeFrame(msgpackEncode(frame))
 }
 
 /**
@@ -227,7 +240,8 @@ const fixtures: Record<string, Buffer> = {
   'run_complete.bin': generateRunComplete(),
   'run_error.bin': generateRunError(),
   'artifact_event.bin': generateArtifactEvent(),
-  'artifact_chunk.bin': generateArtifactChunk(),
+  'artifact_open.bin': generateArtifactOpen(),
+  'artifact_range.bin': generateArtifactRange(),
   'event_with_lineage.bin': generateEventWithLineage(),
   'event_sequence.bin': generateEventSequence()
 }

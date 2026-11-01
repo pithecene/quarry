@@ -58,345 +58,6 @@ func TestLodeClient_WriteEvents(t *testing.T) {
 	// Success: records written without error
 }
 
-func TestLodeClient_WriteArtifactEvent(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	ctx := t.Context()
-
-	// Must write chunks before commit (chunks-before-commit invariant)
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, IsLast: true, Data: []byte("image data")},
-	}
-	if err := client.WriteChunks(ctx, cfg.Dataset, cfg.RunID, chunks); err != nil {
-		t.Fatalf("WriteChunks failed: %v", err)
-	}
-
-	events := []*types.EventEnvelope{
-		{
-			ContractVersion: "1.0.0",
-			EventID:         "evt-3",
-			RunID:           "run-123",
-			Seq:             3,
-			Type:            types.EventTypeArtifact,
-			Ts:              "2026-02-03T12:00:02Z",
-			Payload: map[string]any{
-				"artifact_id":  "art-1",
-				"name":         "screenshot.png",
-				"content_type": "image/png",
-				"size_bytes":   float64(1024), // JSON unmarshals numbers as float64
-			},
-			Attempt: 1,
-		},
-	}
-
-	err = client.WriteEvents(ctx, cfg.Dataset, cfg.RunID, events)
-	if err != nil {
-		t.Fatalf("WriteEvents (artifact) failed: %v", err)
-	}
-	// Success: artifact commit record written
-}
-
-func TestLodeClient_WriteChunks(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	chunks := []*types.ArtifactChunk{
-		{
-			ArtifactID: "art-1",
-			Seq:        1,
-			IsLast:     false,
-			Data:       []byte("hello "),
-		},
-		{
-			ArtifactID: "art-1",
-			Seq:        2,
-			IsLast:     true,
-			Data:       []byte("world"),
-		},
-	}
-
-	err = client.WriteChunks(t.Context(), cfg.Dataset, cfg.RunID, chunks)
-	if err != nil {
-		t.Fatalf("WriteChunks failed: %v", err)
-	}
-	// Success: chunk records written
-}
-
-func TestLodeClient_ChunkOffset(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	// Test that offsets are computed correctly per-artifact
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("12345")},           // offset 0, length 5
-		{ArtifactID: "art-1", Seq: 2, Data: []byte("67890")},           // offset 5, length 5
-		{ArtifactID: "art-2", Seq: 1, Data: []byte("abc")},             // offset 0 (different artifact)
-		{ArtifactID: "art-1", Seq: 3, IsLast: true, Data: []byte("!")}, // offset 10, length 1
-	}
-
-	// Verify the toChunkRecord offset computation
-	offsets := make(map[string]int64)
-	for _, chunk := range chunks {
-		offset := offsets[chunk.ArtifactID]
-		record := toChunkRecord(chunk, offset, cfg)
-
-		expectedOffset := offsets[chunk.ArtifactID]
-		if record.Offset != expectedOffset {
-			t.Errorf("chunk %s seq %d: offset = %d, want %d",
-				chunk.ArtifactID, chunk.Seq, record.Offset, expectedOffset)
-		}
-		if record.Length != int64(len(chunk.Data)) {
-			t.Errorf("chunk %s seq %d: length = %d, want %d",
-				chunk.ArtifactID, chunk.Seq, record.Length, len(chunk.Data))
-		}
-
-		offsets[chunk.ArtifactID] = offset + int64(len(chunk.Data))
-	}
-}
-
-func TestLodeClient_ChunkOffset_AcrossBatches(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	ctx := t.Context()
-
-	// First batch: 10 bytes for art-1
-	batch1 := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("0123456789")}, // 10 bytes
-	}
-	if err := client.WriteChunks(ctx, cfg.Dataset, cfg.RunID, batch1); err != nil {
-		t.Fatalf("WriteChunks batch 1 failed: %v", err)
-	}
-
-	// Verify offset tracked
-	if client.offsets["art-1"] != 10 {
-		t.Errorf("after batch 1: offset = %d, want 10", client.offsets["art-1"])
-	}
-
-	// Second batch: 5 more bytes for art-1
-	batch2 := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 2, IsLast: true, Data: []byte("abcde")}, // 5 bytes
-	}
-	if err := client.WriteChunks(ctx, cfg.Dataset, cfg.RunID, batch2); err != nil {
-		t.Fatalf("WriteChunks batch 2 failed: %v", err)
-	}
-
-	// Verify cumulative offset
-	if client.offsets["art-1"] != 15 {
-		t.Errorf("after batch 2: offset = %d, want 15", client.offsets["art-1"])
-	}
-}
-
-func TestLodeClient_CommitRequiresChunks(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	ctx := t.Context()
-
-	// Try to commit without writing any chunks
-	commitEvent := &types.EventEnvelope{
-		EventID: "evt-commit",
-		Type:    types.EventTypeArtifact,
-		Seq:     1,
-		Payload: map[string]any{
-			"artifact_id":  "art-no-chunks",
-			"name":         "test.txt",
-			"content_type": "text/plain",
-			"size_bytes":   float64(100),
-		},
-	}
-
-	err = client.WriteEvents(ctx, cfg.Dataset, cfg.RunID, []*types.EventEnvelope{commitEvent})
-	if err == nil {
-		t.Fatal("expected error for commit without chunks, got nil")
-	}
-
-	// Verify it's the right error
-	if !containsError(err, ErrCommitWithoutChunks) {
-		t.Errorf("expected ErrCommitWithoutChunks, got: %v", err)
-	}
-}
-
-func TestLodeClient_CommitSucceedsWithChunks(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	ctx := t.Context()
-
-	// Write chunks first
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("hello")},
-		{ArtifactID: "art-1", Seq: 2, IsLast: true, Data: []byte("world")},
-	}
-	if err := client.WriteChunks(ctx, cfg.Dataset, cfg.RunID, chunks); err != nil {
-		t.Fatalf("WriteChunks failed: %v", err)
-	}
-
-	// Now commit should succeed
-	commitEvent := &types.EventEnvelope{
-		EventID: "evt-commit",
-		Type:    types.EventTypeArtifact,
-		Seq:     3,
-		Payload: map[string]any{
-			"artifact_id":  "art-1",
-			"name":         "test.txt",
-			"content_type": "text/plain",
-			"size_bytes":   float64(10),
-		},
-	}
-
-	err = client.WriteEvents(ctx, cfg.Dataset, cfg.RunID, []*types.EventEnvelope{commitEvent})
-	if err != nil {
-		t.Fatalf("WriteEvents (commit) failed: %v", err)
-	}
-}
-
-func TestLodeClient_OffsetsResetAfterCommit(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	ctx := t.Context()
-
-	// Write chunks
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("12345")}, // 5 bytes
-	}
-	if err := client.WriteChunks(ctx, cfg.Dataset, cfg.RunID, chunks); err != nil {
-		t.Fatalf("WriteChunks failed: %v", err)
-	}
-
-	// Verify offset is tracked
-	if client.offsets["art-1"] != 5 {
-		t.Errorf("before commit: offset = %d, want 5", client.offsets["art-1"])
-	}
-
-	// Commit the artifact
-	commitEvent := &types.EventEnvelope{
-		EventID: "evt-commit",
-		Type:    types.EventTypeArtifact,
-		Seq:     2,
-		Payload: map[string]any{
-			"artifact_id":  "art-1",
-			"name":         "test.txt",
-			"content_type": "text/plain",
-			"size_bytes":   float64(5),
-		},
-	}
-	if err := client.WriteEvents(ctx, cfg.Dataset, cfg.RunID, []*types.EventEnvelope{commitEvent}); err != nil {
-		t.Fatalf("WriteEvents (commit) failed: %v", err)
-	}
-
-	// Verify offset is reset
-	if _, exists := client.offsets["art-1"]; exists {
-		t.Errorf("after commit: offset still exists, should be deleted")
-	}
-
-	// Verify chunksSeen is reset
-	if _, exists := client.chunksSeen["art-1"]; exists {
-		t.Errorf("after commit: chunksSeen still exists, should be deleted")
-	}
-
-	// New artifact with same ID should start fresh
-	chunks2 := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("abc")}, // 3 bytes
-	}
-	if err := client.WriteChunks(ctx, cfg.Dataset, cfg.RunID, chunks2); err != nil {
-		t.Fatalf("WriteChunks (new artifact) failed: %v", err)
-	}
-
-	// Should start from offset 0 again
-	if client.offsets["art-1"] != 3 {
-		t.Errorf("new artifact: offset = %d, want 3", client.offsets["art-1"])
-	}
-}
-
 func TestLodeClient_CommitRejectsMissingArtifactID(t *testing.T) {
 	t.Parallel()
 
@@ -435,23 +96,6 @@ func TestLodeClient_CommitRejectsMissingArtifactID(t *testing.T) {
 	}
 	if !errors.Is(err, ErrMissingArtifactID) {
 		t.Errorf("expected ErrMissingArtifactID, got: %v", err)
-	}
-}
-
-// containsError checks if err wraps or is target.
-func containsError(err, target error) bool {
-	return errors.Is(err, target)
-}
-
-func TestComputeMD5(t *testing.T) {
-	t.Parallel()
-
-	data := []byte("hello world")
-	got := computeMD5(data)
-	want := "5eb63bbbe01eeed093cb22bb8f5acdc3" // known MD5 of "hello world"
-
-	if got != want {
-		t.Errorf("computeMD5() = %q, want %q", got, want)
 	}
 }
 
@@ -680,42 +324,6 @@ func TestToMetricsRecordMap(t *testing.T) {
 	}
 }
 
-func TestNewClient_InitializesMaps(t *testing.T) {
-	t.Parallel()
-
-	// Regression: NewLodeS3Client previously returned &LodeClient{} without
-	// initializing offsets/chunksSeen maps, causing nil-map panic on first
-	// WriteChunks call. All constructors now use openClient() which must
-	// initialize both maps.
-	cfg := Config{
-		Dataset:  "test",
-		Source:   "src",
-		Category: "cat",
-		Day:      "2026-02-03",
-		RunID:    "run-1",
-	}
-
-	client, err := openClient(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("openClient failed: %v", err)
-	}
-
-	if client.offsets == nil {
-		t.Fatal("offsets map is nil, must be initialized")
-	}
-	if client.chunksSeen == nil {
-		t.Fatal("chunksSeen map is nil, must be initialized")
-	}
-
-	// Verify WriteChunks works immediately (would panic with nil maps)
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, IsLast: true, Data: []byte("data")},
-	}
-	if err := client.WriteChunks(t.Context(), cfg.Dataset, cfg.RunID, chunks); err != nil {
-		t.Fatalf("WriteChunks on newClient: %v", err)
-	}
-}
-
 func TestToArtifactCommitRecord(t *testing.T) {
 	t.Parallel()
 
@@ -912,5 +520,31 @@ func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
 	}
 	if got := collector.Snapshot().LodeWriteRetry; got != before+1 {
 		t.Fatalf("LodeWriteRetry after post-metrics conflict = %d, want %d", got, before+1)
+	}
+}
+
+// An artifact event commits with the storage result the runtime attached,
+// and is refused without one.
+func TestLodeClient_WriteArtifactEvent(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{Dataset: "quarry", Source: "test-source", Category: "test-category", Day: "2026-02-03", RunID: "run-123", Policy: "strict"}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+	}
+	event := func(storage *types.ArtifactStorage) *types.EventEnvelope {
+		return &types.EventEnvelope{
+			ContractVersion: "1.0.0", EventID: "evt-3", RunID: "run-123", Seq: 3, Type: types.EventTypeArtifact, Ts: "2026-02-03T12:00:02Z",
+			Payload: map[string]any{"artifact_id": "art-1", "name": "screenshot.png", "content_type": "image/png", "size_bytes": float64(1024)},
+			Attempt: 1, Storage: storage,
+		}
+	}
+	if err := client.WriteEvents(t.Context(), cfg.Dataset, cfg.RunID, []*types.EventEnvelope{event(nil)}); !errors.Is(err, ErrCommitWithoutStorage) {
+		t.Fatalf("WriteEvents without storage = %v; want ErrCommitWithoutStorage", err)
+	}
+	storage := &types.ArtifactStorage{Kind: types.ArtifactStorageVolume, VolumeSnapshotID: "snap-1", SHA256: "ab"}
+	if err := client.WriteEvents(t.Context(), cfg.Dataset, cfg.RunID, []*types.EventEnvelope{event(storage)}); err != nil {
+		t.Fatalf("WriteEvents with storage: %v", err)
 	}
 }

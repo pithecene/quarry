@@ -202,7 +202,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
 - **Policies**: strict, buffered, or streaming ingestion control → [policy guide](docs/guides/policy.md)
 - **Storage**: FS and S3 backends via Lode → [storage guide](docs/guides/lode.md)
 - **Proxies**: pool-based rotation with multiple strategies → [proxy guide](docs/guides/proxy.md)
-- **Streaming**: chunked artifacts with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
+- **Streaming**: artifacts in acknowledged ranges, with backpressure → [emit guide](docs/guides/emit.md#streaming-and-backpressure)
 - **Configuration**: YAML project defaults via `--config` → [configuration reference](docs/guides/configuration.md)
 - **Browser Reuse**: transparent Chromium persistence across sequential runs → [configuration reference](docs/guides/configuration.md)
 - **Container Deployment**: full/slim images, shared browser pools, multi-crawler topologies → [container guide](docs/guides/container.md)

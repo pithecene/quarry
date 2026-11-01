@@ -160,11 +160,6 @@ ADVANCED:
 				Usage: "Ingestion policy: strict, buffered, or streaming",
 				Value: "strict",
 			},
-			&cli.StringFlag{
-				Name:  "flush-mode",
-				Usage: "Flush mode for buffered policy: at_least_once, chunks_first, two_phase",
-				Value: "at_least_once",
-			},
 			&cli.IntFlag{
 				Name:  "buffer-events",
 				Usage: "Max buffered events (buffered policy)",
@@ -340,7 +335,6 @@ ADVANCED:
 // policyChoice holds parsed policy configuration.
 type policyChoice struct {
 	name          string
-	flushMode     string
 	maxEvents     int
 	maxBytes      int64
 	flushCount    int
@@ -629,7 +623,6 @@ func runAction(c *cli.Context) error {
 	// Parse policy config with precedence
 	choice := policyChoice{
 		name:          resolveString(c, "policy", configVal(cfg, func(c *quarryconfig.Config) string { return c.Policy.Name })),
-		flushMode:     resolveString(c, "flush-mode", configVal(cfg, func(c *quarryconfig.Config) string { return c.Policy.FlushMode })),
 		maxEvents:     resolveInt(c, "buffer-events", configIntVal(cfg, func(c *quarryconfig.Config) int { return c.Policy.BufferEvents })),
 		maxBytes:      resolveInt64(c, "buffer-bytes", configInt64Val(cfg, func(c *quarryconfig.Config) int64 { return c.Policy.BufferBytes })),
 		flushCount:    resolveInt(c, "flush-count", configIntVal(cfg, func(c *quarryconfig.Config) int { return c.Policy.FlushCount })),
@@ -1147,8 +1140,8 @@ func configPolicyDurationVal(cfg *quarryconfig.Config) time.Duration {
 func validatePolicyConfig(choice policyChoice) error {
 	switch choice.name {
 	case "strict":
-		if choice.maxEvents > 0 || choice.maxBytes > 0 || choice.flushMode != "at_least_once" {
-			fmt.Fprintf(os.Stderr, "Warning: buffer/flush flags ignored for strict policy\n")
+		if choice.maxEvents > 0 || choice.maxBytes > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: buffer flags ignored for strict policy\n")
 		}
 		return nil
 
@@ -1160,17 +1153,7 @@ Add one or both of:
   --buffer-events <n>   Maximum events to buffer (e.g., --buffer-events 1000)
   --buffer-bytes <n>    Maximum bytes to buffer (e.g., --buffer-bytes 1048576)`)
 		}
-		switch policy.FlushMode(choice.flushMode) {
-		case policy.FlushAtLeastOnce, policy.FlushChunksFirst, policy.FlushTwoPhase:
-			return nil
-		default:
-			return fmt.Errorf(`invalid --flush-mode: %q
-
-Valid options:
-  at_least_once   Flush all buffered data at least once (default)
-  chunks_first    Flush artifact chunks before events
-  two_phase       Two-phase commit for transactional semantics`, choice.flushMode)
-		}
+		return nil
 
 	case "streaming":
 		if choice.flushCount <= 0 && choice.flushInterval <= 0 {
@@ -1181,8 +1164,8 @@ Add one or both of:
   --flush-interval <d>    Flush every duration (e.g., --flush-interval 5s)`)
 		}
 		// Warn about irrelevant buffered flags
-		if choice.maxEvents > 0 || choice.maxBytes > 0 || choice.flushMode != "at_least_once" {
-			fmt.Fprintf(os.Stderr, "Warning: buffer/flush-mode flags ignored for streaming policy\n")
+		if choice.maxEvents > 0 || choice.maxBytes > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: buffer flags ignored for streaming policy\n")
 		}
 		return nil
 
@@ -1440,7 +1423,6 @@ func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storage
 		config := policy.BufferedConfig{
 			MaxBufferEvents: choice.maxEvents,
 			MaxBufferBytes:  choice.maxBytes,
-			FlushMode:       policy.FlushMode(choice.flushMode),
 		}
 		p, err := policy.NewBufferedPolicy(sink, config)
 		return p, client, fw, err
@@ -1738,9 +1720,9 @@ func parseDeliveryMode(s string) (policy.DeliveryMode, error) {
 	}
 }
 
-// buildEffectiveSink wraps the Lode sink with fan-out and composite routing
-// when event sinks are configured. Returns lodeSink unchanged when no event
-// sink config is present (backward compatible default).
+// buildEffectiveSink wraps the Lode sink with fan-out when event sinks are
+// configured. Returns lodeSink unchanged when no event sink config is
+// present (backward compatible default).
 func buildEffectiveSink(configs []eventSinkChoice, lodeSink policy.Sink, source, category string) (policy.Sink, error) {
 	if len(configs) == 0 {
 		return lodeSink, nil
@@ -1749,8 +1731,7 @@ func buildEffectiveSink(configs []eventSinkChoice, lodeSink policy.Sink, source,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event sinks: %w", err)
 	}
-	fanout := policy.NewFanoutEventSink(entries)
-	return policy.NewCompositeSink(fanout, lodeSink), nil
+	return policy.NewFanoutEventSink(entries), nil
 }
 
 // buildEntry constructs a SinkEntry from the parsed config.
@@ -1943,9 +1924,8 @@ func printRunResult(result *runtime.RunResult, choice policyChoice, duration tim
 
 	switch choice.name {
 	case "buffered":
-		fmt.Printf("policy=%s, flush_mode=%s, drops=%d, buffer_bytes=%d\n",
+		fmt.Printf("policy=%s, drops=%d, buffer_bytes=%d\n",
 			choice.name,
-			choice.flushMode,
 			result.PolicyStats.EventsDropped,
 			result.PolicyStats.BufferSize,
 		)
@@ -1988,7 +1968,6 @@ func printRunResult(result *runtime.RunResult, choice policyChoice, duration tim
 	fmt.Printf("Events Total:     %d\n", result.PolicyStats.TotalEvents)
 	fmt.Printf("Events Persisted: %d\n", result.PolicyStats.EventsPersisted)
 	fmt.Printf("Events Dropped:   %d\n", result.PolicyStats.EventsDropped)
-	fmt.Printf("Chunks Total:     %d\n", result.PolicyStats.TotalChunks)
 	fmt.Printf("Flushes:          %d\n", result.PolicyStats.FlushCount)
 
 	if result.ArtifactStats.TotalArtifacts > 0 {

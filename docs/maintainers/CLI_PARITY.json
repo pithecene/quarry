@@ -92,14 +92,6 @@
           "description": "Ingestion policy: strict, buffered, or streaming",
           "validation": "Must be one of: strict, buffered, streaming"
         },
-        "flush-mode": {
-          "type": "string",
-          "required": false,
-          "default": "at_least_once",
-          "description": "Flush mode for buffered policy: at_least_once, chunks_first, two_phase",
-          "validation": "Must be one of: at_least_once, chunks_first, two_phase",
-          "dependsOn": ["policy=buffered"]
-        },
         "buffer-events": {
           "type": "int",
           "required": false,

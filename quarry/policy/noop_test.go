@@ -40,24 +40,6 @@ func TestNoopPolicy_AcceptReturnsNil(t *testing.T) {
 	}
 }
 
-func TestNoopPolicy_AcceptChunkReturnsNil(t *testing.T) {
-	t.Parallel()
-
-	pol := policy.NewNoopPolicy()
-
-	chunk := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        1,
-		Data:       []byte("data"),
-		IsLast:     true,
-	}
-
-	err := pol.IngestArtifactChunk(t.Context(), chunk)
-	if err != nil {
-		t.Errorf("IngestArtifactChunk() = %v, want nil", err)
-	}
-}
-
 func TestNoopPolicy_StatsDefensiveCopy(t *testing.T) {
 	t.Parallel()
 

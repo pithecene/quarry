@@ -82,7 +82,6 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 | Flag | Type | Default | Purpose |
 |------|------|---------|---------|
 | `--policy` | `strict`, `buffered`, or `streaming` | `strict` | Ingestion policy |
-| `--flush-mode` | `at_least_once`, `chunks_first`, `two_phase` | `at_least_once` | Buffered flush semantics |
 | `--buffer-events` | int | `0` | Max events to buffer (buffered policy) |
 | `--buffer-bytes` | int | `0` | Max buffer bytes (buffered policy) |
 | `--flush-count` | int | `0` | Flush after N events (streaming policy) |
@@ -297,7 +296,6 @@ storage:
 
 policy:
   name: buffered
-  flush_mode: at_least_once
   buffer_events: 1000
   buffer_bytes: 10485760
   # Streaming policy example:

@@ -8,7 +8,7 @@
 // Per CONTRACT_IPC.md:
 //   - Frames use 4-byte big-endian length prefix
 //   - Payloads are msgpack-encoded
-//   - artifact_chunk frames are discriminated by type field
+//   - artifact_open and artifact_range frames are discriminated by type field
 //   - Terminal events (run_complete, run_error) end the stream
 package ipc
 
@@ -33,7 +33,7 @@ type e2eManifest struct {
 	SizeBytes              int             `json:"size_bytes"`
 	FrameCount             int             `json:"frame_count"`
 	ExpectedEvents         []expectedEvent `json:"expected_events"`
-	ExpectedArtifactChunks int             `json:"expected_artifact_chunks"`
+	ExpectedArtifactRanges int             `json:"expected_artifact_ranges"`
 	ExitCode               int             `json:"exit_code"`
 }
 
@@ -121,7 +121,7 @@ func TestE2EFixture_EventSequence(t *testing.T) {
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 
 	var events []*types.EventEnvelope
-	var chunks []*types.ArtifactChunkFrame
+	var ranges []*types.ArtifactRangeFrame
 
 	for {
 		payload, err := decoder.ReadFrame()
@@ -140,22 +140,26 @@ func TestE2EFixture_EventSequence(t *testing.T) {
 		switch f := frame.(type) {
 		case *types.EventEnvelope:
 			events = append(events, f)
-		case *types.ArtifactChunkFrame:
-			chunks = append(chunks, f)
+		case *types.ArtifactRangeFrame:
+			ranges = append(ranges, f)
+		case *types.ArtifactOpenFrame:
+			// An open frame precedes its ranges and is not an event.
+		case *types.RunResultFrame:
+			// The run result control frame follows the terminal event.
 		default:
 			t.Fatalf("unexpected frame type: %T", frame)
 		}
 	}
 
-	// Validate event count (excluding artifact chunks)
+	// Validate event count (excluding artifact frames)
 	expectedEventCount := len(manifest.ExpectedEvents)
 	if len(events) != expectedEventCount {
 		t.Errorf("event count = %d, want %d", len(events), expectedEventCount)
 	}
 
-	// Validate chunk count
-	if len(chunks) != manifest.ExpectedArtifactChunks {
-		t.Errorf("chunk count = %d, want %d", len(chunks), manifest.ExpectedArtifactChunks)
+	// Validate range count
+	if len(ranges) != manifest.ExpectedArtifactRanges {
+		t.Errorf("range count = %d, want %d", len(ranges), manifest.ExpectedArtifactRanges)
 	}
 
 	// Validate each event matches manifest
@@ -205,83 +209,6 @@ func TestE2EFixture_EventSequence(t *testing.T) {
 		if !lastEvent.Type.IsTerminal() {
 			t.Errorf("last event type = %q, want terminal (run_complete or run_error)", lastEvent.Type)
 		}
-	}
-}
-
-// TestE2EFixture_ArtifactChunks validates artifact chunk structure.
-// Per CONTRACT_IPC.md:
-//   - Chunks have artifact_id, seq, is_last, data
-//   - Seq starts at 1
-//   - Final chunk has is_last: true
-func TestE2EFixture_ArtifactChunks(t *testing.T) {
-	t.Parallel()
-
-	data := loadE2EFixture(t)
-
-	decoder := NewFrameDecoder(bytes.NewReader(data))
-
-	var chunks []*types.ArtifactChunkFrame
-
-	for {
-		payload, err := decoder.ReadFrame()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			t.Fatalf("ReadFrame failed: %v", err)
-		}
-
-		frame, err := DecodeFrame(payload)
-		if err != nil {
-			t.Fatalf("DecodeFrame failed: %v", err)
-		}
-
-		if chunk, ok := frame.(*types.ArtifactChunkFrame); ok {
-			chunks = append(chunks, chunk)
-		}
-	}
-
-	if len(chunks) == 0 {
-		t.Skip("no artifact chunks in fixture")
-	}
-
-	// Group chunks by artifact_id
-	byArtifact := make(map[string][]*types.ArtifactChunkFrame)
-	for _, chunk := range chunks {
-		byArtifact[chunk.ArtifactID] = append(byArtifact[chunk.ArtifactID], chunk)
-	}
-
-	// Validate each artifact's chunks
-	for artifactID, artifactChunks := range byArtifact {
-		t.Run(artifactID, func(t *testing.T) {
-			// Validate seq starts at 1 and is monotonic
-			for i, chunk := range artifactChunks {
-				expectedSeq := int64(i + 1)
-				if chunk.Seq != expectedSeq {
-					t.Errorf("chunk %d seq = %d, want %d", i, chunk.Seq, expectedSeq)
-				}
-			}
-
-			// Validate last chunk has is_last: true
-			lastChunk := artifactChunks[len(artifactChunks)-1]
-			if !lastChunk.IsLast {
-				t.Error("last chunk should have is_last: true")
-			}
-
-			// Validate non-last chunks have is_last: false
-			for i := 0; i < len(artifactChunks)-1; i++ {
-				if artifactChunks[i].IsLast {
-					t.Errorf("chunk %d should have is_last: false", i)
-				}
-			}
-
-			// Validate data is not empty
-			for i, chunk := range artifactChunks {
-				if len(chunk.Data) == 0 {
-					t.Errorf("chunk %d has empty data", i)
-				}
-			}
-		})
 	}
 }
 

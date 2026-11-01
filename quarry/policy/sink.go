@@ -23,20 +23,13 @@ type Sink interface {
 	// Returns error on failure; caller decides whether to retry or fail.
 	WriteEvents(ctx context.Context, events []*types.EventEnvelope) error
 
-	// WriteChunks persists a batch of artifact chunks.
-	// Must preserve ordering within the batch.
-	// Returns error on failure; caller decides whether to retry or fail.
-	WriteChunks(ctx context.Context, chunks []*types.ArtifactChunk) error
-
 	// Close releases any resources held by the sink.
 	Close() error
 }
 
 // WriteOp represents a write operation for ordering verification.
 type WriteOp struct {
-	Type   string // "events" or "chunks"
 	Events []*types.EventEnvelope
-	Chunks []*types.ArtifactChunk
 }
 
 // StubSink is a test sink that accepts writes without persisting.
@@ -46,24 +39,18 @@ type StubSink struct {
 
 	// EventsWritten is the total count of events written.
 	EventsWritten int64
-	// ChunksWritten is the total count of chunks written.
-	ChunksWritten int64
 	// EventBatches is the number of WriteEvents calls.
 	EventBatches int64
-	// ChunkBatches is the number of WriteChunks calls.
-	ChunkBatches int64
 	// Closed indicates whether Close was called.
 	Closed bool
 
 	// WrittenEvents stores all written events for inspection.
 	WrittenEvents []*types.EventEnvelope
-	// WrittenChunks stores all written chunks for inspection.
-	WrittenChunks []*types.ArtifactChunk
 
 	// WriteOrder tracks the order of write operations for ordering tests.
 	WriteOrder []WriteOp
 
-	// ErrorOnWrite, if non-nil, is returned by WriteEvents/WriteChunks.
+	// ErrorOnWrite, if non-nil, is returned by WriteEvents.
 	ErrorOnWrite error
 }
 
@@ -71,7 +58,6 @@ type StubSink struct {
 func NewStubSink() *StubSink {
 	return &StubSink{
 		WrittenEvents: make([]*types.EventEnvelope, 0),
-		WrittenChunks: make([]*types.ArtifactChunk, 0),
 		WriteOrder:    make([]WriteOp, 0),
 	}
 }
@@ -88,24 +74,7 @@ func (s *StubSink) WriteEvents(_ context.Context, events []*types.EventEnvelope)
 	s.EventBatches++
 	s.EventsWritten += int64(len(events))
 	s.WrittenEvents = append(s.WrittenEvents, events...)
-	s.WriteOrder = append(s.WriteOrder, WriteOp{Type: "events", Events: events})
-
-	return nil
-}
-
-// WriteChunks records the chunks without persisting.
-func (s *StubSink) WriteChunks(_ context.Context, chunks []*types.ArtifactChunk) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.ErrorOnWrite != nil {
-		return s.ErrorOnWrite
-	}
-
-	s.ChunkBatches++
-	s.ChunksWritten += int64(len(chunks))
-	s.WrittenChunks = append(s.WrittenChunks, chunks...)
-	s.WriteOrder = append(s.WriteOrder, WriteOp{Type: "chunks", Chunks: chunks})
+	s.WriteOrder = append(s.WriteOrder, WriteOp{Events: events})
 
 	return nil
 }
@@ -126,9 +95,7 @@ func (s *StubSink) Stats() StubSinkStats {
 
 	return StubSinkStats{
 		EventsWritten: s.EventsWritten,
-		ChunksWritten: s.ChunksWritten,
 		EventBatches:  s.EventBatches,
-		ChunkBatches:  s.ChunkBatches,
 		Closed:        s.Closed,
 	}
 }
@@ -136,8 +103,6 @@ func (s *StubSink) Stats() StubSinkStats {
 // StubSinkStats is a snapshot of StubSink statistics.
 type StubSinkStats struct {
 	EventsWritten int64
-	ChunksWritten int64
 	EventBatches  int64
-	ChunkBatches  int64
 	Closed        bool
 }

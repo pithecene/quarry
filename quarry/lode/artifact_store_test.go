@@ -344,14 +344,14 @@ func TestArtifactStore_CommitFailureLeavesTheRangeRetryable(t *testing.T) {
 
 // A commit event without a storage result still needs chunk records before
 // it, as the runs of earlier releases wrote them.
-func TestArtifactStore_CommitWithoutStorageNeedsChunks(t *testing.T) {
+func TestArtifactStore_CommitWithoutStorageIsRefused(t *testing.T) {
 	t.Parallel()
 	f := newArtifactFixture(t, "r1")
 	ev := f.commitEvent("a1", 1, types.ArtifactStorage{})
 	ev.Storage = nil
 	err := f.client.WriteEvents(t.Context(), f.cfg.Dataset, f.cfg.RunID, []*types.EventEnvelope{ev})
-	if !errors.Is(err, qlode.ErrCommitWithoutChunks) {
-		t.Fatalf("WriteEvents = %v; want ErrCommitWithoutChunks", err)
+	if !errors.Is(err, qlode.ErrCommitWithoutStorage) {
+		t.Fatalf("WriteEvents = %v; want ErrCommitWithoutStorage", err)
 	}
 }
 

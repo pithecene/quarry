@@ -213,8 +213,7 @@ func TestFanout_BestEffortDoesNotFailPolicy(t *testing.T) {
 		{Sink: redisSink, Delivery: DeliveryBestEffort, Label: "redis"},
 	})
 
-	composite := NewCompositeSink(fanout, lodeSink)
-	pol := NewStrictPolicy(composite)
+	pol := NewStrictPolicy(fanout)
 
 	events := testEnvelopes(2)
 	for _, ev := range events {
@@ -244,8 +243,7 @@ func TestFanout_MandatoryFailureFailsPolicy(t *testing.T) {
 		{Sink: redisSink, Delivery: DeliveryMandatory, Label: "redis"},
 	})
 
-	composite := NewCompositeSink(fanout, lodeSink)
-	pol := NewStrictPolicy(composite)
+	pol := NewStrictPolicy(fanout)
 
 	ev := testEnvelopes(1)[0]
 	err := pol.IngestEvent(t.Context(), ev)

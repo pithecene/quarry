@@ -20,6 +20,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const OUTPUT_DIR = join(__dirname, '../../quarry/ipc/testdata')
@@ -54,13 +55,37 @@ async function generateFixture(): Promise<void> {
     }
   })
 
-  // Send run input to stdin
-  executor.stdin.write(JSON.stringify(runInput))
-  executor.stdin.end()
+  // Send run input to stdin, and keep stdin open for the acknowledgements
+  // the executor waits for (CONTRACT_IPC.md §Artifact Range Acknowledgement).
+  executor.stdin.write(`${JSON.stringify(runInput)}\n`)
 
-  // Capture stdout (binary)
+  // Capture stdout (binary), and act as the runtime for artifact ranges:
+  // each artifact_range frame is acknowledged as committed.
+  let pending = Buffer.alloc(0)
   executor.stdout.on('data', (chunk: Buffer) => {
     stdout.push(chunk)
+    pending = Buffer.concat([pending, chunk])
+    while (pending.length >= 4) {
+      const length = pending.readUInt32BE(0)
+      if (pending.length < 4 + length) break
+      const payload = pending.subarray(4, 4 + length)
+      pending = pending.subarray(4 + length)
+      const frame = msgpackDecode(payload) as { type?: string; range_id?: number }
+      if (frame.type === 'artifact_range' && typeof frame.range_id === 'number') {
+        const ack = msgpackEncode({
+          type: 'artifact_range_ack',
+          range_id: frame.range_id,
+          ok: true
+        })
+        const framed = Buffer.alloc(4 + ack.length)
+        framed.writeUInt32BE(ack.length, 0)
+        framed.set(ack, 4)
+        executor.stdin.write(framed)
+      }
+    }
+  })
+  executor.on('close', () => {
+    executor.stdin.end()
   })
 
   // Capture stderr (text)
@@ -121,12 +146,12 @@ async function generateFixture(): Promise<void> {
     expected_events: [
       { seq: 1, type: 'item', item_type: 'fixture_product' },
       { seq: 2, type: 'log', level: 'info' },
-      // artifact_chunk frames are not events, they don't have seq
+      // artifact_open and artifact_range frames are not events, they have no seq
       { seq: 3, type: 'artifact', name: 'fixture-screenshot.bin' },
       { seq: 4, type: 'item', item_type: 'fixture_summary' },
       { seq: 5, type: 'run_complete' }
     ],
-    expected_artifact_chunks: 1, // 256 bytes fits in one chunk
+    expected_artifact_ranges: 1, // 256 bytes fits in one range
     exit_code: exitCode
   }
 

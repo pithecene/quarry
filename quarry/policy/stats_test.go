@@ -53,23 +53,6 @@ func TestBufferedPolicy_Stats_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Spawn chunk ingesters
-	wg.Go(func() {
-		for i := range 50 {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			chunk := &types.ArtifactChunk{
-				ArtifactID: "a1",
-				Seq:        int64(i),
-				Data:       []byte("chunk-data"),
-			}
-			_ = pol.IngestArtifactChunk(ctx, chunk)
-		}
-	})
-
 	// Spawn stats readers
 	statsResults := make(chan policy.Stats, 1000)
 	wg.Go(func() {
@@ -132,11 +115,6 @@ func TestBufferedPolicy_Stats_BufferSizeZeroAfterFlush(t *testing.T) {
 			Seq:     int64(i),
 		})
 	}
-	_ = pol.IngestArtifactChunk(ctx, &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        1,
-		Data:       []byte("chunk"),
-	})
 
 	// Verify non-zero before flush
 	statsBefore := pol.Stats()
@@ -194,18 +172,6 @@ func TestPolicy_Stats_CrossPolicyConsistency(t *testing.T) {
 				}
 			}
 
-			// Ingest chunks
-			for i := range 3 {
-				err := pol.IngestArtifactChunk(ctx, &types.ArtifactChunk{
-					ArtifactID: "a1",
-					Seq:        int64(i),
-					Data:       []byte("data"),
-				})
-				if err != nil {
-					t.Fatalf("IngestArtifactChunk failed: %v", err)
-				}
-			}
-
 			// Flush
 			if err := pol.Flush(ctx); err != nil {
 				t.Fatalf("Flush failed: %v", err)
@@ -219,12 +185,6 @@ func TestPolicy_Stats_CrossPolicyConsistency(t *testing.T) {
 			}
 			if stats.EventsPersisted != 5 {
 				t.Errorf("expected EventsPersisted=5, got %d", stats.EventsPersisted)
-			}
-			if stats.TotalChunks != 3 {
-				t.Errorf("expected TotalChunks=3, got %d", stats.TotalChunks)
-			}
-			if stats.ChunksPersisted != 3 {
-				t.Errorf("expected ChunksPersisted=3, got %d", stats.ChunksPersisted)
 			}
 			if stats.FlushCount != 1 {
 				t.Errorf("expected FlushCount=1, got %d", stats.FlushCount)

@@ -19,10 +19,6 @@ func (s *failingSink) WriteEvents(_ context.Context, _ []*types.EventEnvelope) e
 	return s.writeErr
 }
 
-func (s *failingSink) WriteChunks(_ context.Context, _ []*types.ArtifactChunk) error {
-	return s.writeErr
-}
-
 func (s *failingSink) Close() error {
 	s.closed = true
 	return nil
@@ -31,17 +27,11 @@ func (s *failingSink) Close() error {
 // successSink is a test double that accepts all writes.
 type successSink struct {
 	eventCalls int
-	chunkCalls int
 	closed     bool
 }
 
 func (s *successSink) WriteEvents(_ context.Context, _ []*types.EventEnvelope) error {
 	s.eventCalls++
-	return nil
-}
-
-func (s *successSink) WriteChunks(_ context.Context, _ []*types.ArtifactChunk) error {
-	s.chunkCalls++
 	return nil
 }
 
@@ -101,57 +91,6 @@ func TestInstrumentedSink_WriteEventsFailure(t *testing.T) {
 	}
 }
 
-func TestInstrumentedSink_WriteChunksSuccess(t *testing.T) {
-	t.Parallel()
-
-	inner := &successSink{}
-	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
-	sink := NewInstrumentedSink(inner, collector)
-
-	ctx := t.Context()
-	chunks := []*types.ArtifactChunk{{ArtifactID: "art-1", Seq: 1, Data: []byte("data")}}
-
-	if err := sink.WriteChunks(ctx, chunks); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	snap := collector.Snapshot()
-	if snap.LodeWriteSuccess != 1 {
-		t.Errorf("LodeWriteSuccess = %d, want 1", snap.LodeWriteSuccess)
-	}
-	if snap.LodeWriteFailure != 0 {
-		t.Errorf("LodeWriteFailure = %d, want 0", snap.LodeWriteFailure)
-	}
-	if inner.chunkCalls != 1 {
-		t.Errorf("inner.chunkCalls = %d, want 1", inner.chunkCalls)
-	}
-}
-
-func TestInstrumentedSink_WriteChunksFailure(t *testing.T) {
-	t.Parallel()
-
-	writeErr := errors.New("s3 timeout")
-	inner := &failingSink{writeErr: writeErr}
-	collector := metrics.NewCollector("strict", "node", "fs", "run-001", "")
-	sink := NewInstrumentedSink(inner, collector)
-
-	ctx := t.Context()
-	chunks := []*types.ArtifactChunk{{ArtifactID: "art-1", Seq: 1, Data: []byte("data")}}
-
-	err := sink.WriteChunks(ctx, chunks)
-	if !errors.Is(err, writeErr) {
-		t.Fatalf("expected %v, got %v", writeErr, err)
-	}
-
-	snap := collector.Snapshot()
-	if snap.LodeWriteSuccess != 0 {
-		t.Errorf("LodeWriteSuccess = %d, want 0", snap.LodeWriteSuccess)
-	}
-	if snap.LodeWriteFailure != 1 {
-		t.Errorf("LodeWriteFailure = %d, want 1", snap.LodeWriteFailure)
-	}
-}
-
 func TestInstrumentedSink_CloseDelegate(t *testing.T) {
 	t.Parallel()
 
@@ -176,12 +115,9 @@ func TestInstrumentedSink_MultipleCalls(t *testing.T) {
 
 	ctx := t.Context()
 
-	// 3 successful event writes + 2 successful chunk writes
-	for range 3 {
+	// 5 successful event writes
+	for range 5 {
 		_ = sink.WriteEvents(ctx, []*types.EventEnvelope{{Type: types.EventTypeItem, Seq: 1}})
-	}
-	for range 2 {
-		_ = sink.WriteChunks(ctx, []*types.ArtifactChunk{{ArtifactID: "art-1", Seq: 1, Data: []byte("data")}})
 	}
 
 	snap := collector.Snapshot()

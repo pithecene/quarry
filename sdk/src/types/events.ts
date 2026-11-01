@@ -23,8 +23,9 @@ export type CheckpointId = string & { readonly __brand: 'CheckpointId' }
 /**
  * All supported event types from CONTRACT_EMIT.md
  *
- * Note: 'artifact_chunk' is reserved for IPC framing (CONTRACT_IPC.md)
- * and must never be added to this union.
+ * Note: 'artifact_open', 'artifact_range', 'artifact_range_ack', 'file_write',
+ * 'file_write_ack', and 'run_result' are reserved for IPC framing
+ * (CONTRACT_IPC.md) and must never be added to this union.
  */
 export type EventType =
   | 'item'
@@ -55,7 +56,7 @@ export type ItemPayload = {
 /**
  * Payload for 'artifact' events.
  * Represents a binary or large payload.
- * Note: Actual binary data is handled separately via chunking (IPC layer).
+ * Note: Actual binary data travels separately as artifact ranges (IPC layer).
  */
 export type ArtifactPayload = {
   /** Unique identifier for the artifact */

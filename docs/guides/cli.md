@@ -113,7 +113,7 @@ Optional flags:
 - `--job-json <path>` (load JSON object from file, mutually exclusive with `--job`)
 - `--quiet`
 - `--policy strict|buffered|streaming`
-- `--flush-mode at_least_once|chunks_first|two_phase`
+
 - `--buffer-events <n>`
 - `--buffer-bytes <n>`
 - `--flush-count <n>` (streaming policy: flush after N events)

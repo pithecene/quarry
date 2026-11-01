@@ -23,11 +23,6 @@ type Policy interface {
 	// Must not drop non-droppable types; return error to terminate run.
 	IngestEvent(ctx context.Context, envelope *types.EventEnvelope) error
 
-	// IngestArtifactChunk handles an artifact chunk.
-	// Must buffer/persist chunks in order.
-	// Returns error on failure (terminates run).
-	IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error
-
 	// Flush flushes any buffered data.
 	// Called on run_complete, run_error, or runtime termination.
 	Flush(ctx context.Context) error
@@ -38,8 +33,7 @@ type Policy interface {
 	// flushing or writing.
 	//
 	// Precondition: the caller has stopped ingesting. Close must not be called
-	// while an IngestEvent, IngestArtifactChunk, or Flush call of the caller's
-	// is in progress; the runtime closes the policy only after ingestion has
+	// while an IngestEvent or Flush call of the caller's is in progress; the runtime closes the policy only after ingestion has
 	// ended. Flushes the policy runs on its own (the streaming interval flush)
 	// are canceled and joined by Close. Ingestion attempted after Close is
 	// refused with ErrPolicyClosed.
@@ -61,10 +55,6 @@ type Stats struct {
 	EventsDropped int64
 	// DroppedByType maps event types to drop counts.
 	DroppedByType map[types.EventType]int64
-	// TotalChunks is the total number of artifact chunks received.
-	TotalChunks int64
-	// ChunksPersisted is the number of chunks persisted.
-	ChunksPersisted int64
 	// BufferSize is the current buffer size in bytes (if buffered).
 	BufferSize int64
 	// FlushCount is the number of flush operations.
@@ -122,8 +112,6 @@ type statsRecorder struct {
 	totalEvents     atomic.Int64
 	eventsPersisted atomic.Int64
 	eventsDropped   atomic.Int64
-	totalChunks     atomic.Int64
-	chunksPersisted atomic.Int64
 	bufferSize      atomic.Int64
 	flushCount      atomic.Int64
 	errors          atomic.Int64
@@ -143,8 +131,6 @@ func newStatsRecorder() *statsRecorder {
 
 func (r *statsRecorder) incTotalEvents()            { r.totalEvents.Add(1) }
 func (r *statsRecorder) incEventsPersisted(n int64) { r.eventsPersisted.Add(n) }
-func (r *statsRecorder) incTotalChunks()            { r.totalChunks.Add(1) }
-func (r *statsRecorder) incChunksPersisted(n int64) { r.chunksPersisted.Add(n) }
 func (r *statsRecorder) incErrors()                 { r.errors.Add(1) }
 func (r *statsRecorder) incFlush()                  { r.flushCount.Add(1) }
 
@@ -153,8 +139,6 @@ func (r *statsRecorder) snapshot() Stats {
 		TotalEvents:     r.totalEvents.Load(),
 		EventsPersisted: r.eventsPersisted.Load(),
 		EventsDropped:   r.eventsDropped.Load(),
-		TotalChunks:     r.totalChunks.Load(),
-		ChunksPersisted: r.chunksPersisted.Load(),
 		BufferSize:      r.bufferSize.Load(),
 		FlushCount:      r.flushCount.Load(),
 		Errors:          r.errors.Load(),
@@ -176,11 +160,9 @@ func (r *statsRecorder) incEventsDroppedLocked(eventType types.EventType) {
 	r.droppedByType[eventType]++
 }
 
-func (r *statsRecorder) incTotalChunksLocked()            { r.totalChunks.Add(1) }
-func (r *statsRecorder) incChunksPersistedLocked(n int64) { r.chunksPersisted.Add(n) }
-func (r *statsRecorder) incErrorsLocked()                 { r.errors.Add(1) }
-func (r *statsRecorder) incFlushLocked()                  { r.flushCount.Add(1) }
-func (r *statsRecorder) setBufferSizeLocked(bytes int64)  { r.bufferSize.Store(bytes) }
+func (r *statsRecorder) incErrorsLocked()                { r.errors.Add(1) }
+func (r *statsRecorder) incFlushLocked()                 { r.flushCount.Add(1) }
+func (r *statsRecorder) setBufferSizeLocked(bytes int64) { r.bufferSize.Store(bytes) }
 
 // snapshotLocked returns a snapshot of stats with the given bufferSize.
 // Caller must hold its policy mu (required for droppedByType map access).
@@ -189,8 +171,6 @@ func (r *statsRecorder) snapshotLocked(bufferSize int64) Stats {
 		TotalEvents:     r.totalEvents.Load(),
 		EventsPersisted: r.eventsPersisted.Load(),
 		EventsDropped:   r.eventsDropped.Load(),
-		TotalChunks:     r.totalChunks.Load(),
-		ChunksPersisted: r.chunksPersisted.Load(),
 		BufferSize:      bufferSize,
 		FlushCount:      r.flushCount.Load(),
 		Errors:          r.errors.Load(),

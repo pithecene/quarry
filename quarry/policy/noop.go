@@ -50,16 +50,6 @@ func (p *NoopPolicy) IngestEvent(_ context.Context, envelope *types.EventEnvelop
 	return nil
 }
 
-// IngestArtifactChunk accepts the chunk but does not persist it.
-func (p *NoopPolicy) IngestArtifactChunk(_ context.Context, _ *types.ArtifactChunk) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.stats.TotalChunks++
-
-	return nil
-}
-
 // Flush is a no-op.
 func (p *NoopPolicy) Flush(_ context.Context) error {
 	p.mu.Lock()

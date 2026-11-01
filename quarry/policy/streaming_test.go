@@ -175,76 +175,6 @@ func TestStreamingPolicy_OrderingPreserved(t *testing.T) {
 	}
 }
 
-func TestStreamingPolicy_ArtifactChunks_Buffered(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
-
-	for i := range 3 {
-		if err := pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-			ArtifactID: "a1",
-			Seq:        int64(i + 1),
-			Data:       []byte("test data"),
-			IsLast:     i == 2,
-		}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	}
-
-	// Not written yet
-	if sink.Stats().ChunksWritten != 0 {
-		t.Errorf("expected 0 chunks written before flush, got %d", sink.Stats().ChunksWritten)
-	}
-
-	// Flush writes chunks
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("flush failed: %v", err)
-	}
-
-	if sink.Stats().ChunksWritten != 3 {
-		t.Errorf("expected 3 chunks written after flush, got %d", sink.Stats().ChunksWritten)
-	}
-
-	stats := pol.Stats()
-	if stats.TotalChunks != 3 {
-		t.Errorf("expected TotalChunks=3, got %d", stats.TotalChunks)
-	}
-	if stats.ChunksPersisted != 3 {
-		t.Errorf("expected ChunksPersisted=3, got %d", stats.ChunksPersisted)
-	}
-}
-
-func TestStreamingPolicy_ChunksFirstOrdering(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
-
-	// Buffer both events and chunks
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem, Seq: 1,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("flush failed: %v", err)
-	}
-
-	// Verify write order: chunks first, then events
-	if len(sink.WriteOrder) != 2 {
-		t.Fatalf("expected 2 write ops, got %d", len(sink.WriteOrder))
-	}
-	if sink.WriteOrder[0].Type != "chunks" {
-		t.Errorf("expected first write to be chunks, got %s", sink.WriteOrder[0].Type)
-	}
-	if sink.WriteOrder[1].Type != "events" {
-		t.Errorf("expected second write to be events, got %s", sink.WriteOrder[1].Type)
-	}
-}
-
 func TestStreamingPolicy_FlushFailure_PreservesBuffers(t *testing.T) {
 	t.Parallel()
 
@@ -288,104 +218,6 @@ func TestStreamingPolicy_FlushFailure_PreservesBuffers(t *testing.T) {
 	}
 }
 
-func TestStreamingPolicy_ChunkWriteFailure_PreservesBothBuffers(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
-
-	// Buffer both
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// Make sink fail (affects chunks first in chunks_first semantics)
-	sink.ErrorOnWrite = errors.New("chunk write failed")
-
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail")
-	}
-
-	// Events should NOT have been written (chunks fail first)
-	if sink.Stats().EventsWritten != 0 {
-		t.Errorf("expected 0 events written when chunks fail, got %d", sink.Stats().EventsWritten)
-	}
-
-	// Both buffers preserved
-	stats := pol.Stats()
-	if stats.BufferSize == 0 {
-		t.Error("buffers should be preserved on failure")
-	}
-
-	// Fix and retry
-	sink.ErrorOnWrite = nil
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry failed: %v", err)
-	}
-
-	if sink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written, got %d", sink.Stats().ChunksWritten)
-	}
-	if sink.Stats().EventsWritten != 1 {
-		t.Errorf("expected 1 event written, got %d", sink.Stats().EventsWritten)
-	}
-}
-
-func TestStreamingPolicy_EventWriteFailure_ChunksAlreadySucceeded(t *testing.T) {
-	t.Parallel()
-
-	// Use a selective fail sink to fail only on events
-	baseSink := policy.NewStubSink()
-	failingSink := &streamingSelectiveFailSink{
-		StubSink:     baseSink,
-		failOnEvents: true,
-	}
-
-	pol, err := policy.NewStreamingPolicy(failingSink, policy.StreamingConfig{FlushCount: 100})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	t.Cleanup(iox.CloseFunc(pol))
-
-	// Buffer both
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// Flush: chunks succeed, events fail
-	err = pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail on events")
-	}
-
-	// Chunks were written
-	if baseSink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written, got %d", baseSink.Stats().ChunksWritten)
-	}
-	// Events not written
-	if baseSink.Stats().EventsWritten != 0 {
-		t.Errorf("expected 0 events written, got %d", baseSink.Stats().EventsWritten)
-	}
-
-	// Fix events and retry
-	failingSink.failOnEvents = false
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry should succeed: %v", err)
-	}
-
-	// Events now written, chunks may duplicate (chunks_first semantics)
-	if baseSink.Stats().EventsWritten != 1 {
-		t.Errorf("expected 1 event written, got %d", baseSink.Stats().EventsWritten)
-	}
-}
-
 func TestStreamingPolicy_EmptyFlush_NoWriteCalls(t *testing.T) {
 	t.Parallel()
 
@@ -400,9 +232,6 @@ func TestStreamingPolicy_EmptyFlush_NoWriteCalls(t *testing.T) {
 	// No writes should occur
 	if sink.Stats().EventBatches != 0 {
 		t.Errorf("expected 0 event batches, got %d", sink.Stats().EventBatches)
-	}
-	if sink.Stats().ChunkBatches != 0 {
-		t.Errorf("expected 0 chunk batches, got %d", sink.Stats().ChunkBatches)
 	}
 }
 
@@ -426,15 +255,6 @@ func TestStreamingPolicy_BufferSize_TracksCorrectly(t *testing.T) {
 		t.Error("BufferSize should be >0 after ingesting event")
 	}
 
-	// Add chunk with known data
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: make([]byte, 100),
-	})
-	sizeAfterChunk := pol.Stats().BufferSize
-	if sizeAfterChunk != sizeAfterEvent+100 {
-		t.Errorf("expected BufferSize=%d, got %d", sizeAfterEvent+100, sizeAfterChunk)
-	}
-
 	// Flush should reset buffer size
 	if err := pol.Flush(t.Context()); err != nil {
 		t.Fatalf("flush failed: %v", err)
@@ -450,7 +270,7 @@ func TestStreamingPolicy_Stats_CountersAccurate(t *testing.T) {
 	sink := policy.NewStubSink()
 	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
 
-	// Ingest 3 events and 2 chunks
+	// Ingest 3 events
 	for i := 1; i <= 3; i++ {
 		_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
 			EventID: "e" + string(rune('0'+i)),
@@ -458,19 +278,11 @@ func TestStreamingPolicy_Stats_CountersAccurate(t *testing.T) {
 			Seq:     int64(i),
 		})
 	}
-	for i := 1; i <= 2; i++ {
-		_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-			ArtifactID: "a1", Seq: int64(i), Data: []byte("data"),
-		})
-	}
 
 	// Before flush
 	stats := pol.Stats()
 	if stats.TotalEvents != 3 {
 		t.Errorf("expected TotalEvents=3, got %d", stats.TotalEvents)
-	}
-	if stats.TotalChunks != 2 {
-		t.Errorf("expected TotalChunks=2, got %d", stats.TotalChunks)
 	}
 	if stats.EventsPersisted != 0 {
 		t.Errorf("expected EventsPersisted=0 before flush, got %d", stats.EventsPersisted)
@@ -484,9 +296,6 @@ func TestStreamingPolicy_Stats_CountersAccurate(t *testing.T) {
 	stats = pol.Stats()
 	if stats.EventsPersisted != 3 {
 		t.Errorf("expected EventsPersisted=3, got %d", stats.EventsPersisted)
-	}
-	if stats.ChunksPersisted != 2 {
-		t.Errorf("expected ChunksPersisted=2, got %d", stats.ChunksPersisted)
 	}
 	if stats.FlushCount != 1 {
 		t.Errorf("expected FlushCount=1, got %d", stats.FlushCount)
@@ -640,49 +449,6 @@ func TestStreamingPolicy_CountTrigger_MultipleCycles(t *testing.T) {
 	}
 }
 
-func TestStreamingPolicy_MixedEventsAndChunks_CountTrigger(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 2})
-
-	// Chunk + event — chunk count doesn't trigger flush
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem, Seq: 1,
-	})
-
-	// 1 event in buffer — not at threshold
-	if sink.Stats().EventsWritten != 0 {
-		t.Errorf("expected 0 events written with 1 event, got %d", sink.Stats().EventsWritten)
-	}
-
-	// 2nd event triggers flush — both event and chunk should be written
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e2", Type: types.EventTypeItem, Seq: 2,
-	})
-
-	if sink.Stats().EventsWritten != 2 {
-		t.Errorf("expected 2 events written at threshold, got %d", sink.Stats().EventsWritten)
-	}
-	if sink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written with flush, got %d", sink.Stats().ChunksWritten)
-	}
-
-	// Verify chunks-first ordering
-	if len(sink.WriteOrder) < 2 {
-		t.Fatalf("expected at least 2 write ops, got %d", len(sink.WriteOrder))
-	}
-	if sink.WriteOrder[0].Type != "chunks" {
-		t.Errorf("expected chunks first, got %s", sink.WriteOrder[0].Type)
-	}
-	if sink.WriteOrder[1].Type != "events" {
-		t.Errorf("expected events second, got %s", sink.WriteOrder[1].Type)
-	}
-}
-
 func TestStreamingPolicy_FlushFailure_NewEventsPreservedWithOld(t *testing.T) {
 	t.Parallel()
 
@@ -721,27 +487,6 @@ func TestStreamingPolicy_FlushFailure_NewEventsPreservedWithOld(t *testing.T) {
 		t.Errorf("expected seq order [1,2], got [%d,%d]",
 			sink.WrittenEvents[0].Seq, sink.WrittenEvents[1].Seq)
 	}
-}
-
-// streamingSelectiveFailSink allows controlling which operations fail
-type streamingSelectiveFailSink struct {
-	*policy.StubSink
-	failOnEvents bool
-	failOnChunks bool
-}
-
-func (s *streamingSelectiveFailSink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) error {
-	if s.failOnEvents {
-		return errors.New("event write failed")
-	}
-	return s.StubSink.WriteEvents(ctx, events)
-}
-
-func (s *streamingSelectiveFailSink) WriteChunks(ctx context.Context, chunks []*types.ArtifactChunk) error {
-	if s.failOnChunks {
-		return errors.New("chunk write failed")
-	}
-	return s.StubSink.WriteChunks(ctx, chunks)
 }
 
 func TestStreamingPolicy_Backpressure_BlocksWhenFull(t *testing.T) {
@@ -844,72 +589,6 @@ func TestStreamingPolicy_Stats_FlushTriggers_NilForOtherPolicies(t *testing.T) {
 	}
 }
 
-func TestStreamingPolicy_ChunkOnlyCountMode_NoDeadlock(t *testing.T) {
-	t.Parallel()
-
-	// Regression test: in count-only mode (no FlushInterval), chunks alone
-	// would fill the buffer and block forever since only events contribute
-	// to the count threshold. After the fix, IngestArtifactChunk triggers
-	// a capacity-based flush when the buffer is full.
-	baseSink := policy.NewStubSink()
-	slowSink := &streamingSlowSink{
-		StubSink:   baseSink,
-		writeDelay: 10 * time.Millisecond,
-	}
-
-	pol, err := policy.NewStreamingPolicy(slowSink, policy.StreamingConfig{
-		FlushCount: 1000, // high threshold — chunks won't trigger count-based flush
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	t.Cleanup(iox.CloseFunc(pol))
-
-	ctx := t.Context()
-	done := make(chan struct{})
-	const totalChunks = 100
-
-	go func() {
-		defer close(done)
-		for i := range totalChunks {
-			chunk := &types.ArtifactChunk{
-				ArtifactID: "a1",
-				Seq:        int64(i),
-				Data:       make([]byte, 2*1024*1024), // 2 MiB each → fills 128 MiB buffer quickly
-			}
-			if err := pol.IngestArtifactChunk(ctx, chunk); err != nil {
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-done:
-		// All chunks eventually ingested (capacity flush drained the buffer)
-	case <-time.After(10 * time.Second):
-		t.Fatal("chunk ingestion timed out — likely deadlocked (count-only mode with chunks)")
-	}
-
-	if err := pol.Flush(ctx); err != nil {
-		t.Fatalf("final flush failed: %v", err)
-	}
-
-	stats := pol.Stats()
-	if stats.TotalChunks != totalChunks {
-		t.Errorf("expected TotalChunks=%d, got %d", totalChunks, stats.TotalChunks)
-	}
-	if stats.ChunksPersisted != totalChunks {
-		t.Errorf("expected ChunksPersisted=%d, got %d", totalChunks, stats.ChunksPersisted)
-	}
-	// Capacity flushes should be reported as "capacity", not "count"
-	if stats.FlushTriggers["capacity"] == 0 {
-		t.Error("expected FlushTriggers[capacity] > 0 for chunk-capacity flush")
-	}
-	if stats.FlushTriggers["count"] != 0 {
-		t.Errorf("expected FlushTriggers[count]=0 (no event count threshold), got %d", stats.FlushTriggers["count"])
-	}
-}
-
 func TestStreamingPolicy_EventOnlyCapacity_NoDeadlock(t *testing.T) {
 	t.Parallel()
 
@@ -971,57 +650,6 @@ func TestStreamingPolicy_EventOnlyCapacity_NoDeadlock(t *testing.T) {
 	}
 }
 
-func TestStreamingPolicy_OversizedEntry_AcceptedWhenBufferEmpty(t *testing.T) {
-	t.Parallel()
-
-	// A single entry larger than streamingMaxBufferBytes should be accepted
-	// when the buffer is empty (not deadlock), and flushed normally.
-	sink := policy.NewStubSink()
-	pol, err := policy.NewStreamingPolicy(sink, policy.StreamingConfig{
-		FlushCount: 1,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	t.Cleanup(iox.CloseFunc(pol))
-
-	ctx := t.Context()
-
-	// 200 MiB chunk — larger than the 128 MiB internal cap
-	bigChunk := &types.ArtifactChunk{
-		ArtifactID: "a-big",
-		Seq:        0,
-		Data:       make([]byte, 200*1024*1024),
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- pol.IngestArtifactChunk(ctx, bigChunk)
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("IngestArtifactChunk failed for oversized chunk: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("oversized chunk ingestion timed out — likely deadlocked")
-	}
-
-	// Flush should write the oversized chunk
-	if err := pol.Flush(ctx); err != nil {
-		t.Fatalf("flush failed: %v", err)
-	}
-
-	stats := pol.Stats()
-	if stats.TotalChunks != 1 {
-		t.Errorf("expected TotalChunks=1, got %d", stats.TotalChunks)
-	}
-	if stats.ChunksPersisted != 1 {
-		t.Errorf("expected ChunksPersisted=1, got %d", stats.ChunksPersisted)
-	}
-}
-
 // streamingSlowSink adds a delay to writes for backpressure testing.
 type streamingSlowSink struct {
 	*policy.StubSink
@@ -1031,9 +659,4 @@ type streamingSlowSink struct {
 func (s *streamingSlowSink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) error {
 	time.Sleep(s.writeDelay)
 	return s.StubSink.WriteEvents(ctx, events)
-}
-
-func (s *streamingSlowSink) WriteChunks(ctx context.Context, chunks []*types.ArtifactChunk) error {
-	time.Sleep(s.writeDelay)
-	return s.StubSink.WriteChunks(ctx, chunks)
 }

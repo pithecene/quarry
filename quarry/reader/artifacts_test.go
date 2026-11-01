@@ -26,10 +26,10 @@ const (
 // wrote artifacts before Volumes. sizeBytes is what the commit event claims.
 func (f *fixture) writeChunked(spec runSpec, artifactID string, data []byte, chunkSize int, sizeBytes int64) {
 	f.t.Helper()
-	var chunks []*types.ArtifactChunk
+	var chunks []chunkRecord
 	for off := 0; off < len(data); off += chunkSize {
 		end := min(off+chunkSize, len(data))
-		chunks = append(chunks, &types.ArtifactChunk{ArtifactID: artifactID, Seq: int64(len(chunks) + 1), IsLast: end == len(data), Data: data[off:end]})
+		chunks = append(chunks, chunkRecord{artifactID: artifactID, seq: int64(len(chunks) + 1), isLast: end == len(data), data: data[off:end]})
 	}
 	commit := &types.EventEnvelope{
 		ContractVersion: types.ContractVersion, EventID: "a-" + artifactID, RunID: spec.runID, Seq: int64(len(spec.events) + 1),
@@ -188,9 +188,9 @@ func TestArtifacts_RetriedWritesReadBackOnce(t *testing.T) {
 	f := newFixture(t)
 	data := []byte("0123456789abcdef")
 	run := spec("r1")
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "a1", Seq: 1, Data: data[:10]}, {ArtifactID: "a1", Seq: 2, IsLast: true, Data: data[10:]},
-		{ArtifactID: "a1", Seq: 1, Data: data[:10]}, {ArtifactID: "a1", Seq: 2, IsLast: true, Data: data[10:]},
+	chunks := []chunkRecord{
+		{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+		{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
 	}
 	commit := &types.EventEnvelope{
 		ContractVersion: types.ContractVersion, EventID: "a-a1", RunID: run.runID, Seq: 2, Type: types.EventTypeArtifact, Ts: testArtifactTs, Attempt: 1,

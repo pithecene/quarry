@@ -227,11 +227,6 @@ func (e *IngestionEngine) processFrame(ctx context.Context, payload []byte) erro
 		return e.processArtifactOpen(ctx, frame)
 	case *types.ArtifactRangeFrame:
 		return e.processArtifactRange(ctx, frame)
-	case *types.ArtifactChunkFrame:
-		return &IngestionError{
-			Kind: IngestionErrorStream,
-			Err:  errors.New("artifact_chunk frame is retired: the executor must send artifact_open and artifact_range frames"),
-		}
 	case *types.EventEnvelope:
 		return e.processEvent(ctx, frame)
 	case *types.RunResultFrame:

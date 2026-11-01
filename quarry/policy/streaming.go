@@ -64,15 +64,14 @@ var ErrStreamingInvalidConfig = errors.New("invalid streaming config: at least o
 //   - Blocking on full: if buffer full and no trigger fired, ingestion blocks
 //     until next flush completes — events are never dropped
 //
-// Flush semantics: chunks first, then events (equivalent to chunks_first).
-// On flush failure, buffer is preserved and retried on next trigger.
+// On flush failure, the buffer is preserved and retried on the next trigger.
 //
 // Thread safety:
 //   - mu guards buffer state (append, size tracking, stats)
 //   - flushSem serializes flush operations to prevent concurrent writes;
 //     acquiring it honors the caller's context, so a flush stalled in the
 //     sink cannot block another flush past its deadline
-//   - IngestEvent/IngestArtifactChunk hold mu briefly to append
+//   - IngestEvent holds mu briefly to append
 //   - triggerFlush holds flushSem for the duration of the write,
 //     and mu briefly to swap/restore buffers
 type StreamingPolicy struct {
@@ -85,7 +84,6 @@ type StreamingPolicy struct {
 	mu          sync.Mutex // guards buffer state and stats
 	bufferCond  *sync.Cond // signaled after flush drains buffer; uses mu as locker
 	eventBuffer []*types.EventEnvelope
-	chunkBuffer []*types.ArtifactChunk
 	bufferBytes int64
 	stats       *statsRecorder
 
@@ -123,7 +121,6 @@ func NewStreamingPolicy(sink Sink, config StreamingConfig) (*StreamingPolicy, er
 		config:      config,
 		logger:      config.Logger,
 		eventBuffer: make([]*types.EventEnvelope, 0, 128),
-		chunkBuffer: make([]*types.ArtifactChunk, 0),
 		stats:       newStatsRecorder(),
 		stopCh:      make(chan struct{}),
 		flushSem:    make(chan struct{}, 1),
@@ -184,46 +181,6 @@ func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.Event
 	return nil
 }
 
-// IngestArtifactChunk adds the chunk to the buffer.
-// Artifact chunks are never dropped. Blocks if buffer is at capacity.
-// Triggers a flush if buffer is at capacity after append, preventing deadlock
-// in count-only mode where chunks don't contribute to the event count trigger.
-func (p *StreamingPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error {
-	p.mu.Lock()
-	if p.stopped {
-		p.mu.Unlock()
-		return ErrPolicyClosed
-	}
-
-	chunkSize := int64(len(chunk.Data))
-
-	// Block until buffer has room for this chunk (backpressure per CONTRACT_POLICY.md).
-	// Allow single-item overflow when buffer is empty to prevent deadlock for oversized chunks.
-	p.waitForRoomLocked(chunkSize)
-	if p.stopped { // Close began while this call waited for room
-		p.mu.Unlock()
-		return ErrPolicyClosed
-	}
-
-	p.stats.incTotalChunksLocked()
-	p.chunkBuffer = append(p.chunkBuffer, chunk)
-	p.bufferBytes += chunkSize
-	p.stats.setBufferSizeLocked(p.bufferBytes)
-
-	// Trigger capacity flush if buffer is at capacity after this append.
-	// This prevents deadlock in count-only mode: without an interval trigger,
-	// chunks alone would fill the buffer and block forever since only events
-	// contribute to the count threshold.
-	shouldFlush := p.isBufferFullLocked()
-	p.mu.Unlock()
-
-	if shouldFlush {
-		return p.triggerFlush(ctx, FlushTriggerCapacity)
-	}
-
-	return nil
-}
-
 // Flush flushes all buffered data (run termination trigger).
 // Called on run_complete, run_error, or runtime termination.
 func (p *StreamingPolicy) Flush(ctx context.Context) error {
@@ -233,9 +190,9 @@ func (p *StreamingPolicy) Flush(ctx context.Context) error {
 // triggerFlush performs a flush with the given trigger reason.
 // Serialized by flushSem to prevent concurrent writes.
 //
-// Strategy: swap buffers under mu, write outside mu, restore on failure.
-// This allows IngestEvent/IngestArtifactChunk to continue appending to
-// fresh buffers during a write, without blocking on the sink.
+// Strategy: swap the buffer under mu, write outside mu, restore on failure.
+// This allows IngestEvent to continue appending to a fresh buffer during a
+// write, without blocking on the sink.
 func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger) error {
 	// A canceled context never starts a flush; select alone would pick the
 	// free semaphore at random even when the context is already done.
@@ -249,7 +206,7 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 		p.mu.Lock()
 		p.stats.incErrorsLocked()
 		p.mu.Unlock()
-		p.logFlushFailure("all", trigger, ctx.Err())
+		p.logFlushFailure(trigger, ctx.Err())
 		return ctx.Err()
 	}
 	defer func() { <-p.flushSem }()
@@ -272,17 +229,15 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 	p.stats.incFlushLocked()
 
 	events := p.eventBuffer
-	chunks := p.chunkBuffer
 
 	// Nothing to flush
-	if len(events) == 0 && len(chunks) == 0 {
+	if len(events) == 0 {
 		p.mu.Unlock()
 		return nil
 	}
 
-	// Install fresh buffers so ingestion can continue during write
+	// Install a fresh buffer so ingestion can continue during write
 	p.eventBuffer = make([]*types.EventEnvelope, 0, 128)
-	p.chunkBuffer = make([]*types.ArtifactChunk, 0)
 	p.recalculateBufferBytes()
 
 	// Wake blocked ingestors — buffer has room now
@@ -290,42 +245,21 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 
 	p.mu.Unlock()
 
-	// Write chunks first (chunks_first semantics per CONTRACT_POLICY.md)
-	if len(chunks) > 0 {
-		if err := p.sink.WriteChunks(ctx, chunks); err != nil {
-			// Restore both buffers: prepend old data before any new data
-			p.mu.Lock()
-			p.stats.incErrorsLocked()
-			p.eventBuffer = append(events, p.eventBuffer...)
-			p.chunkBuffer = append(chunks, p.chunkBuffer...)
-			p.recalculateBufferBytes()
-			p.mu.Unlock()
-			p.logFlushFailure("chunks", trigger, err)
-			return err
-		}
+	if err := p.sink.WriteEvents(ctx, events); err != nil {
+		// Restore the buffer: prepend old data before any new data
 		p.mu.Lock()
-		p.stats.incChunksPersistedLocked(int64(len(chunks)))
+		p.stats.incErrorsLocked()
+		p.eventBuffer = append(events, p.eventBuffer...)
+		p.recalculateBufferBytes()
 		p.mu.Unlock()
+		p.logFlushFailure(trigger, err)
+		return err
 	}
+	p.mu.Lock()
+	p.stats.incEventsPersistedLocked(int64(len(events)))
+	p.mu.Unlock()
 
-	// Write events
-	if len(events) > 0 {
-		if err := p.sink.WriteEvents(ctx, events); err != nil {
-			// Chunks succeeded; restore only events
-			p.mu.Lock()
-			p.stats.incErrorsLocked()
-			p.eventBuffer = append(events, p.eventBuffer...)
-			p.recalculateBufferBytes()
-			p.mu.Unlock()
-			p.logFlushFailure("events", trigger, err)
-			return err
-		}
-		p.mu.Lock()
-		p.stats.incEventsPersistedLocked(int64(len(events)))
-		p.mu.Unlock()
-	}
-
-	p.logFlush(trigger, len(events), len(chunks))
+	p.logFlush(trigger, len(events))
 
 	return nil
 }
@@ -361,11 +295,11 @@ func (p *StreamingPolicy) Close() error {
 		// Data still buffered now was accepted but never persisted: report it
 		// rather than closing without reporting it.
 		p.mu.Lock()
-		events, chunks := len(p.eventBuffer), len(p.chunkBuffer)
+		events := len(p.eventBuffer)
 		p.mu.Unlock()
 		var lossErr error
-		if events > 0 || chunks > 0 {
-			lossErr = fmt.Errorf("%w: %d events and %d chunks not persisted at close: %w", ErrCloseUnflushed, events, chunks, flushErr)
+		if events > 0 {
+			lossErr = fmt.Errorf("%w: %d events not persisted at close: %w", ErrCloseUnflushed, events, flushErr)
 		}
 		return errors.Join(lossErr, p.sink.Close())
 	})
@@ -413,7 +347,7 @@ func (p *StreamingPolicy) intervalLoop() {
 		select {
 		case <-ticker.C:
 			p.mu.Lock()
-			hasData := len(p.eventBuffer) > 0 || len(p.chunkBuffer) > 0
+			hasData := len(p.eventBuffer) > 0
 			p.mu.Unlock()
 
 			if hasData {
@@ -431,14 +365,11 @@ func (p *StreamingPolicy) estimateEventSize(envelope *types.EventEnvelope) int64
 	return estimateEventSize(envelope)
 }
 
-// recalculateBufferBytes recalculates bufferBytes from all buffers. Caller must hold mu.
+// recalculateBufferBytes recalculates bufferBytes from the buffer. Caller must hold mu.
 func (p *StreamingPolicy) recalculateBufferBytes() {
 	var total int64
 	for _, event := range p.eventBuffer {
 		total += p.estimateEventSize(event)
-	}
-	for _, chunk := range p.chunkBuffer {
-		total += int64(len(chunk.Data))
 	}
 	p.bufferBytes = total
 	p.stats.setBufferSizeLocked(p.bufferBytes)
@@ -460,7 +391,7 @@ func (p *StreamingPolicy) waitForRoomLocked(additionalBytes int64) {
 // internal buffer capacity.
 // Caller must hold mu.
 func (p *StreamingPolicy) wouldExceedCapacityLocked(additionalBytes int64) bool {
-	if len(p.eventBuffer)+len(p.chunkBuffer) >= streamingMaxBufferEvents {
+	if len(p.eventBuffer) >= streamingMaxBufferEvents {
 		return true
 	}
 	return p.bufferBytes+additionalBytes > streamingMaxBufferBytes
@@ -470,7 +401,7 @@ func (p *StreamingPolicy) wouldExceedCapacityLocked(additionalBytes int64) bool 
 // Used after an append to decide if a capacity-triggered flush is needed.
 // Caller must hold mu.
 func (p *StreamingPolicy) isBufferFullLocked() bool {
-	if len(p.eventBuffer)+len(p.chunkBuffer) >= streamingMaxBufferEvents {
+	if len(p.eventBuffer) >= streamingMaxBufferEvents {
 		return true
 	}
 	return p.bufferBytes >= streamingMaxBufferBytes
@@ -478,27 +409,25 @@ func (p *StreamingPolicy) isBufferFullLocked() bool {
 
 // --- Logging helpers ---
 
-func (p *StreamingPolicy) logFlush(trigger FlushTrigger, events, chunks int) {
+func (p *StreamingPolicy) logFlush(trigger FlushTrigger, events int) {
 	if p.logger == nil {
 		return
 	}
 	p.logger.Info("streaming flush", map[string]any{
 		"trigger": string(trigger),
 		"events":  events,
-		"chunks":  chunks,
 		"policy":  "streaming",
 	})
 }
 
-func (p *StreamingPolicy) logFlushFailure(bufferType string, trigger FlushTrigger, err error) {
+func (p *StreamingPolicy) logFlushFailure(trigger FlushTrigger, err error) {
 	if p.logger == nil {
 		return
 	}
 	p.logger.Error("streaming flush failed", map[string]any{
-		"buffer_type": bufferType,
-		"trigger":     string(trigger),
-		"error":       err.Error(),
-		"policy":      "streaming",
+		"trigger": string(trigger),
+		"error":   err.Error(),
+		"policy":  "streaming",
 	})
 }
 

@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-02-01T04:02:40.827Z",
+  "generated_at": "2026-11-01T08:10:09.565Z",
   "run_id": "run-e2e-fixture-001",
   "fixture_script": "e2e-fixture-script.ts",
-  "size_bytes": 1692,
-  "frame_count": 6,
+  "size_bytes": 1871,
+  "frame_count": 8,
   "expected_events": [
     {
       "seq": 1,
@@ -30,6 +30,6 @@
       "type": "run_complete"
     }
   ],
-  "expected_artifact_chunks": 1,
+  "expected_artifact_ranges": 1,
   "exit_code": 0
 }

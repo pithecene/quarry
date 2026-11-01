@@ -43,7 +43,7 @@ type Config struct {
 }
 
 // Sink is a Lode-backed implementation of policy.Sink.
-// Writes events and chunks to Lode storage per CONTRACT_LODE.md.
+// Writes events to Lode storage per CONTRACT_LODE.md.
 type Sink struct {
 	config Config
 	client Client
@@ -55,10 +55,6 @@ type Client interface {
 	// WriteEvents writes a batch of events to Lode.
 	// Must preserve ordering within the batch.
 	WriteEvents(ctx context.Context, dataset, runID string, events []*types.EventEnvelope) error
-
-	// WriteChunks writes a batch of artifact chunks to Lode.
-	// Must preserve ordering within the batch.
-	WriteChunks(ctx context.Context, dataset, runID string, chunks []*types.ArtifactChunk) error
 
 	// WriteMetrics writes a metrics snapshot to Lode.
 	// Written to event_type=metrics partition with record_kind=metrics.
@@ -81,11 +77,6 @@ func (s *Sink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) e
 	return s.client.WriteEvents(ctx, s.config.Dataset, s.config.RunID, events)
 }
 
-// WriteChunks implements policy.Sink.
-func (s *Sink) WriteChunks(ctx context.Context, chunks []*types.ArtifactChunk) error {
-	return s.client.WriteChunks(ctx, s.config.Dataset, s.config.RunID, chunks)
-}
-
 // Close implements policy.Sink.
 func (s *Sink) Close() error {
 	return s.client.Close()
@@ -99,7 +90,6 @@ var _ policy.EventSink = (*Sink)(nil)
 // Use for integration testing before real Lode is available.
 type StubClient struct {
 	Events  []StubEventRecord
-	Chunks  []StubChunkRecord
 	Metrics []StubMetricsRecord
 	Closed  bool
 }
@@ -109,13 +99,6 @@ type StubEventRecord struct {
 	Dataset string
 	RunID   string
 	Events  []*types.EventEnvelope
-}
-
-// StubChunkRecord is a recorded chunk write for testing.
-type StubChunkRecord struct {
-	Dataset string
-	RunID   string
-	Chunks  []*types.ArtifactChunk
 }
 
 // StubMetricsRecord is a recorded metrics write for testing.
@@ -135,16 +118,6 @@ func (c *StubClient) WriteEvents(_ context.Context, dataset, runID string, event
 		Dataset: dataset,
 		RunID:   runID,
 		Events:  events,
-	})
-	return nil
-}
-
-// WriteChunks implements Client.
-func (c *StubClient) WriteChunks(_ context.Context, dataset, runID string, chunks []*types.ArtifactChunk) error {
-	c.Chunks = append(c.Chunks, StubChunkRecord{
-		Dataset: dataset,
-		RunID:   runID,
-		Chunks:  chunks,
 	})
 	return nil
 }

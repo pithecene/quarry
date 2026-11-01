@@ -68,31 +68,6 @@ type ArtifactCommitRecord struct {
 	Day      string `json:"day"`
 }
 
-// ArtifactChunkRecord is the storage format for artifact binary chunks.
-// Written to event_type=artifact partition per CONTRACT_LODE.md.
-type ArtifactChunkRecord struct {
-	// Record discriminator
-	RecordKind string `json:"record_kind"`
-
-	// Chunk fields
-	ArtifactID string `json:"artifact_id"`
-	Seq        int64  `json:"seq"`
-	IsLast     bool   `json:"is_last"`
-	Offset     int64  `json:"offset"`
-	Length     int64  `json:"length"`
-	Data       []byte `json:"data"` // base64 encoded in JSON
-
-	// Optional checksum per CONTRACT_LODE.md
-	Checksum     *string `json:"checksum,omitempty"`
-	ChecksumAlgo *string `json:"checksum_algo,omitempty"`
-
-	// Partition keys
-	Source   string `json:"source"`
-	Category string `json:"category"`
-	Day      string `json:"day"`
-	RunID    string `json:"run_id"`
-}
-
 // artifactPayload holds fields extracted from an artifact event's payload.
 type artifactPayload struct {
 	artifactID  string
@@ -225,24 +200,6 @@ func addArtifactStorageFields(m map[string]any, s *types.ArtifactStorage) {
 	}
 }
 
-// toChunkRecordMap converts an ArtifactChunk to a map for storage.
-func toChunkRecordMap(chunk *types.ArtifactChunk, offset int64, cfg Config) map[string]any {
-	return map[string]any{
-		"record_kind": RecordKindArtifactChunk,
-		"artifact_id": chunk.ArtifactID,
-		"seq":         chunk.Seq,
-		"is_last":     chunk.IsLast,
-		"offset":      offset,
-		"length":      int64(len(chunk.Data)),
-		"data":        chunk.Data,
-		"event_type":  "artifact", // partition key for chunks
-		"source":      cfg.Source,
-		"category":    cfg.Category,
-		"day":         cfg.Day,
-		"run_id":      cfg.RunID,
-	}
-}
-
 // toMetricsRecordMap converts a metrics.Snapshot to a map for Lode storage.
 // Written to event_type=metrics partition with record_kind=metrics.
 // Key names use _total suffix to match CONTRACT_METRICS.md naming.
@@ -340,21 +297,5 @@ func toArtifactCommitRecord(e *types.EventEnvelope, cfg Config) ArtifactCommitRe
 		Source:          cfg.Source,
 		Category:        cfg.Category,
 		Day:             cfg.Day,
-	}
-}
-
-func toChunkRecord(chunk *types.ArtifactChunk, offset int64, cfg Config) ArtifactChunkRecord {
-	return ArtifactChunkRecord{
-		RecordKind: RecordKindArtifactChunk,
-		ArtifactID: chunk.ArtifactID,
-		Seq:        chunk.Seq,
-		IsLast:     chunk.IsLast,
-		Offset:     offset,
-		Length:     int64(len(chunk.Data)),
-		Data:       chunk.Data,
-		Source:     cfg.Source,
-		Category:   cfg.Category,
-		Day:        cfg.Day,
-		RunID:      cfg.RunID,
 	}
 }

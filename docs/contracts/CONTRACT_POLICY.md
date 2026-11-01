@@ -59,30 +59,14 @@ If a policy cannot accept non-droppable events, it must fail the run.
 
 ---
 
-## Flush Modes
+## Flush Semantics
 
-Buffered policies support configurable flush semantics via `FlushMode`:
-
-### `at_least_once` (default)
-
-- Writes events, then chunks.
-- On any failure, **preserves all buffers**.
-- Retry may cause duplicate writes.
-- Guarantees no data loss.
-
-### `chunks_first`
-
-- Writes chunks before events.
-- If chunks fail, events are not attempted (no duplicates for events).
-- If chunks succeed but events fail, chunks may duplicate on retry.
-- Clears only successfully written buffers.
-
-### `two_phase`
-
-- Tracks per-buffer success to minimize duplicates.
-- Events written successfully are marked and not rewritten on retry.
-- Events added after partial flush go to a secondary buffer.
-- The most complex mode, because it requires internal state tracking.
+A buffered policy writes its buffered events at least once. On any
+failure it preserves the whole buffer, so a retry may write an event
+twice and never loses one. Artifact bytes do not pass through a policy:
+the runtime commits them to storage as they arrive
+([CONTRACT_IPC.md](CONTRACT_IPC.md) §Artifact Frames), and the artifact
+event is an event like any other.
 
 All modes must satisfy the no-silent-loss invariant.
 
@@ -119,23 +103,15 @@ Both may be specified. The first trigger to fire wins.
 ### Ordering
 
 - Flush preserves per-run event ordering.
-- Events and artifact chunks within a single flush are written atomically
-  (single `Sink.WriteEvents` / `Sink.WriteChunks` call per flush).
-- Artifact chunks must be flushed before or with their commit event.
-  A commit event must not appear in a flush unless all preceding chunks
-  for that artifact have already been persisted.
+- The events within a single flush are written atomically (a single
+  `Sink.WriteEvents` call per flush).
+- On flush failure, the buffer is preserved and retried on the next
+  trigger.
 
 ### Defaults
 
 No defaults are prescribed. If `--policy=streaming` is specified without
 at least one flush trigger, the CLI must reject the configuration.
-
-### Interaction with Flush Modes
-
-Streaming policy does not use `FlushMode` (`at_least_once`, `chunks_first`,
-`two_phase`). Each flush writes chunks first, then events. On flush failure,
-the buffer is preserved and retried on the next trigger. This is equivalent
-to `chunks_first` semantics applied per flush cycle.
 
 ### Required Observability (additive)
 
