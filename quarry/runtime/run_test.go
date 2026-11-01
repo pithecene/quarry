@@ -1176,38 +1176,24 @@ func TestOutcomeMapping_DetermineOutcome(t *testing.T) {
 // Sink Write Failure Tests (Orchestrator Level)
 // =============================================================================
 
-// sinkFailingPolicy fails writes to the underlying sink.
+// sinkFailingPolicy fails event writes to the underlying sink.
 type sinkFailingPolicy struct {
 	*flushTrackingPolicy
-	failOnEvent bool
-	failOnChunk bool
-	writeErr    error
+	writeErr error
 }
 
-func newSinkFailingPolicy(failOnEvent, failOnChunk bool, writeErr error) *sinkFailingPolicy {
+func newSinkFailingPolicy(writeErr error) *sinkFailingPolicy {
 	return &sinkFailingPolicy{
 		flushTrackingPolicy: newFlushTrackingPolicy(),
-		failOnEvent:         failOnEvent,
-		failOnChunk:         failOnChunk,
 		writeErr:            writeErr,
 	}
 }
 
-func (p *sinkFailingPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnvelope) error {
-	if p.failOnEvent {
-		return &policyError{msg: "sink write failed: " + p.writeErr.Error()}
-	}
-	return p.flushTrackingPolicy.IngestEvent(ctx, envelope)
+func (p *sinkFailingPolicy) IngestEvent(_ context.Context, _ *types.EventEnvelope) error {
+	return &policyError{msg: "sink write failed: " + p.writeErr.Error()}
 }
 
-func (p *sinkFailingPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error {
-	if p.failOnChunk {
-		return &policyError{msg: "chunk write failed: " + p.writeErr.Error()}
-	}
-	return p.flushTrackingPolicy.IngestArtifactChunk(ctx, chunk)
-}
-
-func TestRunOrchestrator_SinkWriteFailure_BeforeChunks(t *testing.T) {
+func TestRunOrchestrator_SinkWriteFailure(t *testing.T) {
 	t.Parallel()
 
 	runMeta := &types.RunMeta{
@@ -1219,8 +1205,8 @@ func TestRunOrchestrator_SinkWriteFailure_BeforeChunks(t *testing.T) {
 	eventData := makeValidEventStream(runMeta)
 	mockExec := newMockExecutor(eventData, 0)
 
-	// Policy that fails on event write (before any chunks)
-	sinkFailPol := newSinkFailingPolicy(true, false, io.ErrShortWrite)
+	// Policy that fails on event write
+	sinkFailPol := newSinkFailingPolicy(io.ErrShortWrite)
 
 	config := &RunConfig{
 		ExecutorPath: "/fake/executor",
@@ -1249,89 +1235,47 @@ func TestRunOrchestrator_SinkWriteFailure_BeforeChunks(t *testing.T) {
 	}
 }
 
-// makeEventStreamWithArtifactChunk creates a stream with an artifact chunk frame.
-func makeEventStreamWithArtifactChunk(runMeta *types.RunMeta) []byte {
-	var buf bytes.Buffer
-
-	// Item event first
-	itemEnvelope := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-1",
-		RunID:           runMeta.RunID,
-		Seq:             1,
-		Type:            types.EventTypeItem,
-		Ts:              "2024-01-01T00:00:00Z",
-		Payload:         map[string]any{"item_type": "test", "data": map[string]any{}},
-		Attempt:         runMeta.Attempt,
-	}
-	buf.Write(encodeTestEventFrame(itemEnvelope))
-
-	// Artifact chunk frame
-	chunk := &types.ArtifactChunkFrame{
-		Type:       "artifact_chunk",
-		ArtifactID: "art-1",
-		Seq:        1,
-		Data:       []byte("test data"),
-		IsLast:     true,
-	}
-	chunkPayload, _ := msgpack.Marshal(chunk)
-	buf.Write(encodeTestFrame(chunkPayload))
-
-	// run_complete event
-	completeEnvelope := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-2",
-		RunID:           runMeta.RunID,
-		Seq:             2,
-		Type:            types.EventTypeRunComplete,
-		Ts:              "2024-01-01T00:00:01Z",
-		Payload:         map[string]any{},
-		Attempt:         runMeta.Attempt,
-	}
-	buf.Write(encodeTestEventFrame(completeEnvelope))
-
-	return buf.Bytes()
-}
-
-func TestRunOrchestrator_SinkWriteFailure_OnChunks(t *testing.T) {
+// An artifact opened without an artifact event loses its Volume when the
+// run ends, and the run reports it as an orphan.
+func TestRunOrchestrator_AbandonsArtifactsWithoutAnEvent(t *testing.T) {
 	t.Parallel()
 
-	runMeta := &types.RunMeta{
-		RunID:   "run-sink-fail-chunk",
-		Attempt: 1,
-	}
+	runMeta := &types.RunMeta{RunID: "run-123", Attempt: 1}
+	f := newArtifactStoreFixture(t)
 
-	// Create executor that produces event + artifact chunk
-	eventData := makeEventStreamWithArtifactChunk(runMeta)
-	mockExec := newMockExecutor(eventData, 0)
-
-	// Policy that fails on chunk write (after events succeed)
-	sinkFailPol := newSinkFailingPolicy(false, true, io.ErrShortWrite)
+	var buf bytes.Buffer
+	buf.Write(frameOf(t, openFrame("a1", 2)))
+	buf.Write(frameOf(t, rangeFrame("a1", 1, 0, []byte("xy"))))
+	buf.Write(encodeTestEventFrame(terminalEvent(1)))
+	mockExec := newMockExecutor(buf.Bytes(), 0)
 
 	config := &RunConfig{
-		ExecutorPath: "/fake/executor",
-		ScriptPath:   "/fake/script.js",
-		Job:          map[string]any{},
-		RunMeta:      runMeta,
-		Policy:       sinkFailPol,
+		ExecutorPath:  "/fake/executor",
+		ScriptPath:    "/fake/script.js",
+		Job:           map[string]any{},
+		RunMeta:       runMeta,
+		Policy:        newFlushTrackingPolicy(),
+		ArtifactStore: f.client,
 		ExecutorFactory: func(_ *ExecutorConfig) Executor {
 			return mockExec
 		},
 	}
-
 	orchestrator, err := NewRunOrchestrator(config)
 	if err != nil {
 		t.Fatalf("failed to create orchestrator: %v", err)
 	}
-
 	result, err := orchestrator.Execute(t.Context())
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-
-	// Chunk write failure should be policy failure
-	if result.Outcome.Status != types.OutcomePolicyFailure {
-		t.Errorf("expected OutcomePolicyFailure, got %s: %s", result.Outcome.Status, result.Outcome.Message)
+	if result.Outcome.Status != types.OutcomeSuccess {
+		t.Fatalf("outcome = %s: %s; want success", result.Outcome.Status, result.Outcome.Message)
+	}
+	if len(result.OrphanIDs) != 1 || result.OrphanIDs[0] != "a1" || result.ArtifactStats.OrphanedArtifacts != 1 {
+		t.Fatalf("orphans = %v, stats %+v; want a1", result.OrphanIDs, result.ArtifactStats)
+	}
+	if !f.volumeRemoved(t, "a1") {
+		t.Fatal("the orphan's volume is not removed")
 	}
 }
 

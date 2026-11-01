@@ -354,3 +354,41 @@ func TestArtifactStore_CommitWithoutStorageNeedsChunks(t *testing.T) {
 		t.Fatalf("WriteEvents = %v; want ErrCommitWithoutChunks", err)
 	}
 }
+
+// A retry of a failed range with another length is refused, so no second
+// block is staged beside the one the failed commit left.
+func TestArtifactStore_ResizedRetryOfStagedRangeIsRefused(t *testing.T) {
+	t.Parallel()
+	fault := &swapFaultStore{RangeStore: lode.NewMemory()}
+	factory := func() (lode.RangeStore, error) { return fault, nil }
+	cfg := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: artifactTestDay, RunID: "r1", Policy: "strict"}
+	client, err := qlode.NewLodeClientWithFactory(t.Context(), cfg, factory)
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	ctx := t.Context()
+	w, err := client.OpenArtifact(ctx, "a1", 20, "")
+	if err != nil {
+		t.Fatalf("OpenArtifact: %v", err)
+	}
+	fault.failNext = true
+	if err := w.WriteRange(ctx, 0, []byte("0123456789")); err == nil {
+		t.Fatal("WriteRange under the fault = nil; want the commit's error")
+	}
+	if err := w.WriteRange(ctx, 0, []byte("01234")); !errors.Is(err, qlode.ErrRangeRefused) {
+		t.Fatalf("resized retry = %v; want ErrRangeRefused", err)
+	}
+	keys, err := fault.List(ctx, qlode.RunArtifactDir(cfg))
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var blocks int
+	for _, k := range keys {
+		if strings.Contains(k, "/data/") {
+			blocks++
+		}
+	}
+	if blocks != 1 {
+		t.Fatalf("staged blocks = %d (%v); want the one block of the failed commit", blocks, keys)
+	}
+}

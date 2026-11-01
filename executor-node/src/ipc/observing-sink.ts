@@ -12,7 +12,12 @@
  *
  * @module
  */
-import type { ArtifactId, EmitSink, EventEnvelope } from '@pithecene/quarry-sdk'
+import {
+  type ArtifactId,
+  ArtifactRangeRefusedError,
+  type EmitSink,
+  type EventEnvelope
+} from '@pithecene/quarry-sdk'
 
 /**
  * Terminal event types.
@@ -141,7 +146,9 @@ export class ObservingSink implements EmitSink, SinkState {
   }
 
   /**
-   * Write artifact data, tracking failures.
+   * Write artifact data, tracking failures. A range the runtime refused
+   * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
+   * rethrown without marking the sink failed.
    * @throws SinkAlreadyFailedError if the sink has previously failed
    */
   async writeArtifactData(artifactId: ArtifactId, data: Buffer | Uint8Array): Promise<void> {
@@ -154,7 +161,7 @@ export class ObservingSink implements EmitSink, SinkState {
       await this.inner.writeArtifactData(artifactId, data)
     } catch (err) {
       // First failure wins: only set if not already set
-      if (this.sinkFailure === null) {
+      if (this.sinkFailure === null && !(err instanceof ArtifactRangeRefusedError)) {
         this.sinkFailure = err
       }
       throw err

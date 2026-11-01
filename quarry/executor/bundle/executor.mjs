@@ -63,7 +63,7 @@ function createAPIs(run, sink, storagePartition) {
       try {
         return await fn();
       } catch (err) {
-        sinkFailed = err;
+        if (!(err instanceof ArtifactRangeRefusedError)) sinkFailed = err;
         throw err;
       }
     });
@@ -337,10 +337,16 @@ function createContext(options) {
   };
   return Object.freeze(ctx);
 }
-var CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
+var ArtifactRangeRefusedError, CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
 var init_dist = __esm({
   "../sdk/dist/index.mjs"() {
     "use strict";
+    ArtifactRangeRefusedError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "ArtifactRangeRefusedError";
+      }
+    };
     CONTRACT_VERSION = "0.14.2";
     TerminalEventError = class extends Error {
       constructor() {
@@ -420,6 +426,7 @@ var SinkAlreadyFailedError, ObservingSink;
 var init_observing_sink = __esm({
   "src/ipc/observing-sink.ts"() {
     "use strict";
+    init_dist();
     SinkAlreadyFailedError = class extends Error {
       constructor(originalCause) {
         const causeMsg = originalCause instanceof Error ? originalCause.message : String(originalCause);
@@ -456,7 +463,9 @@ var init_observing_sink = __esm({
         }
       }
       /**
-       * Write artifact data, tracking failures.
+       * Write artifact data, tracking failures. A range the runtime refused
+       * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
+       * rethrown without marking the sink failed.
        * @throws SinkAlreadyFailedError if the sink has previously failed
        */
       async writeArtifactData(artifactId, data) {
@@ -466,7 +475,7 @@ var init_observing_sink = __esm({
         try {
           await this.inner.writeArtifactData(artifactId, data);
         } catch (err) {
-          if (this.sinkFailure === null) {
+          if (this.sinkFailure === null && !(err instanceof ArtifactRangeRefusedError)) {
             this.sinkFailure = err;
           }
           throw err;
@@ -2250,50 +2259,6 @@ function encodeEventFrame(envelope) {
   const payload = (0, import_msgpack.encode)(envelope);
   return encodeFrame(payload);
 }
-function encodeArtifactChunkFrame(artifactId, seq, isLast, data) {
-  if (seq < 1) {
-    throw new ChunkValidationError(`seq must be >= 1, got ${seq}`);
-  }
-  if (data.length > MAX_CHUNK_SIZE) {
-    throw new ChunkValidationError(
-      `data size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
-    );
-  }
-  const frame = {
-    type: "artifact_chunk",
-    artifact_id: artifactId,
-    seq,
-    is_last: isLast,
-    data
-  };
-  const payload = (0, import_msgpack.encode)(frame);
-  return encodeFrame(payload);
-}
-function calculateChunks(totalSize) {
-  const chunks = [];
-  if (totalSize === 0) {
-    chunks.push({ seq: 1, isLast: true, offset: 0, length: 0 });
-    return chunks;
-  }
-  let offset = 0;
-  let seq = 1;
-  while (offset < totalSize) {
-    const remaining = totalSize - offset;
-    const length = Math.min(remaining, MAX_CHUNK_SIZE);
-    const isLast = offset + length >= totalSize;
-    chunks.push({ seq, isLast, offset, length });
-    offset += length;
-    seq++;
-  }
-  return chunks;
-}
-function* encodeArtifactChunks(artifactId, data) {
-  const chunks = calculateChunks(data.length);
-  for (const chunk of chunks) {
-    const chunkData = data.subarray(chunk.offset, chunk.offset + chunk.length);
-    yield encodeArtifactChunkFrame(artifactId, chunk.seq, chunk.isLast, chunkData);
-  }
-}
 function encodeRunResultFrame(outcome, proxyUsed) {
   const frame = {
     type: "run_result",
@@ -2327,6 +2292,42 @@ function decodeFileWriteAck(payload) {
   return {
     type: "file_write_ack",
     write_id: decoded.write_id,
+    ok: decoded.ok,
+    ...decoded.error != null && { error: decoded.error }
+  };
+}
+function encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256) {
+  const frame = {
+    type: "artifact_open",
+    artifact_id: artifactId,
+    size_bytes: sizeBytes,
+    ...expectedSha256 !== void 0 && { expected_sha256: expectedSha256 }
+  };
+  return encodeFrame((0, import_msgpack.encode)(frame));
+}
+function encodeArtifactRangeFrame(artifactId, rangeId, offset, data) {
+  if (data.length > MAX_CHUNK_SIZE) {
+    throw new ChunkValidationError(
+      `range size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
+    );
+  }
+  const frame = {
+    type: "artifact_range",
+    artifact_id: artifactId,
+    range_id: rangeId,
+    offset,
+    data
+  };
+  return encodeFrame((0, import_msgpack.encode)(frame));
+}
+function decodeArtifactRangeAck(payload) {
+  const decoded = (0, import_msgpack.decode)(payload);
+  if (decoded.type !== "artifact_range_ack") {
+    throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`);
+  }
+  return {
+    type: "artifact_range_ack",
+    range_id: decoded.range_id,
     ok: decoded.ok,
     ...decoded.error != null && { error: decoded.error }
   };
@@ -2456,6 +2457,7 @@ var init_sink = __esm({
       writeFn;
       ackReader;
       writeIdCounter = 0;
+      rangeIdCounter = 0;
       /**
        * Write an event envelope as a framed message.
        * Blocks on backpressure per CONTRACT_IPC.md.
@@ -2465,13 +2467,34 @@ var init_sink = __esm({
         await writeWithBackpressure(this.output, frame, this.writeFn);
       }
       /**
-       * Write artifact binary data as chunked frames.
-       * Per CONTRACT_IPC.md, bytes are written BEFORE the artifact event.
+       * Write artifact binary data: one artifact_open frame with the data's
+       * size, then one artifact_range frame per MAX_CHUNK_SIZE of data, in
+       * order. Per CONTRACT_IPC.md §Artifact Frames, the frames precede the
+       * artifact event, and an empty artifact sends its open frame only.
        * Blocks on backpressure per CONTRACT_IPC.md.
+       *
+       * Each range blocks until the runtime acknowledges it, so a resolved
+       * write is committed, and a refused range rejects with the runtime's
+       * error. A range has no fire-and-forget fallback, so a sink without an
+       * AckReader refuses the write.
        */
       async writeArtifactData(artifactId, data) {
-        for (const frame of encodeArtifactChunks(artifactId, data)) {
+        const ackReader = this.ackReader;
+        if (ackReader === void 0) {
+          throw new Error("artifact writes need an AckReader: a range resolves on its acknowledgement");
+        }
+        await writeWithBackpressure(
+          this.output,
+          encodeArtifactOpenFrame(artifactId, data.length),
+          this.writeFn
+        );
+        for (let offset = 0; offset < data.length; offset += MAX_CHUNK_SIZE) {
+          const range = data.subarray(offset, Math.min(offset + MAX_CHUNK_SIZE, data.length));
+          const rangeId = ++this.rangeIdCounter;
+          const ackPromise = ackReader.waitForRangeAck(rangeId);
+          const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, range);
           await writeWithBackpressure(this.output, frame, this.writeFn);
+          await ackPromise;
         }
       }
       /**
@@ -3264,6 +3287,7 @@ function withTimeout(promise, ms) {
 init_executor();
 
 // src/ipc/ack-reader.ts
+init_dist();
 init_frame();
 var LENGTH_PREFIX_SIZE2 = 4;
 var AckReader = class {
@@ -3286,11 +3310,25 @@ var AckReader = class {
     if (this.noAckSupport) {
       return Promise.resolve();
     }
+    return this.register("file_write", writeId);
+  }
+  /**
+   * Register a pending ack for the given rangeId. A range has no
+   * fire-and-forget fallback (CONTRACT_IPC.md §Artifact Range
+   * Acknowledgement): the promise rejects when stdin ends without its ack.
+   */
+  waitForRangeAck(rangeId) {
+    if (this.noAckSupport) {
+      return Promise.reject(new Error("runtime sent no artifact_range_ack before stdin closed"));
+    }
+    return this.register("artifact_range", rangeId);
+  }
+  register(kind, id) {
     if (this.stopped) {
       return Promise.reject(new Error("AckReader is stopped"));
     }
     return new Promise((resolve3, reject) => {
-      this.pending.set(writeId, { resolve: resolve3, reject });
+      this.pending.set(pendingKey(kind, id), { resolve: resolve3, reject });
     });
   }
   /**
@@ -3334,7 +3372,7 @@ var AckReader = class {
     this.stopped = true;
     if (!this.receivedAnyAck) {
       this.noAckSupport = true;
-      this.resolveAll();
+      this.settleAll(new Error("runtime sent no artifact_range_ack before stdin closed"));
       return;
     }
     this.rejectAll(new Error("stdin closed (EOF)"));
@@ -3358,28 +3396,36 @@ var AckReader = class {
   }
   /** Decode and dispatch a single ack frame. */
   processPayload(payload) {
-    let ack;
-    try {
-      ack = decodeFileWriteAck(payload);
-    } catch {
+    const ack = decodeAck(payload);
+    if (ack === void 0) {
       return;
     }
-    const entry = this.pending.get(ack.write_id);
+    const key = pendingKey(ack.kind, ack.id);
+    const entry = this.pending.get(key);
     if (!entry) {
       return;
     }
-    this.pending.delete(ack.write_id);
+    this.pending.delete(key);
     this.receivedAnyAck = true;
     if (ack.ok) {
       entry.resolve();
+    } else if (ack.kind === "artifact_range") {
+      entry.reject(new ArtifactRangeRefusedError(ack.error ?? "artifact range refused"));
     } else {
       entry.reject(new Error(ack.error ?? "file write failed"));
     }
   }
-  /** Resolve all pending promises (fire-and-forget fallback). */
-  resolveAll() {
-    for (const [, entry] of this.pending) {
-      entry.resolve();
+  /**
+   * Settle all pending promises when the runtime sent no ack at all:
+   * file writes resolve (fire-and-forget fallback), and ranges reject.
+   */
+  settleAll(rangeError) {
+    for (const [key, entry] of this.pending) {
+      if (key.startsWith("artifact_range:")) {
+        entry.reject(rangeError);
+      } else {
+        entry.resolve();
+      }
     }
     this.pending.clear();
   }
@@ -3391,6 +3437,32 @@ var AckReader = class {
     this.pending.clear();
   }
 };
+function decodeAck(payload) {
+  try {
+    const ack = decodeFileWriteAck(payload);
+    return {
+      kind: "file_write",
+      id: ack.write_id,
+      ok: ack.ok,
+      ...ack.error !== void 0 && { error: ack.error }
+    };
+  } catch {
+  }
+  try {
+    const ack = decodeArtifactRangeAck(payload);
+    return {
+      kind: "artifact_range",
+      id: ack.range_id,
+      ok: ack.ok,
+      ...ack.error !== void 0 && { error: ack.error }
+    };
+  } catch {
+    return void 0;
+  }
+}
+function pendingKey(kind, id) {
+  return `${kind}:${id}`;
+}
 
 // src/bin/executor.ts
 init_sink();

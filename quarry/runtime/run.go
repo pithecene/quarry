@@ -48,6 +48,9 @@ type RunConfig struct {
 	// FileWriter handles sidecar file writes via Lode Store.
 	// If nil, file_write frames are logged and ignored.
 	FileWriter lode.FileWriter
+	// ArtifactStore holds the run's artifact bytes as Lode Volumes. If nil,
+	// an artifact_open frame is a stream error.
+	ArtifactStore lode.ArtifactStore
 	// EnqueueObserver is an optional callback for fan-out scheduling.
 	// When set, called synchronously on each enqueue event before policy dispatch.
 	EnqueueObserver EnqueueObserver
@@ -377,7 +380,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	r.config.Collector.IncExecutorLaunchSuccess()
 
 	// Create artifact manager
-	artifacts := NewArtifactManager()
+	artifacts := NewArtifactManager(r.config.ArtifactStore)
 
 	// Create ingestion engine with ack writer for file_write_ack frames.
 	// executor.Stdin() is kept open after metadata delivery for this purpose.
@@ -443,6 +446,12 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	if closeErr := r.closePolicyOnce(); flushErr == nil && errors.Is(closeErr, policy.ErrCloseUnflushed) {
 		flushErr = closeErr
 	}
+
+	// The policy is closed, so every artifact event the runtime received is
+	// written or lost for good. Remove the storage of the artifacts whose
+	// event never arrived, before the end record (CONTRACT_IPC.md §Volumes
+	// Without a Record).
+	r.abandonUnfinishedArtifacts(ctx, artifacts)
 
 	// Handle executor wait error
 	if execErr != nil {
@@ -565,6 +574,25 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion)
 }
 
+// abandonUnfinishedArtifacts removes the storage of every artifact opened
+// without an artifact event. A removal that fails is logged: the prune
+// removes what the runtime could not.
+func (r *RunOrchestrator) abandonUnfinishedArtifacts(ctx context.Context, artifacts *ArtifactManager) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
+	defer cancel()
+	ids, err := artifacts.AbandonUnfinished(ctx)
+	if len(ids) > 0 {
+		r.logger.Warn("removed the storage of artifacts without an artifact event", map[string]any{
+			"artifact_ids": ids,
+		})
+	}
+	if err != nil {
+		r.logger.Error("artifact storage removal failed", map[string]any{
+			"error": err.Error(),
+		})
+	}
+}
+
 // runResultOutcomeToRunOutcome converts a RunResultFrame to a RunOutcome.
 func runResultOutcomeToRunOutcome(frame *types.RunResultFrame) *types.RunOutcome {
 	var status types.OutcomeStatus
@@ -625,7 +653,7 @@ func (r *RunOrchestrator) buildResult(
 
 	if artifacts != nil {
 		result.ArtifactStats = artifacts.Stats()
-		result.OrphanIDs = artifacts.GetOrphanIDs()
+		result.OrphanIDs = artifacts.OrphanIDs()
 	}
 
 	if ingestion != nil {

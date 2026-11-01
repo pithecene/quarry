@@ -15,6 +15,7 @@ import type {
   StoragePutOptions,
   StoragePutResult
 } from './emit'
+import { ArtifactRangeRefusedError } from './emit'
 import type { RunMeta } from './types/context'
 import type { ArtifactId, EventEnvelope, EventId, EventType, PayloadMap } from './types/events'
 import { CONTRACT_VERSION } from './types/events'
@@ -98,7 +99,11 @@ export function createAPIs(
       try {
         return await fn()
       } catch (err) {
-        sinkFailed = err
+        // A refused artifact range is recoverable (CONTRACT_IPC.md §Artifact
+        // Range Acknowledgement): the script may catch it and emit on.
+        if (!(err instanceof ArtifactRangeRefusedError)) {
+          sinkFailed = err
+        }
         throw err
       }
     })

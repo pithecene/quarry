@@ -39,7 +39,7 @@ func newTestRunResult() *RunResult {
 			TotalArtifacts:     5,
 			CommittedArtifacts: 5,
 			OrphanedArtifacts:  0,
-			TotalChunks:        10,
+			TotalRanges:        10,
 			TotalBytes:         524288,
 		},
 		StderrOutput: "",
@@ -304,7 +304,7 @@ func TestRunReport_JSONRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("artifacts is not an object")
 	}
-	artifactKeys := []string{"total", "committed", "orphaned", "chunks", "bytes"}
+	artifactKeys := []string{"total", "committed", "orphaned", "ranges", "bytes"}
 	for _, key := range artifactKeys {
 		if _, exists := artifactsObj[key]; !exists {
 			t.Errorf("missing required key %q in artifacts sub-object", key)

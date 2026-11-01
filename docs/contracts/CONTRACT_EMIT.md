@@ -75,10 +75,13 @@ Required payload fields:
 - `size_bytes` (integer)
 
 The **artifact event is the commit record** for an artifact. Artifact bytes
-may be transmitted before this event (see [CONTRACT_IPC.md](CONTRACT_IPC.md) for ordering,
-chunking, and `is_last` signaling).
+are transmitted before this event, as an open frame and range frames (see
+[CONTRACT_IPC.md](CONTRACT_IPC.md) §Artifact Frames for the order, the
+acknowledgements, and the size limits). The runtime accepts the event only
+when the committed ranges cover `size_bytes`.
 
-Orphaned bytes (no corresponding artifact event) are eligible for GC.
+Orphaned bytes (no corresponding artifact event) are removed when the run
+ends, and `quarry prune` removes what the runtime could not.
 
 ### 3) `checkpoint`
 Represents an explicit script checkpoint.

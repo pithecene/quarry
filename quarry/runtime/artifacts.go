@@ -2,251 +2,193 @@
 package runtime
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/pithecene/quarry/ipc"
+	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/types"
 )
 
-// MaxArtifactSize is the maximum allowed artifact size (1 GiB).
-// Per CONTRACT_IPC.md, this is implementation-defined (recommended: 1 GiB).
+// MaxArtifactSize is the maximum artifact size (1 GiB), which the runtime
+// enforces on the artifact_open frame (CONTRACT_IPC.md §Size Constraints).
 const MaxArtifactSize = 1 * 1024 * 1024 * 1024
 
-// ArtifactManager manages artifact chunk accumulation and orphan tracking.
-// Per CONTRACT_IPC.md, chunks may arrive before the artifact event.
-// Thread-safe for concurrent access.
+var (
+	// ErrNoArtifactStore is returned for an artifact frame when the run has
+	// no artifact storage configured.
+	ErrNoArtifactStore = errors.New("artifact frame received but no ArtifactStore configured; ensure storage is properly configured for artifacts")
+	// ErrArtifactNotOpen is returned for a range or a commit of an artifact
+	// that no artifact_open frame opened.
+	ErrArtifactNotOpen = errors.New("artifact not open")
+	// ErrArtifactReopened is returned for an artifact_open frame whose
+	// artifact is open or committed already.
+	ErrArtifactReopened = errors.New("artifact already open")
+	// ErrArtifactSizeMismatch is returned for an artifact event whose
+	// size_bytes differs from the opened size.
+	ErrArtifactSizeMismatch = errors.New("artifact size mismatch")
+)
+
+// ArtifactManager holds the state of a run's artifacts between their
+// artifact_open frame and their artifact event (CONTRACT_IPC.md §Artifact
+// Frames): each open artifact's writer, and the counts the run report
+// shows. It keeps no artifact bytes. Thread-safe.
 type ArtifactManager struct {
-	mu           sync.RWMutex
-	accumulators map[string]*types.ArtifactAccumulator
-	// pendingCommits tracks artifacts where commit arrived before all chunks.
-	// Maps artifact_id -> declared size_bytes for reconciliation.
-	pendingCommits map[string]int64
+	mu        sync.Mutex
+	store     lode.ArtifactStore // nil when the run has no storage
+	open      map[string]*openArtifact
+	committed map[string]struct{}
+	abandoned []string
+	stats     ArtifactStats
 }
 
-// NewArtifactManager creates a new artifact manager.
-func NewArtifactManager() *ArtifactManager {
+// openArtifact is an artifact whose open frame arrived and whose artifact
+// event has not.
+type openArtifact struct {
+	writer lode.ArtifactWriter
+	size   int64
+}
+
+// NewArtifactManager creates a manager over store. A nil store refuses
+// every artifact frame with ErrNoArtifactStore.
+func NewArtifactManager(store lode.ArtifactStore) *ArtifactManager {
 	return &ArtifactManager{
-		accumulators:   make(map[string]*types.ArtifactAccumulator),
-		pendingCommits: make(map[string]int64),
+		store:     store,
+		open:      map[string]*openArtifact{},
+		committed: map[string]struct{}{},
 	}
 }
 
-// AddChunk adds a chunk to an artifact.
-// Per CONTRACT_IPC.md:
-//   - seq must start at 1 and be strictly increasing
-//   - chunks may arrive before the artifact event
-//
-// Returns error if:
-//   - seq is not the expected next sequence
-//   - chunk arrives after is_last=true was seen
-//   - chunk data exceeds max chunk size
-//   - accumulated size exceeds MaxArtifactSize
-//   - size mismatch when commit arrived before chunks and is_last is seen
-func (m *ArtifactManager) AddChunk(chunk *types.ArtifactChunk) error {
+// Open creates the artifact's storage from its open frame. It returns an
+// error, which the ingestion loop treats as a stream error, when the run
+// has no artifact storage, the size exceeds MaxArtifactSize, the artifact
+// is open or committed already, or the store refuses the artifact.
+func (m *ArtifactManager) Open(ctx context.Context, frame *types.ArtifactOpenFrame) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	// Validate chunk size per CONTRACT_IPC.md
-	if len(chunk.Data) > ipc.MaxChunkSize {
-		return fmt.Errorf("artifact %s: chunk size %d exceeds max %d",
-			chunk.ArtifactID, len(chunk.Data), ipc.MaxChunkSize)
+	if m.store == nil {
+		return ErrNoArtifactStore
 	}
-
-	acc, exists := m.accumulators[chunk.ArtifactID]
-	if !exists {
-		acc = &types.ArtifactAccumulator{
-			ArtifactID: chunk.ArtifactID,
-			Chunks:     make([]*types.ArtifactChunk, 0),
-			NextSeq:    1,
-		}
-		m.accumulators[chunk.ArtifactID] = acc
+	if frame.SizeBytes > MaxArtifactSize {
+		return fmt.Errorf("artifact %s: declared size %d exceeds max %d", frame.ArtifactID, frame.SizeBytes, MaxArtifactSize)
 	}
-
-	// Reject operations on artifacts in error state
-	if acc.ErrorState {
-		return fmt.Errorf("artifact %s: in error state, rejecting further operations", chunk.ArtifactID)
+	if _, open := m.open[frame.ArtifactID]; open {
+		return fmt.Errorf("%w: %s", ErrArtifactReopened, frame.ArtifactID)
 	}
-
-	// Validate sequence ordering per CONTRACT_IPC.md
-	if chunk.Seq != acc.NextSeq {
-		return fmt.Errorf("artifact %s: expected seq %d, got %d",
-			chunk.ArtifactID, acc.NextSeq, chunk.Seq)
+	if _, committed := m.committed[frame.ArtifactID]; committed {
+		return fmt.Errorf("%w: %s is committed", ErrArtifactReopened, frame.ArtifactID)
 	}
-
-	// Check if already completed (is_last was already seen)
-	if acc.Complete {
-		return fmt.Errorf("artifact %s: chunk received after is_last", chunk.ArtifactID)
+	w, err := m.store.OpenArtifact(ctx, frame.ArtifactID, frame.SizeBytes, frame.ExpectedSHA256)
+	if err != nil {
+		return fmt.Errorf("artifact %s: open: %w", frame.ArtifactID, err)
 	}
-
-	// Check max artifact size
-	newTotal := acc.TotalBytes + int64(len(chunk.Data))
-	if newTotal > MaxArtifactSize {
-		return fmt.Errorf("artifact %s: size %d exceeds max %d",
-			chunk.ArtifactID, newTotal, MaxArtifactSize)
-	}
-
-	// Add chunk
-	acc.Chunks = append(acc.Chunks, chunk)
-	acc.TotalBytes = newTotal
-	acc.NextSeq++
-
-	if chunk.IsLast {
-		acc.Complete = true
-
-		// If commit arrived before chunks, reconcile size now
-		if declaredSize, pending := m.pendingCommits[chunk.ArtifactID]; pending {
-			// Always clean up pending commit to avoid inconsistent state
-			delete(m.pendingCommits, chunk.ArtifactID)
-
-			if acc.TotalBytes != declaredSize {
-				// Mark accumulator in error state to prevent further operations
-				acc.ErrorState = true
-				return fmt.Errorf("artifact %s: size mismatch (chunks=%d, declared=%d)",
-					chunk.ArtifactID, acc.TotalBytes, declaredSize)
-			}
-			// Size matches, mark as committed
-			acc.Committed = true
-		}
-	}
-
+	m.open[frame.ArtifactID] = &openArtifact{writer: w, size: frame.SizeBytes}
+	m.stats.TotalArtifacts++
 	return nil
 }
 
-// CommitArtifact marks an artifact as committed (artifact event received).
-// Per CONTRACT_IPC.md, the artifact event is the authoritative commit record.
-// Chunks may arrive before or after this call.
-//
-// Returns error if:
-//   - size_bytes exceeds MaxArtifactSize
-//   - size_bytes doesn't match accumulated bytes (when chunks are complete)
-func (m *ArtifactManager) CommitArtifact(artifactID string, sizeBytes int64) error {
+// WriteRange stages and commits one range of an open artifact. Its error
+// is the range's acknowledgement error: the artifact is not open, the range
+// is larger than ipc.MaxChunkSize, the store refuses the range
+// (lode.ErrRangeRefused), or the store fails. A refused or failed range
+// commits nothing, and ingestion continues.
+func (m *ArtifactManager) WriteRange(ctx context.Context, frame *types.ArtifactRangeFrame) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	// Validate max artifact size
-	if sizeBytes > MaxArtifactSize {
-		return fmt.Errorf("artifact %s: declared size %d exceeds max %d",
-			artifactID, sizeBytes, MaxArtifactSize)
+	a, ok := m.open[frame.ArtifactID]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrArtifactNotOpen, frame.ArtifactID)
 	}
-
-	acc, exists := m.accumulators[artifactID]
-	if !exists {
-		// Artifact event arrived before any chunks - this is valid per contract.
-		// Track the declared size for reconciliation when chunks complete.
-		m.pendingCommits[artifactID] = sizeBytes
-		acc = &types.ArtifactAccumulator{
-			ArtifactID: artifactID,
-			Chunks:     make([]*types.ArtifactChunk, 0),
-			NextSeq:    1,
-			// Note: NOT marked Committed yet - will be marked when chunks complete
-		}
-		m.accumulators[artifactID] = acc
-		return nil
+	if len(frame.Data) > ipc.MaxChunkSize {
+		return fmt.Errorf("%w: artifact %s range of %d bytes exceeds max %d", lode.ErrRangeRefused, frame.ArtifactID, len(frame.Data), ipc.MaxChunkSize)
 	}
-
-	// Reject operations on artifacts in error state
-	if acc.ErrorState {
-		return fmt.Errorf("artifact %s: in error state, rejecting further operations", artifactID)
+	if err := a.writer.WriteRange(ctx, frame.Offset, frame.Data); err != nil {
+		return err
 	}
-
-	// If chunks are complete, verify size matches
-	if acc.Complete {
-		if acc.TotalBytes != sizeBytes {
-			// Mark as error state - size mismatch is a terminal contract violation
-			acc.ErrorState = true
-			return fmt.Errorf("artifact %s: size mismatch (chunks=%d, declared=%d)",
-				artifactID, acc.TotalBytes, sizeBytes)
-		}
-		acc.Committed = true
-	} else {
-		// Chunks not complete yet - track for reconciliation
-		m.pendingCommits[artifactID] = sizeBytes
-	}
-
+	m.stats.TotalRanges++
+	m.stats.TotalBytes += int64(len(frame.Data))
 	return nil
 }
 
-// GetOrphanIDs returns the list of artifact IDs with chunks but no commit.
-// These are eligible for GC per CONTRACT_IPC.md.
-//
-// Note: Artifacts with a pending commit (commit arrived before chunks complete)
-// are NOT considered orphans - they have a valid commit, just waiting for data.
-func (m *ArtifactManager) GetOrphanIDs() []string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	var orphans []string
-	for id, acc := range m.accumulators {
-		// Not an orphan if:
-		// - Already committed
-		// - Has a pending commit (commit arrived, waiting for chunks)
-		// - No chunks yet (nothing to orphan)
-		// - In error state (already failed)
-		if acc.Committed || acc.ErrorState || len(acc.Chunks) == 0 {
-			continue
-		}
-
-		// Check if there's a pending commit for this artifact
-		if _, hasPendingCommit := m.pendingCommits[id]; hasPendingCommit {
-			continue
-		}
-
-		// This artifact has chunks but no commit - it's an orphan
-		orphans = append(orphans, id)
+// Commit settles an open artifact on its artifact event: sizeBytes must
+// equal the opened size, and the committed ranges must cover the artifact
+// with the expected digest (lode.ArtifactWriter.Finish). It returns the
+// storage the commit record names and releases the artifact's state. Its
+// error is a stream error.
+func (m *ArtifactManager) Commit(ctx context.Context, artifactID string, sizeBytes int64) (types.ArtifactStorage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.open[artifactID]
+	if !ok {
+		return types.ArtifactStorage{}, fmt.Errorf("%w: %s", ErrArtifactNotOpen, artifactID)
 	}
-	return orphans
+	if sizeBytes != a.size {
+		return types.ArtifactStorage{}, fmt.Errorf("%w: artifact %s opened with %d bytes, event says %d", ErrArtifactSizeMismatch, artifactID, a.size, sizeBytes)
+	}
+	storage, err := a.writer.Finish(ctx)
+	if err != nil {
+		return types.ArtifactStorage{}, err
+	}
+	delete(m.open, artifactID)
+	m.committed[artifactID] = struct{}{}
+	m.stats.CommittedArtifacts++
+	return storage, nil
 }
 
-// GetArtifact returns the accumulator for an artifact.
-func (m *ArtifactManager) GetArtifact(artifactID string) (*types.ArtifactAccumulator, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	acc, exists := m.accumulators[artifactID]
-	return acc, exists
+// AbandonUnfinished removes the storage of every artifact that is open
+// without an artifact event, at the run's end (CONTRACT_IPC.md §Volumes
+// Without a Record), and returns their IDs in order. A removal that fails
+// is reported in the joined error, and its artifact is still listed: the
+// prune removes what the runtime could not.
+func (m *ArtifactManager) AbandonUnfinished(ctx context.Context) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := slices.Sorted(maps.Keys(m.open))
+	var errs []error
+	for _, id := range ids {
+		if err := m.open[id].writer.Abandon(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("artifact %s: %w", id, err))
+		}
+		delete(m.open, id)
+		m.abandoned = append(m.abandoned, id)
+	}
+	return ids, errors.Join(errs...)
 }
 
-// IsCommitted returns true if the artifact has been committed.
-func (m *ArtifactManager) IsCommitted(artifactID string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	acc, exists := m.accumulators[artifactID]
-	return exists && acc.Committed
+// OrphanIDs returns the IDs of the artifacts opened without an artifact
+// event: those still open, and those AbandonUnfinished removed.
+func (m *ArtifactManager) OrphanIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := slices.Collect(maps.Keys(m.open))
+	ids = append(ids, m.abandoned...)
+	slices.Sort(ids)
+	return ids
 }
 
-// Stats returns artifact accumulation statistics.
+// Stats returns the run's artifact counts.
 func (m *ArtifactManager) Stats() ArtifactStats {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	stats := ArtifactStats{}
-	for id, acc := range m.accumulators {
-		stats.TotalArtifacts++
-		stats.TotalChunks += int64(len(acc.Chunks))
-		stats.TotalBytes += acc.TotalBytes
-
-		switch {
-		case acc.Committed:
-			stats.CommittedArtifacts++
-		case acc.ErrorState:
-			// Error state artifacts are counted separately (not orphaned, not committed)
-		case len(acc.Chunks) > 0:
-			// Only count as orphan if no pending commit
-			if _, hasPendingCommit := m.pendingCommits[id]; !hasPendingCommit {
-				stats.OrphanedArtifacts++
-			}
-		}
-	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stats := m.stats
+	stats.OrphanedArtifacts = int64(len(m.open) + len(m.abandoned))
 	return stats
 }
 
-// ArtifactStats holds artifact accumulation statistics.
+// ArtifactStats holds a run's artifact counts.
 type ArtifactStats struct {
-	TotalArtifacts     int64
+	// TotalArtifacts is the number of artifacts opened.
+	TotalArtifacts int64
+	// CommittedArtifacts is the number whose artifact event the runtime accepted.
 	CommittedArtifacts int64
-	OrphanedArtifacts  int64
-	TotalChunks        int64
-	TotalBytes         int64
+	// OrphanedArtifacts is the number opened without an artifact event.
+	OrphanedArtifacts int64
+	// TotalRanges is the number of ranges committed.
+	TotalRanges int64
+	// TotalBytes is the number of bytes committed.
+	TotalBytes int64
 }

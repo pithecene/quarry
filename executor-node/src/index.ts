@@ -20,6 +20,9 @@ export {
   // Types
   type ArtifactChunkFrame,
   type ArtifactChunkType,
+  type ArtifactOpenFrame,
+  type ArtifactRangeAckFrame,
+  type ArtifactRangeFrame,
   type ChunkMeta,
   // Errors
   ChunkValidationError,

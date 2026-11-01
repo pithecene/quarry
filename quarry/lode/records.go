@@ -116,10 +116,40 @@ func extractArtifactPayload(payload map[string]any) artifactPayload {
 	if v, ok := payload["content_type"].(string); ok {
 		p.contentType = v
 	}
-	if v, ok := payload["size_bytes"].(float64); ok {
-		p.sizeBytes = int64(v)
+	if v, ok := int64Of(payload["size_bytes"]); ok {
+		p.sizeBytes = v
 	}
 	return p
+}
+
+// int64Of reads an integer payload field. JSON decodes a number as float64,
+// and msgpack decodes one as the narrowest integer type that holds it.
+func int64Of(v any) (int64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int64(n), true
+	case int:
+		return int64(n), true
+	case int8:
+		return int64(n), true
+	case int16:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case int64:
+		return n, true
+	case uint:
+		return int64(n), true
+	case uint8:
+		return int64(n), true
+	case uint16:
+		return int64(n), true
+	case uint32:
+		return int64(n), true
+	case uint64:
+		return int64(n), true
+	}
+	return 0, false
 }
 
 // addOptionalEnvelopeFields adds optional envelope fields (job_id, parent_run_id) to a record map.

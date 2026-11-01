@@ -223,8 +223,15 @@ func (e *IngestionEngine) processFrame(ctx context.Context, payload []byte) erro
 
 	// Handle based on frame type
 	switch frame := decoded.(type) {
+	case *types.ArtifactOpenFrame:
+		return e.processArtifactOpen(ctx, frame)
+	case *types.ArtifactRangeFrame:
+		return e.processArtifactRange(ctx, frame)
 	case *types.ArtifactChunkFrame:
-		return e.processArtifactChunk(ctx, frame)
+		return &IngestionError{
+			Kind: IngestionErrorStream,
+			Err:  errors.New("artifact_chunk frame is retired: the executor must send artifact_open and artifact_range frames"),
+		}
 	case *types.EventEnvelope:
 		return e.processEvent(ctx, frame)
 	case *types.RunResultFrame:
@@ -298,15 +305,18 @@ func (e *IngestionEngine) processEvent(ctx context.Context, envelope *types.Even
 		})
 	}
 
-	// Handle artifact commit
+	// Handle artifact commit: the event is accepted only when its artifact's
+	// ranges cover it, and it then carries the storage result to the policy.
 	if envelope.Type == types.EventTypeArtifact {
-		if err := e.handleArtifactCommit(envelope); err != nil {
+		storage, err := e.handleArtifactCommit(ctx, envelope)
+		if err != nil {
 			// Artifact errors are stream errors (executor/data misbehavior)
 			return &IngestionError{
 				Kind: IngestionErrorStream,
 				Err:  err,
 			}
 		}
+		envelope.Storage = &storage
 	}
 
 	// Notify fan-out observer before policy dispatch.
@@ -355,12 +365,13 @@ func (e *IngestionEngine) validateEnvelope(envelope *types.EventEnvelope) error 
 	return nil
 }
 
-// handleArtifactCommit processes an artifact event (the commit record).
-func (e *IngestionEngine) handleArtifactCommit(envelope *types.EventEnvelope) error {
+// handleArtifactCommit processes an artifact event (the commit record) and
+// returns the storage the record names.
+func (e *IngestionEngine) handleArtifactCommit(ctx context.Context, envelope *types.EventEnvelope) (types.ArtifactStorage, error) {
 	// Extract artifact metadata from payload
 	artifactID, _ := envelope.Payload["artifact_id"].(string)
 	if artifactID == "" {
-		return errors.New("artifact event missing artifact_id")
+		return types.ArtifactStorage{}, errors.New("artifact event missing artifact_id")
 	}
 
 	// size_bytes may come as various integer types from msgpack encoding
@@ -390,80 +401,122 @@ func (e *IngestionEngine) handleArtifactCommit(envelope *types.EventEnvelope) er
 	case float64:
 		sizeBytes = int64(v)
 	default:
-		return fmt.Errorf("artifact event has invalid size_bytes type: %T", envelope.Payload["size_bytes"])
+		return types.ArtifactStorage{}, fmt.Errorf("artifact event has invalid size_bytes type: %T", envelope.Payload["size_bytes"])
 	}
 
-	if err := e.artifacts.CommitArtifact(artifactID, sizeBytes); err != nil {
+	storage, err := e.artifacts.Commit(ctx, artifactID, sizeBytes)
+	if err != nil {
 		e.logger.Error("artifact commit failed", map[string]any{
 			"artifact_id": artifactID,
 			"size_bytes":  sizeBytes,
 			"error":       err.Error(),
 		})
-		return fmt.Errorf("artifact commit failed: %w", err)
+		return types.ArtifactStorage{}, fmt.Errorf("artifact commit failed: %w", err)
 	}
 
 	e.logger.Debug("artifact committed", map[string]any{
 		"artifact_id": artifactID,
 		"size_bytes":  sizeBytes,
+		"storage":     storage.Kind,
 	})
 
+	return storage, nil
+}
+
+// processArtifactOpen opens an artifact's storage from its artifact_open
+// frame. The frame has no acknowledgement, so a refusal is a stream error.
+func (e *IngestionEngine) processArtifactOpen(ctx context.Context, frame *types.ArtifactOpenFrame) error {
+	if e.terminalSeen {
+		return &IngestionError{
+			Kind: IngestionErrorStream,
+			Err:  fmt.Errorf("artifact_open for %s after terminal event", frame.ArtifactID),
+		}
+	}
+	if err := e.artifacts.Open(ctx, frame); err != nil {
+		e.logger.Error("artifact open rejected", map[string]any{
+			"artifact_id": frame.ArtifactID,
+			"size_bytes":  frame.SizeBytes,
+			"error":       err.Error(),
+		})
+		return &IngestionError{
+			Kind: IngestionErrorStream,
+			Err:  fmt.Errorf("artifact open failed: %w", err),
+		}
+	}
+	e.logger.Debug("artifact opened", map[string]any{
+		"artifact_id": frame.ArtifactID,
+		"size_bytes":  frame.SizeBytes,
+	})
 	return nil
 }
 
-// processArtifactChunk processes an artifact chunk frame.
-func (e *IngestionEngine) processArtifactChunk(ctx context.Context, frame *types.ArtifactChunkFrame) error {
-	// Validate chunk per CONTRACT_IPC.md
-	if frame.Seq < 1 {
-		return &IngestionError{
-			Kind: IngestionErrorStream,
-			Err:  fmt.Errorf("invalid chunk seq: %d", frame.Seq),
-		}
+// processArtifactRange commits one range of an open artifact and
+// acknowledges it. A range the manager refuses, or that storage fails to
+// commit, is acknowledged with its error, and ingestion continues: the
+// script's write rejects, and the script decides (CONTRACT_IPC.md
+// §Artifact Range Acknowledgement).
+func (e *IngestionEngine) processArtifactRange(ctx context.Context, frame *types.ArtifactRangeFrame) error {
+	if e.terminalSeen {
+		e.logger.Warn("rejecting artifact_range after terminal event", map[string]any{
+			"artifact_id": frame.ArtifactID,
+			"range_id":    frame.RangeID,
+		})
+		e.sendArtifactRangeAck(frame.RangeID, false, "run already terminated")
+		return nil
 	}
-
-	if len(frame.Data) > ipc.MaxChunkSize {
-		return &IngestionError{
-			Kind: IngestionErrorStream,
-			Err:  fmt.Errorf("chunk data exceeds max size: %d > %d", len(frame.Data), ipc.MaxChunkSize),
-		}
-	}
-
-	// Convert to internal chunk type
-	chunk := &types.ArtifactChunk{
-		ArtifactID: frame.ArtifactID,
-		Seq:        frame.Seq,
-		IsLast:     frame.IsLast,
-		Data:       frame.Data,
-	}
-
-	// Add to artifact manager
-	if err := e.artifacts.AddChunk(chunk); err != nil {
-		e.logger.Error("artifact chunk rejected", map[string]any{
-			"artifact_id": chunk.ArtifactID,
-			"seq":         chunk.Seq,
-			"is_last":     chunk.IsLast,
+	if err := e.artifacts.WriteRange(ctx, frame); err != nil {
+		e.logger.Error("artifact range failed", map[string]any{
+			"artifact_id": frame.ArtifactID,
+			"range_id":    frame.RangeID,
+			"offset":      frame.Offset,
 			"error":       err.Error(),
 		})
-		// Artifact errors are stream errors (executor/data misbehavior)
-		return &IngestionError{
-			Kind: IngestionErrorStream,
-			Err:  fmt.Errorf("artifact chunk failed: %w", err),
+		if !errors.Is(err, lode.ErrRangeRefused) && !errors.Is(err, ErrArtifactNotOpen) {
+			e.collector.IncLodeWriteFailure()
 		}
+		e.sendArtifactRangeAck(frame.RangeID, false, err.Error())
+		return nil
 	}
-
-	// Delegate to policy
-	if err := e.policy.IngestArtifactChunk(ctx, chunk); err != nil {
-		e.logger.Error("policy chunk ingestion failed", map[string]any{
-			"artifact_id": chunk.ArtifactID,
-			"seq":         chunk.Seq,
-			"error":       err.Error(),
-		})
-		return &IngestionError{
-			Kind: IngestionErrorPolicy,
-			Err:  fmt.Errorf("policy chunk failure: %w", err),
-		}
-	}
-
+	e.collector.IncLodeWriteSuccess()
+	e.logger.Debug("artifact range committed", map[string]any{
+		"artifact_id": frame.ArtifactID,
+		"range_id":    frame.RangeID,
+		"offset":      frame.Offset,
+		"size_bytes":  len(frame.Data),
+	})
+	e.sendArtifactRangeAck(frame.RangeID, true, "")
 	return nil
+}
+
+// sendArtifactRangeAck writes an artifact_range_ack frame to the executor's
+// stdin, as sendFileWriteAck does. No-op if ackWriter is nil.
+func (e *IngestionEngine) sendArtifactRangeAck(rangeID uint32, ok bool, errMsg string) {
+	if e.ackWriter == nil {
+		return
+	}
+	ack := &types.ArtifactRangeAckFrame{
+		Type:    ipc.ArtifactRangeAckType,
+		RangeID: rangeID,
+		OK:      ok,
+	}
+	if errMsg != "" {
+		ack.Error = &errMsg
+	}
+	frame, err := ipc.EncodeArtifactRangeAck(ack)
+	if err != nil {
+		e.logger.Warn("failed to encode artifact_range_ack", map[string]any{
+			"range_id": rangeID,
+			"error":    err.Error(),
+		})
+		return
+	}
+	if _, err := e.ackWriter.Write(frame); err != nil {
+		// EPIPE or similar — executor may have exited. Non-fatal.
+		e.logger.Warn("failed to write artifact_range_ack (executor may have exited)", map[string]any{
+			"range_id": rangeID,
+			"error":    err.Error(),
+		})
+	}
 }
 
 // GetTerminalEvent returns the terminal event if seen.

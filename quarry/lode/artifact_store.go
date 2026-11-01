@@ -161,10 +161,12 @@ type stagedBlock struct {
 // stage stages the range's block, or reuses the block a failed commit of
 // the same range left staged, since a block's path names its offset and
 // length and a retry of the range would otherwise find its path taken. A
-// retry that carries other bytes than the staged block is refused.
+// retry that carries other bytes, or another length, than the staged
+// block is refused: the staged block stays until the artifact is
+// abandoned, and a second block at the offset would be left behind.
 func (w *artifactWriter) stage(ctx context.Context, offset int64, data []byte) (volume.BlockRef, error) {
-	if s, ok := w.staged[offset]; ok && s.ref.Length == int64(len(data)) {
-		if s.sum != sha256.Sum256(data) {
+	if s, ok := w.staged[offset]; ok {
+		if s.ref.Length != int64(len(data)) || s.sum != sha256.Sum256(data) {
 			return volume.BlockRef{}, fmt.Errorf("%w: artifact %q range at %d was staged with other bytes", ErrRangeRefused, w.id, offset)
 		}
 		return s.ref, nil
