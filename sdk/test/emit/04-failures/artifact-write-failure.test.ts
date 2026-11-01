@@ -1,7 +1,7 @@
 /**
  * Failure semantics tests for artifact write failures.
  *
- * Goal: Define behavior when writeArtifactData fails.
+ * Goal: Define behavior when writeArtifactRange fails.
  * Invariant: Artifact bytes written before artifact event.
  *            If bytes fail, no event emitted.
  */
@@ -27,12 +27,14 @@ describe('artifact write failure semantics', () => {
     })
 
     // Check order of calls
-    expect(sink.allCalls).toHaveLength(2)
-    expect(sink.allCalls[0].kind).toBe('writeArtifactData')
-    expect(sink.allCalls[1].kind).toBe('writeEvent')
+    expect(sink.allCalls.map((c) => c.kind)).toEqual([
+      'openArtifact',
+      'writeArtifactRange',
+      'writeEvent'
+    ])
 
-    // Verify timestamps (data before event)
-    expect(sink.allCalls[0].callIndex).toBeLessThan(sink.allCalls[1].callIndex)
+    // Verify call order (data before event)
+    expect(sink.allCalls[1].callIndex).toBeLessThan(sink.allCalls[2].callIndex)
   })
 
   it('no artifact event if bytes fail', async () => {
@@ -72,7 +74,7 @@ describe('artifact write failure semantics', () => {
     ).rejects.toThrow()
 
     // Bytes were written
-    expect(sink.artifactDataCalls).toHaveLength(1)
+    expect(sink.artifactRangeCalls).toHaveLength(1)
     // But event was not
     expect(sink.envelopes).toHaveLength(0)
   })

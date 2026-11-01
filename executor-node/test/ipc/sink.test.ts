@@ -187,7 +187,26 @@ describe('StdioSink', () => {
     })
   })
 
-  describe('writeArtifactData', () => {
+  describe('openArtifact', () => {
+    it('writes an open frame with the size', async () => {
+      await sink.openArtifact('artifact-empty' as ArtifactId, 0)
+
+      expect(collector.frames).toEqual([
+        { type: 'artifact_open', artifact_id: 'artifact-empty', size_bytes: 0 }
+      ])
+    })
+
+    it('writes the expected digest when given', async () => {
+      const sha = 'ab'.repeat(32)
+      await sink.openArtifact('artifact-sha' as ArtifactId, 5, sha)
+
+      expect(collector.frames).toEqual([
+        { type: 'artifact_open', artifact_id: 'artifact-sha', size_bytes: 5, expected_sha256: sha }
+      ])
+    })
+  })
+
+  describe('writeArtifactRange', () => {
     let acked: ReturnType<typeof ackingSink>
     beforeEach(() => {
       acked = ackingSink()
@@ -198,70 +217,53 @@ describe('StdioSink', () => {
 
     it('refuses the write without an AckReader', async () => {
       const bare = new StdioSink(new BufferCollector())
-      await expect(bare.writeArtifactData('a' as ArtifactId, Buffer.from('x'))).rejects.toThrow(
+      await expect(bare.writeArtifactRange('a' as ArtifactId, 0, Buffer.from('x'))).rejects.toThrow(
         'need an AckReader'
       )
     })
 
-    it('writes a small artifact as an open frame and one range', async () => {
-      const artifactId = 'artifact-small' as ArtifactId
+    it('refuses a range longer than MAX_CHUNK_SIZE', async () => {
+      await expect(
+        sink.writeArtifactRange('a' as ArtifactId, 0, Buffer.alloc(MAX_CHUNK_SIZE + 1))
+      ).rejects.toThrow('exceeds max')
+      expect(collector.frames).toHaveLength(0)
+    })
+
+    it('writes one range frame at its offset', async () => {
       const data = Buffer.from([1, 2, 3, 4, 5])
 
-      await sink.writeArtifactData(artifactId, data)
+      await sink.writeArtifactRange('artifact-small' as ArtifactId, 16, data)
 
-      const frames = collector.frames as [ArtifactOpenFrame, ArtifactRangeFrame]
-      expect(frames).toHaveLength(2)
-      expect(frames[0]).toEqual({
-        type: 'artifact_open',
-        artifact_id: 'artifact-small',
-        size_bytes: 5
-      })
-      expect(frames[1].type).toBe('artifact_range')
-      expect(frames[1].artifact_id).toBe('artifact-small')
-      expect(frames[1].range_id).toBe(1)
-      expect(frames[1].offset).toBe(0)
-      expect(new Uint8Array(frames[1].data)).toEqual(new Uint8Array([1, 2, 3, 4, 5]))
-    })
-
-    it('writes an empty artifact as an open frame only', async () => {
-      const artifactId = 'artifact-empty' as ArtifactId
-
-      await sink.writeArtifactData(artifactId, Buffer.alloc(0))
-
-      const frames = collector.frames as ArtifactOpenFrame[]
+      const frames = collector.frames as ArtifactRangeFrame[]
       expect(frames).toHaveLength(1)
-      expect(frames[0]).toEqual({
-        type: 'artifact_open',
-        artifact_id: 'artifact-empty',
-        size_bytes: 0
-      })
+      expect(frames[0].type).toBe('artifact_range')
+      expect(frames[0].artifact_id).toBe('artifact-small')
+      expect(frames[0].range_id).toBe(1)
+      expect(frames[0].offset).toBe(16)
+      expect(new Uint8Array(frames[0].data)).toEqual(new Uint8Array([1, 2, 3, 4, 5]))
     })
 
-    it('splits data into ranges of at most MAX_CHUNK_SIZE at their offsets', async () => {
+    it('counts range IDs up across ranges', async () => {
       const artifactId = 'artifact-large' as ArtifactId
-      const data = Buffer.alloc(MAX_CHUNK_SIZE * 2 + 3, 7)
 
-      await sink.writeArtifactData(artifactId, data)
+      await sink.writeArtifactRange(artifactId, MAX_CHUNK_SIZE, Buffer.alloc(3))
+      await sink.writeArtifactRange(artifactId, 0, Buffer.alloc(MAX_CHUNK_SIZE))
 
-      const frames = collector.frames as [ArtifactOpenFrame, ...ArtifactRangeFrame[]]
-      expect(frames).toHaveLength(4)
-      expect(frames[0].size_bytes).toBe(data.length)
-      expect(frames.slice(1).map((f) => [f.range_id, f.offset, f.data.length])).toEqual([
-        [1, 0, MAX_CHUNK_SIZE],
-        [2, MAX_CHUNK_SIZE, MAX_CHUNK_SIZE],
-        [3, MAX_CHUNK_SIZE * 2, 3]
+      const frames = collector.frames as ArtifactRangeFrame[]
+      expect(frames.map((f) => [f.range_id, f.offset, f.data.length])).toEqual([
+        [1, MAX_CHUNK_SIZE, 3],
+        [2, 0, MAX_CHUNK_SIZE]
       ])
     })
 
     it('works with Uint8Array input', async () => {
-      const artifactId = 'artifact-uint8' as ArtifactId
       const data = new Uint8Array([10, 20, 30])
 
-      await sink.writeArtifactData(artifactId, data)
+      await sink.writeArtifactRange('artifact-uint8' as ArtifactId, 0, data)
 
-      const frames = collector.frames as [ArtifactOpenFrame, ArtifactRangeFrame]
-      expect(frames).toHaveLength(2)
-      expect(new Uint8Array(frames[1].data)).toEqual(data)
+      const frames = collector.frames as ArtifactRangeFrame[]
+      expect(frames).toHaveLength(1)
+      expect(new Uint8Array(frames[0].data)).toEqual(data)
     })
   })
 
@@ -273,7 +275,8 @@ describe('StdioSink', () => {
       const artifactId = 'artifact-1' as ArtifactId
 
       await sink.writeEvent(makeEnvelope({ seq: 1 }))
-      await sink.writeArtifactData(artifactId, Buffer.from([1, 2, 3]))
+      await sink.openArtifact(artifactId, 3)
+      await sink.writeArtifactRange(artifactId, 0, Buffer.from([1, 2, 3]))
       await sink.writeEvent(makeEnvelope({ seq: 2 }))
 
       const frames = collector.frames

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`emit.artifactWriter`**: a script writes an artifact too large to hold whole one range at a time. It declares the length and an optional SHA-256 up front, and `writeAt` resolves once the runtime commits the range. `commit` emits the artifact event once the ranges cover the artifact. The SDK refuses an invalid range or an early commit with `ArtifactWriterError`, and a refused range's `ArtifactRangeRefusedError` gains `offset`. `CONTRACT_EMIT.md` § `artifact` states the rules.
 - **Artifact reads in `quarry/reader`**: `ListArtifacts` returns a run's artifacts as their commit records describe them, and `OpenArtifact` returns one artifact's bytes as a stream and by range. The reader reads the bytes from the Lode Volume that a commit record names, or from the chunk records of a run that an earlier release wrote. `OpenArtifact` returns the new `ErrArtifactNotFound` for an artifact the run never committed and `ErrArtifactIncomplete` when the stored bytes do not cover the artifact.
 
 ### Changed

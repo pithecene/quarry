@@ -162,6 +162,26 @@ record: until it arrives, the runtime treats the artifact as absent.
 - The runtime removes the bytes of an artifact whose event never arrives
   when the run ends, and `quarry prune` removes what the runtime could not.
 
+A script that downloads a file too large to hold whole writes it with
+`emit.artifactWriter()`. The writer takes the file's length up front, and
+`writeAt` sends one range of the file at its offset:
+
+```typescript
+const writer = await ctx.emit.artifactWriter({
+  name: 'aisdk-2026-10-20.zip',
+  content_type: 'application/zip',
+  size_bytes: 595_847_268,
+  sha256: '1ded…' // optional: the runtime refuses a mismatch
+})
+await writer.writeAt(0, firstRange)
+await writer.writeAt(8_388_608, secondRange)
+const artifactId = await writer.commit()
+```
+
+The script keeps the download policy, such as URLs, authentication, Range
+requests, and retries. A refused range rejects with
+`ArtifactRangeRefusedError`, whose `offset` says where to resume.
+
 ### Backpressure
 
 When the runtime applies backpressure, the executor stalls and the

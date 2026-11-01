@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  ArtifactWriter,
   EmitAPI,
   EmitArtifactOptions,
+  EmitArtifactWriterOptions,
   EmitCheckpointOptions,
   EmitEnqueueOptions,
   EmitItemOptions,
@@ -15,7 +17,13 @@ import type {
   StoragePutOptions,
   StoragePutResult
 } from './emit'
-import { ArtifactRangeRefusedError } from './emit'
+import {
+  ARTIFACT_MAX_BYTES,
+  ARTIFACT_RANGE_MAX_BYTES,
+  ArtifactRangeRefusedError,
+  ArtifactWriterError
+} from './emit'
+import { RangeSet } from './range-set'
 import type { RunMeta } from './types/context'
 import type { ArtifactId, EventEnvelope, EventId, EventType, PayloadMap } from './types/events'
 import { CONTRACT_VERSION } from './types/events'
@@ -61,6 +69,107 @@ export function buildStorageKey(partition: StoragePartitionMeta, filename: strin
   return `datasets/${partition.dataset}/partitions/source=${partition.source}/category=${partition.category}/day=${partition.day}/run_id=${partition.run_id}/files/${filename}`
 }
 
+/** Hex SHA-256: 64 hex digits, as the runtime compares it (any case). */
+const SHA256_HEX = /^[0-9a-f]{64}$/i
+
+/**
+ * Errors after which the script may emit on: a range the runtime refused,
+ * and a call an artifact writer refused before sending anything.
+ */
+function isRecoverable(err: unknown): boolean {
+  return err instanceof ArtifactRangeRefusedError || err instanceof ArtifactWriterError
+}
+
+/**
+ * Refuse writer options the runtime would refuse: a size that is not a
+ * whole number of bytes up to ARTIFACT_MAX_BYTES, and an expected digest
+ * that is no hex SHA-256.
+ */
+function validateWriterOptions(options: EmitArtifactWriterOptions): void {
+  const size = options.size_bytes
+  if (!Number.isSafeInteger(size) || size < 0 || size > ARTIFACT_MAX_BYTES) {
+    throw new ArtifactWriterError(
+      `artifact size_bytes ${size} is not a whole number from 0 to ${ARTIFACT_MAX_BYTES}`
+    )
+  }
+  if (options.sha256 !== undefined && !SHA256_HEX.test(options.sha256)) {
+    throw new ArtifactWriterError(`artifact sha256 "${options.sha256}" is not a hex SHA-256`)
+  }
+}
+
+/**
+ * Split a write at offset into ranges of at most ARTIFACT_RANGE_MAX_BYTES,
+ * each with its own offset.
+ */
+function* splitRanges(
+  offset: number,
+  data: Buffer | Uint8Array
+): Generator<readonly [number, Buffer | Uint8Array]> {
+  for (let at = 0; at < data.byteLength; at += ARTIFACT_RANGE_MAX_BYTES) {
+    yield [offset + at, data.subarray(at, at + ARTIFACT_RANGE_MAX_BYTES)]
+  }
+}
+
+/**
+ * One open artifact: its declared metadata and the ranges the runtime
+ * has committed. It checks each call before anything is sent, so the
+ * runtime sees no range or artifact event it would refuse for its shape.
+ */
+class OpenArtifact {
+  private readonly written = new RangeSet()
+  private committed = false
+
+  constructor(
+    readonly artifact_id: ArtifactId,
+    readonly options: EmitArtifactWriterOptions
+  ) {}
+
+  /**
+   * Refuse a write after the commit, an empty range, or a range outside
+   * the artifact or overlapping a written one.
+   */
+  checkWrite(offset: number, length: number): void {
+    this.checkOpen()
+    const size = this.options.size_bytes
+    if (!Number.isSafeInteger(offset) || offset < 0 || length === 0 || length > size - offset) {
+      throw new ArtifactWriterError(
+        `artifact ${this.artifact_id}: range of ${length} bytes at ${offset} is empty or outside [0, ${size})`
+      )
+    }
+    if (this.written.overlaps(offset, offset + length)) {
+      throw new ArtifactWriterError(
+        `artifact ${this.artifact_id}: range of ${length} bytes at ${offset} overlaps a written range`
+      )
+    }
+  }
+
+  /** Record a range the runtime committed. */
+  wrote(offset: number, length: number): void {
+    this.written.add(offset, offset + length)
+  }
+
+  /** Refuse a commit after the commit, or before the ranges cover the artifact. */
+  checkCommit(): void {
+    this.checkOpen()
+    if (!this.written.covers(this.options.size_bytes)) {
+      throw new ArtifactWriterError(
+        `artifact ${this.artifact_id}: written ranges do not cover its ${this.options.size_bytes} bytes`
+      )
+    }
+  }
+
+  /** Mark the artifact committed: its artifact event is written. */
+  commit(): void {
+    this.committed = true
+  }
+
+  private checkOpen(): void {
+    if (this.committed) {
+      throw new ArtifactWriterError(`artifact ${this.artifact_id} is committed`)
+    }
+  }
+}
+
 /**
  * Create both EmitAPI and StorageAPI backed by a shared EmitSink.
  *
@@ -100,8 +209,9 @@ export function createAPIs(
         return await fn()
       } catch (err) {
         // A refused artifact range is recoverable (CONTRACT_IPC.md §Artifact
-        // Range Acknowledgement): the script may catch it and emit on.
-        if (!(err instanceof ArtifactRangeRefusedError)) {
+        // Range Acknowledgement), as is a call an artifact writer refused
+        // before sending anything: the script may catch it and emit on.
+        if (!isRecoverable(err)) {
           sinkFailed = err
         }
         throw err
@@ -154,6 +264,82 @@ export function createAPIs(
   }
 
   /**
+   * Check writer options and send the artifact's open frame.
+   * Artifact bytes are written before the artifact event, which is the
+   * commit record: bytes without an event are removed when the run ends.
+   */
+  async function openArtifact(options: EmitArtifactWriterOptions): Promise<OpenArtifact> {
+    // Copy the caller's options, so a later change to them cannot make the
+    // writer disagree with the open frame it sent.
+    const declared: EmitArtifactWriterOptions = Object.freeze({
+      name: options.name,
+      content_type: options.content_type,
+      size_bytes: options.size_bytes,
+      ...(options.sha256 !== undefined && { sha256: options.sha256 })
+    })
+    validateWriterOptions(declared)
+    const artifact = new OpenArtifact(randomUUID() as ArtifactId, declared)
+    await sink.openArtifact(artifact.artifact_id, declared.size_bytes, declared.sha256)
+    return artifact
+  }
+
+  /**
+   * Check a write and send it as ranges, recording each range the runtime
+   * commits. A refused range rejects with its offset, so the script knows
+   * that the ranges before it are committed.
+   */
+  async function writeRanges(
+    artifact: OpenArtifact,
+    offset: number,
+    data: Buffer | Uint8Array
+  ): Promise<void> {
+    artifact.checkWrite(offset, data.byteLength)
+    for (const [at, range] of splitRanges(offset, data)) {
+      try {
+        await sink.writeArtifactRange(artifact.artifact_id, at, range)
+      } catch (err) {
+        if (err instanceof ArtifactRangeRefusedError) {
+          throw new ArtifactRangeRefusedError(err.message, at, { cause: err })
+        }
+        throw err
+      }
+      artifact.wrote(at, range.byteLength)
+    }
+  }
+
+  /** Check that the ranges cover the artifact and write its artifact event. */
+  async function commitArtifact(artifact: OpenArtifact): Promise<ArtifactId> {
+    artifact.checkCommit()
+    await writeEnvelope(
+      createEnvelope('artifact', {
+        artifact_id: artifact.artifact_id,
+        name: artifact.options.name,
+        content_type: artifact.options.content_type,
+        size_bytes: artifact.options.size_bytes
+      })
+    )
+    artifact.commit()
+    return artifact.artifact_id
+  }
+
+  /** Expose an open artifact as a writer whose calls share the emit chain. */
+  function writerOf(artifact: OpenArtifact): ArtifactWriter {
+    return {
+      artifact_id: artifact.artifact_id,
+      writeAt: (offset, data) =>
+        serialize(async () => {
+          assertNotTerminal()
+          await writeRanges(artifact, offset, data)
+        }),
+      commit: () =>
+        serialize(async () => {
+          assertNotTerminal()
+          return commitArtifact(artifact)
+        })
+    }
+  }
+
+  /**
    * Emit a non-terminal event: serialize → assert → envelope → write.
    */
   function emitEvent<T extends EventType>(type: T, payload: PayloadMap[T]): Promise<void> {
@@ -175,26 +361,22 @@ export function createAPIs(
     artifact(options: EmitArtifactOptions): Promise<ArtifactId> {
       return serialize(async () => {
         assertNotTerminal()
-        const artifact_id = randomUUID() as ArtifactId
-        const size_bytes = options.data.byteLength
-
-        // Artifact bytes may be written before the artifact event.
-        // The artifact event is the commit record.
-        //
-        // Error cases:
-        // - Bytes fail → no event emitted, no orphan.
-        // - Event fails after bytes → orphaned blob, eligible for GC.
-        await sink.writeArtifactData(artifact_id, options.data)
-
-        const envelope = createEnvelope('artifact', {
-          artifact_id,
+        const artifact = await openArtifact({
           name: options.name,
           content_type: options.content_type,
-          size_bytes
+          size_bytes: options.data.byteLength
         })
-        await writeEnvelope(envelope)
+        if (options.data.byteLength > 0) {
+          await writeRanges(artifact, 0, options.data)
+        }
+        return commitArtifact(artifact)
+      })
+    },
 
-        return artifact_id
+    artifactWriter(options: EmitArtifactWriterOptions): Promise<ArtifactWriter> {
+      return serialize(async () => {
+        assertNotTerminal()
+        return writerOf(await openArtifact(options))
       })
     },
 

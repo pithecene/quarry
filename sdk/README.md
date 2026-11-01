@@ -84,6 +84,7 @@ All methods are async and may block on backpressure.
 |--------|-------------|
 | `item({ item_type, data })` | Emit a structured record |
 | `artifact({ name, content_type, data })` | Emit binary data, returns `ArtifactId` |
+| `artifactWriter({ name, content_type, size_bytes, sha256? })` | Open a writer whose `writeAt(offset, data)` sends ranges and whose `commit()` returns `ArtifactId` |
 | `checkpoint({ checkpoint_id, note? })` | Mark progress |
 | `enqueue({ target, params })` | Suggest additional work (advisory) |
 | `rotateProxy({ reason? })` | Suggest proxy rotation (advisory) |

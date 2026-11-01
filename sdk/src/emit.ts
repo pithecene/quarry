@@ -24,6 +24,46 @@ export type EmitArtifactOptions = {
 }
 
 /**
+ * Options for opening an artifact writer.
+ * The artifact's length is declared before its first byte.
+ */
+export type EmitArtifactWriterOptions = {
+  /** Human-readable name for the artifact */
+  name: string
+  /** MIME content type */
+  content_type: string
+  /** The artifact's length in bytes, at most 1 GiB */
+  size_bytes: number
+  /**
+   * Optional hex SHA-256 the script expects of the bytes. The runtime
+   * refuses the artifact event when its own digest differs.
+   */
+  sha256?: string
+}
+
+/**
+ * A writer that sends one artifact's bytes in ranges, in any order, and
+ * commits the artifact once its ranges cover it.
+ */
+export type ArtifactWriter = {
+  /** The artifact's generated ID */
+  readonly artifact_id: ArtifactId
+
+  /**
+   * Write `data` at `offset`. The range must lie inside the artifact and
+   * must not overlap a range already written. Resolves once the runtime
+   * has committed every byte of it.
+   */
+  writeAt(offset: number, data: Buffer | Uint8Array): Promise<void>
+
+  /**
+   * Emit the artifact event once the written ranges cover the artifact.
+   * @returns The artifact's ID.
+   */
+  commit(): Promise<ArtifactId>
+}
+
+/**
  * Options for emitting a checkpoint.
  */
 export type EmitCheckpointOptions = {
@@ -103,10 +143,17 @@ export type EmitAPI = {
 
   /**
    * Emit a binary artifact (screenshot, PDF, file download, etc.)
-   * The SDK handles artifact_id generation and chunking coordination.
+   * The SDK handles artifact_id generation and splits the data into ranges.
+   * Equivalent to an artifact writer with one `writeAt` at offset 0.
    * @returns The generated artifact_id for reference.
    */
   readonly artifact: (options: EmitArtifactOptions) => Promise<ArtifactId>
+
+  /**
+   * Open an artifact writer for an artifact of known length, whose bytes
+   * the script sends in ranges, so that it never holds the whole artifact.
+   */
+  readonly artifactWriter: (options: EmitArtifactWriterOptions) => Promise<ArtifactWriter>
 
   /**
    * Emit a checkpoint to mark progress.
@@ -224,14 +271,23 @@ export type EmitSink = {
   writeEvent(envelope: EventEnvelope): Promise<void>
 
   /**
-   * Write artifact binary data: an artifact_open frame with the data's
-   * size, then its bytes as artifact_range frames.
+   * Write an artifact_open frame, which declares the artifact's size and
+   * any expected SHA-256 before its first range.
    * Per CONTRACT_IPC.md, bytes are written BEFORE the artifact event.
    * The artifact event is the commit record.
-   * The sink splits the data into ranges per CONTRACT_IPC.md, and resolves
-   * once the runtime has committed every range.
    */
-  writeArtifactData(artifact_id: ArtifactId, data: Buffer | Uint8Array): Promise<void>
+  openArtifact(artifact_id: ArtifactId, size_bytes: number, expected_sha256?: string): Promise<void>
+
+  /**
+   * Write one artifact_range frame of at most ARTIFACT_RANGE_MAX_BYTES,
+   * and resolve once the runtime has committed it.
+   * A range the runtime refused rejects with ArtifactRangeRefusedError.
+   */
+  writeArtifactRange(
+    artifact_id: ArtifactId,
+    offset: number,
+    data: Buffer | Uint8Array
+  ): Promise<void>
 
   /**
    * Write a sidecar file via file_write frame.
@@ -241,14 +297,77 @@ export type EmitSink = {
 }
 
 /**
- * Error with which `emit.artifact()` rejects when the runtime refused one
- * of the artifact's ranges (CONTRACT_IPC.md §Artifact Range
- * Acknowledgement). The refusal is recoverable: the script may catch it
- * and continue emitting.
+ * Maximum bytes in one artifact range frame (8 MiB, CONTRACT_IPC.md
+ * §Artifact Frames). The SDK splits longer writes into ranges of this size.
+ *
+ * @internal
+ */
+export const ARTIFACT_RANGE_MAX_BYTES = 8 * 1024 * 1024
+
+/**
+ * Maximum artifact size (1 GiB, CONTRACT_IPC.md §Size Constraints).
+ *
+ * @internal
+ */
+export const ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024
+
+/**
+ * Brands of the errors a script may catch. The executor bundles its own
+ * copy of the SDK, so an error it constructs is not an instance of the
+ * class a script imports. Each class matches `instanceof` by its brand, a
+ * symbol from the global registry that every copy shares.
+ */
+const RANGE_REFUSED_BRAND = Symbol.for('@pithecene/quarry-sdk/ArtifactRangeRefusedError')
+const WRITER_ERROR_BRAND = Symbol.for('@pithecene/quarry-sdk/ArtifactWriterError')
+
+/** Reports whether value carries brand, whichever SDK copy branded it. */
+function hasBrand(value: unknown, brand: symbol): boolean {
+  return typeof value === 'object' && value !== null && Reflect.get(value, brand) === true
+}
+
+/**
+ * Error with which `emit.artifact()` and `ArtifactWriter.writeAt()` reject
+ * when the runtime refused one of the artifact's ranges (CONTRACT_IPC.md
+ * §Artifact Range Acknowledgement). The refusal is recoverable: the script
+ * may catch it and continue emitting.
  */
 export class ArtifactRangeRefusedError extends Error {
+  /**
+   * The offset of the refused range, when the SDK knows it. A rejected
+   * `writeAt(offset, data)` committed the bytes from `offset` up to this
+   * offset, and none from it on.
+   */
+  readonly offset: number | undefined
+
+  readonly [RANGE_REFUSED_BRAND] = true
+
+  constructor(message: string, offset?: number, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'ArtifactRangeRefusedError'
+    this.offset = offset
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasBrand(value, RANGE_REFUSED_BRAND)
+  }
+}
+
+/**
+ * Error with which an artifact writer refuses a call before it sends
+ * anything: invalid options, a range outside the artifact or overlapping
+ * a written one, a commit before the ranges cover the artifact, or a call
+ * after the commit. The refusal is recoverable: the script may catch it
+ * and continue emitting.
+ */
+export class ArtifactWriterError extends Error {
+  readonly [WRITER_ERROR_BRAND] = true
+
   constructor(message: string) {
     super(message)
-    this.name = 'ArtifactRangeRefusedError'
+    this.name = 'ArtifactWriterError'
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasBrand(value, WRITER_ERROR_BRAND)
   }
 }
