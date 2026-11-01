@@ -94,7 +94,7 @@ All stored records MUST include a `record_kind` discriminator field.
 |------------------|--------------------------------------|
 | `event`          | Standard event envelope              |
 | `artifact_event` | Artifact commit (manifest) event     |
-| `artifact_chunk` | Artifact binary chunk                |
+| `artifact_chunk` | Artifact binary chunk, written by releases before 0.15 |
 | `metrics`        | Run metrics snapshot                 |
 
 The `record_kind` field enables downstream consumers to distinguish record
@@ -102,11 +102,39 @@ types without inspecting `event_type` or payload structure.
 
 ---
 
-## Artifact Chunk Storage
+## Artifact Storage
 
-Artifact binary data is stored as chunk records under `event_type=artifact`.
+An artifact's bytes are one Lode Volume, with the artifact ID as its
+Volume ID, in a namespace of the run's own beside the datasets:
+
+```
+artifacts/<dataset>/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...
+```
+
+- The run key components are Hive-encoded by the one key builder, as for
+  run records (§Key Encoding), so a run's Volumes can neither escape the
+  run nor share a prefix with another run's. The artifact ID is one path
+  segment, which the runtime and Lode's `volume.New` both require.
+- The namespace lies outside `datasets/<dataset>/`. A Lode Dataset rejects
+  any manifest in its directory that its layout does not persist, as a
+  history written under another layout, and a Volume's manifests are such
+  manifests. Run records sit inside the dataset's directory because they
+  are not manifests.
+- The runtime creates the Volume with the artifact's size as its total
+  length before any byte arrives, stages and commits each range as it
+  arrives, and keeps no artifact bytes of its own. A run that stops part
+  way leaves committed snapshots that name exactly the ranges that
+  arrived.
+- An artifact of zero bytes has no Volume: its commit record says so.
+- No run listing reads this namespace.
+
+A run written by a release before 0.15 holds its artifact bytes as chunk
+records under `event_type=artifact`, which readers still read (§Chunk
+Record Schema). The runtime writes no chunk record.
 
 ### Chunk Record Schema
+
+Chunk records are read, not written, from release 0.15.
 
 | Field          | Type     | Required | Description                              |
 |----------------|----------|----------|------------------------------------------|
@@ -131,13 +159,27 @@ The artifact commit event marks the artifact as complete.
 | `name`         | string   | yes      | Human-readable artifact name             |
 | `content_type` | string   | yes      | MIME content type                        |
 | `size_bytes`   | int64    | yes      | Total artifact size in bytes             |
+| `storage`      | string   | no       | `"volume"`, or `"empty"` for an artifact of zero bytes. Absent in records written before release 0.15, whose bytes are chunk records |
+| `volume_snapshot_id` | string | no   | With `"volume"` only: the Volume snapshot whose manifest covers `[0, size_bytes)` |
+| `sha256`       | string   | no       | Hex SHA-256 of the artifact's bytes, computed by the runtime from what it committed. Present with `storage` |
+
+The storage fields are the runtime's, not the script's. The `artifact`
+event a script emits keeps its public shape, and sinks and adapters
+receive it unchanged. The runtime passes the artifact's storage result
+beside the envelope as a typed value, and the Lode client writes its
+fields into the stored record.
 
 ### Ordering Invariant
 
-> Chunk records MUST be written before the corresponding commit record.
+> The Volume snapshot that covers the whole artifact MUST be committed
+> before the corresponding commit record is written.
 
-The commit record is the commit boundary. Chunks written without a subsequent
-commit are orphans and may be garbage collected.
+The commit record is the commit boundary, so a reader that finds a commit
+record can read the committed bytes it names. A Volume whose commit
+record never follows is an orphan: the runtime removes it when the run
+ends, and `quarry prune` removes what the runtime could not. For a run
+written before release 0.15, chunk records precede their commit record
+in the same way.
 
 ### Read-Back Invariant
 

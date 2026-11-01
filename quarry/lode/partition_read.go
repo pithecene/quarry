@@ -24,7 +24,7 @@ func recordCodec() lode.Codec[lode.D] { return lode.JSONL[lode.D]() }
 // writer whose settings differ from the head's. Opening reads the head and
 // writes nothing.
 func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (lode.Records[lode.D], error) {
-	settings := []lode.DatasetOption{lode.WithLayout(lode.Hive(partitionKeys...)), lode.WithRetry(3)}
+	settings := []lode.DatasetOption{lode.WithLayout(lode.Hive(partitionKeys...)), lode.WithRetry(datasetRetryCount)}
 	return lode.Open(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), append(settings, opts...)...)
 }
 
@@ -78,3 +78,7 @@ func readObject(ctx context.Context, ds lode.SnapshotReader, ref lode.ObjectRef)
 	}
 	return recs, nil
 }
+
+// datasetRetryCount bounds the commit retries of every Quarry writer, the
+// dataset's and each artifact Volume's alike.
+const datasetRetryCount = 3

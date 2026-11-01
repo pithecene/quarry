@@ -64,6 +64,30 @@ type ArtifactRangeAckFrame struct {
 	Error *string `msgpack:"error,omitempty"`
 }
 
+// ArtifactStorageKind is where an artifact's bytes are stored.
+type ArtifactStorageKind string
+
+const (
+	// ArtifactStorageVolume is an artifact stored as one Lode Volume under
+	// the run's artifact directory.
+	ArtifactStorageVolume ArtifactStorageKind = "volume"
+	// ArtifactStorageEmpty is an artifact of zero bytes, which has no Volume.
+	ArtifactStorageEmpty ArtifactStorageKind = "empty"
+)
+
+// ArtifactStorage is the storage result of one artifact, which the runtime
+// passes beside the artifact event and the commit record names
+// (CONTRACT_LODE.md §Artifact Storage).
+type ArtifactStorage struct {
+	// Kind is where the bytes are.
+	Kind ArtifactStorageKind
+	// VolumeSnapshotID names the Volume snapshot whose manifest covers the
+	// artifact. Empty unless Kind is ArtifactStorageVolume.
+	VolumeSnapshotID string
+	// SHA256 is the hex digest the runtime computed of the artifact's bytes.
+	SHA256 string
+}
+
 // ArtifactChunk is an internal representation of a chunk (after decoding).
 type ArtifactChunk struct {
 	ArtifactID string

@@ -34,9 +34,10 @@ var ErrMissingArtifactID = errors.New("artifact commit rejected: missing or empt
 type LodeClient struct { //nolint:revive // intentional naming for clarity
 	dataset lode.Records[lode.D]
 	config  Config
-	// store is the dataset's store; sidecar files and run records are
-	// written to it directly, outside Lode's snapshots.
-	store lode.Store
+	// store is the dataset's store; sidecar files, run records, and
+	// artifact Volumes are written to it directly, outside the dataset's
+	// snapshots.
+	store lode.RangeStore
 
 	mu           sync.Mutex          // guards offsets, chunksSeen, and pendingFiles
 	offsets      map[string]int64    // cumulative offset per artifact across batches
@@ -140,7 +141,9 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 			if artifactID == "" {
 				return ErrMissingArtifactID
 			}
-			if _, seen := c.chunksSeen[artifactID]; !seen {
+			// An event with a storage result names its Volume or is empty;
+			// one without it commits chunk records, which must precede it.
+			if _, seen := c.chunksSeen[artifactID]; e.Storage == nil && !seen {
 				return fmt.Errorf("%w: %s", ErrCommitWithoutChunks, artifactID)
 			}
 			committedArtifacts = append(committedArtifacts, artifactID)

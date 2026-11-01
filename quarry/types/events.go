@@ -58,6 +58,10 @@ type EventEnvelope struct {
 	ParentRunID *string `msgpack:"parent_run_id,omitempty"`
 	// Attempt is the attempt number, always present, starts at 1.
 	Attempt int `msgpack:"attempt"`
+	// Storage is where the runtime stored an artifact's bytes, set on an
+	// artifact event before policy dispatch and never on the wire. The
+	// storage client writes its fields into the commit record.
+	Storage *ArtifactStorage `msgpack:"-" json:"-"`
 }
 
 // ItemPayload represents an item event payload per CONTRACT_EMIT.md.

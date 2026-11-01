@@ -60,23 +60,32 @@ records stay where they are. New runs write no `artifact_chunk` records.
 
 Each artifact is one Volume, with the artifact ID as its Volume ID. The
 Volume store is rooted at the run's own prefix in a namespace beside the
-run records (`CONTRACT_LODE.md` § Run Record Namespace):
+datasets, keyed as the run records are (`CONTRACT_LODE.md` § Run Record
+Namespace):
 
 ```text
-datasets/<dataset>/artifacts/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...
+artifacts/<dataset>/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...
 ```
 
 - The run key components are Hive-encoded by the one key builder, as for
   run records, so a run's Volumes can neither escape the run nor share a
   prefix with another run's.
-- The namespace is a sibling of `runs/`, not inside it. Listing runs
-  lists `runs/` and filters for start records, so Volume objects there
-  would make every run listing grow with the bytes retained.
+- The namespace is not inside `runs/`. Listing runs lists `runs/` and
+  filters for start records, so Volume objects there would make every run
+  listing grow with the bytes retained.
+- The namespace is not inside `datasets/<dataset>/` either. This note
+  first placed it there, beside `runs/`, on the claim that Lode's Dataset
+  never lists the prefix. Step 2 found the claim false. A Dataset's
+  writer, before its first commit, and a read-only view that detects the
+  layout list the whole dataset directory. Each rejects any `manifest.json`
+  the layout does not persist, as a history written under another layout
+  (Lode `CONTRACT_WRITE_API.md` § Writer Settings). A Volume's manifests
+  are such manifests, so a Volume inside the dataset's directory made the
+  dataset's first write fail. Lode's rule is right, since a listing cannot
+  tell a Volume from a foreign history, so the namespace moved out.
 - The artifact ID is the SDK's UUID. The runtime refuses an artifact ID
   that is not one canonical path segment, and Lode's `volume.New` refuses
   one too.
-- Lode's Dataset never lists this prefix. `Dataset.Sweep` lists only the
-  dataset's snapshot and tombstone prefixes.
 - `volume.New` writes under the store it is given (`volumes/<id>/...`),
   and Quarry holds one store rooted at the dataset's storage root. Lode
   gains a prefix-scoping factory, `lode.Prefixed(factory, prefix)`, whose
