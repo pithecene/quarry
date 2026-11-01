@@ -97,22 +97,26 @@ func RunRecordDir(cfg Config) string {
 // datasets/<dataset>/runs/<enc>/.../. With no components it is the whole
 // namespace.
 func RunRecordPrefix(dataset string, components ...string) string {
-	return namespacePrefix(dataset, "runs", components...)
+	return namespacePrefix("datasets/"+dataset+"/runs", components...)
 }
 
-// RunArtifactDir is the run's directory in the artifact namespace, a
-// sibling of the run-record namespace that holds the run's artifact
-// Volumes (docs/plans/artifact-volumes.md §3):
-// datasets/<dataset>/artifacts/<source>/<category>/<day>/<run_id>/.
+// RunArtifactDir is the run's directory in the artifact namespace, which
+// holds the run's artifact Volumes (CONTRACT_LODE.md §Artifact Storage):
+// artifacts/<dataset>/<source>/<category>/<day>/<run_id>/.
+//
+// The namespace lies beside datasets/, not inside the dataset's directory:
+// a Lode Dataset rejects, as a history written under another layout, any
+// manifest it finds in its directory that its layout does not persist,
+// and a Volume's manifests are such manifests.
 func RunArtifactDir(cfg Config) string {
-	return namespacePrefix(cfg.Dataset, "artifacts", cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
+	return namespacePrefix("artifacts/"+cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
 }
 
-// namespacePrefix is a key prefix in one of the dataset's namespaces for
-// the leading components given, each Hive-encoded and followed by "/".
-func namespacePrefix(dataset, namespace string, components ...string) string {
+// namespacePrefix is a key prefix under root for the leading components
+// given, each Hive-encoded and followed by "/".
+func namespacePrefix(root string, components ...string) string {
 	var b strings.Builder
-	b.WriteString("datasets/" + dataset + "/" + namespace + "/")
+	b.WriteString(root + "/")
 	for _, c := range components {
 		b.WriteString(encode(c) + "/")
 	}

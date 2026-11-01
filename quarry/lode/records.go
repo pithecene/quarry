@@ -177,7 +177,22 @@ func toArtifactCommitRecordMap(e *types.EventEnvelope, cfg Config) map[string]an
 		"policy":           cfg.Policy,
 	}
 	addOptionalEnvelopeFields(m, e)
+	addArtifactStorageFields(m, e.Storage)
 	return m
+}
+
+// addArtifactStorageFields adds the storage fields of a commit record
+// (CONTRACT_LODE.md §Commit Record Schema). A record without them, as
+// earlier releases wrote, has its bytes in chunk records.
+func addArtifactStorageFields(m map[string]any, s *types.ArtifactStorage) {
+	if s == nil {
+		return
+	}
+	m["storage"] = string(s.Kind)
+	m["sha256"] = s.SHA256
+	if s.Kind == types.ArtifactStorageVolume {
+		m["volume_snapshot_id"] = s.VolumeSnapshotID
+	}
 }
 
 // toChunkRecordMap converts an ArtifactChunk to a map for storage.
