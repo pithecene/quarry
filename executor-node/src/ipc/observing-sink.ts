@@ -146,19 +146,48 @@ export class ObservingSink implements EmitSink, SinkState {
   }
 
   /**
-   * Write artifact data, tracking failures. A range the runtime refused
-   * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
-   * rethrown without marking the sink failed.
+   * Write an artifact open frame, tracking failures.
    * @throws SinkAlreadyFailedError if the sink has previously failed
    */
-  async writeArtifactData(artifactId: ArtifactId, data: Buffer | Uint8Array): Promise<void> {
+  async openArtifact(
+    artifactId: ArtifactId,
+    sizeBytes: number,
+    expectedSha256?: string
+  ): Promise<void> {
     // Fail-fast: don't attempt writes after failure
     if (this.sinkFailure !== null) {
       throw new SinkAlreadyFailedError(this.sinkFailure)
     }
 
     try {
-      await this.inner.writeArtifactData(artifactId, data)
+      await this.inner.openArtifact(artifactId, sizeBytes, expectedSha256)
+    } catch (err) {
+      // First failure wins: only set if not already set
+      if (this.sinkFailure === null) {
+        this.sinkFailure = err
+      }
+      throw err
+    }
+  }
+
+  /**
+   * Write an artifact range, tracking failures. A range the runtime refused
+   * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
+   * rethrown without marking the sink failed.
+   * @throws SinkAlreadyFailedError if the sink has previously failed
+   */
+  async writeArtifactRange(
+    artifactId: ArtifactId,
+    offset: number,
+    data: Buffer | Uint8Array
+  ): Promise<void> {
+    // Fail-fast: don't attempt writes after failure
+    if (this.sinkFailure !== null) {
+      throw new SinkAlreadyFailedError(this.sinkFailure)
+    }
+
+    try {
+      await this.inner.writeArtifactRange(artifactId, offset, data)
     } catch (err) {
       // First failure wins: only set if not already set
       if (this.sinkFailure === null && !(err instanceof ArtifactRangeRefusedError)) {

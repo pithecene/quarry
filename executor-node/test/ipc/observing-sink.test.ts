@@ -14,19 +14,23 @@ import { ObservingSink, SinkAlreadyFailedError } from '../../src/ipc/observing-s
  */
 function createMockSink(): EmitSink & {
   writeEventMock: ReturnType<typeof vi.fn>
-  writeArtifactDataMock: ReturnType<typeof vi.fn>
+  openArtifactMock: ReturnType<typeof vi.fn>
+  writeArtifactRangeMock: ReturnType<typeof vi.fn>
   writeFileMock: ReturnType<typeof vi.fn>
 } {
   const writeEventMock = vi.fn().mockResolvedValue(undefined)
-  const writeArtifactDataMock = vi.fn().mockResolvedValue(undefined)
+  const openArtifactMock = vi.fn().mockResolvedValue(undefined)
+  const writeArtifactRangeMock = vi.fn().mockResolvedValue(undefined)
   const writeFileMock = vi.fn().mockResolvedValue(undefined)
 
   return {
     writeEvent: writeEventMock,
-    writeArtifactData: writeArtifactDataMock,
+    openArtifact: openArtifactMock,
+    writeArtifactRange: writeArtifactRangeMock,
     writeFile: writeFileMock,
     writeEventMock,
-    writeArtifactDataMock,
+    openArtifactMock,
+    writeArtifactRangeMock,
     writeFileMock
   }
 }
@@ -89,14 +93,22 @@ describe('ObservingSink', () => {
     })
   })
 
-  describe('writeArtifactData delegation', () => {
-    it('delegates to inner sink', async () => {
+  describe('artifact delegation', () => {
+    it('delegates the open frame to inner sink', async () => {
+      const artifactId = 'artifact-123' as ArtifactId
+
+      await observingSink.openArtifact(artifactId, 3, 'ab'.repeat(32))
+
+      expect(mockSink.openArtifactMock).toHaveBeenCalledWith(artifactId, 3, 'ab'.repeat(32))
+    })
+
+    it('delegates a range to inner sink', async () => {
       const artifactId = 'artifact-123' as ArtifactId
       const data = Buffer.from([1, 2, 3])
 
-      await observingSink.writeArtifactData(artifactId, data)
+      await observingSink.writeArtifactRange(artifactId, 8, data)
 
-      expect(mockSink.writeArtifactDataMock).toHaveBeenCalledWith(artifactId, data)
+      expect(mockSink.writeArtifactRangeMock).toHaveBeenCalledWith(artifactId, 8, data)
     })
   })
 
@@ -177,12 +189,24 @@ describe('ObservingSink', () => {
       expect(observingSink.getSinkFailure()).toBe(error)
     })
 
-    it('tracks sink failure on writeArtifactData', async () => {
+    it('tracks sink failure on openArtifact', async () => {
+      const error = new Error('Open failed')
+      mockSink.openArtifactMock.mockRejectedValueOnce(error)
+
+      await expect(observingSink.openArtifact('artifact-123' as ArtifactId, 1)).rejects.toThrow(
+        'Open failed'
+      )
+
+      expect(observingSink.isSinkFailed()).toBe(true)
+      expect(observingSink.getSinkFailure()).toBe(error)
+    })
+
+    it('tracks sink failure on writeArtifactRange', async () => {
       const error = new Error('Write failed')
-      mockSink.writeArtifactDataMock.mockRejectedValueOnce(error)
+      mockSink.writeArtifactRangeMock.mockRejectedValueOnce(error)
 
       await expect(
-        observingSink.writeArtifactData('artifact-123' as ArtifactId, Buffer.from([1]))
+        observingSink.writeArtifactRange('artifact-123' as ArtifactId, 0, Buffer.from([1]))
       ).rejects.toThrow('Write failed')
 
       expect(observingSink.isSinkFailed()).toBe(true)
@@ -228,7 +252,7 @@ describe('ObservingSink', () => {
       expect(mockSink.writeEventMock).toHaveBeenCalledTimes(1)
     })
 
-    it('throws SinkAlreadyFailedError on writeArtifactData after failure', async () => {
+    it('throws SinkAlreadyFailedError on artifact writes after failure', async () => {
       const originalError = new Error('Original failure')
       mockSink.writeEventMock.mockRejectedValueOnce(originalError)
 
@@ -237,12 +261,16 @@ describe('ObservingSink', () => {
         observingSink.writeEvent(makeEnvelope('item', { item_type: 'test', data: {} }))
       ).rejects.toThrow()
 
-      // writeArtifactData should also fail-fast
+      // artifact writes should also fail-fast
+      await expect(observingSink.openArtifact('artifact-123' as ArtifactId, 1)).rejects.toThrow(
+        SinkAlreadyFailedError
+      )
       await expect(
-        observingSink.writeArtifactData('artifact-123' as ArtifactId, Buffer.from([1]))
+        observingSink.writeArtifactRange('artifact-123' as ArtifactId, 0, Buffer.from([1]))
       ).rejects.toThrow(SinkAlreadyFailedError)
 
-      expect(mockSink.writeArtifactDataMock).not.toHaveBeenCalled()
+      expect(mockSink.openArtifactMock).not.toHaveBeenCalled()
+      expect(mockSink.writeArtifactRangeMock).not.toHaveBeenCalled()
     })
 
     it('SinkAlreadyFailedError includes original cause', async () => {
@@ -270,10 +298,10 @@ describe('ObservingSink', () => {
 
       // Then fail on subsequent write
       const error = new Error('Late failure')
-      mockSink.writeArtifactDataMock.mockRejectedValueOnce(error)
+      mockSink.writeArtifactRangeMock.mockRejectedValueOnce(error)
 
       await expect(
-        observingSink.writeArtifactData('artifact-123' as ArtifactId, Buffer.from([1]))
+        observingSink.writeArtifactRange('artifact-123' as ArtifactId, 0, Buffer.from([1]))
       ).rejects.toThrow('Late failure')
 
       // Both states should be set
@@ -344,10 +372,10 @@ describe('ObservingSink refused artifact range (CONTRACT_IPC.md §Artifact Range
   it('rethrows the refusal without marking the sink failed', async () => {
     const inner = createMockSink()
     const refusal = new ArtifactRangeRefusedError('artifact range refused: range past size')
-    inner.writeArtifactDataMock.mockRejectedValueOnce(refusal)
+    inner.writeArtifactRangeMock.mockRejectedValueOnce(refusal)
     const sink = new ObservingSink(inner)
 
-    await expect(sink.writeArtifactData('art-1' as ArtifactId, Buffer.from('x'))).rejects.toBe(
+    await expect(sink.writeArtifactRange('art-1' as ArtifactId, 0, Buffer.from('x'))).rejects.toBe(
       refusal
     )
     expect(sink.isSinkFailed()).toBe(false)

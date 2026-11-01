@@ -283,6 +283,17 @@ const artifactId = await ctx.emit.artifact({
   data: buffer  // Buffer or Uint8Array
 });
 
+// Emit an artifact too large to hold whole, one range at a time
+const writer = await ctx.emit.artifactWriter({
+  name: "export.zip",
+  content_type: "application/zip",
+  size_bytes: 595_847_268,
+  sha256: "1ded…"  // optional: the runtime refuses a mismatch
+});
+await writer.writeAt(0, firstRange);  // ranges in any order, none overlapping
+await writer.writeAt(8_388_608, secondRange);
+const zipId = await writer.commit();  // once the ranges cover size_bytes
+
 // Emit progress checkpoint
 await ctx.emit.checkpoint({
   checkpoint_id: "page-2",
@@ -811,19 +822,18 @@ The artifact byte path is experimental. A later release may change it
 incompatibly, and v1.0 excludes it from its compatibility commitment
 unless its replacement is ready first. It consists of:
 
-- The bytes passed to `emit.artifact`, and how they are transmitted and
-  stored.
+- The bytes passed to `emit.artifact` and `emit.artifactWriter`, and how
+  they are transmitted and stored.
 - `ctx.storage.put` and `createStorageBatcher`, including the storage key
   that `put` returns.
-- The IPC frames that carry them: `artifact_chunk`, `file_write`, and
-  `file_write_ack` (the [IPC contract](docs/contracts/CONTRACT_IPC.md)).
-- The stored artifact chunk records and sidecar files (the [storage contract](docs/contracts/CONTRACT_LODE.md)).
+- The IPC frames that carry them: `artifact_open`, `artifact_range`,
+  `artifact_range_ack`, `file_write`, and `file_write_ack` (the
+  [IPC contract](docs/contracts/CONTRACT_IPC.md)).
+- The stored artifact Volumes, the artifact chunk records of earlier runs,
+  and the sidecar files (the [storage contract](docs/contracts/CONTRACT_LODE.md)).
 
 The `artifact` event, including its stored commit record, is not
-experimental. The replacement, which streams bytes into Lode Volumes, is
-designed on [#255](https://github.com/pithecene/quarry/issues/255), and that
-design also settles how data written by the current path is read after the
-change.
+experimental.
 
 ---
 
@@ -831,7 +841,7 @@ change.
 
 1. **Single executor type**: Only Node.js executor supported
 2. **No built-in retries**: Retry logic is caller's responsibility
-3. **No streaming reads**: Artifacts must fit in memory (note: the `streaming` *ingestion policy* is unrelated: it controls write batching, not read access)
+3. **Artifact reads are Go only**: `quarry/reader` reads an artifact's bytes as a stream and by range, and the SDK and the CLI do not (the `streaming` *ingestion policy* controls write batching, not reads)
 4. **No transactional storage writes**: S3 and S3-compatible providers do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler. External orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context

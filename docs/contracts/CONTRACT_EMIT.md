@@ -80,6 +80,34 @@ are transmitted before this event, as an open frame and range frames (see
 acknowledgements, and the size limits). The runtime accepts the event only
 when the committed ranges cover `size_bytes`.
 
+A script sends an artifact's bytes through either emit method:
+- `emit.artifact` takes the whole artifact and sends it from offset 0.
+- `emit.artifactWriter` opens a writer for an artifact of known length. The
+  script declares `size_bytes`, and optionally the `sha256` it expects,
+  before the first byte.
+
+A writer's `writeAt(offset, data)` resolves once the runtime has committed
+every byte of the range, so a script holds one range at a time. Ranges may
+be written in any order. `commit` emits the artifact event and returns the
+artifact ID.
+
+The SDK refuses these calls before it sends anything, with
+`ArtifactWriterError`:
+- a writer whose `size_bytes` is not a whole number from 0 to 1 GiB, or
+  whose `sha256` is not 64 hex digits
+- a range that is empty, lies outside the artifact, or overlaps a written
+  range
+- a commit before the written ranges cover the artifact
+- a write or a commit after the commit
+
+A range the runtime refuses rejects with `ArtifactRangeRefusedError`, whose
+`offset` is the start of the refused range. The bytes from the write's
+offset up to that offset are committed, and the script may write the rest
+again. Neither error marks the emit chain failed, so the script may emit
+on. When the declared `sha256` differs from the digest of the committed
+bytes, the runtime refuses the artifact event as a stream error, and the
+run fails.
+
 Orphaned bytes (no corresponding artifact event) are removed when the run
 ends, and `quarry prune` removes what the runtime could not.
 

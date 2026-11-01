@@ -22,9 +22,11 @@ describe('refused artifact range semantics', () => {
     const sink = new FakeSink({ failOnArtifactWrite: 1, failureError: refusal })
     const emit = createEmitAPI(run, sink)
 
-    await expect(
-      emit.artifact({ name: 'test.txt', content_type: 'text/plain', data: Buffer.from('data') })
-    ).rejects.toBe(refusal)
+    const rejection = await emit
+      .artifact({ name: 'test.txt', content_type: 'text/plain', data: Buffer.from('data') })
+      .catch((err: unknown) => err)
+    expect(rejection).toBeInstanceOf(ArtifactRangeRefusedError)
+    expect(rejection).toMatchObject({ message: refusal.message, offset: 0, cause: refusal })
     expect(sink.envelopes).toHaveLength(0)
   })
 

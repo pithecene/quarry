@@ -3,8 +3,8 @@
  *
  * Capabilities:
  * - Record writeEvent calls (with full envelope)
- * - Record writeArtifactData calls
- * - Inject failures on Nth event write or artifact write
+ * - Record openArtifact and writeArtifactRange calls
+ * - Inject failures on Nth event write or artifact range write
  * - Optional artificial delays
  * - Expose call order + timestamps
  *
@@ -20,9 +20,19 @@ export interface WriteEventCall {
   readonly callIndex: number
 }
 
-export interface WriteArtifactDataCall {
-  readonly kind: 'writeArtifactData'
+export interface OpenArtifactCall {
+  readonly kind: 'openArtifact'
   readonly artifactId: ArtifactId
+  readonly sizeBytes: number
+  readonly expectedSha256: string | undefined
+  readonly timestamp: number
+  readonly callIndex: number
+}
+
+export interface WriteArtifactRangeCall {
+  readonly kind: 'writeArtifactRange'
+  readonly artifactId: ArtifactId
+  readonly offset: number
   readonly data: Buffer | Uint8Array
   readonly timestamp: number
   readonly callIndex: number
@@ -37,7 +47,7 @@ export interface WriteFileCall {
   readonly callIndex: number
 }
 
-export type SinkCall = WriteEventCall | WriteArtifactDataCall | WriteFileCall
+export type SinkCall = WriteEventCall | OpenArtifactCall | WriteArtifactRangeCall | WriteFileCall
 
 export interface FakeSinkOptions {
   /**
@@ -47,7 +57,7 @@ export interface FakeSinkOptions {
   failOnEventWrite?: number
 
   /**
-   * Fail writeArtifactData on the Nth call (1-indexed).
+   * Fail writeArtifactRange on the Nth call (1-indexed).
    * Set to 0 or undefined to never fail.
    */
   failOnArtifactWrite?: number
@@ -63,7 +73,7 @@ export interface FakeSinkOptions {
   eventWriteDelayMs?: number
 
   /**
-   * Artificial delay in ms for writeArtifactData calls.
+   * Artificial delay in ms for writeArtifactRange calls.
    */
   artifactWriteDelayMs?: number
 }
@@ -91,10 +101,17 @@ export class FakeSink implements EmitSink {
   }
 
   /**
-   * All recorded writeArtifactData calls in order.
+   * All recorded openArtifact calls in order.
    */
-  get artifactDataCalls(): readonly WriteArtifactDataCall[] {
-    return this.calls.filter((c): c is WriteArtifactDataCall => c.kind === 'writeArtifactData')
+  get artifactOpenCalls(): readonly OpenArtifactCall[] {
+    return this.calls.filter((c): c is OpenArtifactCall => c.kind === 'openArtifact')
+  }
+
+  /**
+   * All recorded writeArtifactRange calls in order.
+   */
+  get artifactRangeCalls(): readonly WriteArtifactRangeCall[] {
+    return this.calls.filter((c): c is WriteArtifactRangeCall => c.kind === 'writeArtifactRange')
   }
 
   /**
@@ -134,7 +151,26 @@ export class FakeSink implements EmitSink {
     })
   }
 
-  async writeArtifactData(artifactId: ArtifactId, data: Buffer | Uint8Array): Promise<void> {
+  async openArtifact(
+    artifactId: ArtifactId,
+    sizeBytes: number,
+    expectedSha256?: string
+  ): Promise<void> {
+    this.calls.push({
+      kind: 'openArtifact',
+      artifactId,
+      sizeBytes,
+      expectedSha256,
+      timestamp: Date.now(),
+      callIndex: this.callIndex++
+    })
+  }
+
+  async writeArtifactRange(
+    artifactId: ArtifactId,
+    offset: number,
+    data: Buffer | Uint8Array
+  ): Promise<void> {
     this.artifactWriteCount++
     const index = this.callIndex++
 
@@ -146,12 +182,13 @@ export class FakeSink implements EmitSink {
       this.options.failOnArtifactWrite &&
       this.artifactWriteCount === this.options.failOnArtifactWrite
     ) {
-      throw this.options.failureError ?? new Error('Injected writeArtifactData failure')
+      throw this.options.failureError ?? new Error('Injected writeArtifactRange failure')
     }
 
     this.calls.push({
-      kind: 'writeArtifactData',
+      kind: 'writeArtifactRange',
       artifactId,
+      offset,
       data,
       timestamp: Date.now(),
       callIndex: index

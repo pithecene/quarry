@@ -133,9 +133,11 @@ describe('emit.artifact() envelope correctness', () => {
     })
 
     // Check call order
-    expect(sink.allCalls).toHaveLength(2)
-    expect(sink.allCalls[0].kind).toBe('writeArtifactData')
-    expect(sink.allCalls[1].kind).toBe('writeEvent')
+    expect(sink.allCalls.map((c) => c.kind)).toEqual([
+      'openArtifact',
+      'writeArtifactRange',
+      'writeEvent'
+    ])
   })
 
   it('writes artifact data with correct artifact_id', async () => {
@@ -147,7 +149,8 @@ describe('emit.artifact() envelope correctness', () => {
       data: Buffer.from('content')
     })
 
-    expect(sink.artifactDataCalls[0].artifactId).toBe(artifactId)
+    expect(sink.artifactOpenCalls[0].artifactId).toBe(artifactId)
+    expect(sink.artifactRangeCalls[0].artifactId).toBe(artifactId)
   })
 
   it('writes artifact data with correct bytes', async () => {
@@ -160,7 +163,7 @@ describe('emit.artifact() envelope correctness', () => {
       data
     })
 
-    expect(Buffer.from(sink.artifactDataCalls[0].data).toString()).toBe('test content')
+    expect(Buffer.from(sink.artifactRangeCalls[0].data).toString()).toBe('test content')
   })
 
   it('generates unique artifact_id for each artifact', async () => {

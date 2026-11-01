@@ -189,35 +189,49 @@ export class StdioSink implements EmitSink {
   }
 
   /**
-   * Write artifact binary data: one artifact_open frame with the data's
-   * size, then one artifact_range frame per MAX_CHUNK_SIZE of data, in
-   * order. Per CONTRACT_IPC.md §Artifact Frames, the frames precede the
-   * artifact event, and an empty artifact sends its open frame only.
-   * Blocks on backpressure per CONTRACT_IPC.md.
+   * Write an artifact_open frame with the artifact's size and any expected
+   * SHA-256. Per CONTRACT_IPC.md §Artifact Frames, it precedes the
+   * artifact's ranges and its artifact event, and an empty artifact sends
+   * it alone. Blocks on backpressure per CONTRACT_IPC.md.
+   */
+  async openArtifact(
+    artifactId: ArtifactId,
+    sizeBytes: number,
+    expectedSha256?: string
+  ): Promise<void> {
+    await writeWithBackpressure(
+      this.output,
+      encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256),
+      this.writeFn
+    )
+  }
+
+  /**
+   * Write one artifact_range frame of at most MAX_CHUNK_SIZE bytes at
+   * offset. Blocks on backpressure per CONTRACT_IPC.md.
    *
-   * Each range blocks until the runtime acknowledges it, so a resolved
+   * The range blocks until the runtime acknowledges it, so a resolved
    * write is committed, and a refused range rejects with the runtime's
    * error. A range has no fire-and-forget fallback, so a sink without an
    * AckReader refuses the write.
    */
-  async writeArtifactData(artifactId: ArtifactId, data: Buffer | Uint8Array): Promise<void> {
+  async writeArtifactRange(
+    artifactId: ArtifactId,
+    offset: number,
+    data: Buffer | Uint8Array
+  ): Promise<void> {
     const ackReader = this.ackReader
     if (ackReader === undefined) {
       throw new Error('artifact writes need an AckReader: a range resolves on its acknowledgement')
     }
-    await writeWithBackpressure(
-      this.output,
-      encodeArtifactOpenFrame(artifactId, data.length),
-      this.writeFn
-    )
-    for (let offset = 0; offset < data.length; offset += MAX_CHUNK_SIZE) {
-      const range = data.subarray(offset, Math.min(offset + MAX_CHUNK_SIZE, data.length))
-      const rangeId = ++this.rangeIdCounter
-      const ackPromise = ackReader.waitForRangeAck(rangeId)
-      const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, range)
-      await writeWithBackpressure(this.output, frame, this.writeFn)
-      await ackPromise
+    if (data.length > MAX_CHUNK_SIZE) {
+      throw new Error(`artifact range of ${data.length} bytes exceeds max ${MAX_CHUNK_SIZE}`)
     }
+    const rangeId = ++this.rangeIdCounter
+    const ackPromise = ackReader.waitForRangeAck(rangeId)
+    const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data)
+    await writeWithBackpressure(this.output, frame, this.writeFn)
+    await ackPromise
   }
 
   /**

@@ -49,8 +49,22 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 import { randomUUID } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
 import v8 from "node:v8";
+function hasBrand(value, brand) {
+  return typeof value === "object" && value !== null && Reflect.get(value, brand) === true;
+}
 function buildStorageKey(partition, filename) {
   return `datasets/${partition.dataset}/partitions/source=${partition.source}/category=${partition.category}/day=${partition.day}/run_id=${partition.run_id}/files/${filename}`;
+}
+function isRecoverable(err) {
+  return err instanceof ArtifactRangeRefusedError || err instanceof ArtifactWriterError;
+}
+function validateWriterOptions(options) {
+  const size = options.size_bytes;
+  if (!Number.isSafeInteger(size) || size < 0 || size > ARTIFACT_MAX_BYTES) throw new ArtifactWriterError(`artifact size_bytes ${size} is not a whole number from 0 to ${ARTIFACT_MAX_BYTES}`);
+  if (options.sha256 !== void 0 && !SHA256_HEX.test(options.sha256)) throw new ArtifactWriterError(`artifact sha256 "${options.sha256}" is not a hex SHA-256`);
+}
+function* splitRanges(offset, data) {
+  for (let at = 0; at < data.byteLength; at += ARTIFACT_RANGE_MAX_BYTES) yield [offset + at, data.subarray(at, at + ARTIFACT_RANGE_MAX_BYTES)];
 }
 function createAPIs(run, sink, storagePartition) {
   let seq = 0;
@@ -63,7 +77,7 @@ function createAPIs(run, sink, storagePartition) {
       try {
         return await fn();
       } catch (err) {
-        if (!(err instanceof ArtifactRangeRefusedError)) sinkFailed = err;
+        if (!isRecoverable(err)) sinkFailed = err;
         throw err;
       }
     });
@@ -96,6 +110,54 @@ function createAPIs(run, sink, storagePartition) {
   function assertNotTerminal() {
     if (terminalEmitted) throw new TerminalEventError();
   }
+  async function openArtifact(options) {
+    const declared = Object.freeze({
+      name: options.name,
+      content_type: options.content_type,
+      size_bytes: options.size_bytes,
+      ...options.sha256 !== void 0 && { sha256: options.sha256 }
+    });
+    validateWriterOptions(declared);
+    const artifact = new OpenArtifact(randomUUID(), declared);
+    await sink.openArtifact(artifact.artifact_id, declared.size_bytes, declared.sha256);
+    return artifact;
+  }
+  async function writeRanges(artifact, offset, data) {
+    artifact.checkWrite(offset, data.byteLength);
+    for (const [at, range] of splitRanges(offset, data)) {
+      try {
+        await sink.writeArtifactRange(artifact.artifact_id, at, range);
+      } catch (err) {
+        if (err instanceof ArtifactRangeRefusedError) throw new ArtifactRangeRefusedError(err.message, at, { cause: err });
+        throw err;
+      }
+      artifact.wrote(at, range.byteLength);
+    }
+  }
+  async function commitArtifact(artifact) {
+    artifact.checkCommit();
+    await writeEnvelope(createEnvelope("artifact", {
+      artifact_id: artifact.artifact_id,
+      name: artifact.options.name,
+      content_type: artifact.options.content_type,
+      size_bytes: artifact.options.size_bytes
+    }));
+    artifact.commit();
+    return artifact.artifact_id;
+  }
+  function writerOf(artifact) {
+    return {
+      artifact_id: artifact.artifact_id,
+      writeAt: (offset, data) => serialize(async () => {
+        assertNotTerminal();
+        await writeRanges(artifact, offset, data);
+      }),
+      commit: () => serialize(async () => {
+        assertNotTerminal();
+        return commitArtifact(artifact);
+      })
+    };
+  }
   function emitEvent(type, payload) {
     return serialize(async () => {
       assertNotTerminal();
@@ -112,16 +174,19 @@ function createAPIs(run, sink, storagePartition) {
     artifact(options) {
       return serialize(async () => {
         assertNotTerminal();
-        const artifact_id = randomUUID();
-        const size_bytes = options.data.byteLength;
-        await sink.writeArtifactData(artifact_id, options.data);
-        await writeEnvelope(createEnvelope("artifact", {
-          artifact_id,
+        const artifact = await openArtifact({
           name: options.name,
           content_type: options.content_type,
-          size_bytes
-        }));
-        return artifact_id;
+          size_bytes: options.data.byteLength
+        });
+        if (options.data.byteLength > 0) await writeRanges(artifact, 0, options.data);
+        return commitArtifact(artifact);
+      });
+    },
+    artifactWriter(options) {
+      return serialize(async () => {
+        assertNotTerminal();
+        return writerOf(await openArtifact(options));
       });
     },
     checkpoint(options) {
@@ -337,14 +402,85 @@ function createContext(options) {
   };
   return Object.freeze(ctx);
 }
-var ArtifactRangeRefusedError, CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
+var ARTIFACT_RANGE_MAX_BYTES, ARTIFACT_MAX_BYTES, RANGE_REFUSED_BRAND, WRITER_ERROR_BRAND, ArtifactRangeRefusedError, ArtifactWriterError, RangeSet, CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, SHA256_HEX, OpenArtifact, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
 var init_dist = __esm({
   "../sdk/dist/index.mjs"() {
     "use strict";
+    ARTIFACT_RANGE_MAX_BYTES = 8 * 1024 * 1024;
+    ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024;
+    RANGE_REFUSED_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactRangeRefusedError");
+    WRITER_ERROR_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactWriterError");
     ArtifactRangeRefusedError = class extends Error {
+      /**
+      * The offset of the refused range, when the SDK knows it. A rejected
+      * `writeAt(offset, data)` committed the bytes from `offset` up to this
+      * offset, and none from it on.
+      */
+      offset;
+      [RANGE_REFUSED_BRAND] = true;
+      constructor(message, offset, options) {
+        super(message, options);
+        this.name = "ArtifactRangeRefusedError";
+        this.offset = offset;
+      }
+      static [Symbol.hasInstance](value) {
+        return hasBrand(value, RANGE_REFUSED_BRAND);
+      }
+    };
+    ArtifactWriterError = class extends Error {
+      [WRITER_ERROR_BRAND] = true;
       constructor(message) {
         super(message);
-        this.name = "ArtifactRangeRefusedError";
+        this.name = "ArtifactWriterError";
+      }
+      static [Symbol.hasInstance](value) {
+        return hasBrand(value, WRITER_ERROR_BRAND);
+      }
+    };
+    RangeSet = class {
+      ranges = [];
+      /** Reports whether [start, end) shares a byte with a range in the set. */
+      overlaps(start, end) {
+        const next = this.ranges[this.firstEndingAfter(start)];
+        return next !== void 0 && next.start < end;
+      }
+      /**
+      * Adds [start, end), which must not overlap a range in the set, merged
+      * with the range that ends at start and the one that begins at end.
+      */
+      add(start, end) {
+        const first = this.firstEndingAfter(start - 1);
+        let merged = {
+          start,
+          end
+        };
+        let count = 0;
+        for (let next = this.ranges[first]; next !== void 0 && next.start <= end; ) {
+          merged = {
+            start: Math.min(merged.start, next.start),
+            end: Math.max(merged.end, next.end)
+          };
+          count++;
+          next = this.ranges[first + count];
+        }
+        this.ranges.splice(first, count, merged);
+      }
+      /** Reports whether the set is exactly [0, size). */
+      covers(size) {
+        if (size === 0) return this.ranges.length === 0;
+        const only = this.ranges[0];
+        return this.ranges.length === 1 && only?.start === 0 && only.end === size;
+      }
+      /** Returns the index of the first range whose end exceeds offset. */
+      firstEndingAfter(offset) {
+        let lo = 0;
+        let hi = this.ranges.length;
+        while (lo < hi) {
+          const mid = lo + hi >>> 1;
+          if ((this.ranges[mid]?.end ?? Number.POSITIVE_INFINITY) > offset) hi = mid;
+          else lo = mid + 1;
+        }
+        return lo;
       }
     };
     CONTRACT_VERSION = "0.14.2";
@@ -365,6 +501,41 @@ var init_dist = __esm({
       constructor(filename, reason) {
         super(`Invalid storage filename "${filename}": ${reason}`);
         this.name = "StorageFilenameError";
+      }
+    };
+    SHA256_HEX = /^[0-9a-f]{64}$/i;
+    OpenArtifact = class {
+      written = new RangeSet();
+      committed = false;
+      constructor(artifact_id, options) {
+        this.artifact_id = artifact_id;
+        this.options = options;
+      }
+      /**
+      * Refuse a write after the commit, an empty range, or a range outside
+      * the artifact or overlapping a written one.
+      */
+      checkWrite(offset, length) {
+        this.checkOpen();
+        const size = this.options.size_bytes;
+        if (!Number.isSafeInteger(offset) || offset < 0 || length === 0 || length > size - offset) throw new ArtifactWriterError(`artifact ${this.artifact_id}: range of ${length} bytes at ${offset} is empty or outside [0, ${size})`);
+        if (this.written.overlaps(offset, offset + length)) throw new ArtifactWriterError(`artifact ${this.artifact_id}: range of ${length} bytes at ${offset} overlaps a written range`);
+      }
+      /** Record a range the runtime committed. */
+      wrote(offset, length) {
+        this.written.add(offset, offset + length);
+      }
+      /** Refuse a commit after the commit, or before the ranges cover the artifact. */
+      checkCommit() {
+        this.checkOpen();
+        if (!this.written.covers(this.options.size_bytes)) throw new ArtifactWriterError(`artifact ${this.artifact_id}: written ranges do not cover its ${this.options.size_bytes} bytes`);
+      }
+      /** Mark the artifact committed: its artifact event is written. */
+      commit() {
+        this.committed = true;
+      }
+      checkOpen() {
+        if (this.committed) throw new ArtifactWriterError(`artifact ${this.artifact_id} is committed`);
       }
     };
     PRESSURE_ORDER = [
@@ -463,17 +634,34 @@ var init_observing_sink = __esm({
         }
       }
       /**
-       * Write artifact data, tracking failures. A range the runtime refused
-       * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
-       * rethrown without marking the sink failed.
+       * Write an artifact open frame, tracking failures.
        * @throws SinkAlreadyFailedError if the sink has previously failed
        */
-      async writeArtifactData(artifactId, data) {
+      async openArtifact(artifactId, sizeBytes, expectedSha256) {
         if (this.sinkFailure !== null) {
           throw new SinkAlreadyFailedError(this.sinkFailure);
         }
         try {
-          await this.inner.writeArtifactData(artifactId, data);
+          await this.inner.openArtifact(artifactId, sizeBytes, expectedSha256);
+        } catch (err) {
+          if (this.sinkFailure === null) {
+            this.sinkFailure = err;
+          }
+          throw err;
+        }
+      }
+      /**
+       * Write an artifact range, tracking failures. A range the runtime refused
+       * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
+       * rethrown without marking the sink failed.
+       * @throws SinkAlreadyFailedError if the sink has previously failed
+       */
+      async writeArtifactRange(artifactId, offset, data) {
+        if (this.sinkFailure !== null) {
+          throw new SinkAlreadyFailedError(this.sinkFailure);
+        }
+        try {
+          await this.inner.writeArtifactRange(artifactId, offset, data);
         } catch (err) {
           if (this.sinkFailure === null && !(err instanceof ArtifactRangeRefusedError)) {
             this.sinkFailure = err;
@@ -2467,35 +2655,40 @@ var init_sink = __esm({
         await writeWithBackpressure(this.output, frame, this.writeFn);
       }
       /**
-       * Write artifact binary data: one artifact_open frame with the data's
-       * size, then one artifact_range frame per MAX_CHUNK_SIZE of data, in
-       * order. Per CONTRACT_IPC.md §Artifact Frames, the frames precede the
-       * artifact event, and an empty artifact sends its open frame only.
-       * Blocks on backpressure per CONTRACT_IPC.md.
+       * Write an artifact_open frame with the artifact's size and any expected
+       * SHA-256. Per CONTRACT_IPC.md §Artifact Frames, it precedes the
+       * artifact's ranges and its artifact event, and an empty artifact sends
+       * it alone. Blocks on backpressure per CONTRACT_IPC.md.
+       */
+      async openArtifact(artifactId, sizeBytes, expectedSha256) {
+        await writeWithBackpressure(
+          this.output,
+          encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256),
+          this.writeFn
+        );
+      }
+      /**
+       * Write one artifact_range frame of at most MAX_CHUNK_SIZE bytes at
+       * offset. Blocks on backpressure per CONTRACT_IPC.md.
        *
-       * Each range blocks until the runtime acknowledges it, so a resolved
+       * The range blocks until the runtime acknowledges it, so a resolved
        * write is committed, and a refused range rejects with the runtime's
        * error. A range has no fire-and-forget fallback, so a sink without an
        * AckReader refuses the write.
        */
-      async writeArtifactData(artifactId, data) {
+      async writeArtifactRange(artifactId, offset, data) {
         const ackReader = this.ackReader;
         if (ackReader === void 0) {
           throw new Error("artifact writes need an AckReader: a range resolves on its acknowledgement");
         }
-        await writeWithBackpressure(
-          this.output,
-          encodeArtifactOpenFrame(artifactId, data.length),
-          this.writeFn
-        );
-        for (let offset = 0; offset < data.length; offset += MAX_CHUNK_SIZE) {
-          const range = data.subarray(offset, Math.min(offset + MAX_CHUNK_SIZE, data.length));
-          const rangeId = ++this.rangeIdCounter;
-          const ackPromise = ackReader.waitForRangeAck(rangeId);
-          const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, range);
-          await writeWithBackpressure(this.output, frame, this.writeFn);
-          await ackPromise;
+        if (data.length > MAX_CHUNK_SIZE) {
+          throw new Error(`artifact range of ${data.length} bytes exceeds max ${MAX_CHUNK_SIZE}`);
         }
+        const rangeId = ++this.rangeIdCounter;
+        const ackPromise = ackReader.waitForRangeAck(rangeId);
+        const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data);
+        await writeWithBackpressure(this.output, frame, this.writeFn);
+        await ackPromise;
       }
       /**
        * Write a run result control frame.

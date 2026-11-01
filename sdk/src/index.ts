@@ -8,8 +8,10 @@ export { createContext } from './context'
 // Emit types
 // Internal exports for executor-node (@internal — not for user scripts)
 export type {
+  ArtifactWriter,
   EmitAPI,
   EmitArtifactOptions,
+  EmitArtifactWriterOptions,
   EmitCheckpointOptions,
   EmitEnqueueOptions,
   EmitItemOptions,
@@ -24,7 +26,7 @@ export type {
   StoragePutResult
 } from './emit'
 // Errors a script may catch
-export { ArtifactRangeRefusedError } from './emit'
+export { ArtifactRangeRefusedError, ArtifactWriterError } from './emit'
 // Errors (public — useful for user scripts to catch)
 export {
   buildStorageKey,
