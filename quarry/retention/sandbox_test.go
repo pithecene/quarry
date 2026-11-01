@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/pithecene/lode/lode"
+
+	"github.com/pithecene/quarry/iox"
 )
 
 // read returns the content of path through store, or "" and false when it
@@ -21,7 +23,7 @@ func read(t *testing.T, store lode.RangeStore, path string) (string, bool) {
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
-	defer func() { _ = rc.Close() }()
+	defer iox.DiscardClose(rc)
 	data, err := io.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
