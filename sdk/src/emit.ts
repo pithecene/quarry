@@ -224,10 +224,12 @@ export type EmitSink = {
   writeEvent(envelope: EventEnvelope): Promise<void>
 
   /**
-   * Write artifact binary data (chunk frames).
+   * Write artifact binary data: an artifact_open frame with the data's
+   * size, then its bytes as artifact_range frames.
    * Per CONTRACT_IPC.md, bytes are written BEFORE the artifact event.
    * The artifact event is the commit record.
-   * The sink handles chunking per CONTRACT_IPC.md.
+   * The sink splits the data into ranges per CONTRACT_IPC.md, and resolves
+   * once the runtime has committed every range.
    */
   writeArtifactData(artifact_id: ArtifactId, data: Buffer | Uint8Array): Promise<void>
 
@@ -236,4 +238,17 @@ export type EmitSink = {
    * Bypasses seq numbering and the policy pipeline.
    */
   writeFile(filename: string, contentType: string, data: Buffer | Uint8Array): Promise<void>
+}
+
+/**
+ * Error with which `emit.artifact()` rejects when the runtime refused one
+ * of the artifact's ranges (CONTRACT_IPC.md §Artifact Range
+ * Acknowledgement). The refusal is recoverable: the script may catch it
+ * and continue emitting.
+ */
+export class ArtifactRangeRefusedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ArtifactRangeRefusedError'
+  }
 }

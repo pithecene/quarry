@@ -1,4 +1,11 @@
-import type { ArtifactId, EmitSink, EventEnvelope, EventId, RunId } from '@pithecene/quarry-sdk'
+import {
+  type ArtifactId,
+  ArtifactRangeRefusedError,
+  type EmitSink,
+  type EventEnvelope,
+  type EventId,
+  type RunId
+} from '@pithecene/quarry-sdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObservingSink, SinkAlreadyFailedError } from '../../src/ipc/observing-sink.js'
 
@@ -330,5 +337,22 @@ describe('ObservingSink', () => {
       // Non-object summary should be ignored
       expect(state!.summary).toBeUndefined()
     })
+  })
+})
+
+describe('ObservingSink refused artifact range (CONTRACT_IPC.md §Artifact Range Acknowledgement)', () => {
+  it('rethrows the refusal without marking the sink failed', async () => {
+    const inner = createMockSink()
+    const refusal = new ArtifactRangeRefusedError('artifact range refused: range past size')
+    inner.writeArtifactDataMock.mockRejectedValueOnce(refusal)
+    const sink = new ObservingSink(inner)
+
+    await expect(sink.writeArtifactData('art-1' as ArtifactId, Buffer.from('x'))).rejects.toBe(
+      refusal
+    )
+    expect(sink.isSinkFailed()).toBe(false)
+    await expect(
+      sink.writeEvent(makeEnvelope('item', { item_type: 'a', data: {} }))
+    ).resolves.toBeUndefined()
   })
 })

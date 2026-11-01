@@ -47,7 +47,7 @@ type ReportArtifacts struct {
 	Total     int64 `json:"total"`
 	Committed int64 `json:"committed"`
 	Orphaned  int64 `json:"orphaned"`
-	Chunks    int64 `json:"chunks"`
+	Ranges    int64 `json:"ranges"`
 	Bytes     int64 `json:"bytes"`
 }
 
@@ -74,7 +74,7 @@ func BuildRunReport(result *RunResult, snap metrics.Snapshot, policyName string,
 			Total:     result.ArtifactStats.TotalArtifacts,
 			Committed: result.ArtifactStats.CommittedArtifacts,
 			Orphaned:  result.ArtifactStats.OrphanedArtifacts,
-			Chunks:    result.ArtifactStats.TotalChunks,
+			Ranges:    result.ArtifactStats.TotalRanges,
 			Bytes:     result.ArtifactStats.TotalBytes,
 		},
 		Metrics:        &snap,

@@ -23,6 +23,8 @@ export type {
   StoragePutOptions,
   StoragePutResult
 } from './emit'
+// Errors a script may catch
+export { ArtifactRangeRefusedError } from './emit'
 // Errors (public — useful for user scripts to catch)
 export {
   buildStorageKey,

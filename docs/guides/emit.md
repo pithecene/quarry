@@ -116,8 +116,8 @@ All four methods accept `(message: string, fields?: Record<string, unknown>)`.
 
 ## Sidecar File Uploads
 
-For files that do not fit the `emit.artifact()` chunked-streaming model,
-scripts can write directly to storage via `ctx.storage.put()`:
+For files that do not fit the `emit.artifact()` model, scripts can write
+directly to storage via `ctx.storage.put()`:
 
 ```typescript
 const result = await ctx.storage.put({
@@ -135,8 +135,7 @@ Constraints:
 - Filename must be flat (no path separators, no `..`)
 - Files land under the run's Hive-partitioned `files/` prefix
 
-Use `emit.artifact()` for larger payloads or when chunk-level progress
-tracking is needed.
+Use `emit.artifact()` for larger payloads.
 
 ---
 
@@ -153,12 +152,15 @@ ordering rules.
 
 ### Artifacts
 
-The executor sends an artifact's bytes as one or more chunk frames, and
-then the `artifact` event. The event is the commit record: until it
-arrives, the runtime treats the artifact as absent.
+The executor opens an artifact with its size, sends its bytes as range
+frames of at most 8 MiB, and then sends the `artifact` event. The runtime
+commits each range to a Lode Volume before it acknowledges it, so
+`emit.artifact()` resolves on durable bytes. The event is the commit
+record: until it arrives, the runtime treats the artifact as absent.
 
-- Chunks may arrive before the artifact event.
-- Chunks that no artifact event commits may be garbage-collected.
+- The ranges precede the artifact event.
+- The runtime removes the bytes of an artifact whose event never arrives
+  when the run ends, and `quarry prune` removes what the runtime could not.
 
 ### Backpressure
 

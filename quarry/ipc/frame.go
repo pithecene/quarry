@@ -160,6 +160,45 @@ func (d *FrameDecoder) ReadFrame() ([]byte, error) {
 	return payload, nil
 }
 
+// decodeArtifactFrame decodes an artifact frame whose required fields are
+// all present. A struct decode reads a missing integer as zero, so an open
+// frame without size_bytes would open an empty artifact and a range
+// without offset would land at 0; a frame that omits a required field is
+// a decode error instead.
+func decodeArtifactFrame[F any](payload []byte, name string, required ...string) (*F, error) {
+	present, err := frameKeys(payload)
+	if err != nil {
+		return nil, &FrameError{Kind: FrameErrorDecode, Msg: "failed to decode " + name, Err: err}
+	}
+	for _, field := range required {
+		if !present[field] {
+			return nil, &FrameError{Kind: FrameErrorDecode, Msg: "failed to decode " + name, Err: fmt.Errorf("missing %s field", field)}
+		}
+	}
+	return decodeAs[F](payload, name)
+}
+
+// frameKeys returns the keys of a msgpack map payload.
+func frameKeys(payload []byte) (map[string]bool, error) {
+	dec := msgpack.NewDecoder(bytes.NewReader(payload))
+	n, err := dec.DecodeMapLen()
+	if err != nil {
+		return nil, err
+	}
+	keys := make(map[string]bool, n)
+	for range n {
+		key, err := dec.DecodeString()
+		if err != nil {
+			return nil, err
+		}
+		keys[key] = true
+		if err := dec.Skip(); err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
+}
+
 // probeFrameType extracts the "type" field from a msgpack map without
 // fully unmarshaling the payload. Falls back to full probe on error.
 func probeFrameType(payload []byte) (string, error) {
@@ -201,11 +240,11 @@ func DecodeFrame(payload []byte) (any, error) {
 	case ArtifactChunkType:
 		return DecodeArtifactChunk(payload)
 	case ArtifactOpenType:
-		return decodeAs[types.ArtifactOpenFrame](payload, "artifact open")
+		return decodeArtifactFrame[types.ArtifactOpenFrame](payload, "artifact open", "artifact_id", "size_bytes")
 	case ArtifactRangeType:
-		return decodeAs[types.ArtifactRangeFrame](payload, "artifact range")
+		return decodeArtifactFrame[types.ArtifactRangeFrame](payload, "artifact range", "artifact_id", "range_id", "offset", "data")
 	case ArtifactRangeAckType:
-		return decodeAs[types.ArtifactRangeAckFrame](payload, "artifact range ack")
+		return decodeArtifactFrame[types.ArtifactRangeAckFrame](payload, "artifact range ack", "range_id", "ok")
 	case RunResultType:
 		return DecodeRunResult(payload)
 	case FileWriteType:

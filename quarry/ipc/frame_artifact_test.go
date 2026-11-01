@@ -112,3 +112,33 @@ func TestDecodeFrame_ArtifactRange_Malformed(t *testing.T) {
 		t.Fatalf("DecodeFrame error = %v; want a FrameErrorDecode", err)
 	}
 }
+
+// A frame that omits a required field is a decode error, since a struct
+// decode would otherwise read the field as zero.
+func TestDecodeFrame_ArtifactFrames_RequireFields(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		frame map[string]any
+	}{
+		{"open without size_bytes", map[string]any{"type": ArtifactOpenType, "artifact_id": "a1"}},
+		{"open without artifact_id", map[string]any{"type": ArtifactOpenType, "size_bytes": 1}},
+		{"range without offset", map[string]any{"type": ArtifactRangeType, "artifact_id": "a1", "range_id": 1, "data": []byte("x")}},
+		{"range without range_id", map[string]any{"type": ArtifactRangeType, "artifact_id": "a1", "offset": 0, "data": []byte("x")}},
+		{"range without data", map[string]any{"type": ArtifactRangeType, "artifact_id": "a1", "range_id": 1, "offset": 0}},
+		{"ack without ok", map[string]any{"type": ArtifactRangeAckType, "range_id": 1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, err := msgpack.Marshal(tc.frame)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			_, err = DecodeFrame(payload)
+			var frameErr *FrameError
+			if !errors.As(err, &frameErr) || frameErr.Kind != FrameErrorDecode {
+				t.Fatalf("DecodeFrame = %v; want a FrameErrorDecode for the missing field", err)
+			}
+		})
+	}
+}

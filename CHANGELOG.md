@@ -11,7 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Artifact reads in `quarry/reader`**: `ListArtifacts` returns a run's artifacts as their commit records describe them, and `OpenArtifact` returns one artifact's bytes as a stream and by range. The reader reads the bytes from the chunk records of a run written today, or from the Lode Volume that a commit record names once the runtime writes Volumes. `OpenArtifact` returns the new `ErrArtifactNotFound` for an artifact the run never committed and `ErrArtifactIncomplete` when the stored bytes do not cover the artifact.
+- **Artifact reads in `quarry/reader`**: `ListArtifacts` returns a run's artifacts as their commit records describe them, and `OpenArtifact` returns one artifact's bytes as a stream and by range. The reader reads the bytes from the Lode Volume that a commit record names, or from the chunk records of a run that an earlier release wrote. `OpenArtifact` returns the new `ErrArtifactNotFound` for an artifact the run never committed and `ErrArtifactIncomplete` when the stored bytes do not cover the artifact.
+
+### Changed
+
+- **Artifact bytes live in Lode Volumes**: the runtime stores each artifact as one Lode Volume under `artifacts/<dataset>/<run key>/volumes/<artifact_id>/` and commits each range as it arrives. The commit record gains `storage`, `volume_snapshot_id`, and `sha256`, the digest the runtime computed. An empty artifact has no Volume. A run that ends without an artifact's event loses that artifact's Volume, and the run report counts the artifact as orphaned. `list events` no longer decodes artifact bytes. `CONTRACT_LODE.md` § Artifact Storage states the layout and the record.
+- **Artifact frames**: the executor sends an artifact as an `artifact_open` frame that states its size, `artifact_range` frames of at most 8 MiB in any order, and the `artifact` event. The runtime answers each range with an `artifact_range_ack` once the range is committed, so `emit.artifact()` resolves on durable bytes, and it refuses an artifact above 1 GiB on open. The `artifact_chunk` frame is retired, and the run report counts `ranges` where it counted `chunks`. `CONTRACT_IPC.md` § Artifact Frames defines the frames.
 
 ### Fixed
 

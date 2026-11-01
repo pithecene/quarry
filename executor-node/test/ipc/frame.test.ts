@@ -3,11 +3,15 @@ import type { ArtifactId, EventEnvelope, EventId, JobId, RunId } from '@pithecen
 import { describe, expect, it } from 'vitest'
 import {
   type ArtifactChunkFrame,
+  type ArtifactRangeFrame,
   ChunkValidationError,
   calculateChunks,
+  decodeArtifactRangeAck,
   decodeFileWriteAck,
   encodeArtifactChunkFrame,
   encodeArtifactChunks,
+  encodeArtifactOpenFrame,
+  encodeArtifactRangeFrame,
   encodeEventFrame,
   encodeFileWriteFrame,
   encodeFrame,
@@ -623,5 +627,75 @@ describe('decodeFileWriteAck', () => {
     })
 
     expect(() => decodeFileWriteAck(payload)).toThrow('Expected file_write_ack frame')
+  })
+})
+
+describe('artifact frames (CONTRACT_IPC.md §Artifact Frames)', () => {
+  it('encodes an open frame with the size and the expected digest', () => {
+    const frame = encodeArtifactOpenFrame('art-1' as ArtifactId, 12, 'abc123')
+    const payloadLength = frame.readUInt32BE(0)
+    const decoded = msgpackDecode(frame.subarray(4, 4 + payloadLength))
+    expect(decoded).toEqual({
+      type: 'artifact_open',
+      artifact_id: 'art-1',
+      size_bytes: 12,
+      expected_sha256: 'abc123'
+    })
+  })
+
+  it('encodes an open frame without a digest when the script declares none', () => {
+    const frame = encodeArtifactOpenFrame('art-1' as ArtifactId, 0)
+    const payloadLength = frame.readUInt32BE(0)
+    expect(msgpackDecode(frame.subarray(4, 4 + payloadLength))).toEqual({
+      type: 'artifact_open',
+      artifact_id: 'art-1',
+      size_bytes: 0
+    })
+  })
+
+  it('encodes a range frame with its id, offset, and bytes as bin', () => {
+    const data = new Uint8Array([1, 2, 3])
+    const frame = encodeArtifactRangeFrame('art-1' as ArtifactId, 7, 8_388_608, data)
+    const payloadLength = frame.readUInt32BE(0)
+    const decoded = msgpackDecode(frame.subarray(4, 4 + payloadLength)) as ArtifactRangeFrame
+    expect(decoded.type).toBe('artifact_range')
+    expect(decoded.artifact_id).toBe('art-1')
+    expect(decoded.range_id).toBe(7)
+    expect(decoded.offset).toBe(8_388_608)
+    expect(decoded.data).toBeInstanceOf(Uint8Array)
+    expect(new Uint8Array(decoded.data)).toEqual(data)
+  })
+
+  it('refuses a range above MAX_CHUNK_SIZE', () => {
+    const data = new Uint8Array(MAX_CHUNK_SIZE + 1)
+    expect(() => encodeArtifactRangeFrame('art-1' as ArtifactId, 1, 0, data)).toThrow(
+      ChunkValidationError
+    )
+  })
+
+  it('decodes a range ack with and without an error', () => {
+    const ok = msgpackEncode({ type: 'artifact_range_ack', range_id: 3, ok: true })
+    expect(decodeArtifactRangeAck(ok)).toEqual({
+      type: 'artifact_range_ack',
+      range_id: 3,
+      ok: true
+    })
+    const refused = msgpackEncode({
+      type: 'artifact_range_ack',
+      range_id: 4,
+      ok: false,
+      error: 'range past size_bytes'
+    })
+    expect(decodeArtifactRangeAck(refused)).toEqual({
+      type: 'artifact_range_ack',
+      range_id: 4,
+      ok: false,
+      error: 'range past size_bytes'
+    })
+  })
+
+  it('refuses to decode another frame as a range ack', () => {
+    const other = msgpackEncode({ type: 'file_write_ack', write_id: 1, ok: true })
+    expect(() => decodeArtifactRangeAck(other)).toThrow('Expected artifact_range_ack')
   })
 })

@@ -474,6 +474,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		Policy:            childPol,
 		Proxy:             cf.proxy,
 		FileWriter:        childFileWriter,
+		ArtifactStore:     artifactStoreOf(childLodeClient),
 		EnqueueObserver:   observer,
 		BrowserWSEndpoint: cf.browserWSEndpoint,
 		ResolveFrom:       cf.resolveFrom,
@@ -832,6 +833,7 @@ func runAction(c *cli.Context) error {
 		Policy:            pol,
 		Proxy:             resolvedProxy,
 		FileWriter:        fileWriter,
+		ArtifactStore:     artifactStoreOf(lodeClient),
 		BrowserWSEndpoint: browserWSEndpoint,
 		ResolveFrom:       resolveFrom,
 		Source:            source,
@@ -1511,6 +1513,16 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 	return sink, lc, lc, nil
 }
 
+// artifactStoreOf is the client as the run's artifact store, or a nil
+// interface when the run has no storage, so the runtime sees no store
+// rather than a typed nil.
+func artifactStoreOf(client *lode.LodeClient) lode.ArtifactStore {
+	if client == nil {
+		return nil
+	}
+	return client
+}
+
 // buildAdapter creates an adapter from parsed config.
 func buildAdapter(ac adapterChoice) (adapter.Adapter, error) {
 	switch ac.adapterType {
@@ -1984,7 +1996,7 @@ func printRunResult(result *runtime.RunResult, choice policyChoice, duration tim
 		fmt.Printf("Total Artifacts:   %d\n", result.ArtifactStats.TotalArtifacts)
 		fmt.Printf("Committed:         %d\n", result.ArtifactStats.CommittedArtifacts)
 		fmt.Printf("Orphaned:          %d\n", result.ArtifactStats.OrphanedArtifacts)
-		fmt.Printf("Total Chunks:      %d\n", result.ArtifactStats.TotalChunks)
+		fmt.Printf("Total Ranges:      %d\n", result.ArtifactStats.TotalRanges)
 		fmt.Printf("Total Bytes:       %d\n", result.ArtifactStats.TotalBytes)
 	}
 

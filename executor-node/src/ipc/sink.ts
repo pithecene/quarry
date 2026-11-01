@@ -19,10 +19,12 @@ import type { Writable } from 'node:stream'
 import type { ArtifactId, EmitSink, EventEnvelope } from '@pithecene/quarry-sdk'
 import type { AckReader } from './ack-reader.js'
 import {
-  encodeArtifactChunks,
+  encodeArtifactOpenFrame,
+  encodeArtifactRangeFrame,
   encodeEventFrame,
   encodeFileWriteFrame,
   encodeRunResultFrame,
+  MAX_CHUNK_SIZE,
   type ProxyEndpointRedactedFrame,
   type RunResultOutcome
 } from './frame.js'
@@ -156,6 +158,7 @@ export class StdioSink implements EmitSink {
   private readonly writeFn: (data: Buffer) => boolean
   private readonly ackReader: AckReader | undefined
   private writeIdCounter = 0
+  private rangeIdCounter = 0
 
   /**
    * @param output - The writable stream (used for state checks and event listening)
@@ -186,13 +189,34 @@ export class StdioSink implements EmitSink {
   }
 
   /**
-   * Write artifact binary data as chunked frames.
-   * Per CONTRACT_IPC.md, bytes are written BEFORE the artifact event.
+   * Write artifact binary data: one artifact_open frame with the data's
+   * size, then one artifact_range frame per MAX_CHUNK_SIZE of data, in
+   * order. Per CONTRACT_IPC.md §Artifact Frames, the frames precede the
+   * artifact event, and an empty artifact sends its open frame only.
    * Blocks on backpressure per CONTRACT_IPC.md.
+   *
+   * Each range blocks until the runtime acknowledges it, so a resolved
+   * write is committed, and a refused range rejects with the runtime's
+   * error. A range has no fire-and-forget fallback, so a sink without an
+   * AckReader refuses the write.
    */
   async writeArtifactData(artifactId: ArtifactId, data: Buffer | Uint8Array): Promise<void> {
-    for (const frame of encodeArtifactChunks(artifactId, data)) {
+    const ackReader = this.ackReader
+    if (ackReader === undefined) {
+      throw new Error('artifact writes need an AckReader: a range resolves on its acknowledgement')
+    }
+    await writeWithBackpressure(
+      this.output,
+      encodeArtifactOpenFrame(artifactId, data.length),
+      this.writeFn
+    )
+    for (let offset = 0; offset < data.length; offset += MAX_CHUNK_SIZE) {
+      const range = data.subarray(offset, Math.min(offset + MAX_CHUNK_SIZE, data.length))
+      const rangeId = ++this.rangeIdCounter
+      const ackPromise = ackReader.waitForRangeAck(rangeId)
+      const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, range)
       await writeWithBackpressure(this.output, frame, this.writeFn)
+      await ackPromise
     }
   }
 

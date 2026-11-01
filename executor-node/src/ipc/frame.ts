@@ -59,6 +59,51 @@ export type ArtifactChunkType = 'artifact_chunk'
 export type RunResultType = 'run_result'
 
 /**
+ * Artifact open frame per CONTRACT_IPC.md §Artifact Frames: the artifact's
+ * identity and size, sent before any of its bytes.
+ */
+export type ArtifactOpenFrame = {
+  readonly type: 'artifact_open'
+  readonly artifact_id: ArtifactId
+  /** The artifact's length in bytes, zero for an empty artifact */
+  readonly size_bytes: number
+  /** Hex SHA-256 the script expects of the bytes, when it declares one */
+  readonly expected_sha256?: string
+}
+
+/**
+ * Artifact range frame per CONTRACT_IPC.md §Artifact Frames: one range of
+ * an opened artifact's bytes, at most MAX_CHUNK_SIZE, at any offset.
+ *
+ * @remarks
+ * The `data` field is encoded as msgpack bin type (not array).
+ */
+export type ArtifactRangeFrame = {
+  readonly type: 'artifact_range'
+  readonly artifact_id: ArtifactId
+  /** Correlation ID counting up from 1 within the run, repeated by the ack */
+  readonly range_id: number
+  /** Byte offset of the range within the artifact */
+  readonly offset: number
+  /** Raw binary data (msgpack bin type) */
+  readonly data: Uint8Array
+}
+
+/**
+ * Artifact range acknowledgement frame (runtime → executor via stdin).
+ * Sent once the range is committed, or once it is refused.
+ */
+export type ArtifactRangeAckFrame = {
+  readonly type: 'artifact_range_ack'
+  /** Correlation ID from the artifact_range frame */
+  readonly range_id: number
+  /** True once the range is committed */
+  readonly ok: boolean
+  /** Error message when ok is false */
+  readonly error?: string
+}
+
+/**
  * Artifact chunk frame per CONTRACT_IPC.md.
  * This is a stream-level construct, not a normal emit event.
  *
@@ -164,6 +209,9 @@ export type FileWriteAckFrame = {
 export type Frame =
   | EventEnvelope
   | ArtifactChunkFrame
+  | ArtifactOpenFrame
+  | ArtifactRangeFrame
+  | ArtifactRangeAckFrame
   | RunResultFrame
   | FileWriteFrame
   | FileWriteAckFrame
@@ -406,6 +454,80 @@ export function decodeFileWriteAck(payload: Uint8Array): FileWriteAckFrame {
   return {
     type: 'file_write_ack',
     write_id: decoded.write_id as number,
+    ok: decoded.ok as boolean,
+    ...(decoded.error != null && { error: decoded.error as string })
+  }
+}
+
+/**
+ * Encode an artifact open frame into a framed buffer.
+ *
+ * @param artifactId - The artifact ID
+ * @param sizeBytes - The artifact's length in bytes
+ * @param expectedSha256 - Hex SHA-256 the script expects, when it declares one
+ * @returns Buffer containing length prefix + msgpack-encoded frame
+ */
+export function encodeArtifactOpenFrame(
+  artifactId: ArtifactId,
+  sizeBytes: number,
+  expectedSha256?: string
+): Buffer {
+  const frame: ArtifactOpenFrame = {
+    type: 'artifact_open',
+    artifact_id: artifactId,
+    size_bytes: sizeBytes,
+    ...(expectedSha256 !== undefined && { expected_sha256: expectedSha256 })
+  }
+  return encodeFrame(msgpackEncode(frame))
+}
+
+/**
+ * Encode an artifact range frame into a framed buffer.
+ *
+ * @param artifactId - The artifact ID
+ * @param rangeId - Correlation ID for ack matching, counting up from 1
+ * @param offset - Byte offset of the range within the artifact
+ * @param data - The range's bytes (must be <= MAX_CHUNK_SIZE per CONTRACT_IPC)
+ * @returns Buffer containing length prefix + msgpack-encoded frame
+ * @throws ChunkValidationError if data exceeds MAX_CHUNK_SIZE
+ * @throws FrameSizeError if encoded payload exceeds MAX_PAYLOAD_SIZE
+ */
+export function encodeArtifactRangeFrame(
+  artifactId: ArtifactId,
+  rangeId: number,
+  offset: number,
+  data: Uint8Array
+): Buffer {
+  if (data.length > MAX_CHUNK_SIZE) {
+    throw new ChunkValidationError(
+      `range size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
+    )
+  }
+  const frame: ArtifactRangeFrame = {
+    type: 'artifact_range',
+    artifact_id: artifactId,
+    range_id: rangeId,
+    offset,
+    data
+  }
+  return encodeFrame(msgpackEncode(frame))
+}
+
+/**
+ * Decode an artifact range acknowledgement frame from a msgpack payload.
+ *
+ * @param payload - Raw msgpack payload (without length prefix)
+ * @returns Decoded ArtifactRangeAckFrame
+ * @throws Error if payload is not a valid artifact_range_ack frame
+ */
+export function decodeArtifactRangeAck(payload: Uint8Array): ArtifactRangeAckFrame {
+  const decoded = msgpackDecode(payload) as Record<string, unknown>
+  if (decoded.type !== 'artifact_range_ack') {
+    throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`)
+  }
+  return {
+    type: 'artifact_range_ack',
+    range_id: decoded.range_id as number,
     ok: decoded.ok as boolean,
     ...(decoded.error != null && { error: decoded.error as string })
   }

@@ -345,7 +345,7 @@ data fetching occurs.
     "total": 5,
     "committed": 5,
     "orphaned": 0,
-    "chunks": 10,
+    "ranges": 10,
     "bytes": 524288
   },
   "metrics": { "/* CONTRACT_METRICS counters */" : "..." },

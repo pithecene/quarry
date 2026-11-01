@@ -235,3 +235,55 @@ describe('AckReader', () => {
     })
   })
 })
+
+/** Encode an artifact_range_ack payload as a length-prefixed msgpack frame. */
+function encodeRangeAck(rangeId: number, ok: boolean, error?: string): Buffer {
+  const payload = msgpackEncode({
+    type: 'artifact_range_ack',
+    range_id: rangeId,
+    ok,
+    ...(error != null && { error })
+  })
+  return Buffer.from(encodeFrame(payload))
+}
+
+describe('AckReader artifact range acks (CONTRACT_IPC.md §Artifact Range Acknowledgement)', () => {
+  it('resolves a range on its ack and keeps file write ids apart', async () => {
+    const stream = new PassThrough()
+    const reader = new AckReader(stream)
+    reader.start()
+
+    const file = reader.waitForAck(1)
+    const range = reader.waitForRangeAck(1)
+    stream.write(encodeRangeAck(1, true))
+    await expect(range).resolves.toBeUndefined()
+    expect(reader.idle).toBe(false)
+    stream.write(encodeAck(1, true))
+    await expect(file).resolves.toBeUndefined()
+    reader.stop()
+  })
+
+  it('rejects a range on a refusal with the runtime error', async () => {
+    const stream = new PassThrough()
+    const reader = new AckReader(stream)
+    reader.start()
+
+    const range = reader.waitForRangeAck(2)
+    stream.write(encodeRangeAck(2, false, 'artifact range refused: range past size'))
+    await expect(range).rejects.toThrow('range past size')
+    reader.stop()
+  })
+
+  it('rejects a pending range on EOF without any ack, while file writes fall back', async () => {
+    const stream = new PassThrough()
+    const reader = new AckReader(stream)
+    reader.start()
+
+    const file = reader.waitForAck(1)
+    const range = reader.waitForRangeAck(1)
+    stream.end()
+    await expect(file).resolves.toBeUndefined()
+    await expect(range).rejects.toThrow('no artifact_range_ack')
+    await expect(reader.waitForRangeAck(2)).rejects.toThrow('no artifact_range_ack')
+  })
+})
