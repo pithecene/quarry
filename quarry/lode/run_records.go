@@ -109,7 +109,16 @@ func RunRecordPrefix(dataset string, components ...string) string {
 // manifest it finds in its directory that its layout does not persist,
 // and a Volume's manifests are such manifests.
 func RunArtifactDir(cfg Config) string {
-	return namespacePrefix("artifacts/"+cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
+	return ArtifactPrefix(cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
+}
+
+// ArtifactPrefix is a key prefix in the dataset's artifact namespace for
+// the leading components given, in order source, category, day, run_id,
+// encoded exactly as RunRecordPrefix encodes them:
+// artifacts/<dataset>/<enc>/.../. With no components it is the whole
+// namespace.
+func ArtifactPrefix(dataset string, components ...string) string {
+	return namespacePrefix("artifacts/"+dataset, components...)
 }
 
 // namespacePrefix is a key prefix under root for the leading components

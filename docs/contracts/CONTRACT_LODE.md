@@ -29,6 +29,33 @@ logical `category` partition key.
 
 ---
 
+## Storage Layout
+
+One store holds both Quarry's objects and Lode's, and each prefix in it
+has one owner. Quarry reads and writes its own prefixes directly. A Lode prefix is
+sealed: what lies under it is reached only through Lode's API. Listing a
+sealed prefix's parent tells Quarry the names it gave, and no key in the
+sealed prefix is interpreted.
+
+| Prefix | Owner | Holds |
+|---|---|---|
+| `datasets/<dataset>/runs/` | Quarry | Run records (§Run Record Namespace) |
+| `datasets/<dataset>/partitions/<run partition>/files/` | Quarry | Sidecar files and their `.meta.json` companions (§Sidecar File Inventory) |
+| The rest of `datasets/<dataset>/` | Lode, sealed | The Dataset |
+| `artifacts/<dataset>/<run key>/volumes/` | Quarry | One name per artifact ID (§Artifact Storage) |
+| `artifacts/<dataset>/<run key>/volumes/<artifact_id>/` | Lode, sealed | One Volume |
+
+- `<run partition>` is `source=<s>/category=<c>/day=<d>/run_id=<r>`, and
+  `<run key>` is `<source>/<category>/<day>/<run_id>`, each encoded as
+  §Key Encoding defines.
+- Sidecar files sit inside the Dataset's partition tree, but Lode tracks
+  none of them, so Quarry owns and deletes them.
+- The two trees are siblings. `artifacts/<dataset>/` groups a run's
+  Volumes with the run's Dataset by name only. Lode relates no Volume to
+  any Dataset.
+
+---
+
 ## Required Partition Keys
 
 Lode must support partitioning by:
@@ -481,6 +508,11 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
   (read from the snapshot ID), so a run that started long ago and is
   still writing is not selected. A backfilled start record has no
   `started_at`, so the end of its partition day stands in.
+- A write to an artifact Volume does not move that instant. Quarry never
+  reads inside a Volume (§Storage Layout), and Lode's API opens a Volume
+  only with its total length, which an artifact without its event does
+  not record. The minimum age still protects a live run that writes only
+  Volumes, because a live run's age never exceeds its duration.
 - An unterminated run cannot be told apart from a live one, so its age
   must be at least 24 hours and must exceed the longest run. A
   terminated run is final ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization), so any age,
@@ -499,6 +531,17 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    or absent, the prune keeps the run, deletes nothing of it, and the report
    gives the reason. Lode never expires the head, so the run that
    committed most recently is removed only by a later prune.
+
+   Then preview the removal of the run's artifact Volumes. The prune
+   lists the names under the run's `volumes/` prefix and calls Lode's
+   `volume.Remove` for each against a sandbox store. The sandbox reads
+   the real store and keeps every write in memory, so Lode's own code
+   runs and the real store is unchanged. Three things keep the run, and
+   nothing of it is deleted: a name that is no artifact ID, an object
+   stored at an artifact ID itself rather than in its directory, and a
+   Volume with a commit in flight. The preview records the head pointer swap that Lode makes,
+   and step 5 allows only that swap. A dry run reports what the preview
+   found.
 2. Gather the run's sidecar files and their `.meta.json` companions
    (§Sidecar File Inventory): every path that the run's snapshots record,
    and, when Hive encoding leaves the run's source, category, day, and
@@ -521,7 +564,15 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    head for a dataset without snapshots, so such a run loses only its
    sidecar files and records.
 4. Delete the gathered sidecar objects.
-5. Delete the start record, and then the end record. A run without a
+5. Remove the previewed Volumes with `volume.Remove`, so the Volume of an
+   artifact whose event never arrived goes too. A Volume removed already
+   changes nothing in the preview and is skipped. Each removal allows only
+   the swap its preview recorded, and the store compares the head
+   atomically. A Volume that committed since the preview therefore fails
+   its removal and keeps the run's records. Then list the names again. A
+   name the preview did not list belongs to a Volume opened since, so the
+   prune keeps the run's records, and the next prune removes it.
+6. Delete the start record, and then the end record. A run without a
    start record is never listed, and an end record without one is
    ignored by readers.
 
@@ -530,7 +581,7 @@ stopped between the two deletions, or the run's start record was never
 persisted. Every prune deletes such end records under its selectors, and
 the report counts them.
 
-Each step is idempotent, and a run is listed until step 5. A prune that is
+Each step is idempotent, and a run is listed until step 6. A prune that is
 interrupted, or that fails with a store error, is therefore completed by
 the next prune that selects the run, with one exception: if it stops
 after step 3 for a run whose key Hive encoding changes, the recorded
@@ -547,6 +598,19 @@ batch of a killed run, once that data is older than the grace period.
 The grace period must exceed the longest single write. The sweep never removes
 data that a manifest describes.
 
+`Dataset.Sweep` never reads the artifact namespace, so the prune then
+lists `artifacts/<dataset>/`. It removes every Volume of a run that has
+no start record, once the end of the run key's day is older than the
+grace period. Such a Volume belongs to a run whose records an earlier
+prune removed, or was opened after a prune's final listing. A run's day
+is its start's day, and the grace period exceeds the longest run, so the
+Volume of a live run is never removed. Each Volume is previewed and
+removed as step 5 removes it. A Volume with a commit in flight, or one
+that commits meanwhile, is left for the next sweep, and a dry run does
+not count it. A Volume removed already is not counted. A key whose run
+key or artifact ID the write path could not have produced is reported
+and never acted on. The report counts the Volumes removed.
+
 ### Concurrency
 
 A prune can run while runs are written to the dataset. A run that the
@@ -554,5 +618,8 @@ policy selects is presumed final: a terminated run is final by
 [CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization, and an unterminated run has written
 nothing for at least its age. If such a run nevertheless commits during
 the prune, step 3 keeps its new snapshot and the run's records remain.
-Only a commit after that final listing goes undetected. A prune does not coordinate with readers of the run.
+Only a commit after that final listing goes undetected. Step 5 removes
+only the Volume heads that its preview judged, so a Volume commit during
+the prune keeps the run's records. A Volume opened after step 5's final
+listing goes undetected, and the sweep removes it. A prune does not coordinate with readers of the run.
 

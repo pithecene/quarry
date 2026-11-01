@@ -70,7 +70,7 @@ var _ ArtifactStore = (*LodeClient)(nil)
 // run's artifact directory, RunArtifactDir, through lode.Prefixed over the
 // client's store.
 func (c *LodeClient) OpenArtifact(ctx context.Context, artifactID string, size int64, expectedSHA256 string) (ArtifactWriter, error) {
-	if err := validateArtifactID(artifactID); err != nil {
+	if err := ValidateArtifactID(artifactID); err != nil {
 		return nil, err
 	}
 	if size < 0 {
@@ -107,8 +107,11 @@ func (c *LodeClient) volumeOptions() []volume.Option {
 // objects, which it refuses as IDs.
 const lodeReservedPrefix = ".lode-tmp-"
 
-// validateArtifactID requires one path segment, as Lode's Volume ID does.
-func validateArtifactID(id string) error {
+// ValidateArtifactID requires one path segment, as Lode's Volume ID does,
+// outside the names Lode keeps for its staged objects. It is the check
+// OpenArtifact applies, so a listing can tell an artifact Volume from an
+// object the write path never produced.
+func ValidateArtifactID(id string) error {
 	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) || strings.HasPrefix(id, lodeReservedPrefix) {
 		return fmt.Errorf("%w: %q", ErrInvalidArtifactID, id)
 	}
@@ -287,4 +290,16 @@ func (w *artifactWriter) Abandon(ctx context.Context) error {
 // path names the artifact's Volume in errors.
 func (w *artifactWriter) path() string {
 	return "volumes/" + w.id
+}
+
+// RemoveArtifactVolume removes the Volume of one artifact from the run's
+// artifact directory, RunArtifactDir, in store. The Volume stays removed,
+// and a second call completes an interrupted removal. It does not retry: a
+// commit that races the removal returns lode.ErrSnapshotConflict, and the
+// caller decides whether to keep the Volume. It returns
+// lode.ErrHeadUncommitted when the Volume's head has no manifest yet; the
+// Volume is then fenced but its objects remain for a later call.
+func RemoveArtifactVolume(ctx context.Context, store lode.RangeStore, cfg Config, artifactID string) error {
+	factory := lode.Prefixed(lode.Use(store), RunArtifactDir(cfg))
+	return volume.Remove(ctx, volume.ID(artifactID), factory)
 }

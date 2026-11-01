@@ -790,7 +790,8 @@ rendered.
 ## `prune` (run retention)
 
 Removes whole runs, chosen by state and age, as [CONTRACT_LODE.md](CONTRACT_LODE.md) §Run
-Retention defines: the run's snapshots, sidecar files, and run records.
+Retention defines: the run's snapshots, sidecar files, artifact Volumes,
+and run records.
 
 Flags:
 - `--storage-backend`, `--storage-path` (required) and the other storage
@@ -828,6 +829,7 @@ PruneReport:
   objects: number
   bytes: number
   sidecar_objects: number
+  volumes: number          # artifact Volumes removed
   runs: PrunedRun[]
   orphan_end_records: number # end records without a start record; deleted
   unparseable: string[]    # malformed start-record keys; omitted when none
@@ -846,6 +848,7 @@ PrunedRun:
   objects: number
   bytes: number
   sidecar_objects: number  # sidecar files and their .meta.json companions
+  volumes: number          # artifact Volumes removed
   kept: string             # why a selected run was kept; omitted otherwise
   skipped: string[]        # recorded sidecar paths left in place; omitted when none
 
@@ -855,6 +858,7 @@ SweepReport:
   bytes: number
   unsized: number
   orphans: number
+  volumes: number          # artifact Volumes of runs without a start record, removed
   unparseable: string[]    # omitted when none
 ```
 

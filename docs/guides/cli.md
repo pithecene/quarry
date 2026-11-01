@@ -417,7 +417,7 @@ quarry index rebuild --storage-backend fs --storage-path ./quarry-data
 ### `prune`
 
 The command `prune <storage flags> [selectors] <age flags> [--dry-run]` removes whole
-runs: their partitions, sidecar files, and run records. Each age flag
+runs: their partitions, sidecar files, artifact Volumes, and run records. Each age flag
 selects runs in one state by age in days: `--succeeded-days` and
 `--failed-days` count from the run's end, and `--unterminated-days` counts
 from its start or its last write, whichever is later. The prune keeps every run in a state without a flag. An unterminated run may
@@ -428,8 +428,8 @@ exceed the longest run. `--run-id`, with `--source`, `--category`, and
 The run that committed most recently holds the dataset's head, which Lode
 never removes. The report lists it as kept, and a later prune removes it.
 `--sweep-grace` also reclaims the data of writes that never committed,
-such as the last batch of a killed run. A rerun resumes an interrupted
-prune. Runs written before v0.14.0 are pruned only after `quarry index
+such as the last batch of a killed run, and the artifact Volumes of runs
+whose records are gone. A rerun resumes an interrupted prune. Runs written before v0.14.0 are pruned only after `quarry index
 rebuild` has indexed them.
 
 ```

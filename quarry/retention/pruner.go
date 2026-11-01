@@ -31,7 +31,7 @@ type pruner struct {
 	dataset string
 	opts    Options
 	runs    *reader.Reader
-	store   lode.Store
+	store   lode.RangeStore
 	// ds is a writer handle: Lode retains only through writers, and a writer
 	// opens on a dataset without snapshots, where a view would not.
 	ds lode.Records[lode.D]
@@ -117,22 +117,29 @@ func (p *pruner) prune(ctx context.Context, k reader.Key) (out Run, due bool, er
 
 // remove deletes a selected run: a dry-run expiry first, so a run that
 // holds the head loses nothing; then the previewed snapshots, and, once a fresh
-// listing shows none remain, its sidecar files and records. The sidecar
-// paths are gathered before the expiry, because the paths a run records
-// live in the manifests the expiry deletes.
+// listing shows none remain, its sidecar files, its artifact Volumes, and
+// its records. The sidecar paths are gathered before the expiry, because
+// the paths a run records live in the manifests the expiry deletes.
 func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold time.Duration) (Run, bool, error) {
 	preview, kept, err := p.expire(ctx, out.Partition, nil, true)
 	if kept != "" || err != nil {
 		out.Kept = kept
 		return out, true, err
 	}
+	cfg := p.configOf(k)
 	if out.State == reader.StateUnterminated {
 		due := p.lastWriteDue(&out, preview.Expired, threshold)
 		if !due || out.Kept != "" {
 			return out, due, nil
 		}
 	}
-	cfg := qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
+	// Each Volume is removed in a dry run first, so a Volume that would keep
+	// the run keeps it before anything of the run is deleted.
+	volumes, kept, err := p.previewVolumes(ctx, cfg)
+	if kept != "" || err != nil {
+		out.Kept = kept
+		return out, true, err
+	}
 	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition)
 	out.Skipped = skipped
 	if errors.Is(err, errMalformedInventory) {
@@ -144,6 +151,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	if p.opts.DryRun {
 		out.SidecarObjects = len(sidecars)
+		out.Volumes = len(volumes.probes)
 		out.Pruned = true
 		out.Snapshots, out.Objects, out.Bytes = len(preview.Expired), preview.Objects, preview.Bytes
 		return out, true, nil
@@ -174,6 +182,14 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		return out, true, err
 	}
 	out.SidecarObjects = len(sidecars) // counted once deleted, so a kept run reports none
+	// Every Volume listed goes, so the Volume of an artifact whose event
+	// never arrived goes too. A Volume written meanwhile keeps the records.
+	removed, kept, err := p.removeVolumes(ctx, cfg, volumes)
+	out.Volumes = removed
+	if kept != "" || err != nil {
+		out.Kept = kept
+		return out, true, err
+	}
 	// The start record goes first: a run without one is never listed, and
 	// an end record left by an interruption here is ignored by readers.
 	dir := qlode.RunRecordDir(cfg)
@@ -182,6 +198,11 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	out.Pruned = true
 	return out, true, nil
+}
+
+// configOf is the key as the run config that names the run's directories.
+func (p *pruner) configOf(k reader.Key) qlode.Config {
+	return qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
 }
 
 // lastWriteDue reports whether an unterminated run is still due once its age

@@ -48,6 +48,8 @@ type runSpec struct {
 	// again writes another snapshot for a run that already started, without
 	// a second start record or sidecar file.
 	again bool
+	// artifacts is how many artifact Volumes the run writes, named a1, a2, ...
+	artifacts int
 }
 
 func (f *fixture) write(spec runSpec) qlode.Config {
@@ -84,6 +86,9 @@ func (f *fixture) write(spec runSpec) qlode.Config {
 	}
 	if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
 		f.t.Fatalf("events: %v", err)
+	}
+	for i := range spec.artifacts {
+		f.writeArtifact(c, fmt.Sprintf("a%d", i+1))
 	}
 	if spec.lateFile {
 		if err := c.PutFile(ctx, "late.txt", "text/plain", []byte("x")); err != nil {
