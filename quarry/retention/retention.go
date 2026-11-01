@@ -103,6 +103,8 @@ type Run struct {
 	// SidecarObjects counts the sidecar files and their metadata companions
 	// deleted.
 	SidecarObjects int `json:"sidecar_objects" yaml:"sidecar_objects"`
+	// Volumes counts the artifact Volumes removed (in a dry run, would be).
+	Volumes int `json:"volumes" yaml:"volumes"`
 	// Kept gives the reason a selected run was not removed.
 	Kept string `json:"kept,omitempty" yaml:"kept,omitempty"`
 	// Skipped lists sidecar paths recorded for the run that lie outside its
@@ -110,13 +112,20 @@ type Run struct {
 	Skipped []string `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 
-// SweepReport summarizes the Dataset.Sweep that follows the runs.
+// SweepReport summarizes the sweep that follows the runs: Dataset.Sweep
+// over the dataset, and the removal of the artifact Volumes of runs that
+// have no start record.
 type SweepReport struct {
-	Settled     int      `json:"settled" yaml:"settled"`
-	Objects     int      `json:"objects" yaml:"objects"`
-	Bytes       int64    `json:"bytes" yaml:"bytes"`
-	Unsized     int      `json:"unsized" yaml:"unsized"`
-	Orphans     int      `json:"orphans" yaml:"orphans"`
+	Settled int   `json:"settled" yaml:"settled"`
+	Objects int   `json:"objects" yaml:"objects"`
+	Bytes   int64 `json:"bytes" yaml:"bytes"`
+	Unsized int   `json:"unsized" yaml:"unsized"`
+	Orphans int   `json:"orphans" yaml:"orphans"`
+	// Volumes counts the artifact Volumes removed (in a dry run, would be).
+	Volumes int `json:"volumes" yaml:"volumes"`
+	// Unparseable lists the keys, of the dataset and of the artifact
+	// namespace, that the write path could not have produced. The sweep
+	// never acts on them.
 	Unparseable []string `json:"unparseable,omitempty" yaml:"unparseable,omitempty"`
 }
 
@@ -133,6 +142,7 @@ type Report struct {
 	Objects        int    `json:"objects" yaml:"objects"`
 	Bytes          int64  `json:"bytes" yaml:"bytes"`
 	SidecarObjects int    `json:"sidecar_objects" yaml:"sidecar_objects"`
+	Volumes        int    `json:"volumes" yaml:"volumes"`
 	Runs           []Run  `json:"runs" yaml:"runs"`
 	// OrphanEndRecords counts end records without a start record that the
 	// prune deleted (in a dry run, would delete).
@@ -154,13 +164,15 @@ func (r *Report) add(run Run) {
 	r.Objects += run.Objects
 	r.Bytes += run.Bytes
 	r.SidecarObjects += run.SidecarObjects
+	r.Volumes += run.Volumes
 }
 
 // Prune removes the runs the policy selects, in key order, then sweeps when
 // asked. Each run is removed in an order that a rerun resumes
 // (CONTRACT_LODE.md §Run Retention): the run's snapshots, then its sidecar
-// files, then its start record and its end record. A store error terminates
-// the prune and returns the partial report.
+// files, then its artifact Volumes, then its start record and its end
+// record. A store error terminates the prune and returns the partial
+// report.
 func Prune(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore], opts Options) (Report, error) {
 	report := Report{Dataset: dataset, DryRun: opts.DryRun, Runs: []Run{}}
 	if err := opts.validate(); err != nil {
@@ -206,6 +218,14 @@ func Prune(ctx context.Context, dataset string, factory lode.Factory[lode.RangeS
 	if opts.SweepGrace > 0 {
 		sweep, err := p.ds.Sweep(ctx, lode.SweepRequest{Grace: opts.SweepGrace, DryRun: opts.DryRun})
 		report.Sweep = sweepSummary(sweep)
+		if err != nil {
+			return report, fmt.Errorf("sweep: %w", err)
+		}
+		// Dataset.Sweep never reads the artifact namespace, so the Volumes
+		// of runs without a start record are swept here.
+		volumes, unparseable, err := p.sweepVolumes(ctx, opts.SweepGrace)
+		report.Sweep.Volumes = volumes
+		report.Sweep.Unparseable = append(report.Sweep.Unparseable, unparseable...)
 		if err != nil {
 			return report, fmt.Errorf("sweep: %w", err)
 		}
