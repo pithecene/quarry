@@ -34,22 +34,22 @@ func TestValidatePolicyConfig(t *testing.T) {
 	}{
 		{
 			name:    "strict policy valid",
-			choice:  policyChoice{name: "strict", flushMode: "at_least_once"},
+			choice:  policyChoice{name: "strict"},
 			wantErr: false,
 		},
 		{
 			name:    "buffered with events limit valid",
-			choice:  policyChoice{name: "buffered", flushMode: "at_least_once", maxEvents: 1000},
+			choice:  policyChoice{name: "buffered", maxEvents: 1000},
 			wantErr: false,
 		},
 		{
 			name:    "buffered with bytes limit valid",
-			choice:  policyChoice{name: "buffered", flushMode: "at_least_once", maxBytes: 1048576},
+			choice:  policyChoice{name: "buffered", maxBytes: 1048576},
 			wantErr: false,
 		},
 		{
 			name:        "buffered without limits invalid",
-			choice:      policyChoice{name: "buffered", flushMode: "at_least_once"},
+			choice:      policyChoice{name: "buffered"},
 			wantErr:     true,
 			errContains: "buffer limits",
 		},
@@ -58,22 +58,6 @@ func TestValidatePolicyConfig(t *testing.T) {
 			choice:      policyChoice{name: "invalid"},
 			wantErr:     true,
 			errContains: "invalid --policy",
-		},
-		{
-			name:        "invalid flush mode",
-			choice:      policyChoice{name: "buffered", flushMode: "invalid", maxEvents: 100},
-			wantErr:     true,
-			errContains: "invalid --flush-mode",
-		},
-		{
-			name:    "buffered with chunks_first valid",
-			choice:  policyChoice{name: "buffered", flushMode: "chunks_first", maxEvents: 100},
-			wantErr: false,
-		},
-		{
-			name:    "buffered with two_phase valid",
-			choice:  policyChoice{name: "buffered", flushMode: "two_phase", maxBytes: 1000},
-			wantErr: false,
 		},
 	}
 
@@ -212,7 +196,7 @@ func TestPolicyErrorMessagesAreActionable(t *testing.T) {
 	}{
 		{
 			name:        "buffered without limits suggests flags",
-			choice:      policyChoice{name: "buffered", flushMode: "at_least_once"},
+			choice:      policyChoice{name: "buffered"},
 			mustContain: []string{"--buffer-events", "--buffer-bytes"},
 			description: "should suggest buffer limit flags",
 		},
@@ -221,12 +205,6 @@ func TestPolicyErrorMessagesAreActionable(t *testing.T) {
 			choice:      policyChoice{name: "unknown"},
 			mustContain: []string{"strict", "buffered", "Valid options"},
 			description: "should list valid policies",
-		},
-		{
-			name:        "invalid flush mode lists options",
-			choice:      policyChoice{name: "buffered", flushMode: "unknown", maxEvents: 100},
-			mustContain: []string{"at_least_once", "chunks_first", "two_phase"},
-			description: "should list valid flush modes",
 		},
 	}
 
@@ -1797,7 +1775,7 @@ func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
 	// Set up minimal fs-backend storage in a temp dir so buildPolicy succeeds
 	storageDir := t.TempDir()
 	storage := storageChoice{backend: "fs", path: storageDir}
-	pol := policyChoice{name: "strict", flushMode: "at_least_once"}
+	pol := policyChoice{name: "strict"}
 	collector := metrics.NewCollector("strict", "executor.mjs", "fs", "run-001", "")
 
 	// Call buildPolicy with the captured timestamp — this is exactly what

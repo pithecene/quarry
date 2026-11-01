@@ -32,22 +32,11 @@ func benchEnvelope(seq int64) *types.EventEnvelope {
 	}
 }
 
-// benchChunk returns a realistic artifact chunk for benchmarks.
-func benchChunk(seq int64) *types.ArtifactChunk {
-	return &types.ArtifactChunk{
-		ArtifactID: "art-001",
-		Seq:        seq,
-		IsLast:     false,
-		Data:       make([]byte, 4096),
-	}
-}
-
 // noopSink is a zero-allocation sink for benchmarks.
 // It does no locking and no recording — pure throughput measurement.
 type noopSink struct{}
 
 func (noopSink) WriteEvents(_ context.Context, _ []*types.EventEnvelope) error { return nil }
-func (noopSink) WriteChunks(_ context.Context, _ []*types.ArtifactChunk) error { return nil }
 func (noopSink) Close() error                                                  { return nil }
 
 // slowSink adds a fixed delay per write to simulate storage latency.
@@ -56,11 +45,6 @@ type slowSink struct {
 }
 
 func (s slowSink) WriteEvents(_ context.Context, _ []*types.EventEnvelope) error {
-	time.Sleep(s.delay)
-	return nil
-}
-
-func (s slowSink) WriteChunks(_ context.Context, _ []*types.ArtifactChunk) error {
 	time.Sleep(s.delay)
 	return nil
 }
@@ -82,21 +66,6 @@ func BenchmarkStrictPolicy_IngestEvent(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		if err := pol.IngestEvent(ctx, env); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-// BenchmarkStrictPolicy_IngestArtifactChunk measures per-chunk throughput.
-func BenchmarkStrictPolicy_IngestArtifactChunk(b *testing.B) {
-	pol := NewStrictPolicy(noopSink{})
-	ctx := b.Context()
-	chunk := benchChunk(1)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for b.Loop() {
-		if err := pol.IngestArtifactChunk(ctx, chunk); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -152,28 +121,23 @@ func BenchmarkStrictPolicy_SlowSink(b *testing.B) {
 
 // BenchmarkBufferedPolicy_IngestEvent measures event buffering throughput.
 func BenchmarkBufferedPolicy_IngestEvent(b *testing.B) {
-	for _, mode := range []FlushMode{FlushAtLeastOnce, FlushChunksFirst, FlushTwoPhase} {
-		b.Run(fmt.Sprintf("mode=%s", mode), func(b *testing.B) {
-			pol, err := NewBufferedPolicy(noopSink{}, BufferedConfig{
-				MaxBufferEvents: 0, // bytes-only limit
-				MaxBufferBytes:  1 << 62,
-				FlushMode:       mode,
-			})
-			if err != nil {
-				b.Fatal(err)
-			}
+	pol, err := NewBufferedPolicy(noopSink{}, BufferedConfig{
+		MaxBufferEvents: 0, // bytes-only limit
+		MaxBufferBytes:  1 << 62,
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
-			ctx := b.Context()
-			env := benchEnvelope(1)
+	ctx := b.Context()
+	env := benchEnvelope(1)
 
-			b.ResetTimer()
-			b.ReportAllocs()
-			for b.Loop() {
-				if err := pol.IngestEvent(ctx, env); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := pol.IngestEvent(ctx, env); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -184,7 +148,6 @@ func BenchmarkBufferedPolicy_IngestThenFlush(b *testing.B) {
 			pol, err := NewBufferedPolicy(noopSink{}, BufferedConfig{
 				MaxBufferEvents: batchSize + 1,
 				MaxBufferBytes:  1 << 62,
-				FlushMode:       FlushAtLeastOnce,
 			})
 			if err != nil {
 				b.Fatal(err)
@@ -214,7 +177,6 @@ func BenchmarkBufferedPolicy_DropPressure(b *testing.B) {
 	pol, err := NewBufferedPolicy(noopSink{}, BufferedConfig{
 		MaxBufferEvents: 10,
 		MaxBufferBytes:  1 << 62,
-		FlushMode:       FlushAtLeastOnce,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -257,7 +219,6 @@ func BenchmarkBufferedPolicy_ConcurrentIngest(b *testing.B) {
 	pol, err := NewBufferedPolicy(noopSink{}, BufferedConfig{
 		MaxBufferEvents: 0, // bytes-only limit
 		MaxBufferBytes:  1 << 62,
-		FlushMode:       FlushAtLeastOnce,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -300,28 +261,6 @@ func BenchmarkStreamingPolicy_IngestEvent(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		if err := pol.IngestEvent(ctx, env); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-// BenchmarkStreamingPolicy_IngestArtifactChunk measures per-chunk buffering throughput.
-func BenchmarkStreamingPolicy_IngestArtifactChunk(b *testing.B) {
-	pol, err := NewStreamingPolicy(noopSink{}, StreamingConfig{
-		FlushCount: 1_000_000,
-	})
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.Cleanup(iox.CloseFunc(pol))
-
-	ctx := b.Context()
-	chunk := benchChunk(1)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for b.Loop() {
-		if err := pol.IngestArtifactChunk(ctx, chunk); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -430,7 +369,6 @@ func BenchmarkPolicies_IngestEvent_Comparison(b *testing.B) {
 		pol, _ := NewBufferedPolicy(noopSink{}, BufferedConfig{
 			MaxBufferEvents: 0,       // bytes-only limit
 			MaxBufferBytes:  1 << 62, // effectively unbounded
-			FlushMode:       FlushAtLeastOnce,
 		})
 		b.ResetTimer()
 		b.ReportAllocs()
@@ -478,7 +416,6 @@ func BenchmarkPolicies_Stats_Comparison(b *testing.B) {
 		pol, _ := NewBufferedPolicy(noopSink{}, BufferedConfig{
 			MaxBufferEvents: 0, // bytes-only limit
 			MaxBufferBytes:  1 << 62,
-			FlushMode:       FlushAtLeastOnce,
 		})
 		for range 100 {
 			_ = pol.IngestEvent(ctx, env)
@@ -527,7 +464,6 @@ func BenchmarkPolicies_Concurrent_Comparison(b *testing.B) {
 		pol, _ := NewBufferedPolicy(noopSink{}, BufferedConfig{
 			MaxBufferEvents: 0, // bytes-only limit
 			MaxBufferBytes:  1 << 62,
-			FlushMode:       FlushAtLeastOnce,
 		})
 		b.ResetTimer()
 		b.ReportAllocs()
@@ -564,58 +500,6 @@ func BenchmarkPolicies_Concurrent_Comparison(b *testing.B) {
 				_ = pol.IngestEvent(ctx, env)
 			}
 		})
-	})
-}
-
-// BenchmarkPolicies_MixedWorkload simulates a realistic workload with
-// events and artifact chunks interleaved, measured across all policies.
-func BenchmarkPolicies_MixedWorkload(b *testing.B) {
-	ctx := b.Context()
-
-	b.Run("strict", func(b *testing.B) {
-		pol := NewStrictPolicy(noopSink{})
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := int64(0); b.Loop(); i++ {
-			if i%10 == 0 {
-				_ = pol.IngestArtifactChunk(ctx, benchChunk(i))
-			} else {
-				_ = pol.IngestEvent(ctx, benchEnvelope(i))
-			}
-		}
-	})
-
-	b.Run("buffered", func(b *testing.B) {
-		pol, _ := NewBufferedPolicy(noopSink{}, BufferedConfig{
-			MaxBufferEvents: 0, // bytes-only limit
-			MaxBufferBytes:  1 << 62,
-			FlushMode:       FlushAtLeastOnce,
-		})
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := int64(0); b.Loop(); i++ {
-			if i%10 == 0 {
-				_ = pol.IngestArtifactChunk(ctx, benchChunk(i))
-			} else {
-				_ = pol.IngestEvent(ctx, benchEnvelope(i))
-			}
-		}
-	})
-
-	b.Run("streaming", func(b *testing.B) {
-		pol, _ := NewStreamingPolicy(noopSink{}, StreamingConfig{
-			FlushCount: 100,
-		})
-		b.Cleanup(iox.CloseFunc(pol))
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := int64(0); b.Loop(); i++ {
-			if i%10 == 0 {
-				_ = pol.IngestArtifactChunk(ctx, benchChunk(i))
-			} else {
-				_ = pol.IngestEvent(ctx, benchEnvelope(i))
-			}
-		}
 	})
 }
 

@@ -8,14 +8,14 @@
  * Constraints:
  * - Maximum frame size: 16 MiB (including length prefix)
  * - Maximum payload size: 16 MiB - 4 bytes
- * - Artifact chunk size: up to 8 MiB (raw bytes, before msgpack encoding)
+ * - Artifact range size: up to 8 MiB (raw bytes, before msgpack encoding)
  *
- * Two frame types exist, both msgpack-encoded:
+ * Every frame is msgpack-encoded:
  * - Event frame: msgpack-encoded EventEnvelope (discriminated by envelope.type)
- * - Artifact chunk frame: msgpack-encoded chunk envelope with type='artifact_chunk'
+ * - Artifact frames: 'artifact_open', 'artifact_range', and 'artifact_range_ack'
  *
- * Decoding discrimination: if decoded.type === 'artifact_chunk', it's a chunk
- * frame; otherwise it's an event envelope (type will be 'item', 'log', etc.).
+ * Decoding discrimination: a frame whose type names an artifact, file write,
+ * or run result frame is that frame; otherwise it is an event envelope.
  *
  * @module
  * @remarks Node.js only. Uses Buffer for transport efficiency.
@@ -36,9 +36,9 @@ export const MAX_FRAME_SIZE = 16 * 1024 * 1024
 export const MAX_PAYLOAD_SIZE = MAX_FRAME_SIZE - 4
 
 /**
- * Maximum artifact chunk size in bytes (8 MiB).
+ * Maximum artifact range and file write data size in bytes (8 MiB).
  * This is the limit on raw bytes before msgpack encoding.
- * Artifacts larger than this must be split into multiple chunks.
+ * An artifact larger than this is sent as several ranges.
  */
 export const MAX_CHUNK_SIZE = 8 * 1024 * 1024
 
@@ -46,12 +46,6 @@ export const MAX_CHUNK_SIZE = 8 * 1024 * 1024
  * Length prefix size in bytes.
  */
 export const LENGTH_PREFIX_SIZE = 4
-
-/**
- * Frame type discriminant for artifact chunk frames.
- * Event frames use the EventEnvelope's own type field ('item', 'log', etc.).
- */
-export type ArtifactChunkType = 'artifact_chunk'
 
 /**
  * Frame type discriminant for run result control frames.
@@ -101,25 +95,6 @@ export type ArtifactRangeAckFrame = {
   readonly ok: boolean
   /** Error message when ok is false */
   readonly error?: string
-}
-
-/**
- * Artifact chunk frame per CONTRACT_IPC.md.
- * This is a stream-level construct, not a normal emit event.
- *
- * @remarks
- * The `data` field is encoded as msgpack bin type (not array).
- * Receivers must decode it as raw bytes.
- */
-export type ArtifactChunkFrame = {
-  readonly type: 'artifact_chunk'
-  readonly artifact_id: ArtifactId
-  /** Sequence number, starts at 1 */
-  readonly seq: number
-  /** True if this is the last chunk */
-  readonly is_last: boolean
-  /** Raw binary data (msgpack bin type) */
-  readonly data: Uint8Array
 }
 
 /**
@@ -200,7 +175,7 @@ export type FileWriteAckFrame = {
 /**
  * Union of all frame payload types for decoding.
  * Discriminate using type field:
- * - 'artifact_chunk' → ArtifactChunkFrame
+ * - 'artifact_open' → ArtifactOpenFrame, 'artifact_range' → ArtifactRangeFrame, 'artifact_range_ack' → ArtifactRangeAckFrame
  * - 'file_write' → FileWriteFrame (sidecar file upload)
  * - 'file_write_ack' → FileWriteAckFrame (runtime→executor ack)
  * - 'run_result' → RunResultFrame (control, not counted in seq)
@@ -208,7 +183,6 @@ export type FileWriteAckFrame = {
  */
 export type Frame =
   | EventEnvelope
-  | ArtifactChunkFrame
   | ArtifactOpenFrame
   | ArtifactRangeFrame
   | ArtifactRangeAckFrame
@@ -265,114 +239,12 @@ export function encodeEventFrame(envelope: EventEnvelope): Buffer {
 }
 
 /**
- * Error thrown when chunk parameters violate CONTRACT_IPC constraints.
+ * Error thrown when a range or file write violates CONTRACT_IPC constraints.
  */
 export class ChunkValidationError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'ChunkValidationError'
-  }
-}
-
-/**
- * Encode an artifact chunk into a framed buffer.
- *
- * @param artifactId - The artifact ID
- * @param seq - Sequence number (must be >= 1 per CONTRACT_IPC)
- * @param isLast - True if this is the final chunk
- * @param data - Raw binary data (must be <= MAX_CHUNK_SIZE per CONTRACT_IPC)
- * @returns Buffer containing length prefix + msgpack-encoded frame
- * @throws ChunkValidationError if seq < 1 or data exceeds MAX_CHUNK_SIZE
- * @throws FrameSizeError if encoded payload exceeds MAX_PAYLOAD_SIZE
- */
-export function encodeArtifactChunkFrame(
-  artifactId: ArtifactId,
-  seq: number,
-  isLast: boolean,
-  data: Uint8Array
-): Buffer {
-  // Validate per CONTRACT_IPC constraints
-  if (seq < 1) {
-    throw new ChunkValidationError(`seq must be >= 1, got ${seq}`)
-  }
-  if (data.length > MAX_CHUNK_SIZE) {
-    throw new ChunkValidationError(
-      `data size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
-    )
-  }
-
-  const frame: ArtifactChunkFrame = {
-    type: 'artifact_chunk',
-    artifact_id: artifactId,
-    seq,
-    is_last: isLast,
-    data
-  }
-  const payload = msgpackEncode(frame)
-  return encodeFrame(payload)
-}
-
-/**
- * Metadata for a single artifact chunk (without data).
- * Used by chunk iterators to avoid data copying.
- */
-export type ChunkMeta = {
-  readonly seq: number
-  readonly isLast: boolean
-  readonly offset: number
-  readonly length: number
-}
-
-/**
- * Calculate chunk metadata for artifact data.
- * Does not copy data; returns offsets for slicing.
- *
- * @param totalSize - Total size of the artifact data
- * @returns Array of chunk metadata
- */
-export function calculateChunks(totalSize: number): ChunkMeta[] {
-  const chunks: ChunkMeta[] = []
-
-  if (totalSize === 0) {
-    // Empty artifact: single chunk with is_last=true
-    chunks.push({ seq: 1, isLast: true, offset: 0, length: 0 })
-    return chunks
-  }
-
-  let offset = 0
-  let seq = 1
-
-  while (offset < totalSize) {
-    const remaining = totalSize - offset
-    const length = Math.min(remaining, MAX_CHUNK_SIZE)
-    const isLast = offset + length >= totalSize
-
-    chunks.push({ seq, isLast, offset, length })
-
-    offset += length
-    seq++
-  }
-
-  return chunks
-}
-
-/**
- * Generator that yields encoded artifact chunk frames.
- * Memory-efficient: encodes one chunk at a time.
- *
- * @param artifactId - The artifact ID for the chunks
- * @param data - The binary data to chunk
- * @yields Encoded frame buffers ready for transport
- */
-export function* encodeArtifactChunks(
-  artifactId: ArtifactId,
-  data: Buffer | Uint8Array
-): Generator<Buffer, void, unknown> {
-  const chunks = calculateChunks(data.length)
-
-  for (const chunk of chunks) {
-    const chunkData = data.subarray(chunk.offset, chunk.offset + chunk.length)
-    yield encodeArtifactChunkFrame(artifactId, chunk.seq, chunk.isLast, chunkData)
   }
 }
 

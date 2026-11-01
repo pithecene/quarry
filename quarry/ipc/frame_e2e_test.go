@@ -260,12 +260,12 @@ func TestE2E_LiveDecode(t *testing.T) {
 		t.Fatal("no terminal event found in stream")
 	}
 
-	// Last frame must be the terminal event (no chunks after terminal)
+	// Last frame must be the terminal event (no artifact frames after terminal)
 	if terminalSeenAt != len(frames)-1 {
 		t.Errorf("terminal event at index %d, but %d frames total (frames after terminal)", terminalSeenAt, len(frames))
 	}
 
-	// Last frame must be an event envelope (not a chunk)
+	// Last frame must be an event envelope (not an artifact frame)
 	lastFrame := frames[len(frames)-1]
 	if _, ok := lastFrame.(*types.EventEnvelope); !ok {
 		t.Errorf("last frame is %T, want *types.EventEnvelope", lastFrame)
@@ -337,17 +337,17 @@ func TestE2E_FixtureDrift(t *testing.T) {
 	}
 
 	// Parse both fixtures into semantic structures
-	existingEvents, existingChunks := parseFixture(t, existingFixture)
-	newEvents, newChunks := parseFixture(t, newFixture)
+	existingEvents, existingRanges := parseFixture(t, existingFixture)
+	newEvents, newRanges := parseFixture(t, newFixture)
 
 	// Compare event count
 	if len(existingEvents) != len(newEvents) {
 		t.Errorf("event count drift: existing=%d, new=%d", len(existingEvents), len(newEvents))
 	}
 
-	// Compare chunk count
-	if len(existingChunks) != len(newChunks) {
-		t.Errorf("chunk count drift: existing=%d, new=%d", len(existingChunks), len(newChunks))
+	// Compare range count
+	if len(existingRanges) != len(newRanges) {
+		t.Errorf("range count drift: existing=%d, new=%d", len(existingRanges), len(newRanges))
 	}
 
 	// Compare each event's semantic structure
@@ -384,37 +384,37 @@ func TestE2E_FixtureDrift(t *testing.T) {
 		}
 	}
 
-	// Compare each chunk's structure
-	minChunks := min(len(newChunks), len(existingChunks))
-	for i := range minChunks {
-		existing := existingChunks[i]
-		current := newChunks[i]
+	// Compare each range's structure
+	minRanges := min(len(newRanges), len(existingRanges))
+	for i := range minRanges {
+		existing := existingRanges[i]
+		current := newRanges[i]
 
-		// Compare seq
-		if existing.Seq != current.Seq {
-			t.Errorf("chunk[%d] seq drift: existing=%d, new=%d", i, existing.Seq, current.Seq)
+		// Compare range_id
+		if existing.RangeID != current.RangeID {
+			t.Errorf("range[%d] range_id drift: existing=%d, new=%d", i, existing.RangeID, current.RangeID)
 		}
 
-		// Compare is_last
-		if existing.IsLast != current.IsLast {
-			t.Errorf("chunk[%d] is_last drift: existing=%v, new=%v", i, existing.IsLast, current.IsLast)
+		// Compare offset
+		if existing.Offset != current.Offset {
+			t.Errorf("range[%d] offset drift: existing=%d, new=%d", i, existing.Offset, current.Offset)
 		}
 
 		// Compare data size
 		if len(existing.Data) != len(current.Data) {
-			t.Errorf("chunk[%d] data size drift: existing=%d, new=%d", i, len(existing.Data), len(current.Data))
+			t.Errorf("range[%d] data size drift: existing=%d, new=%d", i, len(existing.Data), len(current.Data))
 		}
 	}
 
-	t.Logf("fixture drift check passed: %d events, %d chunks", len(existingEvents), len(existingChunks))
+	t.Logf("fixture drift check passed: %d events, %d ranges", len(existingEvents), len(existingRanges))
 }
 
-// parseFixture parses raw fixture bytes into events and chunks.
-func parseFixture(t *testing.T, data []byte) ([]*types.EventEnvelope, []*types.ArtifactChunkFrame) {
+// parseFixture parses raw fixture bytes into events and artifact ranges.
+func parseFixture(t *testing.T, data []byte) ([]*types.EventEnvelope, []*types.ArtifactRangeFrame) {
 	t.Helper()
 	decoder := NewFrameDecoder(bytes.NewReader(data))
 	var events []*types.EventEnvelope
-	var chunks []*types.ArtifactChunkFrame
+	var ranges []*types.ArtifactRangeFrame
 
 	for {
 		payload, err := decoder.ReadFrame()
@@ -433,11 +433,11 @@ func parseFixture(t *testing.T, data []byte) ([]*types.EventEnvelope, []*types.A
 		switch f := frame.(type) {
 		case *types.EventEnvelope:
 			events = append(events, f)
-		case *types.ArtifactChunkFrame:
-			chunks = append(chunks, f)
+		case *types.ArtifactRangeFrame:
+			ranges = append(ranges, f)
 		}
 	}
-	return events, chunks
+	return events, ranges
 }
 
 // payloadKeys returns sorted keys from a payload map.

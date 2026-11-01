@@ -723,7 +723,7 @@ RunEvents:
 
 The `events` field holds the run's stored records of `record_kind` `event` and
 `artifact_event` ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Record Types), ordered by `seq`.
-Artifact chunks and the metrics record are not events and are omitted.
+The metrics record, and the artifact chunk records of a run that a release before 0.15 wrote, are not events and are omitted.
 Item payloads are returned as stored. Quarry does not know a script's
 item schema. The run's partitions are addressed from its start record's
 `partition`. `table` renders one summary row per record (`seq`, `type`,

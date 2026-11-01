@@ -18,12 +18,9 @@ export {
 // IPC (re-export for advanced usage)
 export {
   // Types
-  type ArtifactChunkFrame,
-  type ArtifactChunkType,
   type ArtifactOpenFrame,
   type ArtifactRangeAckFrame,
   type ArtifactRangeFrame,
-  type ChunkMeta,
   // Errors
   ChunkValidationError,
   type Frame,

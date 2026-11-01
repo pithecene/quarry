@@ -29,7 +29,6 @@ storage:
 
 policy:
   name: buffered
-  flush_mode: at_least_once
   buffer_events: 1000
   buffer_bytes: 10485760
 
@@ -75,7 +74,6 @@ adapter:
 
 	// Policy
 	assertEqual(t, "policy.name", cfg.Policy.Name, "buffered")
-	assertEqual(t, "policy.flush_mode", cfg.Policy.FlushMode, "at_least_once")
 	if cfg.Policy.BufferEvents != 1000 {
 		t.Errorf("expected buffer_events=1000, got %d", cfg.Policy.BufferEvents)
 	}

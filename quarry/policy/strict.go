@@ -10,7 +10,7 @@ import (
 // StrictPolicy implements synchronous, unbuffered persistence.
 //
 // Per CONTRACT_POLICY.md:
-//   - No buffering: each event/chunk is written immediately
+//   - No buffering: each event is written immediately
 //   - No drops: all events are persisted
 //   - Backpressure: caller blocks on sink latency
 //   - Sink errors fail the run
@@ -46,25 +46,6 @@ func (p *StrictPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnv
 	}
 
 	p.stats.incEventsPersisted(1)
-
-	return nil
-}
-
-// IngestArtifactChunk writes the chunk immediately to the sink.
-// Returns error on sink failure (terminates run).
-func (p *StrictPolicy) IngestArtifactChunk(ctx context.Context, chunk *types.ArtifactChunk) error {
-	if p.closed.Load() {
-		return ErrPolicyClosed
-	}
-	p.stats.incTotalChunks()
-
-	// Write immediately (batch of 1)
-	if err := p.sink.WriteChunks(ctx, []*types.ArtifactChunk{chunk}); err != nil {
-		p.stats.incErrors()
-		return err
-	}
-
-	p.stats.incChunksPersisted(1)
 
 	return nil
 }

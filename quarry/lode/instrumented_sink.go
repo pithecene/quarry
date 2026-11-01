@@ -9,7 +9,7 @@ import (
 )
 
 // InstrumentedSink wraps a policy.Sink and records write metrics
-// per CONTRACT_METRICS.md. Each WriteEvents/WriteChunks call increments
+// per CONTRACT_METRICS.md. Each WriteEvents call increments
 // lode_write_success or lode_write_failure on the metrics collector.
 type InstrumentedSink struct {
 	inner     policy.Sink
@@ -24,17 +24,6 @@ func NewInstrumentedSink(inner policy.Sink, collector *metrics.Collector) *Instr
 // WriteEvents delegates to the inner sink and records success or failure.
 func (s *InstrumentedSink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) error {
 	err := s.inner.WriteEvents(ctx, events)
-	if err != nil {
-		s.collector.IncLodeWriteFailure()
-	} else {
-		s.collector.IncLodeWriteSuccess()
-	}
-	return err
-}
-
-// WriteChunks delegates to the inner sink and records success or failure.
-func (s *InstrumentedSink) WriteChunks(ctx context.Context, chunks []*types.ArtifactChunk) error {
-	err := s.inner.WriteChunks(ctx, chunks)
 	if err != nil {
 		s.collector.IncLodeWriteFailure()
 	} else {

@@ -227,45 +227,6 @@ func TestFixture_ArtifactEvent(t *testing.T) {
 	}
 }
 
-func TestFixture_ArtifactChunk(t *testing.T) {
-	t.Parallel()
-
-	data := loadFixture(t, "artifact_chunk.bin")
-	decoder := NewFrameDecoder(bytes.NewReader(data))
-
-	payload, err := decoder.ReadFrame()
-	if err != nil {
-		t.Fatalf("ReadFrame failed: %v", err)
-	}
-
-	// Use DecodeFrame to discriminate type
-	result, err := DecodeFrame(payload)
-	if err != nil {
-		t.Fatalf("DecodeFrame failed: %v", err)
-	}
-
-	chunk, ok := result.(*types.ArtifactChunkFrame)
-	if !ok {
-		t.Fatalf("expected *types.ArtifactChunkFrame, got %T", result)
-	}
-
-	if chunk.Type != "artifact_chunk" {
-		t.Errorf("Type = %q, want %q", chunk.Type, "artifact_chunk")
-	}
-	if chunk.ArtifactID != "art-fixture-001" {
-		t.Errorf("ArtifactID = %q, want %q", chunk.ArtifactID, "art-fixture-001")
-	}
-	if chunk.Seq != 1 {
-		t.Errorf("Seq = %d, want 1", chunk.Seq)
-	}
-	if !chunk.IsLast {
-		t.Error("IsLast should be true")
-	}
-	if len(chunk.Data) == 0 {
-		t.Error("Data should not be empty")
-	}
-}
-
 func TestFixture_EventWithLineage(t *testing.T) {
 	t.Parallel()
 
@@ -343,5 +304,53 @@ func TestFixture_EventSequence(t *testing.T) {
 	// Last event should be terminal
 	if !events[len(events)-1].Type.IsTerminal() {
 		t.Error("last event should be terminal")
+	}
+}
+
+func TestFixture_ArtifactOpen(t *testing.T) {
+	t.Parallel()
+
+	data := loadFixture(t, "artifact_open.bin")
+	decoder := NewFrameDecoder(bytes.NewReader(data))
+	payload, err := decoder.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame failed: %v", err)
+	}
+	result, err := DecodeFrame(payload)
+	if err != nil {
+		t.Fatalf("DecodeFrame failed: %v", err)
+	}
+	open, ok := result.(*types.ArtifactOpenFrame)
+	if !ok {
+		t.Fatalf("expected *types.ArtifactOpenFrame, got %T", result)
+	}
+	want := types.ArtifactOpenFrame{Type: "artifact_open", ArtifactID: "art-fixture-001", SizeBytes: 25, ExpectedSHA256: "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+	if *open != want {
+		t.Errorf("frame = %+v, want %+v", *open, want)
+	}
+}
+
+func TestFixture_ArtifactRange(t *testing.T) {
+	t.Parallel()
+
+	data := loadFixture(t, "artifact_range.bin")
+	decoder := NewFrameDecoder(bytes.NewReader(data))
+	payload, err := decoder.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame failed: %v", err)
+	}
+	result, err := DecodeFrame(payload)
+	if err != nil {
+		t.Fatalf("DecodeFrame failed: %v", err)
+	}
+	rng, ok := result.(*types.ArtifactRangeFrame)
+	if !ok {
+		t.Fatalf("expected *types.ArtifactRangeFrame, got %T", result)
+	}
+	if rng.ArtifactID != "art-fixture-001" || rng.RangeID != 1 || rng.Offset != 0 {
+		t.Errorf("frame = %+v, want artifact art-fixture-001, range 1 at offset 0", *rng)
+	}
+	if string(rng.Data) != "fake png data for testing" {
+		t.Errorf("Data = %q, want the fixture's bytes", rng.Data)
 	}
 }

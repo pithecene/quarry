@@ -20,14 +20,12 @@ const (
 	MaxFrameSize = 16 * 1024 * 1024
 	// MaxPayloadSize is the maximum payload size (MaxFrameSize - 4 bytes).
 	MaxPayloadSize = MaxFrameSize - LengthPrefixSize
-	// MaxChunkSize is the maximum artifact chunk size (8 MiB raw bytes).
+	// MaxChunkSize is the maximum size of an artifact range's or a file
+	// write's data (8 MiB raw bytes).
 	MaxChunkSize = 8 * 1024 * 1024
 	// LengthPrefixSize is the size of the length prefix in bytes.
 	LengthPrefixSize = 4
 )
-
-// ArtifactChunkType is the type discriminant for artifact chunk frames.
-const ArtifactChunkType = "artifact_chunk"
 
 // ArtifactOpenType is the type discriminant for artifact open frames, which
 // open an artifact of a stated size before any of its bytes.
@@ -223,9 +221,9 @@ func probeFrameType(payload []byte) (string, error) {
 }
 
 // DecodeFrame decodes a payload and returns a typed frame.
-// Discriminates based on the type field: "artifact_chunk", "artifact_open",
-// "artifact_range", "artifact_range_ack", "run_result", "file_write",
-// "file_write_ack", or event types.
+// Discriminates based on the type field: "artifact_open", "artifact_range",
+// "artifact_range_ack", "run_result", "file_write", "file_write_ack", or
+// event types.
 func DecodeFrame(payload []byte) (any, error) {
 	frameType, err := probeFrameType(payload)
 	if err != nil {
@@ -237,8 +235,6 @@ func DecodeFrame(payload []byte) (any, error) {
 	}
 
 	switch frameType {
-	case ArtifactChunkType:
-		return DecodeArtifactChunk(payload)
 	case ArtifactOpenType:
 		return decodeArtifactFrame[types.ArtifactOpenFrame](payload, "artifact open", "artifact_id", "size_bytes")
 	case ArtifactRangeType:
@@ -267,19 +263,6 @@ func DecodeEventEnvelope(payload []byte) (*types.EventEnvelope, error) {
 		}
 	}
 	return &envelope, nil
-}
-
-// DecodeArtifactChunk decodes a payload as an ArtifactChunkFrame.
-func DecodeArtifactChunk(payload []byte) (*types.ArtifactChunkFrame, error) {
-	var chunk types.ArtifactChunkFrame
-	if err := msgpack.Unmarshal(payload, &chunk); err != nil {
-		return nil, &FrameError{
-			Kind: FrameErrorDecode,
-			Msg:  "failed to decode artifact chunk",
-			Err:  err,
-		}
-	}
-	return &chunk, nil
 }
 
 // DecodeRunResult decodes a payload as a RunResultFrame.

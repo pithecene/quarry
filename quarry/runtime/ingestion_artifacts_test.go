@@ -11,7 +11,6 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
-	"github.com/pithecene/quarry/ipc"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/log"
 	"github.com/pithecene/quarry/policy"
@@ -205,9 +204,6 @@ func TestIngestionEngine_Artifact_StreamErrors(t *testing.T) {
 		{"event with another size", func(t *testing.T) lode.ArtifactStore { return newArtifactStoreFixture(t).client }, func(t *testing.T) []byte {
 			return bytes.Join([][]byte{frameOf(t, openFrame("a1", 4)), encodeEventFrame(artifactEvent(1, "a1", 5))}, nil)
 		}, "size mismatch"},
-		{"retired chunk frame", func(t *testing.T) lode.ArtifactStore { return newArtifactStoreFixture(t).client }, func(t *testing.T) []byte {
-			return frameOf(t, &types.ArtifactChunkFrame{Type: ipc.ArtifactChunkType, ArtifactID: "a1", Seq: 1, IsLast: true, Data: []byte("x")})
-		}, "retired"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

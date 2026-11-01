@@ -1,7 +1,6 @@
 package policy_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -243,42 +242,6 @@ func TestBufferedPolicy_OrderingPreserved(t *testing.T) {
 	}
 }
 
-func TestBufferedPolicy_ArtifactChunksBuffered(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 1024} // Use byte limit
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Ingest chunks
-	for i := range 3 {
-		chunk := &types.ArtifactChunk{
-			ArtifactID: "a1",
-			Seq:        int64(i + 1),
-			Data:       []byte("data"),
-			IsLast:     i == 2,
-		}
-		if err := pol.IngestArtifactChunk(t.Context(), chunk); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	}
-
-	// Should be buffered
-	if sink.Stats().ChunksWritten != 0 {
-		t.Errorf("expected 0 chunks written before flush, got %d", sink.Stats().ChunksWritten)
-	}
-
-	// Flush writes chunks
-	_ = pol.Flush(t.Context())
-
-	if sink.Stats().ChunksWritten != 3 {
-		t.Errorf("expected 3 chunks written after flush, got %d", sink.Stats().ChunksWritten)
-	}
-	if sink.Stats().ChunkBatches != 1 {
-		t.Errorf("expected 1 chunk batch, got %d", sink.Stats().ChunkBatches)
-	}
-}
-
 func TestBufferedPolicy_SinkError(t *testing.T) {
 	t.Parallel()
 
@@ -446,113 +409,6 @@ func TestBufferedPolicy_ValidConfig_OneLimit(t *testing.T) {
 	}
 }
 
-func TestBufferedPolicy_ChunkBuffering_RespectsMaxBufferBytes(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 100} // Small limit
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// First chunk should fit
-	chunk1 := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        1,
-		Data:       make([]byte, 50),
-	}
-	if err := pol.IngestArtifactChunk(t.Context(), chunk1); err != nil {
-		t.Fatalf("first chunk should fit: %v", err)
-	}
-
-	// Second chunk should also fit (50 + 50 = 100)
-	chunk2 := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        2,
-		Data:       make([]byte, 50),
-	}
-	if err := pol.IngestArtifactChunk(t.Context(), chunk2); err != nil {
-		t.Fatalf("second chunk should fit: %v", err)
-	}
-
-	// Third chunk should exceed limit
-	chunk3 := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        3,
-		Data:       make([]byte, 10),
-	}
-	err := pol.IngestArtifactChunk(t.Context(), chunk3)
-	if !errors.Is(err, policy.ErrBufferFull) {
-		t.Errorf("expected ErrBufferFull when chunk exceeds limit, got %v", err)
-	}
-
-	stats := pol.Stats()
-	if stats.Errors != 1 {
-		t.Errorf("expected Errors=1, got %d", stats.Errors)
-	}
-}
-
-func TestBufferedPolicy_ChunkBuffering_SharedWithEvents(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 500} // Shared limit
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Add an event (estimated ~200 bytes)
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-
-	// Add a chunk that fits
-	chunk1 := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        1,
-		Data:       make([]byte, 200),
-	}
-	if err := pol.IngestArtifactChunk(t.Context(), chunk1); err != nil {
-		t.Fatalf("chunk should fit: %v", err)
-	}
-
-	// Verify buffer size includes both
-	stats := pol.Stats()
-	if stats.BufferSize < 400 {
-		t.Errorf("BufferSize should be >= 400, got %d", stats.BufferSize)
-	}
-
-	// Large chunk should exceed remaining space
-	chunk2 := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        2,
-		Data:       make([]byte, 200),
-	}
-	err := pol.IngestArtifactChunk(t.Context(), chunk2)
-	if !errors.Is(err, policy.ErrBufferFull) {
-		t.Errorf("expected ErrBufferFull, got %v", err)
-	}
-}
-
-func TestBufferedPolicy_BufferSize_AccurateAfterChunkBuffering(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 1000}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Add chunks with known sizes
-	for i := range 3 {
-		chunk := &types.ArtifactChunk{
-			ArtifactID: "a1",
-			Seq:        int64(i + 1),
-			Data:       make([]byte, 100), // 100 bytes each
-		}
-		_ = pol.IngestArtifactChunk(t.Context(), chunk)
-	}
-
-	stats := pol.Stats()
-	if stats.BufferSize != 300 {
-		t.Errorf("expected BufferSize=300, got %d", stats.BufferSize)
-	}
-}
-
 func TestBufferedPolicy_BufferSize_AccurateAfterEviction(t *testing.T) {
 	t.Parallel()
 
@@ -627,49 +483,6 @@ func TestBufferedPolicy_FlushFailure_PreservesEventBuffer(t *testing.T) {
 	}
 }
 
-func TestBufferedPolicy_FlushFailure_PreservesChunkBuffer(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 1000}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Buffer chunks only (no events to avoid partial success complexity)
-	for i := range 3 {
-		_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-			ArtifactID: "a1",
-			Seq:        int64(i + 1),
-			Data:       []byte("data"),
-		})
-	}
-
-	// Make sink fail
-	sink.ErrorOnWrite = errors.New("write failed")
-
-	// Flush should fail
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail")
-	}
-
-	// Buffer should still have data
-	stats := pol.Stats()
-	if stats.BufferSize == 0 {
-		t.Error("chunk buffer should not be cleared on flush failure")
-	}
-
-	// Fix sink and retry flush
-	sink.ErrorOnWrite = nil
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry flush failed: %v", err)
-	}
-
-	// Now data should be written
-	if sink.Stats().ChunksWritten != 3 {
-		t.Errorf("expected 3 chunks written after retry, got %d", sink.Stats().ChunksWritten)
-	}
-}
-
 func TestBufferedPolicy_BufferSize_ZeroAfterSuccessfulFlush(t *testing.T) {
 	t.Parallel()
 
@@ -677,12 +490,9 @@ func TestBufferedPolicy_BufferSize_ZeroAfterSuccessfulFlush(t *testing.T) {
 	config := policy.BufferedConfig{MaxBufferBytes: 1000}
 	pol := mustNewBufferedPolicy(t, sink, config)
 
-	// Buffer mixed data
+	// Buffer an event
 	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
 		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
 	})
 
 	// Verify non-zero before flush
@@ -699,40 +509,6 @@ func TestBufferedPolicy_BufferSize_ZeroAfterSuccessfulFlush(t *testing.T) {
 	stats := pol.Stats()
 	if stats.BufferSize != 0 {
 		t.Errorf("expected BufferSize=0 after successful flush, got %d", stats.BufferSize)
-	}
-}
-
-func TestBufferedPolicy_ChunksPersisted_IncrementedAfterFlush(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 1000}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Buffer chunks
-	for i := range 5 {
-		_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-			ArtifactID: "a1",
-			Seq:        int64(i + 1),
-			Data:       []byte("data"),
-		})
-	}
-
-	// Before flush
-	statsBefore := pol.Stats()
-	if statsBefore.ChunksPersisted != 0 {
-		t.Errorf("expected ChunksPersisted=0 before flush, got %d", statsBefore.ChunksPersisted)
-	}
-
-	// Flush
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("flush failed: %v", err)
-	}
-
-	// After flush
-	statsAfter := pol.Stats()
-	if statsAfter.ChunksPersisted != 5 {
-		t.Errorf("expected ChunksPersisted=5 after flush, got %d", statsAfter.ChunksPersisted)
 	}
 }
 
@@ -786,674 +562,62 @@ func TestBufferedPolicy_EventExceedsByteLimitAlone(t *testing.T) {
 	}
 }
 
-func TestBufferedPolicy_FlushFailure_ChunkWriteFail_PreservesBothBuffers(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 1000}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Buffer both events and chunks
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("chunk-data"),
-	})
-
-	// Make sink fail only on chunk writes
-	sink.ErrorOnWrite = errors.New("chunk write failed")
-
-	// Flush will write events successfully (ErrorOnWrite affects both, so we need a smarter stub)
-	// Actually StubSink.ErrorOnWrite affects all writes. Let's just verify buffer preservation.
-
-	// For this test, we'll make both fail
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail")
-	}
-
-	// Both buffers should be preserved (no clearing on failure)
-	stats := pol.Stats()
-	if stats.BufferSize == 0 {
-		t.Error("buffers should be preserved on flush failure")
-	}
-
-	// Fix sink and retry
-	sink.ErrorOnWrite = nil
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry flush failed: %v", err)
-	}
-
-	// Both should be written now
-	if sink.Stats().EventsWritten != 1 {
-		t.Errorf("expected 1 event written after retry, got %d", sink.Stats().EventsWritten)
-	}
-	if sink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written after retry, got %d", sink.Stats().ChunksWritten)
-	}
-}
-
-func TestBufferedPolicy_ChunkBuffering_RequiresByteLimit(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	// Only event limit, no byte limit
-	config := policy.BufferedConfig{MaxBufferEvents: 10, MaxBufferBytes: 0}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Chunk buffering should fail without byte limit
-	chunk := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        1,
-		Data:       []byte("data"),
-	}
-	err := pol.IngestArtifactChunk(t.Context(), chunk)
-	if !errors.Is(err, policy.ErrBufferFull) {
-		t.Errorf("expected ErrBufferFull when chunk buffering without byte limit, got %v", err)
-	}
-
-	stats := pol.Stats()
-	if stats.Errors != 1 {
-		t.Errorf("expected Errors=1, got %d", stats.Errors)
-	}
-}
-
-func TestBufferedPolicy_InvalidFlushMode(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 1000,
-		FlushMode:      "invalid_mode",
-	}
-
-	_, err := policy.NewBufferedPolicy(sink, config)
-	if !errors.Is(err, policy.ErrInvalidFlushMode) {
-		t.Errorf("expected ErrInvalidFlushMode, got %v", err)
-	}
-}
-
-func TestBufferedPolicy_DefaultFlushMode(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{MaxBufferBytes: 1000}
-	// FlushMode not set - should default to AtLeastOnce
-
-	pol, err := policy.NewBufferedPolicy(sink, config)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if pol == nil {
-		t.Fatal("expected non-nil policy")
-	}
-}
-
-func TestBufferedPolicy_FlushAtLeastOnce_PreservesBuffersOnChunkFailure(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 1000,
-		FlushMode:      policy.FlushAtLeastOnce,
-	}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Buffer event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// Make sink fail
-	sink.ErrorOnWrite = errors.New("write failed")
-
-	// Flush fails
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail")
-	}
-
-	// Both buffers should be preserved
-	stats := pol.Stats()
-	if stats.BufferSize == 0 {
-		t.Error("buffers should be preserved on failure")
-	}
-
-	// Retry succeeds and writes duplicates (events written twice is acceptable)
-	sink.ErrorOnWrite = nil
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry failed: %v", err)
-	}
-
-	// Both event and chunk written
-	if sink.Stats().EventsWritten < 1 {
-		t.Errorf("expected event written, got %d", sink.Stats().EventsWritten)
-	}
-	if sink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written, got %d", sink.Stats().ChunksWritten)
-	}
-}
-
-func TestBufferedPolicy_FlushChunksFirst_NoEventsOnChunkFailure(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 1000,
-		FlushMode:      policy.FlushChunksFirst,
-	}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Buffer event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// Make sink fail
-	sink.ErrorOnWrite = errors.New("chunk write failed")
-
-	// Flush fails on chunks
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail")
-	}
-
-	// Events should NOT have been written (chunks failed first)
-	if sink.Stats().EventsWritten != 0 {
-		t.Errorf("expected 0 events written when chunks fail first, got %d", sink.Stats().EventsWritten)
-	}
-
-	// Both buffers preserved
-	stats := pol.Stats()
-	if stats.BufferSize == 0 {
-		t.Error("buffers should be preserved")
-	}
-}
-
-func TestBufferedPolicy_FlushTwoPhase_NoEventDuplicatesOnRetry(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 1000,
-		FlushMode:      policy.FlushTwoPhase,
-	}
-	pol := mustNewBufferedPolicy(t, sink, config)
-
-	// Buffer event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// First flush attempt - should succeed
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("first flush should succeed: %v", err)
-	}
-
-	// Events should be written once
-	if sink.Stats().EventsWritten != 1 {
-		t.Errorf("expected 1 event written, got %d", sink.Stats().EventsWritten)
-	}
-
-	// Buffer another event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e2", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a2", Seq: 1, Data: []byte("data2"),
-	})
-
-	// Second flush
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("second flush failed: %v", err)
-	}
-
-	// Now 2 events total
-	if sink.Stats().EventsWritten != 2 {
-		t.Errorf("expected 2 events written total, got %d", sink.Stats().EventsWritten)
-	}
-}
-
-func TestBufferedPolicy_FlushTwoPhase_ChunksNotRewrittenOnEventFailure(t *testing.T) {
-	t.Parallel()
-
-	// TwoPhase now writes chunks first, then events.
-	// This test verifies chunks aren't duplicated if events fail.
-	baseSink := policy.NewStubSink()
-	failingSink := &selectiveFailSink{
-		StubSink:       baseSink,
-		failOnChunks:   false,
-		failOnEvents:   true,
-		chunkCallCount: 0,
-	}
-
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 1000,
-		FlushMode:      policy.FlushTwoPhase,
-	}
-	pol, _ := policy.NewBufferedPolicy(failingSink, config)
-
-	// Buffer event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// First flush: chunks succeed, events fail
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail on events")
-	}
-
-	// Chunks were written
-	if baseSink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written, got %d", baseSink.Stats().ChunksWritten)
-	}
-
-	// Events not written yet
-	if baseSink.Stats().EventsWritten != 0 {
-		t.Errorf("expected 0 events written, got %d", baseSink.Stats().EventsWritten)
-	}
-
-	// Fix events
-	failingSink.failOnEvents = false
-
-	// Retry flush
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry should succeed: %v", err)
-	}
-
-	// Chunks should still be 1 (not re-written)
-	if baseSink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected chunks not re-written, got %d", baseSink.Stats().ChunksWritten)
-	}
-
-	// Events now written
-	if baseSink.Stats().EventsWritten != 1 {
-		t.Errorf("expected 1 event written, got %d", baseSink.Stats().EventsWritten)
-	}
-}
-
-// selectiveFailSink allows controlling which operations fail
-type selectiveFailSink struct {
-	*policy.StubSink
-	failOnEvents   bool
-	failOnChunks   bool
-	chunkCallCount int
-}
-
-func (s *selectiveFailSink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) error {
-	if s.failOnEvents {
-		return errors.New("event write failed")
-	}
-	return s.StubSink.WriteEvents(ctx, events)
-}
-
-func (s *selectiveFailSink) WriteChunks(ctx context.Context, chunks []*types.ArtifactChunk) error {
-	s.chunkCallCount++
-	if s.failOnChunks {
-		return errors.New("chunk write failed")
-	}
-	return s.StubSink.WriteChunks(ctx, chunks)
-}
-
-func TestBufferedPolicy_FlushTwoPhase_NewEventsAfterEventFailureAreWritten(t *testing.T) {
-	t.Parallel()
-
-	// TwoPhase now writes chunks first, then events.
-	// This test verifies new events added after a partial flush are written.
-	baseSink := policy.NewStubSink()
-	failingSink := &selectiveFailSink{
-		StubSink:     baseSink,
-		failOnChunks: false,
-		failOnEvents: true,
-	}
-
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 10000,
-		FlushMode:      policy.FlushTwoPhase,
-	}
-	pol, _ := policy.NewBufferedPolicy(failingSink, config)
-
-	// Buffer initial event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// First flush: chunks succeed, events fail
-	err := pol.Flush(t.Context())
-	if err == nil {
-		t.Fatal("expected flush to fail on events")
-	}
-
-	// Chunks were written
-	if baseSink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written after first flush, got %d", baseSink.Stats().ChunksWritten)
-	}
-
-	// Events not written yet
-	if baseSink.Stats().EventsWritten != 0 {
-		t.Errorf("expected 0 events written after first flush, got %d", baseSink.Stats().EventsWritten)
-	}
-
-	// Add a NEW event after the partial flush
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e2", Type: types.EventTypeItem,
-	})
-
-	// Fix events and retry
-	failingSink.failOnEvents = false
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry should succeed: %v", err)
-	}
-
-	// e1 and e2 should both be written
-	if baseSink.Stats().EventsWritten != 2 {
-		t.Errorf("expected 2 events written (e1 + e2), got %d", baseSink.Stats().EventsWritten)
-	}
-
-	// Verify each event written exactly once
-	eventIDs := make(map[string]int)
-	for _, ev := range baseSink.WrittenEvents {
-		eventIDs[ev.EventID]++
-	}
-	if eventIDs["e1"] != 1 {
-		t.Errorf("e1 should be written exactly once, got %d", eventIDs["e1"])
-	}
-	if eventIDs["e2"] != 1 {
-		t.Errorf("e2 should be written exactly once, got %d", eventIDs["e2"])
-	}
-
-	// Chunks should still be 1 (not re-written)
-	if baseSink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected chunks not re-written, got %d", baseSink.Stats().ChunksWritten)
-	}
-}
-
-func TestBufferedPolicy_FlushTwoPhase_NewChunksAfterEventFailureAreWritten(t *testing.T) {
-	t.Parallel()
-
-	// TwoPhase writes chunks first. This test verifies new chunks added
-	// after a partial flush are written without duplicating old chunks.
-	baseSink := policy.NewStubSink()
-	failingSink := &selectiveFailSink{
-		StubSink:     baseSink,
-		failOnChunks: false,
-		failOnEvents: true,
-	}
-
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 10000,
-		FlushMode:      policy.FlushTwoPhase,
-	}
-	pol, _ := policy.NewBufferedPolicy(failingSink, config)
-
-	ctx := t.Context()
-
-	// Buffer initial event and chunk
-	_ = pol.IngestEvent(ctx, &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(ctx, &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("chunk1"),
-	})
-
-	// First flush: chunks succeed, events fail
-	err := pol.Flush(ctx)
-	if err == nil {
-		t.Fatal("expected flush to fail on events")
-	}
-
-	// First chunk was written
-	if baseSink.Stats().ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written after first flush, got %d", baseSink.Stats().ChunksWritten)
-	}
-
-	// Add a NEW chunk after the partial flush
-	_ = pol.IngestArtifactChunk(ctx, &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 2, Data: []byte("chunk2"),
-	})
-
-	// Fix events and retry
-	failingSink.failOnEvents = false
-	if err := pol.Flush(ctx); err != nil {
-		t.Fatalf("retry should succeed: %v", err)
-	}
-
-	// Both chunks should be written (old chunk once, new chunk once)
-	if baseSink.Stats().ChunksWritten != 2 {
-		t.Errorf("expected 2 chunks written total, got %d", baseSink.Stats().ChunksWritten)
-	}
-
-	// Verify each chunk written exactly once
-	chunkSeqs := make(map[int64]int)
-	for _, ch := range baseSink.WrittenChunks {
-		chunkSeqs[ch.Seq]++
-	}
-	if chunkSeqs[1] != 1 {
-		t.Errorf("chunk seq 1 should be written exactly once, got %d", chunkSeqs[1])
-	}
-	if chunkSeqs[2] != 1 {
-		t.Errorf("chunk seq 2 should be written exactly once, got %d", chunkSeqs[2])
-	}
-
-	// Events should be written
-	if baseSink.Stats().EventsWritten != 1 {
-		t.Errorf("expected 1 event written, got %d", baseSink.Stats().EventsWritten)
-	}
-}
-
-func TestBufferedPolicy_BufferSize_UpdatedWhenEventBufferNextCleared(t *testing.T) {
-	t.Parallel()
-
-	baseSink := policy.NewStubSink()
-	failingSink := &selectiveFailSink{
-		StubSink:     baseSink,
-		failOnChunks: true,
-		failOnEvents: false,
-	}
-
-	config := policy.BufferedConfig{
-		MaxBufferBytes: 10000,
-		FlushMode:      policy.FlushTwoPhase,
-	}
-	pol, _ := policy.NewBufferedPolicy(failingSink, config)
-
-	// Buffer initial event and chunk
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: make([]byte, 100),
-	})
-
-	// First flush: events succeed, chunks fail
-	_ = pol.Flush(t.Context())
-
-	// Add event to eventBufferNext
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e2", Type: types.EventTypeItem,
-	})
-
-	sizeWithNext := pol.Stats().BufferSize
-
-	// Fix chunks and complete flush
-	failingSink.failOnChunks = false
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("retry should succeed: %v", err)
-	}
-
-	// BufferSize should be 0 after successful flush (eventBufferNext cleared)
-	sizeAfterFlush := pol.Stats().BufferSize
-	if sizeAfterFlush != 0 {
-		t.Errorf("expected BufferSize=0 after successful flush, got %d (was %d before)", sizeAfterFlush, sizeWithNext)
-	}
-}
-
-func TestBufferedPolicy_Eviction_ConsidersEventBufferNext(t *testing.T) {
-	t.Parallel()
-
-	baseSink := policy.NewStubSink()
-	failingSink := &selectiveFailSink{
-		StubSink:     baseSink,
-		failOnChunks: true,
-		failOnEvents: false,
-	}
-
-	config := policy.BufferedConfig{
-		MaxBufferEvents: 3,
-		MaxBufferBytes:  10000,
-		FlushMode:       policy.FlushTwoPhase,
-	}
-	pol, _ := policy.NewBufferedPolicy(failingSink, config)
-
-	// Buffer 2 NON-droppable events (so eventBuffer has no droppable to evict)
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e1", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e2", Type: types.EventTypeItem,
-	})
-	_ = pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{
-		ArtifactID: "a1", Seq: 1, Data: []byte("data"),
-	})
-
-	// Flush: events succeed, chunks fail
-	// eventBuffer now marked as flushed
-	_ = pol.Flush(t.Context())
-
-	// Add a droppable to eventBufferNext
-	_ = pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "log1", Type: types.EventTypeLog, // droppable, goes to eventBufferNext
-	})
-
-	// Buffer is now at limit: 2 in eventBuffer + 1 in eventBufferNext = 3
-	// Try to add a non-droppable
-	// eventBuffer has no droppable, so must evict log1 from eventBufferNext
-	err := pol.IngestEvent(t.Context(), &types.EventEnvelope{
-		EventID: "e3", Type: types.EventTypeItem,
-	})
-	if err != nil {
-		t.Fatalf("should succeed by evicting from eventBufferNext: %v", err)
-	}
-
-	stats := pol.Stats()
-	// log1 should have been dropped (from eventBufferNext)
-	if stats.DroppedByType[types.EventTypeLog] != 1 {
-		t.Errorf("expected 1 log dropped from eventBufferNext, got %d", stats.DroppedByType[types.EventTypeLog])
-	}
-
-	// Complete flush
-	failingSink.failOnChunks = false
-	if err := pol.Flush(t.Context()); err != nil {
-		t.Fatalf("flush should succeed: %v", err)
-	}
-
-	// Verify e1, e2 written in first flush, e3 written in second (log1 was evicted)
-	eventIDs := make(map[string]int)
-	for _, ev := range baseSink.WrittenEvents {
-		eventIDs[ev.EventID]++
-	}
-	if eventIDs["e1"] != 1 {
-		t.Errorf("e1 should be written once, got %d", eventIDs["e1"])
-	}
-	if eventIDs["e2"] != 1 {
-		t.Errorf("e2 should be written once, got %d", eventIDs["e2"])
-	}
-	if eventIDs["e3"] != 1 {
-		t.Errorf("e3 should be written once, got %d", eventIDs["e3"])
-	}
-	if eventIDs["log1"] != 0 {
-		t.Errorf("log1 should NOT be written (was evicted), got %d", eventIDs["log1"])
-	}
-}
-
 // TestBufferedPolicy_EventsWrittenInSequenceOrder tests that all events
 // (including artifact commits) are written in their original sequence order.
-// The "chunks before commit" invariant is enforced by the Lode client,
-// not by reordering events in the policy.
 func TestBufferedPolicy_EventsWrittenInSequenceOrder(t *testing.T) {
 	t.Parallel()
 
-	flushModes := []policy.FlushMode{
-		policy.FlushAtLeastOnce,
-		policy.FlushChunksFirst,
-		policy.FlushTwoPhase,
+	sink := policy.NewStubSink()
+	config := policy.BufferedConfig{
+		MaxBufferEvents: 100,
+		MaxBufferBytes:  1024 * 1024,
+	}
+	pol := mustNewBufferedPolicy(t, sink, config)
+
+	ctx := t.Context()
+
+	// Ingest events in a specific sequence order
+	events := []*types.EventEnvelope{
+		{EventID: "e1", Type: types.EventTypeItem, Seq: 1},
+		{
+			EventID: "art-commit", Type: types.EventTypeArtifact, Seq: 2,
+			Payload: map[string]any{
+				"artifact_id":  "art-1",
+				"name":         "test.txt",
+				"content_type": "text/plain",
+				"size_bytes":   float64(10),
+			},
+		},
+		{EventID: "e2", Type: types.EventTypeLog, Seq: 3},
 	}
 
-	for _, flushMode := range flushModes {
-		t.Run(string(flushMode), func(t *testing.T) {
-			sink := policy.NewStubSink()
-			config := policy.BufferedConfig{
-				MaxBufferEvents: 100,
-				MaxBufferBytes:  1024 * 1024,
-				FlushMode:       flushMode,
-			}
-			pol := mustNewBufferedPolicy(t, sink, config)
+	for _, ev := range events {
+		if err := pol.IngestEvent(ctx, ev); err != nil {
+			t.Fatalf("IngestEvent failed: %v", err)
+		}
+	}
 
-			ctx := t.Context()
+	// Flush
+	if err := pol.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
 
-			// Ingest events in a specific sequence order
-			events := []*types.EventEnvelope{
-				{EventID: "e1", Type: types.EventTypeItem, Seq: 1},
-				{
-					EventID: "art-commit", Type: types.EventTypeArtifact, Seq: 2,
-					Payload: map[string]any{
-						"artifact_id":  "art-1",
-						"name":         "test.txt",
-						"content_type": "text/plain",
-						"size_bytes":   float64(10),
-					},
-				},
-				{EventID: "e2", Type: types.EventTypeLog, Seq: 3},
-			}
+	// Collect all written events
+	var written []*types.EventEnvelope
+	for _, op := range sink.WriteOrder {
+		written = append(written, op.Events...)
+	}
 
-			for _, ev := range events {
-				if err := pol.IngestEvent(ctx, ev); err != nil {
-					t.Fatalf("IngestEvent failed: %v", err)
-				}
-			}
+	if len(written) != len(events) {
+		t.Fatalf("expected %d events written, got %d", len(events), len(written))
+	}
 
-			// Flush
-			if err := pol.Flush(ctx); err != nil {
-				t.Fatalf("Flush failed: %v", err)
-			}
-
-			// Collect all written events
-			var written []*types.EventEnvelope
-			for _, op := range sink.WriteOrder {
-				if op.Type == "events" {
-					written = append(written, op.Events...)
-				}
-			}
-
-			if len(written) != len(events) {
-				t.Fatalf("expected %d events written, got %d", len(events), len(written))
-			}
-
-			// Verify events are written in sequence order
-			for i, ev := range written {
-				if ev.Seq != events[i].Seq {
-					t.Errorf("event at index %d: expected seq %d, got %d",
-						i, events[i].Seq, ev.Seq)
-				}
-			}
-		})
+	// Verify events are written in sequence order
+	for i, ev := range written {
+		if ev.Seq != events[i].Seq {
+			t.Errorf("event at index %d: expected seq %d, got %d",
+				i, events[i].Seq, ev.Seq)
+		}
 	}
 }
 
@@ -1489,10 +653,8 @@ func TestBufferedPolicy_AllEventsWrittenTogether(t *testing.T) {
 	eventsWriteCount := 0
 	var allEvents []*types.EventEnvelope
 	for _, op := range writeOrder {
-		if op.Type == "events" {
-			eventsWriteCount++
-			allEvents = append(allEvents, op.Events...)
-		}
+		eventsWriteCount++
+		allEvents = append(allEvents, op.Events...)
 	}
 
 	if eventsWriteCount != 1 {

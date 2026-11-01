@@ -35,30 +35,6 @@ func TestStubSink_WriteEvents(t *testing.T) {
 	}
 }
 
-func TestStubSink_WriteChunks(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "a1", Seq: 1, Data: []byte("data1")},
-		{ArtifactID: "a1", Seq: 2, Data: []byte("data2"), IsLast: true},
-	}
-
-	err := sink.WriteChunks(t.Context(), chunks)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	stats := sink.Stats()
-	if stats.ChunksWritten != 2 {
-		t.Errorf("expected 2 chunks written, got %d", stats.ChunksWritten)
-	}
-	if stats.ChunkBatches != 1 {
-		t.Errorf("expected 1 batch, got %d", stats.ChunkBatches)
-	}
-}
-
 func TestStubSink_ErrorOnWrite(t *testing.T) {
 	t.Parallel()
 
@@ -71,10 +47,6 @@ func TestStubSink_ErrorOnWrite(t *testing.T) {
 		t.Errorf("expected error %v, got %v", expectedErr, err)
 	}
 
-	err = sink.WriteChunks(t.Context(), []*types.ArtifactChunk{{ArtifactID: "a1"}})
-	if !errors.Is(err, expectedErr) {
-		t.Errorf("expected error %v, got %v", expectedErr, err)
-	}
 }
 
 func TestStubSink_Close(t *testing.T) {

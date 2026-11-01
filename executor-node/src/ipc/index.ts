@@ -8,18 +8,12 @@
 
 export { AckReader } from './ack-reader.js'
 export {
-  type ArtifactChunkFrame,
-  type ArtifactChunkType,
   type ArtifactOpenFrame,
   type ArtifactRangeAckFrame,
   type ArtifactRangeFrame,
-  type ChunkMeta,
   ChunkValidationError,
-  calculateChunks,
   decodeArtifactRangeAck,
   decodeFileWriteAck,
-  encodeArtifactChunkFrame,
-  encodeArtifactChunks,
   encodeArtifactOpenFrame,
   encodeArtifactRangeFrame,
   encodeEventFrame,

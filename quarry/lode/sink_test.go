@@ -80,38 +80,6 @@ func TestSink_WriteEvents(t *testing.T) {
 	}
 }
 
-func TestSink_WriteChunks(t *testing.T) {
-	t.Parallel()
-
-	client := NewStubClient()
-	sink := NewSink(Config{
-		Dataset: "test-dataset",
-		RunID:   "run-123",
-	}, client)
-
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("hello")},
-		{ArtifactID: "art-1", Seq: 2, Data: []byte("world"), IsLast: true},
-	}
-
-	err := sink.WriteChunks(t.Context(), chunks)
-	if err != nil {
-		t.Fatalf("WriteChunks failed: %v", err)
-	}
-
-	if len(client.Chunks) != 1 {
-		t.Fatalf("expected 1 chunk record, got %d", len(client.Chunks))
-	}
-
-	record := client.Chunks[0]
-	if record.Dataset != "test-dataset" {
-		t.Errorf("Dataset = %q, want %q", record.Dataset, "test-dataset")
-	}
-	if len(record.Chunks) != 2 {
-		t.Errorf("len(Chunks) = %d, want 2", len(record.Chunks))
-	}
-}
-
 func TestSink_Close(t *testing.T) {
 	t.Parallel()
 
@@ -142,12 +110,10 @@ func TestSink_Close(t *testing.T) {
 // FailingClient simulates storage write failures (disk full, permission errors, etc.)
 type FailingClient struct {
 	EventWriteErr   error
-	ChunkWriteErr   error
 	MetricsWriteErr error
 	CloseErr        error
 	// Track calls for verification
 	EventWriteCalls   int
-	ChunkWriteCalls   int
 	MetricsWriteCalls int
 	CloseCalls        int
 }
@@ -155,11 +121,6 @@ type FailingClient struct {
 func (c *FailingClient) WriteEvents(_ context.Context, _, _ string, _ []*types.EventEnvelope) error {
 	c.EventWriteCalls++
 	return c.EventWriteErr
-}
-
-func (c *FailingClient) WriteChunks(_ context.Context, _, _ string, _ []*types.ArtifactChunk) error {
-	c.ChunkWriteCalls++
-	return c.ChunkWriteErr
 }
 
 func (c *FailingClient) WriteMetrics(_ context.Context, _ metrics.Snapshot, _ time.Time) error {
@@ -201,31 +162,6 @@ func TestSink_WriteEvents_DiskFullError(t *testing.T) {
 	}
 }
 
-func TestSink_WriteChunks_DiskFullError(t *testing.T) {
-	t.Parallel()
-
-	diskFullErr := &diskFullError{msg: "no space left on device"}
-	client := &FailingClient{ChunkWriteErr: diskFullErr}
-	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
-
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("data")},
-	}
-
-	err := sink.WriteChunks(t.Context(), chunks)
-	if err == nil {
-		t.Fatal("expected error for disk full, got nil")
-	}
-
-	if !errors.Is(err, diskFullErr) {
-		t.Errorf("expected disk full error, got: %v", err)
-	}
-
-	if client.ChunkWriteCalls != 1 {
-		t.Errorf("expected 1 write call, got %d", client.ChunkWriteCalls)
-	}
-}
-
 func TestSink_WriteEvents_PermissionError(t *testing.T) {
 	t.Parallel()
 
@@ -238,27 +174,6 @@ func TestSink_WriteEvents_PermissionError(t *testing.T) {
 	}
 
 	err := sink.WriteEvents(t.Context(), events)
-	if err == nil {
-		t.Fatal("expected error for permission denied, got nil")
-	}
-
-	if !errors.Is(err, permErr) {
-		t.Errorf("expected permission error, got: %v", err)
-	}
-}
-
-func TestSink_WriteChunks_PermissionError(t *testing.T) {
-	t.Parallel()
-
-	permErr := &permissionError{msg: "permission denied"}
-	client := &FailingClient{ChunkWriteErr: permErr}
-	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
-
-	chunks := []*types.ArtifactChunk{
-		{ArtifactID: "art-1", Seq: 1, Data: []byte("data")},
-	}
-
-	err := sink.WriteChunks(t.Context(), chunks)
 	if err == nil {
 		t.Fatal("expected error for permission denied, got nil")
 	}

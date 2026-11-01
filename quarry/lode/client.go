@@ -2,11 +2,8 @@ package lode
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,13 +14,10 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-// checksumEnabled controls whether MD5 checksums are computed for chunks.
-// Default is false per CONTRACT_LODE.md (checksum is optional).
-const checksumEnabled = false
-
-// ErrCommitWithoutChunks is returned when an artifact commit is attempted
-// without any chunks having been written for that artifact.
-var ErrCommitWithoutChunks = errors.New("artifact commit rejected: no chunks written for artifact")
+// ErrCommitWithoutStorage is returned when an artifact commit event carries
+// no storage result: the runtime attaches one once the artifact's ranges
+// cover it (CONTRACT_LODE.md §Artifact Storage).
+var ErrCommitWithoutStorage = errors.New("artifact commit rejected: no storage result for artifact")
 
 // ErrMissingArtifactID is returned when an artifact commit event is missing
 // the required artifact_id field.
@@ -39,10 +33,8 @@ type LodeClient struct { //nolint:revive // intentional naming for clarity
 	// snapshots.
 	store lode.RangeStore
 
-	mu           sync.Mutex          // guards offsets, chunksSeen, and pendingFiles
-	offsets      map[string]int64    // cumulative offset per artifact across batches
-	chunksSeen   map[string]struct{} // tracks artifacts that have had chunks written
-	pendingFiles []SidecarFileRef    // sidecar files written since last snapshot flush
+	mu           sync.Mutex       // guards pendingFiles
+	pendingFiles []SidecarFileRef // sidecar files written since last snapshot flush
 
 	retryGate *retryGate // suppresses the retry observer during WriteMetrics
 }
@@ -87,12 +79,10 @@ func openClient(ctx context.Context, cfg Config, factory lode.Factory[lode.Range
 		return nil, err
 	}
 	return &LodeClient{
-		dataset:    ds,
-		config:     cfg,
-		store:      store,
-		offsets:    make(map[string]int64),
-		chunksSeen: make(map[string]struct{}),
-		retryGate:  gate,
+		dataset:   ds,
+		config:    cfg,
+		store:     store,
+		retryGate: gate,
 	}, nil
 }
 
@@ -129,9 +119,6 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Collect artifact IDs being committed for post-write cleanup
-	var committedArtifacts []string
-
 	records := make([]lode.D, 0, len(events))
 	for _, e := range events {
 		var record lode.D
@@ -141,12 +128,12 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 			if artifactID == "" {
 				return ErrMissingArtifactID
 			}
-			// An event with a storage result names its Volume or is empty;
-			// one without it commits chunk records, which must precede it.
-			if _, seen := c.chunksSeen[artifactID]; e.Storage == nil && !seen {
-				return fmt.Errorf("%w: %s", ErrCommitWithoutChunks, artifactID)
+			// The storage result names the artifact's Volume, or says the
+			// artifact is empty; the runtime attaches it before the event
+			// reaches a policy.
+			if e.Storage == nil {
+				return fmt.Errorf("%w: %s", ErrCommitWithoutStorage, artifactID)
 			}
-			committedArtifacts = append(committedArtifacts, artifactID)
 			record = toArtifactCommitRecordMap(e, c.config)
 		} else {
 			record = toEventRecordMap(e, c.config)
@@ -159,63 +146,7 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 		return WrapWriteError(err, buildPartitionPath(c.config, string(events[0].Type)))
 	}
 
-	// Reset state for committed artifacts
-	for _, artifactID := range committedArtifacts {
-		delete(c.offsets, artifactID)
-		delete(c.chunksSeen, artifactID)
-	}
 	c.drainPendingFiles()
-
-	return nil
-}
-
-// WriteChunks writes a batch of artifact chunks to Lode.
-// Chunks are written to event_type=artifact partition with record_kind=artifact_chunk.
-// Offset is computed cumulatively across batches per artifact.
-// Marks artifacts as having chunks for the "chunks before commit" invariant.
-// State (offsets, chunksSeen) is only updated after successful write.
-func (c *LodeClient) WriteChunks(ctx context.Context, _, _ string, chunks []*types.ArtifactChunk) error {
-	if len(chunks) == 0 {
-		return nil
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	records := make([]lode.D, 0, len(chunks))
-
-	// Compute offsets locally first (don't modify state yet)
-	localOffsets := make(map[string]int64)
-	maps.Copy(localOffsets, c.offsets)
-
-	for _, chunk := range chunks {
-		offset := localOffsets[chunk.ArtifactID]
-		record := toChunkRecordMap(chunk, offset, c.config)
-
-		// Add checksum if enabled
-		if checksumEnabled {
-			checksum := computeMD5(chunk.Data)
-			record["checksum"] = checksum
-			record["checksum_algo"] = "md5"
-		}
-
-		records = append(records, record)
-		localOffsets[chunk.ArtifactID] = offset + int64(len(chunk.Data))
-	}
-
-	// Write to storage.
-	// Chunk writes use empty metadata — sidecar file refs are only flushed
-	// on event and metrics writes, which are the consumer-facing boundaries.
-	_, err := c.dataset.Write(ctx, records, nil)
-	if err != nil {
-		return WrapWriteError(err, buildPartitionPath(c.config, "artifact"))
-	}
-
-	// Only update state after successful write
-	for _, chunk := range chunks {
-		c.offsets[chunk.ArtifactID] = localOffsets[chunk.ArtifactID]
-		c.chunksSeen[chunk.ArtifactID] = struct{}{}
-	}
 
 	return nil
 }
@@ -272,12 +203,6 @@ func (c *LodeClient) snapshotMetadata() map[string]any {
 // Must be called under c.mu.
 func (c *LodeClient) drainPendingFiles() {
 	c.pendingFiles = c.pendingFiles[:0]
-}
-
-// computeMD5 returns the hex-encoded MD5 digest of data.
-func computeMD5(data []byte) string {
-	hash := md5.Sum(data)
-	return hex.EncodeToString(hash[:])
 }
 
 // extractArtifactID extracts the artifact_id from an event payload.

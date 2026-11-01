@@ -75,8 +75,5 @@ func TestPolicies_RefuseIngestAfterClose(t *testing.T) {
 		if err := pol.IngestEvent(t.Context(), ev); !errors.Is(err, policy.ErrPolicyClosed) {
 			t.Errorf("%s IngestEvent after Close: %v, want ErrPolicyClosed", name, err)
 		}
-		if err := pol.IngestArtifactChunk(t.Context(), &types.ArtifactChunk{ArtifactID: "a", Data: []byte("x")}); !errors.Is(err, policy.ErrPolicyClosed) {
-			t.Errorf("%s IngestArtifactChunk after Close: %v, want ErrPolicyClosed", name, err)
-		}
 	}
 }

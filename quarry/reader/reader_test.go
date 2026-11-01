@@ -41,17 +41,77 @@ func (f *fixture) write(spec runSpec) {
 	f.writeWithChunk(spec, []byte("x"))
 }
 
+// chunkRecord is an artifact chunk record as a release before 0.15 wrote
+// it: the runtime writes none, and readers still read them.
+type chunkRecord struct {
+	artifactID string
+	seq        int64
+	isLast     bool
+	data       []byte
+}
+
 // writeWithChunk writes the run with the given bytes as its one artifact
 // chunk, and no commit record for it.
 func (f *fixture) writeWithChunk(spec runSpec, chunk []byte) {
 	f.t.Helper()
-	f.writeRun(spec, []*types.ArtifactChunk{{ArtifactID: "a1", Seq: 1, IsLast: true, Data: chunk}}, nil)
+	f.writeRun(spec, []chunkRecord{{artifactID: "a1", seq: 1, isLast: true, data: chunk}}, nil)
+}
+
+// writeChunkRecords writes chunk records into the run's artifact partition,
+// at cumulative offsets per artifact, as earlier releases wrote them.
+func (f *fixture) writeChunkRecords(cfg qlode.Config, chunks []chunkRecord) {
+	f.t.Helper()
+	if len(chunks) == 0 {
+		return
+	}
+	ctx := f.t.Context()
+	offsets := map[string]int64{}
+	records := make([]lode.D, 0, len(chunks))
+	for _, c := range chunks {
+		records = append(records, lode.D{
+			"record_kind": qlode.RecordKindArtifactChunk, "artifact_id": c.artifactID, "seq": c.seq, "is_last": c.isLast,
+			"offset": offsets[c.artifactID], "length": int64(len(c.data)), "data": c.data, "event_type": string(types.EventTypeArtifact),
+			"source": cfg.Source, "category": cfg.Category, "day": cfg.Day, "run_id": cfg.RunID,
+		})
+		offsets[c.artifactID] += int64(len(c.data))
+	}
+	ds, err := qlode.OpenDataset(ctx, cfg.Dataset, f.store)
+	if err != nil {
+		f.t.Fatalf("OpenDataset: %v", err)
+	}
+	if _, err := ds.Write(ctx, records, nil); err != nil {
+		f.t.Fatalf("chunks: %v", err)
+	}
+}
+
+// writeLegacyCommit writes the artifact commit record of an earlier release,
+// without storage fields, for the chunk records that precede it.
+func (f *fixture) writeLegacyCommit(cfg qlode.Config, commit *types.EventEnvelope) {
+	f.t.Helper()
+	ctx := f.t.Context()
+	rec := lode.D{
+		"record_kind": qlode.RecordKindArtifactEvent, "contract_version": commit.ContractVersion, "event_id": commit.EventID,
+		"run_id": commit.RunID, "seq": commit.Seq, "event_type": string(commit.Type), "ts": commit.Ts, "attempt": commit.Attempt,
+		"source": cfg.Source, "category": cfg.Category, "day": cfg.Day,
+	}
+	for _, k := range []string{"artifact_id", "name", "content_type", "size_bytes"} {
+		rec[k] = commit.Payload[k]
+	}
+	ds, err := qlode.OpenDataset(ctx, cfg.Dataset, f.store)
+	if err != nil {
+		f.t.Fatalf("OpenDataset: %v", err)
+	}
+	if _, err := ds.Write(ctx, []lode.D{rec}, nil); err != nil {
+		f.t.Fatalf("commit: %v", err)
+	}
 }
 
 // writeRun writes the run through the real write path: its start record,
-// its events, the artifact chunks, the commit event for them when commit is
-// not nil, its metrics, and its end record.
-func (f *fixture) writeRun(spec runSpec, chunks []*types.ArtifactChunk, commit *types.EventEnvelope) {
+// its events, the artifact chunk records of an earlier release, its
+// metrics, and its end record. A commit event for the chunks, when commit
+// is not nil, is written as a record directly, since the client refuses a
+// commit without a storage result.
+func (f *fixture) writeRun(spec runSpec, chunks []chunkRecord, commit *types.EventEnvelope) {
 	f.t.Helper()
 	cfg := qlode.Config{Dataset: "quarry", Source: spec.source, Category: spec.category, Day: spec.day, RunID: spec.runID}
 	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
@@ -77,13 +137,9 @@ func (f *fixture) writeRun(spec runSpec, chunks []*types.ArtifactChunk, commit *
 			f.t.Fatalf("events: %v", err)
 		}
 	}
-	if err := c.WriteChunks(ctx, "quarry", spec.runID, chunks); err != nil {
-		f.t.Fatalf("chunks: %v", err)
-	}
+	f.writeChunkRecords(cfg, chunks)
 	if commit != nil {
-		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{commit}); err != nil {
-			f.t.Fatalf("commit: %v", err)
-		}
+		f.writeLegacyCommit(cfg, commit)
 	}
 	if err := c.WriteMetrics(ctx, metricsSnapshot(spec.runID), time.Now()); err != nil {
 		f.t.Fatalf("metrics: %v", err)

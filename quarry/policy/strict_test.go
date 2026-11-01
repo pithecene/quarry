@@ -86,39 +86,6 @@ func TestStrictPolicy_NoDrops(t *testing.T) {
 	}
 }
 
-func TestStrictPolicy_IngestArtifactChunk(t *testing.T) {
-	t.Parallel()
-
-	sink := policy.NewStubSink()
-	pol := policy.NewStrictPolicy(sink)
-
-	chunk := &types.ArtifactChunk{
-		ArtifactID: "a1",
-		Seq:        1,
-		Data:       []byte("test data"),
-		IsLast:     true,
-	}
-
-	err := pol.IngestArtifactChunk(t.Context(), chunk)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify immediate write
-	sinkStats := sink.Stats()
-	if sinkStats.ChunksWritten != 1 {
-		t.Errorf("expected 1 chunk written, got %d", sinkStats.ChunksWritten)
-	}
-
-	stats := pol.Stats()
-	if stats.TotalChunks != 1 {
-		t.Errorf("expected TotalChunks=1, got %d", stats.TotalChunks)
-	}
-	if stats.ChunksPersisted != 1 {
-		t.Errorf("expected ChunksPersisted=1, got %d", stats.ChunksPersisted)
-	}
-}
-
 func TestStrictPolicy_SinkError(t *testing.T) {
 	t.Parallel()
 

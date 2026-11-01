@@ -73,17 +73,18 @@ func buildMixedStream(b *testing.B) []byte {
 		buf.Write(frame)
 	}
 
-	// 2 artifact chunks
+	// 1 artifact open and 2 artifact ranges
+	open, _ := msgpack.Marshal(&types.ArtifactOpenFrame{Type: ArtifactOpenType, ArtifactID: "art-001", SizeBytes: 8192})
+	buf.Write(encodeFrame(open))
 	for i := range 2 {
-		chunk := &types.ArtifactChunkFrame{
-			Type:       ArtifactChunkType,
+		rng, _ := msgpack.Marshal(&types.ArtifactRangeFrame{
+			Type:       ArtifactRangeType,
 			ArtifactID: "art-001",
-			Seq:        int64(i + 1),
-			IsLast:     i == 1,
+			RangeID:    uint32(i + 1),
+			Offset:     int64(i * 4096),
 			Data:       bytes.Repeat([]byte("x"), 4096),
-		}
-		frame, _ := encodeArtifactChunkFrame(chunk)
-		buf.Write(frame)
+		})
+		buf.Write(encodeFrame(rng))
 	}
 
 	// 1 file write
@@ -176,48 +177,6 @@ func BenchmarkProbeFrameType_New(b *testing.B) {
 			b.Fatalf("got %q", typ)
 		}
 	}
-}
-
-// BenchmarkProbeFrameType_ArtifactChunk exercises probing on artifact_chunk
-// payloads where "type" is typically the first field.
-func BenchmarkProbeFrameType_ArtifactChunk(b *testing.B) {
-	chunk := &types.ArtifactChunkFrame{
-		Type:       ArtifactChunkType,
-		ArtifactID: "art-001",
-		Seq:        1,
-		IsLast:     false,
-		Data:       bytes.Repeat([]byte("x"), 4096),
-	}
-	payload, err := msgpack.Marshal(chunk)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	b.Run("old", func(b *testing.B) {
-		b.ReportAllocs()
-		for range b.N {
-			typ, err := probeFrameTypeOld(payload)
-			if err != nil {
-				b.Fatal(err)
-			}
-			if typ != ArtifactChunkType {
-				b.Fatalf("got %q", typ)
-			}
-		}
-	})
-
-	b.Run("new", func(b *testing.B) {
-		b.ReportAllocs()
-		for range b.N {
-			typ, err := probeFrameType(payload)
-			if err != nil {
-				b.Fatal(err)
-			}
-			if typ != ArtifactChunkType {
-				b.Fatalf("got %q", typ)
-			}
-		}
-	})
 }
 
 // --- DecodeFrame benchmarks (type probe + full decode combined) ---
