@@ -42,8 +42,16 @@ func (f *fixture) write(spec runSpec) {
 }
 
 // writeWithChunk writes the run with the given bytes as its one artifact
-// chunk.
+// chunk, and no commit record for it.
 func (f *fixture) writeWithChunk(spec runSpec, chunk []byte) {
+	f.t.Helper()
+	f.writeRun(spec, []*types.ArtifactChunk{{ArtifactID: "a1", Seq: 1, IsLast: true, Data: chunk}}, nil)
+}
+
+// writeRun writes the run through the real write path: its start record,
+// its events, the artifact chunks, the commit event for them when commit is
+// not nil, its metrics, and its end record.
+func (f *fixture) writeRun(spec runSpec, chunks []*types.ArtifactChunk, commit *types.EventEnvelope) {
 	f.t.Helper()
 	cfg := qlode.Config{Dataset: "quarry", Source: spec.source, Category: spec.category, Day: spec.day, RunID: spec.runID}
 	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
@@ -69,8 +77,13 @@ func (f *fixture) writeWithChunk(spec runSpec, chunk []byte) {
 			f.t.Fatalf("events: %v", err)
 		}
 	}
-	if err := c.WriteChunks(ctx, "quarry", spec.runID, []*types.ArtifactChunk{{ArtifactID: "a1", Seq: 1, IsLast: true, Data: chunk}}); err != nil {
+	if err := c.WriteChunks(ctx, "quarry", spec.runID, chunks); err != nil {
 		f.t.Fatalf("chunks: %v", err)
+	}
+	if commit != nil {
+		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{commit}); err != nil {
+			f.t.Fatalf("commit: %v", err)
+		}
 	}
 	if err := c.WriteMetrics(ctx, metricsSnapshot(spec.runID), time.Now()); err != nil {
 		f.t.Fatalf("metrics: %v", err)
