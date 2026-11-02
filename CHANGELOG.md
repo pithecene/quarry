@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.15.0] - 2026-11-01
+
 ### Breaking Changes
 
 - **`--flush-mode` is removed**: the buffered policy's three flush modes differed only in how a flush ordered artifact chunk writes against event writes. With artifact bytes in Lode Volumes, a flush writes the buffered events once and keeps the whole buffer on failure, so the flag, the `policy.flush_mode` key of the config file, and `policy.FlushMode` are removed. A run that passes the flag or the key fails to start.
@@ -726,7 +730,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/pithecene/quarry/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/pithecene/quarry/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/pithecene/quarry/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/pithecene/quarry/compare/v0.13.7...v0.14.0

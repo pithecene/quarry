@@ -87,6 +87,9 @@ tasks:
       - scripts/version-bump.sh {{.V}}
       - task: ts:build
       - task: executor:bundle
+      # The e2e IPC fixture is the executor's own output, so it carries the
+      # contract version; the ipc fixture test fails on a stale one.
+      - cd executor-node && npx tsx testdata/generate-e2e-fixture.ts
       - task: version:check
       - echo "✅ All lockstep targets updated to {{.V}}"
 
