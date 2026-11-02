@@ -118,7 +118,9 @@ func copySpan(w io.Writer, rd io.ReaderAt, a runreader.Artifact, s span) error {
 		digest = sha256.New()
 		w = io.MultiWriter(w, digest)
 	}
-	n, err := io.CopyBuffer(w, io.NewSectionReader(rd, s.offset, s.length), make([]byte, artifactCopyBuffer))
+	// writerOnly hides a destination's ReadFrom: io.CopyBuffer would hand the
+	// copy to it, and *os.File reads in pieces of 32 KiB, one request each.
+	n, err := io.CopyBuffer(writerOnly{w}, io.NewSectionReader(rd, s.offset, s.length), make([]byte, artifactCopyBuffer))
 	if err != nil {
 		return fmt.Errorf("artifact %q: %w", a.ArtifactID, err)
 	}
@@ -133,6 +135,12 @@ func copySpan(w io.Writer, rd io.ReaderAt, a runreader.Artifact, s span) error {
 	}
 	return nil
 }
+
+// writerOnly is a writer with no other method, so a copy into it uses the
+// copy's own buffer.
+type writerOnly struct{ w io.Writer }
+
+func (o writerOnly) Write(p []byte) (int, error) { return o.w.Write(p) }
 
 // artifactSink is where a read writes: a file the read created, or stdout.
 type artifactSink struct {

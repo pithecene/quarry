@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/lode"
+	runreader "github.com/pithecene/quarry/reader"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -244,5 +246,49 @@ func TestReadArtifact_DestinationCheckedFirst(t *testing.T) {
 	}
 	if err := checkDestination(filepath.Join(t.TempDir(), "new.bin")); err != nil {
 		t.Fatalf("checkDestination(new) = %v", err)
+	}
+}
+
+// countingReaderAt serves size zero bytes and records the length of each
+// read, as each ReadAt of a Volume is a request to the backend.
+type countingReaderAt struct {
+	size  int64
+	reads []int
+}
+
+func (c *countingReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	c.reads = append(c.reads, len(p))
+	if off >= c.size {
+		return 0, io.EOF
+	}
+	n := min(int64(len(p)), c.size-off)
+	clear(p[:n])
+	if n < int64(len(p)) {
+		return int(n), io.EOF
+	}
+	return int(n), nil
+}
+
+// A range read into a file reads the artifact in pieces of the copy
+// buffer, not in the 32 KiB pieces of the file's own ReadFrom: each piece
+// is one request to the backend.
+func TestCopySpan_RangeReadsUseTheBuffer(t *testing.T) {
+	t.Parallel()
+	f, err := os.Create(filepath.Join(t.TempDir(), "out.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	size := int64(2*artifactCopyBuffer + 5)
+	rd := &countingReaderAt{size: size}
+	s := span{offset: 1, length: size - 1}
+	if err := copySpan(f, rd, runreader.Artifact{ArtifactID: "a1", SizeBytes: size}, s); err != nil {
+		t.Fatalf("copySpan: %v", err)
+	}
+	if len(rd.reads) > 4 {
+		t.Fatalf("%d reads of %v; want a few of %d bytes", len(rd.reads), rd.reads[:min(len(rd.reads), 5)], artifactCopyBuffer)
+	}
+	if info, err := f.Stat(); err != nil || info.Size() != s.length {
+		t.Fatalf("wrote %v, %v; want %d bytes", info.Size(), err, s.length)
 	}
 }
