@@ -196,6 +196,15 @@ receive it unchanged. The runtime passes the artifact's storage result
 beside the envelope as a typed value, and the Lode client writes its
 fields into the stored record.
 
+A commit record that a release before 0.15 wrote can state a
+`size_bytes` of 0 for an artifact of any size. Readers MUST therefore
+take the size of a chunk-stored artifact whose record states 0 from its
+chunks. The artifact ends where its first chunk with `is_last` ends,
+because a retry can append a second copy after a complete one. A reader
+MUST refuse a chunk-stored artifact when no chunk with `is_last` ends at
+its size, so a stated size that disagrees with the chunks never cuts the
+artifact short.
+
 ### Ordering Invariant
 
 > The Volume snapshot that covers the whole artifact MUST be committed

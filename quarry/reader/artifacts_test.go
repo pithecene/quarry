@@ -180,6 +180,49 @@ func TestArtifacts_ChunksReadBack(t *testing.T) {
 	assertReads(t, rd, data)
 }
 
+// A commit record that Quarry 0.14 wrote states a size of 0 whatever the
+// artifact's size. The reader takes the size from where the last chunk
+// ends, including when a retry appended a second copy of the artifact,
+// and reads the whole artifact back rather than none of it.
+func TestArtifacts_ChunksWithZeroStatedSizeReadBack(t *testing.T) {
+	t.Parallel()
+	data := []byte("0123456789abcdef")
+	for _, tc := range []struct {
+		name   string
+		chunks []chunkRecord
+		want   []byte
+	}{
+		{"one copy", []chunkRecord{{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]}}, data},
+		{"a second copy after a complete one", []chunkRecord{
+			{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+			{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+		}, data},
+		// An empty artifact was written as one zero-length last chunk.
+		{"an empty artifact", []chunkRecord{{artifactID: "a1", seq: 1, isLast: true, data: []byte{}}}, []byte{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			commit := &types.EventEnvelope{
+				ContractVersion: types.ContractVersion, EventID: "a-a1", RunID: "r1", Seq: 2, Type: types.EventTypeArtifact, Ts: testArtifactTs, Attempt: 1,
+				Payload: map[string]any{"artifact_id": "a1", "name": "a1.bin", "content_type": testArtifactType, "size_bytes": float64(0)},
+			}
+			f.writeRun(spec("r1"), tc.chunks, commit)
+			r := f.reader()
+			run := f.find(r, spec("r1"))
+
+			arts, err := r.ListArtifacts(t.Context(), run)
+			if err != nil || len(arts) != 1 || arts[0].SizeBytes != int64(len(tc.want)) {
+				t.Fatalf("ListArtifacts = %+v, %v; want one artifact of %d bytes", arts, err, len(tc.want))
+			}
+			a, rd, err := r.OpenArtifact(t.Context(), run, "a1")
+			if err != nil || a.SizeBytes != int64(len(tc.want)) {
+				t.Fatalf("OpenArtifact = %+v, %v; want %d bytes", a, err, len(tc.want))
+			}
+			assertReads(t, rd, tc.want)
+		})
+	}
+}
+
 // A retry under an at-least-once policy persists a chunk twice at one
 // offset, or a second copy of the artifact after a complete one, and a
 // commit record twice. The reader returns the artifact once.
@@ -304,6 +347,18 @@ func TestOpenArtifact_Errors(t *testing.T) {
 		{"no commit record", func(f *fixture) { f.write(spec("r1")) }, "a1", ErrArtifactNotFound},
 		{"chunks shorter than size_bytes", func(f *fixture) { f.writeChunked(spec("r1"), "a1", []byte("12345"), 5, 9) }, "a1", ErrArtifactIncomplete},
 		{"chunks longer than size_bytes", func(f *fixture) { f.writeChunked(spec("r1"), "a1", []byte("12345"), 5, 3) }, "a1", ErrArtifactIncomplete},
+		{"size_bytes ends inside the chunks", func(f *fixture) { f.writeChunked(spec("r1"), "a1", []byte("0123456789"), 5, 5) }, "a1", ErrArtifactIncomplete},
+		{"a commit without chunks", func(f *fixture) {
+			f.write(spec("r1"))
+			f.writeCommitRecord(f.config(spec("r1")), "a2", 2, lode.D{"size_bytes": 0})
+		}, "a2", ErrArtifactIncomplete},
+		{"no last chunk", func(f *fixture) {
+			commit := &types.EventEnvelope{
+				ContractVersion: types.ContractVersion, EventID: "a-a1", RunID: "r1", Seq: 2, Type: types.EventTypeArtifact, Ts: testArtifactTs, Attempt: 1,
+				Payload: map[string]any{"artifact_id": "a1", "name": "a1.bin", "content_type": testArtifactType, "size_bytes": float64(0)},
+			}
+			f.writeRun(spec("r1"), []chunkRecord{{artifactID: "a1", seq: 1, data: []byte("12345")}}, commit)
+		}, "a1", ErrArtifactIncomplete},
 		{"volume covers a prefix only", func(f *fixture) { f.writeVolume(spec("r1"), "a1", []byte("twenty bytes of data"), 10) }, "a1", ErrArtifactIncomplete},
 		{"volume snapshot missing", func(f *fixture) {
 			f.write(spec("r1"))
