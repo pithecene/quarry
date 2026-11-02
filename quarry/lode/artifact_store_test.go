@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -339,6 +340,67 @@ func TestArtifactStore_CommitFailureLeavesTheRangeRetryable(t *testing.T) {
 	storage, err := w.Finish(ctx)
 	if err != nil || storage.SHA256 != hexSHA256(data) {
 		t.Fatalf("Finish = %+v, %v; want the whole artifact with its digest", storage, err)
+	}
+}
+
+// manifestFaultStore fails the next write of a Volume's canonical manifest,
+// which a commit makes after it advanced the head pointer, so the commit is
+// left pending.
+type manifestFaultStore struct {
+	lode.RangeStore
+	failNext bool
+}
+
+func (s *manifestFaultStore) Put(ctx context.Context, path string, r io.Reader) error {
+	if s.failNext && strings.HasSuffix(path, "/manifest.json") {
+		s.failNext = false
+		return errors.New("injected: manifest write failed")
+	}
+	return s.RangeStore.Put(ctx, path, r)
+}
+
+// A range whose commit fails after the head pointer advanced is retryable
+// too: the retry completes the pending commit, so the range commits and
+// the artifact finishes. The first range covers the commit without a
+// parent, and the second range the commit over one.
+func TestArtifactStore_RetryCompletesAPendingCommit(t *testing.T) {
+	t.Parallel()
+	data := []byte("twenty bytes of data")
+	for _, failed := range []int64{0, 10} {
+		t.Run(fmt.Sprintf("range at %d", failed), func(t *testing.T) {
+			fault := &manifestFaultStore{RangeStore: lode.NewMemory()}
+			factory := func() (lode.RangeStore, error) { return fault, nil }
+			cfg := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: artifactTestDay, RunID: "r1", Policy: "strict"}
+			client, err := qlode.NewLodeClientWithFactory(t.Context(), cfg, factory)
+			if err != nil {
+				t.Fatalf("client: %v", err)
+			}
+			ctx := t.Context()
+			w, err := client.OpenArtifact(ctx, "a1", int64(len(data)), "")
+			if err != nil {
+				t.Fatalf("OpenArtifact: %v", err)
+			}
+			for _, offset := range []int64{0, 10} {
+				fault.failNext = offset == failed
+				err := w.WriteRange(ctx, offset, data[offset:offset+10])
+				if offset != failed {
+					if err != nil {
+						t.Fatalf("WriteRange(%d) = %v", offset, err)
+					}
+					continue
+				}
+				if err == nil {
+					t.Fatalf("WriteRange(%d) under the fault = nil; want the commit's error", offset)
+				}
+				if err := w.WriteRange(ctx, offset, data[offset:offset+10]); err != nil {
+					t.Fatalf("retried WriteRange(%d) = %v; want the pending commit completed", offset, err)
+				}
+			}
+			storage, err := w.Finish(ctx)
+			if err != nil || storage.SHA256 != hexSHA256(data) {
+				t.Fatalf("Finish = %+v, %v; want the whole artifact with its digest", storage, err)
+			}
+		})
 	}
 }
 
