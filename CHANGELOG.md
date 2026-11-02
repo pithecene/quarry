@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Runs commit on Hetzner Object Storage**: a run whose storage is a Hetzner bucket committed only its first snapshot, and every write after it failed with a snapshot conflict. Hetzner refuses the quoted ETag that the S3 adapter sent in `If-Match`, and Lode v0.13.0 sends the bare value, which AWS S3, Cloudflare R2, and Hetzner accept.
+- **A retried artifact range completes its commit**: a range whose commit failed after Lode advanced the Volume's head pointer could never be retried. Lode refused the retry as a commit without new blocks, so the range stayed refused and the artifact failed. Lode v0.14.0 completes the pending commit when the retry arrives, so the range commits and the artifact finishes.
 
 ### Upgrade Notes
 
