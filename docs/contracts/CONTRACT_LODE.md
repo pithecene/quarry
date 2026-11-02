@@ -220,8 +220,8 @@ in the same way.
 ### Read-Back Invariant
 
 > Every record that the runtime commits MUST be readable by the run's
-> readers (`list runs`, `list events`, and `stats metrics`), whatever the
-> size of the run's artifact chunks.
+> readers (`list runs`, `list events`, `list artifacts`, `read artifact`,
+> and `stats metrics`), whatever the size of the run's artifact chunks.
 
 A chunk record carries its data as base64 on one JSON line, so a chunk at
 the IPC maximum is a line of about 11 MiB. A reader that bounds a line

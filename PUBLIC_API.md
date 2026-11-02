@@ -841,14 +841,14 @@ experimental.
 
 1. **Single executor type**: Only Node.js executor supported
 2. **No built-in retries**: Retry logic is caller's responsibility
-3. **Artifact reads are Go only**: `quarry/reader` reads an artifact's bytes as a stream and by range, and the SDK and the CLI do not (the `streaming` *ingestion policy* controls write batching, not reads)
+3. **Artifact reads go through the CLI**: `quarry list artifacts` lists a run's artifacts, and `quarry read artifact` writes one artifact's bytes, whole or by range. The SDK has no artifact read helper, and the Go packages are not a public API (the `streaming` *ingestion policy* controls write batching, not reads)
 4. **No transactional storage writes**: S3 and S3-compatible providers do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler. External orchestration is the caller's responsibility
 6. **Puppeteer required**: All scripts run in a browser context
 7. **Adapters and sinks**: Quarry provides a webhook adapter, a Redis Pub/Sub adapter, and a Redis Streams event sink. It has no orchestration host. A Temporal activity can call the Quarry runtime directly, as the [Temporal guide](docs/guides/temporal.md) describes. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release. Config-based logical names are under consideration.
-10. **Stored-data reads**: Only `quarry list runs`, `quarry list events`, and `quarry stats metrics` read storage, and only when both `--storage-backend` and `--storage-path` are given. The other `list`, `inspect`, and `stats` commands return stub data. The SDK's `listRuns` and `readRun` call the `quarry` CLI, so the CLI must be installed (§ Reading Runs).
+10. **Stored-data reads**: Only `quarry list runs`, `quarry list events`, `quarry list artifacts`, `quarry read artifact`, and `quarry stats metrics` read storage, and only when both `--storage-backend` and `--storage-path` are given. The other `list`, `inspect`, and `stats` commands return stub data. The SDK's `listRuns` and `readRun` call the `quarry` CLI, so the CLI must be installed (§ Reading Runs).
 11. **Runs written before v0.14.0**: These runs have no run records until `quarry index rebuild` backfills them. A backfilled run has no start time or recorded outcome, and its state follows its terminal event.
 
 ---

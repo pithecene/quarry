@@ -117,12 +117,10 @@ func listRunsFromRecords(c *cli.Context, r *render.Renderer) error {
 }
 
 func listEventsCommand() *cli.Command {
-	flags := append(append(ReadOnlyFlags(), storageReadFlags()...), runSelectorFlags()...)
-	flags = append(flags, &cli.StringFlag{Name: "run-id", Usage: "Run whose events to list (required)", Required: true})
 	return &cli.Command{
 		Name:   "events",
 		Usage:  "List a run's events in sequence order (reads storage)",
-		Flags:  flags,
+		Flags:  append(ReadOnlyFlags(), runLocatorFlags("Run whose events to list (required)")...),
 		Action: listEventsAction,
 	}
 }
@@ -133,6 +131,32 @@ type listEventsResponse struct {
 	Events []map[string]any `json:"events" yaml:"events"`
 }
 
+// locatedRun opens the storage the flags describe and reads the run that
+// --source, --category, --day, and --run-id locate. command names the
+// command in its errors, which are cli exit errors.
+func locatedRun(ctx context.Context, c *cli.Context, command string) (*runreader.Reader, runreader.Run, error) {
+	ok, err := storageRequested(c)
+	if err != nil {
+		return nil, runreader.Run{}, cli.Exit(err.Error(), 1)
+	}
+	if !ok {
+		return nil, runreader.Run{}, cli.Exit(command+" reads storage: --storage-backend and --storage-path are required", 1)
+	}
+	sel := selectorFrom(c)
+	if sel.Source == "" || sel.Category == "" || sel.Day == "" {
+		return nil, runreader.Run{}, cli.Exit(command+" requires --source, --category, and --day to locate the run", 1)
+	}
+	rr, err := newRunReader(c)
+	if err != nil {
+		return nil, runreader.Run{}, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
+	}
+	run, err := rr.FindRun(ctx, sel, c.String("run-id"))
+	if err != nil {
+		return nil, runreader.Run{}, cli.Exit(fmt.Sprintf("%s: %v", command, err), 1)
+	}
+	return rr, run, nil
+}
+
 func listEventsAction(c *cli.Context) error {
 	r, err := render.NewRenderer(c)
 	if err != nil {
@@ -141,27 +165,11 @@ func listEventsAction(c *cli.Context) error {
 	if c.Bool("tui") {
 		return cli.Exit("--tui is not supported for list commands", 1)
 	}
-	ok, err := storageRequested(c)
-	if err != nil {
-		return cli.Exit(err.Error(), 1)
-	}
-	if !ok {
-		return cli.Exit("list events reads storage: --storage-backend and --storage-path are required", 1)
-	}
-	sel := selectorFrom(c)
-	if sel.Source == "" || sel.Category == "" || sel.Day == "" {
-		return cli.Exit("list events requires --source, --category, and --day to locate the run", 1)
-	}
-	rr, err := newRunReader(c)
-	if err != nil {
-		return cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
-	}
 	ctx, cancel := context.WithTimeout(c.Context, readTimeout)
 	defer cancel()
-
-	run, err := rr.FindRun(ctx, sel, c.String("run-id"))
+	rr, run, err := locatedRun(ctx, c, "list events")
 	if err != nil {
-		return cli.Exit(fmt.Sprintf("list events: %v", err), 1)
+		return err
 	}
 	events, err := rr.ReadEvents(ctx, run)
 	if err != nil {
@@ -171,6 +179,53 @@ func listEventsAction(c *cli.Context) error {
 		return r.Render(eventSummaries(events))
 	}
 	return r.Render(listEventsResponse{Run: run, Events: events})
+}
+
+// runLocatorFlags locate one run's records directly: the storage flags,
+// the run's key selectors, and --run-id, whose usage names what the run is
+// read for.
+func runLocatorFlags(runIDUsage string) []cli.Flag {
+	flags := append(storageReadFlags(), runSelectorFlags()...)
+	return append(flags, &cli.StringFlag{Name: "run-id", Usage: runIDUsage, Required: true})
+}
+
+func listArtifactsCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "artifacts",
+		Usage:  "List a run's artifacts from their commit records (reads storage)",
+		Flags:  append(ReadOnlyFlags(), runLocatorFlags("Run whose artifacts to list (required)")...),
+		Action: listArtifactsAction,
+	}
+}
+
+// listArtifactsResponse is the JSON shape of `list artifacts`.
+type listArtifactsResponse struct {
+	Run       runreader.Run        `json:"run" yaml:"run"`
+	Artifacts []runreader.Artifact `json:"artifacts" yaml:"artifacts"`
+}
+
+func listArtifactsAction(c *cli.Context) error {
+	r, err := render.NewRenderer(c)
+	if err != nil {
+		return err
+	}
+	if c.Bool("tui") {
+		return cli.Exit("--tui is not supported for list commands", 1)
+	}
+	ctx, cancel := context.WithTimeout(c.Context, readTimeout)
+	defer cancel()
+	rr, run, err := locatedRun(ctx, c, "list artifacts")
+	if err != nil {
+		return err
+	}
+	artifacts, err := rr.ListArtifacts(ctx, run)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("list artifacts: %v", err), 1)
+	}
+	if r.Format() == render.FormatTable {
+		return r.Render(artifacts)
+	}
+	return r.Render(listArtifactsResponse{Run: run, Artifacts: artifacts})
 }
 
 // eventSummary is one row of `list events --format table`. Records differ in

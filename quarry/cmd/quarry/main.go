@@ -40,6 +40,7 @@ func main() {
 			cmd.InspectCommand(),
 			cmd.StatsCommand(),
 			cmd.ListCommand(),
+			cmd.ReadCommand(),
 			cmd.IndexCommand(),
 			cmd.PruneCommand(),
 			cmd.DebugCommand(),

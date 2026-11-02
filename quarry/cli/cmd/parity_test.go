@@ -530,3 +530,30 @@ func TestCLIParityInitCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestCLIParityReadCommand validates the read command flags against the parity artifact.
+func TestCLIParityReadCommand(t *testing.T) {
+	t.Parallel()
+	parityRead, ok := loadParityArtifact(t).Commands["read"]
+	if !ok {
+		t.Fatal("parity artifact missing 'read' command")
+	}
+	for _, subCmd := range ReadCommand().Subcommands {
+		paritySubCmd, ok := parityRead.Subcommands[subCmd.Name]
+		if !ok {
+			t.Errorf("CLI has read subcommand %q but it is not in parity artifact", subCmd.Name)
+			continue
+		}
+		actualFlags := extractFlags(subCmd)
+		for flagName := range paritySubCmd.Flags {
+			if _, exists := actualFlags[flagName]; !exists {
+				t.Errorf("parity artifact declares flag --%s for 'read %s' but it does not exist", flagName, subCmd.Name)
+			}
+		}
+		for flagName := range actualFlags {
+			if _, exists := paritySubCmd.Flags[flagName]; !exists {
+				t.Errorf("CLI 'read %s' has flag --%s but it is not in parity artifact", subCmd.Name, flagName)
+			}
+		}
+	}
+}

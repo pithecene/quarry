@@ -672,6 +672,85 @@
             }
           }
         },
+        "artifacts": {
+          "flags": {
+            "run-id": {
+              "type": "string",
+              "required": true,
+              "description": "Run whose artifacts to list (required)"
+            },
+            "storage-dataset": {
+              "type": "string",
+              "required": false,
+              "default": "quarry",
+              "description": "Lode dataset ID (default: \"quarry\")"
+            },
+            "storage-backend": {
+              "type": "string",
+              "required": true,
+              "description": "Storage backend: fs or s3",
+              "validation": "Must be one of: fs, s3"
+            },
+            "storage-path": {
+              "type": "string",
+              "required": true,
+              "description": "Storage path (fs: directory, s3: bucket/prefix)"
+            },
+            "storage-region": {
+              "type": "string",
+              "required": false,
+              "description": "AWS region for S3 backend"
+            },
+            "storage-endpoint": {
+              "type": "string",
+              "required": false,
+              "description": "Custom S3 endpoint URL for S3-compatible providers",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-s3-path-style": {
+              "type": "bool",
+              "required": false,
+              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "source": {
+              "type": "string",
+              "required": true,
+              "description": "Source selector (storage only)"
+            },
+            "category": {
+              "type": "string",
+              "required": true,
+              "description": "Category selector (requires --source)",
+              "dependsOn": ["source"]
+            },
+            "day": {
+              "type": "string",
+              "required": true,
+              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
+              "dependsOn": ["category"]
+            },
+            "format": {
+              "type": "string",
+              "aliases": ["f"],
+              "required": false,
+              "description": "Output format: json, table, yaml"
+            },
+            "no-color": {
+              "type": "bool",
+              "required": false,
+              "default": false,
+              "description": "Disable colored output (table format only)"
+            },
+            "tui": {
+              "type": "bool",
+              "required": false,
+              "default": false,
+              "description": "Enable interactive TUI mode",
+              "notes": "Not supported for list commands - returns error"
+            }
+          }
+        },
         "pools": {
           "flags": {
             "format": {
@@ -693,6 +772,92 @@
               "description": "Enable interactive TUI mode",
               "notes": "Not supported for list commands - returns error"
             }
+          }
+        }
+      }
+    },
+    "read": {
+      "description": "Write stored bytes (artifacts)",
+      "subcommands": {
+        "artifact": {
+          "flags": {
+              "run-id": {
+                "type": "string",
+                "required": true,
+                "description": "Run that holds the artifact (required)"
+              },
+              "storage-dataset": {
+                "type": "string",
+                "required": false,
+                "default": "quarry",
+                "description": "Lode dataset ID (default: \"quarry\")"
+              },
+              "storage-backend": {
+                "type": "string",
+                "required": true,
+                "description": "Storage backend: fs or s3",
+                "validation": "Must be one of: fs, s3"
+              },
+              "storage-path": {
+                "type": "string",
+                "required": true,
+                "description": "Storage path (fs: directory, s3: bucket/prefix)"
+              },
+              "storage-region": {
+                "type": "string",
+                "required": false,
+                "description": "AWS region for S3 backend"
+              },
+              "storage-endpoint": {
+                "type": "string",
+                "required": false,
+                "description": "Custom S3 endpoint URL for S3-compatible providers",
+                "dependsOn": ["storage-backend=s3"]
+              },
+              "storage-s3-path-style": {
+                "type": "bool",
+                "required": false,
+                "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+                "dependsOn": ["storage-backend=s3"]
+              },
+              "source": {
+                "type": "string",
+                "required": true,
+                "description": "Source selector (storage only)"
+              },
+              "category": {
+                "type": "string",
+                "required": true,
+                "description": "Category selector (requires --source)",
+                "dependsOn": ["source"]
+              },
+              "day": {
+                "type": "string",
+                "required": true,
+                "description": "Partition day selector, YYYY-MM-DD (requires --category)",
+                "dependsOn": ["category"]
+              },
+              "artifact-id": {
+                "type": "string",
+                "required": true,
+                "description": "Artifact to read, as list artifacts names it (required)"
+              },
+              "out": {
+                "type": "string",
+                "required": false,
+                "description": "File to create and write; it must not exist (default: stdout, which must not be a terminal)"
+              },
+              "offset": {
+                "type": "int64",
+                "required": false,
+                "default": 0,
+                "description": "First byte of the range to write (default 0)"
+              },
+              "length": {
+                "type": "int64",
+                "required": false,
+                "description": "Bytes to write from --offset (default: to the end of the artifact)"
+              }
           }
         }
       }
