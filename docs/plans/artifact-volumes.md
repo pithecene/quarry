@@ -263,19 +263,24 @@ them). Lode owns its persisted format, so Lode gains the removal:
   Volume open through the removal can never commit again, and a second
   call completes an interrupted removal. Each removed Volume therefore
   leaves one small object, as Lode's Dataset expiry leaves its own
-  tombstones. The Lode pull request settles the tombstone's form and
-  error.
+  tombstones. Lode v0.13.0 shipped the removal with the marker
+  `lode:removed` and the error `volume.ErrRemoved`. A removal whose head
+  belongs to a commit in flight returns `lode.ErrHeadUncommitted` and
+  deletes nothing.
 
 The prune command (`quarry prune`) removes a run's Volumes before the run's records
 (`CONTRACT_LODE.md` § Order of Operations). It lists the run's `volumes/`
 prefix, so the Volumes of artifacts whose event never arrived are removed
-too, and calls `volume.Remove` for each. The prune then lists the prefix
-again, as step 3 lists the partition again after expiry. A Volume opened
-after the first listing, or a range staged into a removed Volume, leaves
-an object other than a tombstone. The prune then keeps the run's
-records, and the next prune that selects the run removes what remains.
-An object written after that final listing is not seen by this run's
-prune, as a commit after step 3's listing is not
+too. Each Volume is first removed in a dry run, against a store that
+reads the real one and keeps every write in memory. Lode's own code
+therefore decides, and a Volume with a commit in flight keeps the run
+before anything of it is deleted. The real removal allows only the
+pointer swap that the dry run recorded, so a Volume that commits meanwhile
+keeps the run's records. The prune then lists the prefix again, as step 3
+lists the partition again after expiry, and a Volume opened after the
+first listing keeps the records too. The next prune that selects the run
+removes what remains. An object written after that final listing is not
+seen by this run's prune, as a commit after step 3's listing is not
 (`CONTRACT_LODE.md` § Concurrency).
 
 The sweep (`CONTRACT_LODE.md` § Sweep) covers what no run reaches. When a
@@ -302,8 +307,10 @@ Dataset after its Volume's last commit. Such an event belongs to a live
 runtime, and a live run is never selected. A prune therefore never
 removes a Volume whose event is pending. A
 Volume snapshot ID carries its creation time, as a Dataset snapshot ID
-does, so selection reads it from the pointer of each Volume under the
-run's prefix. A terminated run writes nothing after its end record, so its age
+does, so selection reads the head of each Volume under the run's prefix
+through Lode's `volume.Head` (§8). That call reads the pointer without
+the Volume's length, which an artifact without its event does not
+record. A terminated run writes nothing after its end record, so its age
 stays the end record's.
 
 ---
@@ -312,7 +319,17 @@ stays the end record's.
 
 Quarry becomes the first consumer that writes Volumes, which is the
 evidence Lode's Volume gate waits for (Lode `V1_READINESS.md` §4). Lode
-needs two changes: `lode.Prefixed` (§3) and `volume.Remove` (§7).
+needs `lode.Prefixed` (§3) and `volume.Remove` (§7), which v0.13.0
+shipped. The write path and retention then showed that Lode needs these
+changes as well:
+
+- `volume.Head` reads a Volume's head without its total length, so the
+  selection of §7 dates the Volume of an artifact whose event never
+  arrived.
+- `Commit` completes a pending commit when a retry asks for the blocks
+  it already holds. Without that, a range whose commit failed after the
+  head pointer advanced can never be retried, and the artifact fails.
+
 `ReadAt` returns a slice, and range-sized reads are enough for
 streaming, so no streaming reader is required.
 
@@ -334,6 +351,9 @@ streaming, so no streaming reader is required.
 4. **Quarry SDK:** `artifactWriter`. `CONTRACT_EMIT.md` and
    `PUBLIC_API.md` change here.
 5. **Quarry retention:** `quarry prune` removes a run's Volumes.
+6. **Lode and Quarry:** `volume.Head` and the completed pending commit
+   (§8) with a release, then Quarry's bump and the selection rule that
+   dates a run by its Volume commits (§7).
 
 Each step leaves `main` releasable. A Volume needs its total length
 before its first byte, and today's frames do not carry it, so storage and
