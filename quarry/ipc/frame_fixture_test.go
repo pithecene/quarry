@@ -251,9 +251,11 @@ func TestE2EFixture_RunMetadata(t *testing.T) {
 			t.Errorf("event attempt = %d, want 1", env.Attempt)
 		}
 
-		// Validate contract version is present
-		if env.ContractVersion == "" {
-			t.Error("event contract_version is empty")
+		// The executor stamps its contract version, which is lockstep with
+		// types.Version: a fixture left from an earlier release fails here,
+		// and `task version:bump` regenerates it.
+		if env.ContractVersion != types.Version {
+			t.Errorf("event contract_version = %q, want %q; regenerate the fixture", env.ContractVersion, types.Version)
 		}
 	}
 }
