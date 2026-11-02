@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pithecene/lode/lode"
+	"github.com/pithecene/lode/lode/volume"
 
 	qlode "github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/reader"
@@ -21,6 +23,7 @@ const (
 	keptVolumePending = "an artifact Volume has a commit in flight; rerun the prune"
 	keptVolumeWritten = "an artifact Volume was written during the prune; rerun the prune"
 	keptVolumeUnknown = "its artifact directory holds a name that is no artifact ID"
+	keptVolumeUndated = "an artifact Volume's head cannot be told, so its last write has no instant"
 )
 
 // volumesSegment is the directory under a run's artifact directory that
@@ -29,10 +32,54 @@ const volumesSegment = "volumes"
 
 // Retention reads only the names of a run's Volumes. Each Volume's own
 // directory is Lode's, so its objects are reached only through Lode: a
-// Volume is removed by volume.Remove, and a dry run calls volume.Remove
-// against a sandboxStore, which records the one pointer swap Lode makes.
-// The real removal then goes through a pinnedStore that allows only that
-// swap, so it removes exactly the head the dry run judged.
+// Volume's head is read by volume.Head, a Volume is removed by
+// volume.Remove, and a dry run calls volume.Remove against a sandboxStore,
+// which records the one pointer swap Lode makes. The real removal then
+// goes through a pinnedStore that allows only that swap, so it removes
+// exactly the head the dry run judged.
+
+// volumeHeads returns the head snapshot ID of each of the run's Volumes
+// that has a commit, by artifact ID, a pending commit included, read
+// without the artifact's size. A Volume with no commit, or a removed one,
+// dates no write. It returns a reason to keep the run when a name is no
+// artifact ID, or when a Volume's head cannot be told.
+func (p *pruner) volumeHeads(ctx context.Context, cfg qlode.Config) (heads map[string]string, kept string, err error) {
+	ids, invalid, err := p.listVolumes(ctx, cfg)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(invalid) > 0 {
+		return nil, keptVolumeUnknown, nil
+	}
+	heads = map[string]string{}
+	for _, id := range ids {
+		head, err := qlode.ArtifactVolumeHead(ctx, p.store, cfg, id)
+		switch {
+		case errors.Is(err, lode.ErrNoSnapshots), errors.Is(err, volume.ErrRemoved):
+			continue
+		case errors.Is(err, lode.ErrHeadUncommitted):
+			return nil, keptVolumeUndated, nil
+		case err != nil:
+			return nil, "", qlode.WrapReadError(err, volumePath(cfg, id))
+		}
+		heads[id] = head
+	}
+	return heads, "", nil
+}
+
+// headsUnchanged reads the run's Volume heads again and returns a reason to
+// keep the run when they differ from the heads that dated it: a Volume
+// committed or appeared since, and the age did not judge that write.
+func (p *pruner) headsUnchanged(ctx context.Context, cfg qlode.Config, dated map[string]string) (kept string, err error) {
+	now, kept, err := p.volumeHeads(ctx, cfg)
+	switch {
+	case kept != "" || err != nil:
+		return kept, err
+	case !maps.Equal(now, dated):
+		return keptVolumeWritten, nil
+	}
+	return "", nil
+}
 
 // volumeProbe is the dry-run removal of one Volume.
 type volumeProbe struct {

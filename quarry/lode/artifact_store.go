@@ -303,3 +303,16 @@ func RemoveArtifactVolume(ctx context.Context, store lode.RangeStore, cfg Config
 	factory := lode.Prefixed(lode.Use(store), RunArtifactDir(cfg))
 	return volume.Remove(ctx, volume.ID(artifactID), factory)
 }
+
+// ArtifactVolumeHead returns the snapshot ID that the head of one
+// artifact's Volume names, from the run's artifact directory,
+// RunArtifactDir, in store. A pending commit's ID is returned too. It
+// needs no size, so it reads the Volume of an artifact whose event never
+// arrived. It never writes. It returns lode.ErrNoSnapshots for a Volume
+// with no commit, volume.ErrRemoved for a removed one, and
+// lode.ErrHeadUncommitted when the head cannot be told.
+func ArtifactVolumeHead(ctx context.Context, store lode.RangeStore, cfg Config, artifactID string) (string, error) {
+	factory := lode.Prefixed(lode.Use(store), RunArtifactDir(cfg))
+	head, err := volume.Head(ctx, volume.ID(artifactID), factory)
+	return string(head), err
+}

@@ -33,6 +33,16 @@ func (f *fixture) writeArtifact(c *qlode.LodeClient, id string) {
 	}
 }
 
+// client opens a Lode client on the run of cfg.
+func (f *fixture) client(cfg qlode.Config) *qlode.LodeClient {
+	f.t.Helper()
+	c, err := qlode.NewLodeClientWithFactory(f.t.Context(), cfg, f.factory)
+	if err != nil {
+		f.t.Fatalf("client: %v", err)
+	}
+	return c
+}
+
 // volumeKeys lists every key under the run's artifact directory.
 func (f *fixture) volumeKeys(cfg qlode.Config) []string {
 	f.t.Helper()
@@ -404,5 +414,105 @@ func TestOrphanDue_GraceBoundary(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Errorf("orphanDue at %s = %v, %v; want %v", tc.now, got, err, tc.want)
 		}
+	}
+}
+
+// A Volume commit is a write of the run: an unterminated run whose
+// artifact Volume committed after its last dataset snapshot measures its
+// age from that commit, a pending one included (CONTRACT_LODE.md
+// §Selection).
+func TestPrune_UnterminatedRunAgesFromItsLastVolumeCommit(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	// The unterminated run's last dataset snapshot began today, 30 days
+	// before now. Its Volume's head began 5 days later, 25 days before now.
+	committed := today.AddDate(0, 0, 5)
+	head := fmt.Sprintf("%d-0123456789abcdef", committed.UnixNano())
+	if err := f.store.Put(t.Context(), pointers(cfgs["unterminated"], "a1")[0], strings.NewReader(head)); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	if r := f.prune(Options{Policy: Policy{Unterminated: days(28)}, DryRun: true}); len(r.Runs) != 0 {
+		t.Fatalf("a run whose Volume committed within the threshold was selected: %+v", r)
+	}
+	// Past the threshold the run is due from the Volume's commit, and Lode
+	// then refuses to remove a Volume whose commit is still in flight.
+	r := f.prune(Options{Policy: Policy{Unterminated: days(24)}, DryRun: true})
+	if got, want := outcomes(r), "[r2:kept]"; got != want {
+		t.Fatalf("runs = %s, want %s", got, want)
+	}
+	if run := r.Runs[0]; run.Kept != keptVolumePending || run.Since != committed.Format(time.RFC3339Nano) {
+		t.Fatalf("run = %+v, want kept for the commit in flight since %s", run, committed.Format(time.RFC3339Nano))
+	}
+}
+
+// A Volume dates no write when it has no commit, as one with only a
+// staged range, or when it was removed. A Volume whose head cannot be
+// told keeps the run, because its last write has no instant.
+func TestPrune_VolumesThatDateNoWrite(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		setup func(f *fixture, cfg qlode.Config)
+		want  string
+		kept  string
+	}{
+		{"a Volume with only a staged range", func(f *fixture, cfg qlode.Config) {
+			vol, err := volume.New("a1", lode.Prefixed(lode.Use(f.store), qlode.RunArtifactDir(cfg)), 4)
+			if err != nil {
+				f.t.Fatalf("volume: %v", err)
+			}
+			if _, err := vol.StageWriteAt(f.t.Context(), 0, strings.NewReader("data")); err != nil {
+				f.t.Fatalf("stage: %v", err)
+			}
+		}, "[r2:pruned]", ""},
+		{"a removed Volume", func(f *fixture, cfg qlode.Config) {
+			f.writeArtifact(f.client(cfg), "a1")
+			if err := qlode.RemoveArtifactVolume(f.t.Context(), f.store, cfg, "a1"); err != nil {
+				f.t.Fatalf("remove: %v", err)
+			}
+		}, "[r2:pruned]", ""},
+		{"a Volume whose pointer is gone beside its manifest", func(f *fixture, cfg qlode.Config) {
+			f.writeArtifact(f.client(cfg), "a1")
+			if err := f.store.Delete(f.t.Context(), pointers(cfg, "a1")[0]); err != nil {
+				f.t.Fatalf("delete: %v", err)
+			}
+		}, "[r2:kept]", keptVolumeUndated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, cfgs := seed(t)
+			tc.setup(f, cfgs["unterminated"])
+			r := f.prune(Options{Policy: Policy{Unterminated: days(28)}, DryRun: true})
+			if got := outcomes(r); got != tc.want || (len(r.Runs) == 1 && r.Runs[0].Kept != tc.kept) {
+				t.Fatalf("report = %+v, want %s kept for %q", r, tc.want, tc.kept)
+			}
+		})
+	}
+}
+
+// A Volume that commits after the heads that dated an unterminated run
+// were read, and before the dry run, was not judged by the age: the heads
+// are read again after the dry run, and the change keeps the run.
+func TestPrune_KeepsAnUnterminatedRunWhoseVolumeCommitsAfterItWasDated(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	cfg := cfgs["unterminated"]
+	store := &listHook{RangeStore: f.store, suffix: "/volumes/", fn: func() {
+		f.writeArtifact(f.client(cfg), "a2")
+	}}
+	factory := func() (lode.RangeStore, error) { return store, nil }
+	report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Unterminated: days(28)}, Now: now})
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if got, want := outcomes(report), "[r2:kept]"; got != want || report.Runs[0].Kept != keptVolumeWritten {
+		t.Fatalf("report = %+v", report)
+	}
+	if n := len(f.volumeKeys(cfg)); n <= 1 {
+		t.Fatalf("the Volume written during the prune lost its objects: %v", f.volumeKeys(cfg))
+	}
+	start := qlode.RunRecordDir(cfg) + qlode.StartRecordName
+	if _, err := f.store.Get(t.Context(), start); err != nil {
+		t.Fatalf("start record removed: %v", err)
 	}
 }

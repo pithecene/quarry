@@ -508,11 +508,22 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
   (read from the snapshot ID), so a run that started long ago and is
   still writing is not selected. A backfilled start record has no
   `started_at`, so the end of its partition day stands in.
-- A write to an artifact Volume does not move that instant. Quarry never
-  reads inside a Volume (§Storage Layout), and Lode's API opens a Volume
-  only with its total length, which an artifact without its event does
-  not record. The minimum age still protects a live run that writes only
-  Volumes, because a live run's age never exceeds its duration.
+- A commit to an artifact Volume is a write of the run, so its snapshot
+  counts among the most recent snapshots. The prune lists the names under
+  the run's `volumes/` prefix and reads each Volume's head through Lode's
+  `volume.Head`. That call needs no total length, so the Volume of an
+  artifact whose event never arrived is dated too. A pending commit dates the
+  Volume as a completed one does. A Volume with no commit, as one that
+  holds only staged ranges, and a removed Volume date no write.
+  The prune reads the heads again after it previews the removal of the
+  run's Volumes. A head that moved, or a Volume that gained its first
+  commit, keeps the run, because the age did not judge that write.
+- A Volume whose head Lode cannot tell, because its pointer is absent
+  beside its manifests, has no instant for its last write. The prune
+  keeps the run, deletes nothing of it, and the report gives the reason.
+  A name under `volumes/` that is no artifact ID keeps the run likewise.
+- The minimum age protects a live run before its first commit, because a
+  live run's age never exceeds its duration.
 - An unterminated run cannot be told apart from a live one, so its age
   must be at least 24 hours and must exceed the longest run. A
   terminated run is final ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization), so any age,
