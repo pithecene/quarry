@@ -127,11 +127,20 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		return out, true, err
 	}
 	cfg := p.configOf(k)
+	// heads are the Volume heads that dated an unterminated run, nil for a
+	// terminated one.
+	var heads map[string]string
 	if out.State == reader.StateUnterminated {
-		due := p.lastWriteDue(&out, preview.Expired, threshold)
+		writes, dated, kept, err := p.writes(ctx, cfg, preview.Expired)
+		if kept != "" || err != nil {
+			out.Kept = kept
+			return out, true, err
+		}
+		due := p.lastWriteDue(&out, writes, threshold)
 		if !due || out.Kept != "" {
 			return out, due, nil
 		}
+		heads = dated
 	}
 	// Each Volume is removed in a dry run first, so a Volume that would keep
 	// the run keeps it before anything of the run is deleted.
@@ -139,6 +148,16 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if kept != "" || err != nil {
 		out.Kept = kept
 		return out, true, err
+	}
+	// A Volume that committed between the heads that dated the run and the
+	// dry run was not judged by the age, so the heads are read again. The
+	// real removal allows only the swaps the dry run recorded, which covers
+	// a commit after this read.
+	if heads != nil {
+		if kept, err := p.headsUnchanged(ctx, cfg, heads); kept != "" || err != nil {
+			out.Kept = kept
+			return out, true, err
+		}
 	}
 	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition)
 	out.Skipped = skipped
@@ -205,11 +224,33 @@ func (p *pruner) configOf(k reader.Key) qlode.Config {
 	return qlode.Config{Dataset: p.dataset, Source: k.Source, Category: k.Category, Day: k.Day, RunID: k.RunID}
 }
 
+// writes is the snapshot IDs that date an unterminated run's writes: its
+// dataset snapshots and the head of each of its artifact Volumes
+// (CONTRACT_LODE.md §Selection). A run that writes only Volumes for a
+// while, as one acquiring a large artifact does, still dates its last
+// write by them. It also returns the Volume heads by artifact ID, which
+// the removal checks again after its dry run, and a reason to keep the run
+// when a Volume cannot be dated.
+func (p *pruner) writes(ctx context.Context, cfg qlode.Config, snapshots []lode.DatasetSnapshotID) (ids []string, heads map[string]string, kept string, err error) {
+	heads, kept, err = p.volumeHeads(ctx, cfg)
+	if kept != "" || err != nil {
+		return nil, nil, kept, err
+	}
+	ids = make([]string, 0, len(snapshots)+len(heads))
+	for _, s := range snapshots {
+		ids = append(ids, string(s))
+	}
+	for _, head := range heads {
+		ids = append(ids, head)
+	}
+	return ids, heads, "", nil
+}
+
 // lastWriteDue reports whether an unterminated run is still due once its age
 // runs from its last write: such a run may be live although it started long
 // ago. It moves out.Since to the last write when that is later, and sets
 // out.Kept when a snapshot ID carries no write instant.
-func (p *pruner) lastWriteDue(out *Run, ids []lode.DatasetSnapshotID, threshold time.Duration) bool {
+func (p *pruner) lastWriteDue(out *Run, ids []string, threshold time.Duration) bool {
 	last, ok := lastWrite(ids)
 	if !ok {
 		out.Kept = keptNoInstant
@@ -260,10 +301,10 @@ func (p *pruner) deleteAll(ctx context.Context, paths []string) error {
 // or the legacy form "<unix nanoseconds>" (Lode CONTRACT_CORE §Snapshot ID).
 // It is false if any ID is in neither form. A run with no snapshot has
 // written nothing, so its start alone dates it.
-func lastWrite(ids []lode.DatasetSnapshotID) (time.Time, bool) {
+func lastWrite(ids []string) (time.Time, bool) {
 	var last time.Time
 	for _, id := range ids {
-		t, ok := idInstant(string(id))
+		t, ok := idInstant(id)
 		if !ok {
 			return time.Time{}, false
 		}
