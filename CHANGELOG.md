@@ -111,7 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Run records**: Each run writes a start record when it begins and an end record when it finishes, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/`. The records hold the run's lineage, partition, times, and outcome. The exit report gains `run_record_error` when the end record cannot be written.
-- **Run listing**: With `--storage-backend` and `--storage-path`, `quarry list runs` lists the runs in storage from their run records, filtered by `--source`, `--category`, `--day`, and `--state` and paged with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
+- **Run listing**: Given `--storage-backend` and `--storage-path`, `quarry list runs` lists the stored runs from their run records. It filters them by `--source`, `--category`, `--day`, and `--state` and pages them with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
 - **Run record backfill**: `quarry index rebuild` writes run records for runs stored before v0.14.0, from what the stored data shows, and marks them `backfilled: true`. A backfilled run's state follows its terminal event. `--dry-run` reports without writing, and a rerun writes only missing records.
 - **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events by calling the `quarry` executable, which must be installed. A failure rejects with `QuarryReadError`.
 - **Security policy**: `SECURITY.md` states how to report a vulnerability privately and which releases receive security fixes.
@@ -260,7 +260,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Integration**: Pluggable Redis Streams event sink. Publishes every event in real time via `XADD` during run execution, enabling downstream consumers to watch events across all runs on a single stream (#222, #223)
+- **Integration**: Pluggable Redis Streams event sink. Publishes every event via `XADD` as the run executes, so downstream consumers watch every run's events on a single stream (#222, #223)
 - **CLI**: `--event-sink` repeatable flag to activate event sinks (`lode`, `redis`). Multiple sinks fan out with independent delivery semantics (#223)
 - **CLI**: Redis Streams event sink flags: `--event-sink-redis-url`, `--event-sink-redis-stream-key`, `--event-sink-redis-max-len`, `--event-sink-redis-ttl`, `--event-sink-redis-timeout`, `--event-sink-redis-retries`, `--event-sink-redis-delivery` (#223)
 - **Runtime**: Fan-out event sink with per-sink delivery classification. `mandatory` sinks fail the run on error. `best_effort` sinks log warnings and continue (#223)
