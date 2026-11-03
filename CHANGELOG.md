@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Artifacts of runs before 0.15 read back whole**: a commit record that Quarry 0.14 wrote states a size of 0 for an artifact of any size. `quarry/reader` therefore read every chunk-stored artifact of such a run as empty and reported no error. The reader now takes the size from where the artifact's last chunk ends, and it refuses an artifact whose chunks no last chunk ends at its size. `CONTRACT_LODE.md` § Commit Record Schema states the rule.
+
 ---
 
 ## [0.15.0] - 2026-11-01

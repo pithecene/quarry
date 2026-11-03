@@ -95,12 +95,25 @@ func (r *Reader) ListArtifacts(ctx context.Context, run Run) ([]Artifact, error)
 // retry under an at-least-once policy may persist a commit record twice
 // (CONTRACT_POLICY.md §Flush Modes), so the first record of each artifact
 // ID stands for the artifact.
+//
+// A commit record that a release before 0.15 wrote may state a size of 0
+// for an artifact of any size, so the size of a chunk-stored artifact whose
+// record states 0 comes from its chunks (chunkedSizes).
 func artifactsOf(recs []lode.D) []Artifact {
 	artifacts := []Artifact{}
+	var sizes map[string]int64 // computed once, when a record needs it
 	for _, rec := range recs {
-		if kind, _ := rec["record_kind"].(string); kind == qlode.RecordKindArtifactEvent {
-			artifacts = append(artifacts, artifactOf(rec))
+		if kind, _ := rec["record_kind"].(string); kind != qlode.RecordKindArtifactEvent {
+			continue
 		}
+		a := artifactOf(rec)
+		if a.Storage == ArtifactStorageChunks && a.SizeBytes == 0 {
+			if sizes == nil {
+				sizes = chunkedSizes(recs)
+			}
+			a.SizeBytes = sizes[a.ArtifactID]
+		}
+		artifacts = append(artifacts, a)
 	}
 	slices.SortStableFunc(artifacts, func(a, b Artifact) int { return int(a.Seq - b.Seq) })
 	seen := map[string]bool{}
@@ -255,13 +268,18 @@ func (v *volumeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 // artifact after a complete one (CONTRACT_POLICY.md §Flush Modes), so a
 // chunk that repeats bytes the assembled prefix already holds, and every
 // chunk at or past SizeBytes, is ignored. A chunk that conflicts with the
-// prefix is an error.
+// prefix is an error. So is an artifact none of whose chunks is a last chunk
+// ending at SizeBytes: a release before 0.15 wrote a last chunk for every
+// artifact, a zero-length one for an empty artifact, so an artifact without
+// one lost chunks, and a size that disagrees with the chunks would
+// otherwise cut the artifact short.
 func chunkReader(recs []lode.D, a Artifact) (ArtifactReader, error) {
 	type chunk struct {
 		offset int64
 		data   []byte
 	}
 	var chunks []chunk
+	lastAtSize := false
 	for _, rec := range recs {
 		kind, _ := rec["record_kind"].(string)
 		if kind != qlode.RecordKindArtifactChunk || stringOf(rec["artifact_id"]) != a.ArtifactID {
@@ -271,7 +289,14 @@ func chunkReader(recs []lode.D, a Artifact) (ArtifactReader, error) {
 		if err != nil {
 			return nil, fmt.Errorf("artifact %q chunk at offset %d: %w", a.ArtifactID, intOf(rec["offset"]), err)
 		}
-		chunks = append(chunks, chunk{offset: intOf(rec["offset"]), data: data})
+		offset := intOf(rec["offset"])
+		chunks = append(chunks, chunk{offset: offset, data: data})
+		if rec["is_last"] == true && offset+int64(len(data)) == a.SizeBytes {
+			lastAtSize = true
+		}
+	}
+	if !lastAtSize {
+		return nil, fmt.Errorf("%w: artifact %q has no last chunk ending at its size %d", ErrArtifactIncomplete, a.ArtifactID, a.SizeBytes)
 	}
 	slices.SortStableFunc(chunks, func(x, y chunk) int { return int(x.offset - y.offset) })
 	buf := make([]byte, 0, a.SizeBytes)
@@ -295,6 +320,25 @@ func chunkReader(recs []lode.D, a Artifact) (ArtifactReader, error) {
 		return nil, fmt.Errorf("%w: artifact %q has %d bytes of chunks, want %d", ErrArtifactIncomplete, a.ArtifactID, len(buf), a.SizeBytes)
 	}
 	return bytes.NewReader(buf), nil
+}
+
+// chunkedSizes returns the size of each chunk-stored artifact among recs:
+// where its first last chunk ends. Every chunk record states is_last
+// (CONTRACT_LODE.md §Chunk Record Schema). A retry may append a second copy
+// after a complete one, whose last chunk ends further on, so the earliest
+// end stands. An artifact with no last chunk has no entry.
+func chunkedSizes(recs []lode.D) map[string]int64 {
+	sizes := map[string]int64{}
+	for _, rec := range recs {
+		if kind, _ := rec["record_kind"].(string); kind != qlode.RecordKindArtifactChunk || rec["is_last"] != true {
+			continue
+		}
+		id, end := stringOf(rec["artifact_id"]), intOf(rec["offset"])+intOf(rec["length"])
+		if size, ok := sizes[id]; !ok || end < size {
+			sizes[id] = end
+		}
+	}
+	return sizes
 }
 
 // chunkData decodes a chunk record's data field, which JSON carries as
