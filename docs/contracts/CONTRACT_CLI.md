@@ -58,7 +58,10 @@ quarry
 ├─ list
 │  ├─ runs
 │  ├─ events
+│  ├─ artifacts
 │  └─ pools
+├─ read
+│  └─ artifact
 ├─ index
 │  └─ rebuild
 ├─ prune
@@ -731,11 +734,94 @@ item schema. The run's partitions are addressed from its start record's
 
 A run with no start record is an error (`run not found`).
 
+### `list artifacts`
+
+Lists one run's artifacts, read from storage. It takes the same flags as
+`list events`, and `--run-id` is required.
+
+Response (`json`, `yaml`):
+```
+RunArtifacts:
+  run: Run               # as in list runs
+  artifacts: Artifact[]  # in seq order, one per artifact ID
+
+Artifact:
+  artifact_id: string
+  name: string
+  content_type: string
+  size_bytes: number
+  seq: number                 # the seq of its commit record
+  storage: volume | empty | chunks
+  volume_snapshot_id: string  # omitted unless storage is volume
+  sha256: string              # omitted for a run that a release before 0.15 wrote
+```
+
+Each artifact is described by its commit record ([CONTRACT_LODE.md](CONTRACT_LODE.md)
+§Commit Record Schema), so an artifact whose event never arrived is not
+listed. `storage` names where the bytes are: a Lode Volume, no bytes at
+all, or the chunk records of a run that a release before 0.15 wrote. For
+a run with Volumes, the command reads commit records and no artifact
+bytes. A run that a release before 0.15 wrote keeps its commit records in
+the partition of its chunk records, so the command reads both.
+`table` renders `artifacts` only.
+
+A run with no start record is an error (`run not found`).
+
 ### `list pools`
 
 Response must include:
 - `name`
 - `strategy`
+
+---
+
+## `read` (bytes)
+
+The `read` commands write stored bytes, not a rendered listing, so they
+take no `--format`, `--no-color`, or `--tui`.
+
+### `read artifact`
+
+Writes one artifact's bytes, read from storage, from the place its
+commit record names (§list artifacts).
+
+Required flags:
+- `--storage-backend`, `--storage-path` (and the other storage flags as on
+  `list runs`)
+- `--source`, `--category`, `--day`, `--run-id`: these locate the run's
+  records directly
+- `--artifact-id`: the artifact, as `list artifacts` names it
+
+Optional flags:
+- `--out=<path>`: the file to write. The command creates it and refuses a
+  path that exists. Without `--out` the bytes go to stdout, and a stdout
+  that is a terminal is an error.
+- `--offset=<n>` and `--length=<n>`: the range to write, in bytes. The
+  range starts at `--offset` (0 when not given) and runs to the end of the
+  artifact when `--length` is not given. A range that does not lie
+  inside the artifact is an error, and nothing is written.
+
+Verification:
+- A read of the whole artifact computes the SHA-256 of the bytes it
+  writes and compares it with the digest in the commit record. A mismatch
+  exits non-zero. A run that a release before 0.15 wrote records no
+  digest, so its whole reads are not compared.
+- A range read is not compared with any digest, because the commit record
+  states the digest of the whole artifact only.
+- Bytes reach stdout as they are read, so a caller MUST treat what it
+  received as unverified until the command exits zero. With `--out`, a
+  failed read removes the file it created.
+
+Exit codes: 0 when every requested byte was written and, for a whole read,
+the digest matched. Any other outcome exits 1 with the reason on stderr.
+
+An artifact stored in a Volume is read range by range from its snapshot.
+An artifact of a run that a release before 0.15 wrote is assembled from
+its chunk records, which the command reads with the rest of the run's
+artifact partition.
+
+A run with no start record is an error (`run not found`), and so is an
+artifact ID that no commit record names (`artifact not found`).
 
 ---
 

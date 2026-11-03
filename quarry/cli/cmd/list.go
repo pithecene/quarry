@@ -27,10 +27,11 @@ func isStderrTTY() bool {
 func ListCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
-		Usage: "List entities (runs, events, pools)",
+		Usage: "List entities (runs, events, artifacts, pools)",
 		Subcommands: []*cli.Command{
 			listRunsCommand(),
 			listEventsCommand(),
+			listArtifactsCommand(),
 			listPoolsCommand(),
 		},
 	}

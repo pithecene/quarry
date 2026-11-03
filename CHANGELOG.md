@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Artifact reads through the CLI**: `quarry list artifacts` lists a run's artifacts as their commit records describe them, with their storage and digest. `quarry read artifact` writes one artifact's bytes to a file or to stdout, whole or by range, from its Lode Volume or the chunk records of an earlier run. A whole read is checked against the digest of the commit record. Any program can therefore read artifacts, in any language. `CONTRACT_CLI.md` § `read` states the rules.
+
 ### Fixed
 
 - **Artifacts of runs before 0.15 read back whole**: a commit record that Quarry 0.14 wrote states a size of 0 for an artifact of any size. `quarry/reader` therefore read every chunk-stored artifact of such a run as empty and reported no error. The reader now takes the size from where the artifact's last chunk ends, and it refuses an artifact whose chunks no last chunk ends at its size. `CONTRACT_LODE.md` § Commit Record Schema states the rule.

@@ -370,15 +370,17 @@ Thin enumerations (not inspect-level detail).
 Subcommands:
 - `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
 - `list events <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
+- `list artifacts <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
 - `list pools`
 
 Notes:
 - `--limit` defaults to `0` (no limit).
 - If output is large, the CLI may warn and suggest `--limit`.
 - With `--storage-backend` and `--storage-path`, `list runs` reads the run
-  records every run writes, and `list events` returns a run's
-  events in sequence order. Without storage flags, `list runs` returns stub
-  data.
+  records every run writes, `list events` returns a run's
+  events in sequence order, and `list artifacts` returns its artifacts as
+  their commit records describe them. Without storage flags, `list runs`
+  returns stub data.
 - A run with no end record is `unterminated`: it may still be running, or
   its process was killed. Storage cannot tell which, so it is never shown
   as running.
@@ -398,6 +400,23 @@ quarry list runs --storage-backend s3 --storage-path my-bucket/quarry \
   --source demo --category default --state succeeded --limit 100
 quarry list events --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 --run-id run-001
+```
+
+### `read`
+
+The command `read artifact <storage flags> --source <s> --category <c> --day <d> --run-id <id> --artifact-id <a>`
+writes one artifact's bytes to `--out <file>` or to stdout, from the Lode
+Volume or the chunk records its commit record names. `--offset` and
+`--length` select a range. A whole read is checked against the SHA-256 in
+the commit record, and a mismatch exits 1 and removes the `--out` file.
+Bytes on stdout are unverified until the command exits 0.
+
+```
+quarry list artifacts --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day 2026-10-22 --run-id run-001
+quarry read artifact --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day 2026-10-22 --run-id run-001 \
+  --artifact-id a1 --out a1.zip
 ```
 
 ### `index`
