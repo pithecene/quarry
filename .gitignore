@@ -38,3 +38,5 @@ quarry/quarry
 
 # The internal check's run records and Go caches (task check)
 .bosun/
+# Docker configuration with the registry login that `task check` needs.
+.docker/

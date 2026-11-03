@@ -52,9 +52,10 @@ jobs:
     # A fork's pull request receives no secret, so it runs no internal check.
     if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
-    # The internal check's image: the one pin of it in this repository.
+    # The image of the internal check's current release: the one line in this
+    # repository that names it.
     container:
-      image: ghcr.io/pithecene/bosun:0.1.0@sha256:269a05c636e4f76da16cce7d8efc0926e5f424e21baf129e3bd77812f113a0ad
+      image: ghcr.io/pithecene/bosun:0.2.0-rc.1
       credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
     steps:
       - name: 📥 Checkout
