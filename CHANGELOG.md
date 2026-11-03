@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.16.0] - 2026-11-02
+
 ### Added
 
 - **Artifact reads through the CLI**: `quarry list artifacts` lists a run's artifacts as their commit records describe them, with their storage and digest. `quarry read artifact` writes one artifact's bytes to a file or to stdout, whole or by range, from its Lode Volume or the chunk records of an earlier run. A whole read is checked against the digest of the commit record. Any program can therefore read artifacts, in any language. `CONTRACT_CLI.md` § `read` states the rules.
@@ -738,7 +742,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/pithecene/quarry/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/pithecene/quarry/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/pithecene/quarry/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/pithecene/quarry/compare/v0.14.0...v0.14.1
