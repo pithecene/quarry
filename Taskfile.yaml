@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  # The internal check's image, as CI's check job pins it.
+  # The internal check's image, as CI's check job names it.
   BOSUN_IMAGE:
     sh: grep -m1 -oE 'ghcr.io/pithecene/bosun:[^ "]+' .github/workflows/ci.yml
   TS_PACKAGES: sdk executor-node
@@ -139,12 +139,17 @@ tasks:
       - docker login ghcr.io
 
   check:
-    desc: Run the internal check (bosun.yaml) in the image that CI's check job pins (needs read access to it)
+    desc: Run the internal check (bosun.yaml) in the image that CI's check job names (needs read access to it)
     deps: [check:login]
+    vars:
+      # A linked worktree's .git names the repository's .git directory, which
+      # mounts at the same path so that Git finds it in the container.
+      GIT_COMMON:
+        sh: cd "$(git rev-parse --git-common-dir)" && pwd
     cmds:
       - mkdir -p .bosun/go
       - >-
-        docker run --rm -v "{{.ROOT_DIR}}:/work"
+        docker run --rm --pull always -v "{{.ROOT_DIR}}:/work" -v "{{.GIT_COMMON}}:{{.GIT_COMMON}}"
         -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build
         -e GOLANGCI_LINT_CACHE=/work/.bosun/go/lint
         "{{.BOSUN_IMAGE}}" check
