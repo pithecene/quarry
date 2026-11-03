@@ -55,7 +55,7 @@ jobs:
     # The image of the internal check's current release: the one line in this
     # repository that names it.
     container:
-      image: ghcr.io/pithecene/bosun:0.2.0-rc.1
+      image: ghcr.io/pithecene/bosun:latest
       credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
     steps:
       - name: 📥 Checkout
