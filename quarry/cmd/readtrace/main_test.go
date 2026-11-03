@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/pithecene/lode/lode"
+
+	"github.com/pithecene/quarry/iox"
 )
 
 // The shim counts every call it forwards, by operation, and keeps the
@@ -30,7 +32,7 @@ func TestCounting_RecordsEveryCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = io.ReadAll(rc)
-	_ = rc.Close()
+	iox.DiscardClose(rc)
 	if _, err := c.List(ctx, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -124,8 +126,8 @@ func TestCounting_GetTimesTheBody(t *testing.T) {
 	if b, _ := io.ReadAll(rc); string(b) != "body" {
 		t.Fatalf("body = %q", b)
 	}
-	_ = rc.Close()
-	_ = rc.Close() // a second close records nothing more
+	iox.DiscardClose(rc)
+	iox.DiscardClose(rc) // a second close records nothing more
 	if len(c.calls) != 1 || c.calls[0].took < 50*time.Millisecond {
 		t.Fatalf("calls = %+v, want one Get of at least 50ms", c.calls)
 	}
