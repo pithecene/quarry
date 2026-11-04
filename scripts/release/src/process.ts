@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 
 export type RunOptions = {
   /** Working directory; the current one when omitted. */
@@ -46,23 +46,10 @@ const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 export const spawnRun: Run = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
     const output = options.output ?? 'capture'
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      detached: true,
-      stdio: output === 'capture' ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'inherit', 'inherit']
-    })
-
-    let stdout = ''
-    let stderr = ''
-    child.stdout?.setEncoding('utf8').on('data', (chunk: string) => {
-      stdout += chunk
-    })
-    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
-      stderr += chunk
-    })
+    let child: ChildProcess | undefined
 
     const killGroup = (signal: NodeJS.Signals): void => {
-      if (child.pid === undefined) return
+      if (child?.pid === undefined) return
       try {
         process.kill(-child.pid, signal)
       } catch {
@@ -77,18 +64,13 @@ export const spawnRun: Run = (command, args, options = {}) =>
       killGroup(signal)
       timers.push(setTimeout(() => killGroup('SIGKILL'), KILL_GRACE_MS))
     }
-    if (options.timeoutMs !== undefined) {
-      timers.push(
-        setTimeout(() => {
-          timedOut = true
-          terminate('SIGTERM')
-        }, options.timeoutMs)
-      )
-    }
 
     // A command in its own group no longer receives the signals that stop
     // this process, so they are passed on. Once the group has exited, this
-    // process re-raises the signal and exits as the signal intends.
+    // process re-raises the signal and exits as the signal intends. The
+    // listeners are in place before the command starts: a signal that
+    // arrived between spawn and their registration would stop this process
+    // by default and leave the group running.
     let stopping: NodeJS.Signals | undefined
     const forward = (signal: NodeJS.Signals): void => {
       stopping = signal
@@ -99,6 +81,36 @@ export const spawnRun: Run = (command, args, options = {}) =>
     const cleanup = (): void => {
       for (const timer of timers) clearTimeout(timer)
       for (const signal of FORWARDED_SIGNALS) process.removeListener(signal, forward)
+    }
+
+    try {
+      child = spawn(command, args, {
+        cwd: options.cwd,
+        detached: true,
+        stdio: output === 'capture' ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'inherit', 'inherit']
+      })
+    } catch (error) {
+      cleanup()
+      reject(error)
+      return
+    }
+
+    let stdout = ''
+    let stderr = ''
+    child.stdout?.setEncoding('utf8').on('data', (chunk: string) => {
+      stdout += chunk
+    })
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+      stderr += chunk
+    })
+
+    if (options.timeoutMs !== undefined) {
+      timers.push(
+        setTimeout(() => {
+          timedOut = true
+          terminate('SIGTERM')
+        }, options.timeoutMs)
+      )
     }
 
     child.on('error', (error) => {
