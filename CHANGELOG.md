@@ -1,9 +1,9 @@
 # Changelog
 
-All notable changes to Quarry will be documented in this file.
+This file records every notable change to Quarry.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This changelog follows the format of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Puppeteer alone suffices with no plugin enabled**: the executor loaded `puppeteer-extra` for every launched browser, so a project that set `QUARRY_STEALTH=0` still had to install it and its transitive packages. It now loads `puppeteer-extra` only while a plugin is enabled. The SDK no longer declares `puppeteer-extra` as a peer, and nothing in the SDK imports it.
+- **Puppeteer alone suffices with no plugin enabled**: the executor loaded `puppeteer-extra` for every launched browser, so a project that set `QUARRY_STEALTH=0` still had to install it and its transitive packages. It now loads `puppeteer-extra` only while a configuration enables a plugin. The SDK no longer declares `puppeteer-extra` as a peer, and nothing in the SDK imports it.
 
 ---
 
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Artifact reads through the CLI**: `quarry list artifacts` lists a run's artifacts as their commit records describe them, with their storage and digest. `quarry read artifact` writes one artifact's bytes to a file or to stdout, whole or by range, from its Lode Volume or the chunk records of an earlier run. A whole read is checked against the digest of the commit record. Any program can therefore read artifacts, in any language. `CONTRACT_CLI.md` § `read` states the rules.
+- **Artifact reads through the CLI**: `quarry list artifacts` lists a run's artifacts as their commit records describe them, with their storage and digest. `quarry read artifact` writes one artifact's bytes to a file or to stdout, whole or by range, from its Lode Volume or the chunk records of an earlier run. Quarry checks a whole read against the digest of the commit record. Any program can therefore read artifacts, in any language. `CONTRACT_CLI.md` § `read` states the rules.
 
 ### Fixed
 
@@ -35,8 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **`--flush-mode` is removed**: the buffered policy's three flush modes differed only in how a flush ordered artifact chunk writes against event writes. With artifact bytes in Lode Volumes, a flush writes the buffered events once and keeps the whole buffer on failure, so the flag, the `policy.flush_mode` key of the config file, and `policy.FlushMode` are removed. A run that passes the flag or the key fails to start.
-- **Policies and sinks handle events only**: `policy.Policy` loses `IngestArtifactChunk`, `policy.Sink` and `lode.Client` lose `WriteChunks`, `policy.Stats` loses `TotalChunks` and `ChunksPersisted`, and `policy.NewCompositeSink` and the `types.ArtifactChunk` family are removed. A custom sink implements `WriteEvents` and `Close`. The executor package no longer exports the chunk codec.
+- **The removal of `--flush-mode`**: the buffered policy's three flush modes differed only in how a flush ordered artifact chunk writes against event writes. With artifact bytes in Lode Volumes, a flush writes the buffered events once and keeps the whole buffer on failure, so this release removes the flag, the `policy.flush_mode` key of the config file, and `policy.FlushMode`. A run that passes the flag or the key fails to start.
+- **Policies and sinks handle events only**: `policy.Policy` loses `IngestArtifactChunk`, `policy.Sink` and `lode.Client` lose `WriteChunks`, `policy.Stats` loses `TotalChunks` and `ChunksPersisted`, and this release removes `policy.NewCompositeSink` and the `types.ArtifactChunk` family. A custom sink implements `WriteEvents` and `Close`. The executor package no longer exports the chunk codec.
 
 ### Added
 
@@ -46,14 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Artifact bytes live in Lode Volumes**: the runtime stores each artifact as one Lode Volume under `artifacts/<dataset>/<run key>/volumes/<artifact_id>/` and commits each range as it arrives. The commit record gains `storage`, `volume_snapshot_id`, and `sha256`, the digest the runtime computed. An empty artifact has no Volume. A run that ends without an artifact's event loses that artifact's Volume, and the run report counts the artifact as orphaned. `list events` no longer decodes artifact bytes. `CONTRACT_LODE.md` § Artifact Storage states the layout and the record.
-- **Artifact frames**: the executor sends an artifact as an `artifact_open` frame that states its size, `artifact_range` frames of at most 8 MiB in any order, and the `artifact` event. The runtime answers each range with an `artifact_range_ack` once the range is committed, so `emit.artifact()` resolves on durable bytes, and it refuses an artifact above 1 GiB on open. The `artifact_chunk` frame is retired, and the run report counts `ranges` where it counted `chunks`. `CONTRACT_IPC.md` § Artifact Frames defines the frames.
+- **Artifact frames**: the executor sends an artifact as an `artifact_open` frame that states its size, `artifact_range` frames of at most 8 MiB in any order, and the `artifact` event. The runtime answers each range with an `artifact_range_ack` once Lode commits the range, so `emit.artifact()` resolves on durable bytes, and it refuses an artifact above 1 GiB on open. This release retires the `artifact_chunk` frame, and the run report counts `ranges` where it counted `chunks`. `CONTRACT_IPC.md` § Artifact Frames defines the frames.
 - **Prune removes artifact Volumes**: a run that `quarry prune` removes loses its artifact Volumes after its sidecar files and before its records. With `--sweep-grace`, the sweep also removes the Volumes of runs without a start record once their day is older than the grace period. A dry run reports what the prune does, and a Volume written during the prune keeps the run's records. The report gains `volumes`. `CONTRACT_LODE.md` § Run Retention states the order, and § Storage Layout marks each prefix as Quarry's or Lode's.
 - **Prune dates a run by its Volume commits**: an unterminated run's age runs from the later of its last dataset snapshot and its artifact Volumes' last commits, pending ones included. A run that writes only an artifact for a while is therefore not selected. The prune reads each head through Lode's `volume.Head`, so the Volume of an artifact whose event never arrived counts too. A Volume whose head Lode cannot tell keeps the run. `CONTRACT_LODE.md` § Selection states the rule.
 
 ### Fixed
 
 - **Runs commit on Hetzner Object Storage**: a run whose storage is a Hetzner bucket committed only its first snapshot, and every write after it failed with a snapshot conflict. Hetzner refuses the quoted ETag that the S3 adapter sent in `If-Match`, and Lode v0.13.0 sends the bare value, which AWS S3, Cloudflare R2, and Hetzner accept.
-- **A retried artifact range completes its commit**: a range whose commit failed after Lode advanced the Volume's head pointer could never be retried. Lode refused the retry as a commit without new blocks, so the range stayed refused and the artifact failed. Lode v0.14.0 completes the pending commit when the retry arrives, so the range commits and the artifact finishes.
+- **A retried artifact range completes its commit**: a range whose commit failed after Lode advanced the Volume's head pointer could never succeed on a retry. Lode refused the retry as a commit without new blocks, so the range stayed refused and the artifact failed. Lode v0.14.0 completes the pending commit when the retry arrives, so the range commits and the artifact finishes.
 
 ### Upgrade Notes
 
@@ -82,14 +82,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Experimental surface**: The artifact byte path is experimental. `PUBLIC_API.md` § Experimental Surface defines it: artifact bytes, `ctx.storage.put` and `createStorageBatcher`, the `artifact_chunk`, `file_write`, and `file_write_ack` frames, and the stored chunk records and sidecar files. v1.0 excludes it from its compatibility commitment unless its replacement, which streams bytes into Lode Volumes (#255), is ready first. The `artifact` event and its commit record are not experimental, and behavior is unchanged.
 - **Metrics contract**: `CONTRACT_METRICS.md` § Data Sources states which read commands read storage today (`stats metrics`, `list runs`, and `list events`) and that the others return stub data. It no longer claims that every `stats` command reads Lode through a global reader configuration, which never shipped.
-- **Docs**: `IMPLEMENTATION_PLAN.md` records what v0.13.6 and v0.14.0 shipped. Retention shipped as `quarry prune`, and Lode v0.12.0 enforces each dataset's compressor, so the planned `quarry.json` pin is dropped. The items v0.14.0 did not ship, among them the storage key in `file_write_ack`, the run deadline, and the compressor option, are listed under Carried Forward.
-- **Docs**: The documentation is organized by audience. The implementation plan, the release readiness records, and the ingress models exploration move to `docs/plans/`, and `CLI_PARITY.json` moves to `docs/maintainers/`.
+- **Docs**: `IMPLEMENTATION_PLAN.md` records what v0.13.6 and v0.14.0 shipped. Retention shipped as `quarry prune`, and Lode v0.12.0 enforces each dataset's compressor, so the plan drops the `quarry.json` pin. The items v0.14.0 did not ship, among them the storage key in `file_write_ack`, the run deadline, and the compressor option, appear under Carried Forward.
+- **Docs**: The documentation follows its audiences. The implementation plan, the release readiness records, and the ingress models exploration move to `docs/plans/`, and `CLI_PARITY.json` moves to `docs/maintainers/`.
 - **Contracts**: The contracts state invariants only. They no longer mark the release that introduced a section, restate the experimental standing that `PUBLIC_API.md` § Experimental Surface defines, or list planned adapters and hosts.
-- **Contracts**: Every contract is titled in the form "Quarry <Subject> Contract" and opens with "This document defines". `CONTRACT_LODE.md` is titled "Quarry Lode Storage Contract".
-- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The streaming guide is folded into the emit guide (§ Streaming and Backpressure), and the overview guide, which repeated the README, is removed. Its list of components moves to the README.
+- **Contracts**: Every contract's title takes the form "Quarry <Subject> Contract" and opens with "This document defines". The title of `CONTRACT_LODE.md` reads "Quarry Lode Storage Contract".
+- **Docs**: Each guide opens with its subject, and references between documents are links named for the document they open. The emit guide absorbs the streaming guide (§ Streaming and Backpressure), and this release removes the overview guide, which repeated the README. Its list of components moves to the README.
 - **Release markers and retries**: The guides and `PUBLIC_API.md` lose the release markers in their headings, and the integration guide loses the pre-v0.5.0 wrapper pattern. The run guide states that Quarry does not retry runs, and the README no longer says that the runtime manages retries.
 - **Docs**: The README, `PUBLIC_API.md`, the guides, the contracts, and this changelog follow Chicago style: no semicolons or dashes as sentence punctuation, no contractions, active voice where an agent acts, and headline-style headings. A heading that is a command or a field in code font remains that name.
-- **Docs**: Examples no longer name particular vendors or subjects. S3-compatible providers are described generically, with `https://s3.example.com` as the example endpoint, the proxy examples use a placeholder provider, and the README pipeline extracts the catalog of an example store. The CLI help for `--storage-endpoint` and `--storage-s3-path-style` changes to match.
+- **Docs**: Examples no longer name particular vendors or subjects. The documentation describes S3-compatible providers generically, with `https://s3.example.com` as the example endpoint, the proxy examples use a placeholder provider, and the README pipeline extracts the catalog of an example store. The CLI help for `--storage-endpoint` and `--storage-s3-path-style` changes to match.
 - **Docs**: The README quick start runs end to end. It creates a script project, installs the CLI into it with `mise use`, and installs the SDK and the Puppeteer packages the executor loads (`puppeteer`, `puppeteer-extra`, and `puppeteer-extra-plugin-stealth`). The example script reads `https://example.com` and types its job payload, and the guide runs it with `quarry run` and confirms the run with `quarry list runs`.
 - **Docs**: The README quick start creates its project with `quarry init`, run once through `mise exec`, so a first run takes four commands: `init`, `cd`, `npm install`, and `quarry run`. A new section runs the same script in the full container image without a local Node.js project. The container guide's standalone `docker run` passes `--user` so that the run can write a bind-mounted storage directory, and `PUBLIC_API.md` points to `quarry init` ahead of its manual setup.
 - **Docs**: `PUBLIC_API.md` setup matches what a run needs. The Node.js prerequisite is 22.18 or later, or 22.6 or later with `--experimental-strip-types`. The CLI installs with `mise use`, which puts `quarry` on `PATH`. The SDK step creates an ES module project and installs `proxy-agent` and then the Puppeteer packages the executor loads, and the from-source example passes `--executor` so that it resolves them from the workspace.
@@ -97,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` are removed. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
+- **CLI stub views removed**: `quarry inspect job`, `inspect task`, `inspect executor`, `stats jobs`, `stats tasks`, `stats executors`, `list jobs`, and `list executors` no longer exist. They returned fixed stub data, and Quarry stores no jobs, tasks, or executors for them to read. The `cli/reader` package loses the matching `Reader` methods, functions, and response types, and `tui.IsTUISupported` accepts only the views that `tui.SupportedTUIViews` lists.
 
 ### Fixed
 
@@ -112,16 +112,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Go module path**: The Go module moves from `github.com/pithecene-io/quarry` to `github.com/pithecene/quarry`. The CLI, the SDK, the container images, and stored data are unchanged.
 - **Go version**: The Go module requires Go 1.27.3 or later, the version that Lode v0.12.0 requires. Release binaries and container images are unaffected.
-- **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. Nothing may be written for a run after its end record, so a program must no longer write metrics after `Execute`.
-- **Browser discovery type**: `runtime.BrowserDiscovery` is removed. Browser reuse no longer keeps a discovery file for the runtime to read.
-- **Storage constructors**: `NewLodeClient`, `NewLodeClientWithFactory`, and `NewLodeS3Client` take a `context.Context`, because opening a dataset reads its head. Store factories are `lode.Factory[lode.RangeStore]`. `QueryLatestMetrics` and `QuerySidecarFiles` take the store factory and dataset ID in place of a dataset, and `NewReadDataset`, `NewReadDatasetFS`, `NewReadDatasetS3`, and `NewPartitionReader` are replaced by `OpenDataset` and `OpenView`.
+- **Run finalization**: `RunOrchestrator.Execute` closes the policy and writes the metrics and the run records itself, so programs that embed the runtime and fan-out child runs store the same data as the CLI. A program may write nothing for a run after its end record, so a program must no longer write metrics after `Execute`.
+- **Browser discovery type**: This release removes `runtime.BrowserDiscovery`. Browser reuse no longer keeps a discovery file for the runtime to read.
+- **Storage constructors**: `NewLodeClient`, `NewLodeClientWithFactory`, and `NewLodeS3Client` take a `context.Context`, because opening a dataset reads its head. Store factories are `lode.Factory[lode.RangeStore]`. `QueryLatestMetrics` and `QuerySidecarFiles` take the store factory and dataset ID in place of a dataset, and `NewReadDataset`, `NewReadDatasetFS`, `NewReadDatasetS3`, and `NewPartitionReader` give way to `OpenDataset` and `OpenView`.
 
 ### Added
 
-- **Run records**: Each run writes a start record when it begins and an end record when it finishes, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/`. The records hold the run's lineage, partition, times, and outcome. The exit report gains `run_record_error` when the end record cannot be written.
+- **Run records**: Each run writes a start record when it begins and an end record when it finishes, under `datasets/<dataset>/runs/<source>/<category>/<day>/<run_id>/`. The records hold the run's lineage, partition, times, and outcome. The exit report gains `run_record_error` when Quarry cannot write the end record.
 - **Run listing**: Given `--storage-backend` and `--storage-path`, `quarry list runs` lists the stored runs from their run records. It filters them by `--source`, `--category`, `--day`, and `--state` and pages them with `--limit` and `--after`. `quarry list events` returns one run's events in order. A run without an end record is `unterminated`. The `quarry/reader` package offers the same reads to Go programs.
 - **Run record backfill**: `quarry index rebuild` writes run records for runs stored before v0.14.0, from what the stored data shows, and marks them `backfilled: true`. A backfilled run's state follows its terminal event. `--dry-run` reports without writing, and a rerun writes only missing records.
-- **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events by calling the `quarry` executable, which must be installed. A failure rejects with `QuarryReadError`.
+- **SDK run reader**: `listRuns` and `readRun` in `@pithecene/quarry-sdk` list runs and read a run's events by calling the `quarry` executable, which the host must provide. A failure rejects with `QuarryReadError`.
 - **Security policy**: `SECURITY.md` states how to report a vulnerability privately and which releases receive security fixes.
 - **Run retention** ([#239](https://github.com/pithecene/quarry/issues/239)): `quarry prune` removes whole runs by state and age with `--succeeded-days`, `--failed-days`, and `--unterminated-days`, or one run with `--run-id`, including its sidecar files and run records. A prune keeps the run that committed last until another run commits. `--sweep-grace` also reclaims data from writes that never committed, `--dry-run` reports without removing, and a rerun resumes an interrupted prune. The `quarry/retention` package offers the same operation to Go programs.
 
@@ -134,11 +134,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Policy close**: `Close` on the buffered, streaming, and strict policies runs once, so a second call no longer flushes again. Its flush has a 30-second deadline, and a custom sink must honor context cancellation. `Close` returns `ErrCloseUnflushed` when accepted data remains unwritten, and data offered after `Close` begins is refused with `ErrPolicyClosed`.
+- **Policy close**: `Close` on the buffered, streaming, and strict policies runs once, so a second call no longer flushes again. Its flush has a 30-second deadline, and a custom sink must honor context cancellation. `Close` returns `ErrCloseUnflushed` when accepted data remains unwritten, and the policy refuses data offered after `Close` begins with `ErrPolicyClosed`.
 - **Browser server output**: The reusable browser server writes its diagnostics to `browser-server.log` in the discovery directory instead of the stderr of the run that launched the server. A program that reads a run's output through a pipe no longer waits for the server's idle timeout to see end of file.
 - **Browser server lifetime**: The reusable browser server no longer shuts down under a run in progress. It counted only pages that had navigated, so a run whose page was still `about:blank`, or one that connected as the idle timeout expired, could lose its browser. Each run now holds a connection to the server, over a Unix socket in the discovery directory, until it ends. The server shuts down only after it has had no connection for the idle timeout.
-- **Orphaned browser**: A browser left running by a reusable browser server that was killed, as with `SIGKILL`, is closed by the next server to start.
-- **Prune option errors**: `quarry prune` refuses options it cannot act on, such as no age flag, with the plain reason and exit code 1. It no longer renders an empty report or advises a rerun that would be refused again.
+- **Orphaned browser**: The next server to start closes a browser that a killed reusable browser server left running, as after `SIGKILL`.
+- **Prune option errors**: `quarry prune` refuses options it cannot act on, such as no age flag, with the plain reason and exit code 1. It no longer renders an empty report or advises a rerun that the runtime would refuse again.
 - **S3 checksum warnings**: Reads from S3-compatible stores that send no checksum no longer log a warning to stderr for each response. The SDK still validates every checksum a store sends.
 
 ### Upgrade Notes
@@ -157,7 +157,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CLI**: `quarry stats metrics` reads from S3-compatible providers. The S3 read path ignored the configured endpoint and path-style addressing and sent requests to AWS. It now builds its client exactly like the write path, and `stats metrics` accepts `--storage-endpoint` and `--storage-s3-path-style` like `run` (#253)
 - **Packaging**: npm `latest` and the `ghcr.io/pithecene/quarry` `:latest`/`:slim` tags always point at the newest published release. Publishing an older patch release after a newer one (as with v0.13.5 after v0.13.6) no longer moves them backwards (#252)
-- **Storage**: Storage errors are classified by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind: a filesystem permission error under a directory containing `403` was reported as `ErrAccessDenied` instead of `ErrPermissionDenied`
+- **Storage**: Quarry classifies storage errors by the underlying error type (filesystem permission/not-found/exists/disk-full, HTTP status of S3 responses) before message text. Previously a path or key in the message could decide the kind: a filesystem permission error under a directory containing `403` produced `ErrAccessDenied` instead of `ErrPermissionDenied`
 
 ### Security
 
@@ -180,15 +180,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **Packaging**: The GitHub organization was renamed from `pithecene-io` to `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images. The `v0.13.5` tag was re-pointed at the commit carrying the rename and the release re-run (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR (update imports from `@pithecene-io/quarry-sdk`), and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
+- **Packaging**: The maintainers renamed the GitHub organization from `pithecene-io` to `pithecene`. GitHub Packages and GHCR require the scope/owner to match, so the first v0.13.5 release run could not publish the npm package or the container images. They moved the `v0.13.5` tag to the commit carrying the rename and ran the release again (#246). The SDK is `@pithecene/quarry-sdk` on npm (GitHub Packages) and JSR (update imports from `@pithecene-io/quarry-sdk`), and container images are `ghcr.io/pithecene/quarry` (`:latest`, `:slim`, versioned tags). `mise install github:pithecene/quarry`. The Go module path `github.com/pithecene-io/quarry` is unchanged
 
 ### Added
 
-- **Metrics**: `lode_write_retry_total` is now populated. Quarry registers Lode's `WithRetryObserver` on the write path, so each CAS retry increments the counter. The CLI no longer prints it as "(not implemented)" and `CONTRACT_LODE.md` no longer marks it reserved
+- **Metrics**: Quarry now populates `lode_write_retry_total`. Quarry registers Lode's `WithRetryObserver` on the write path, so each CAS retry increments the counter. The CLI no longer prints it as "(not implemented)" and `CONTRACT_LODE.md` no longer marks it reserved
 
 ### Fixed
 
-- **Storage**: `store.Put()` errors from sidecar file writes are now wrapped by `WrapWriteError` with path context and classified. New `ErrPathExists` sentinel covers immutability violations (`"path exists"`, `"already exists"`, `"file exists"`, `EEXIST`) (#237)
+- **Storage**: `WrapWriteError` now wraps and classifies the `store.Put()` errors of sidecar file writes, with path context. New `ErrPathExists` sentinel covers immutability violations (`"path exists"`, `"already exists"`, `"file exists"`, `EEXIST`) (#237)
 - **CLI**: `QuerySidecarFiles()` unions `sidecar_files` metadata across a run's snapshots. `InspectRunResponse` gains an `omitempty` `SidecarFileSummary` list so `inspect` can enumerate files without prefix-scanning (#237)
 
 ### Security
@@ -208,13 +208,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Storage**: Sidecar file metadata inventory. Files written via `storage.put()` are now tracked in Lode snapshot `Metadata` under the `sidecar_files` key. Downstream consumers can enumerate files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of prefix-scanning storage (#234)
+- **Storage**: Sidecar file metadata inventory. Lode snapshot `Metadata` now tracks the files that `storage.put()` writes, under the `sidecar_files` key. Downstream consumers can enumerate files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of prefix-scanning storage (#234)
 - **Storage**: `SidecarFileRef` type. Each tracked file includes `path`, `filename`, `content_type`, and `size` fields
 - **Tests**: Lode sentinel error path validation. Targeted integration tests for `lode.ErrPathExists` (immutability enforcement on double-write) and `lode.ErrNotFound` (stale snapshot ID), providing evidence for Lode V1_READINESS §5 (#234)
 
 ### Fixed
 
-- **Storage**: File inventory is only flushed on event and metrics writes (consumer-facing commit boundaries), not on chunk writes. Prevents file refs from being drained into artifact snapshots that consumers do not inspect for metadata (#234)
+- **Storage**: Quarry flushes the file inventory only on event and metrics writes (consumer-facing commit boundaries), not on chunk writes. Keeps file refs out of artifact snapshots that consumers do not inspect for metadata (#234)
 
 ---
 
@@ -259,7 +259,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Build**: Embed git commit SHA in binary via ldflags. `quarry --version` now shows the short commit hash instead of `unknown` across all build paths (Taskfile, CI release, Dockerfile) (#225)
-- **Docs**: Sweep stale v0.12.2 version references in README.md, SUPPORT.md, and IMPLEMENTATION_PLAN.md that were missed in the v0.13.0 release
+- **Docs**: Sweep stale v0.12.2 version references in README.md, SUPPORT.md, and IMPLEMENTATION_PLAN.md that the v0.13.0 release missed
 - **Tests**: Update hardcoded `ContractVersion` in Redis Streams adapter test fixtures to match current release
 
 ---
@@ -389,7 +389,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **IPC**: Backpressure integration test that deterministically proves drain path is exercised. Spawns child, withholds parent reads until pipe fills, asserts `backpressure_events > 0` (#164)
+- **IPC**: Backpressure integration test that deterministically proves that the drain path runs. Spawns child, withholds parent reads until pipe fills, asserts `backpressure_events > 0` (#164)
 
 ### Changed
 
@@ -441,7 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Executor**: `--browser-server` mode. Self-managing browser server with idle monitoring via `/json/list` polling and graceful shutdown (#149)
 - **Policy**: `streaming` ingestion policy. Combines strict's no-drop guarantee with buffered's batched write efficiency for long-running crawl workloads (#140)
 - **Policy**: Configurable flush triggers: `--flush-count` (event count threshold) and `--flush-interval` (time-based periodic flush) (#140)
-- **Policy**: Capacity-triggered emergency flush prevents deadlock when internal buffer bounds are reached before configured triggers fire (#140)
+- **Policy**: Capacity-triggered emergency flush prevents deadlock when the internal buffer reaches its bounds before configured triggers fire (#140)
 - **Policy**: Backpressure-based flow control. Ingestion blocks when buffer is full rather than dropping events (#140)
 - **Proxy**: `recency_window` pool option. Maintains a ring buffer of recently-used endpoint indices and excludes them from random selection, reducing endpoint reuse (#143)
 - **Proxy**: LRU fallback when recency window >= endpoint count (selection never blocks) (#143)
@@ -470,7 +470,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Runtime**: SDK/CLI version mismatches are now classified as `version_mismatch` instead of `executor_crash`, with an actionable error message directing users to align their SDK and CLI versions (#132)
+- **Runtime**: Quarry now classifies an SDK/CLI version mismatch as `version_mismatch` instead of `executor_crash`, with an actionable error message directing users to align their SDK and CLI versions (#132)
 - **Lode**: Upgraded to Lode v0.7.1. Fixes O(n²) flush performance caused by linear snapshot ID lookups in `dataset.Write()` (pithecene/lode#108)
 
 ---
@@ -486,13 +486,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Runtime**: `storage.put()` now **fails fast** when FileWriter is not configured. Previously logged a warning and silently discarded data (#128)
+- **Runtime**: `storage.put()` now **fails fast** when the run configures no FileWriter. Previously logged a warning and silently discarded data (#128)
 - **Runtime**: Metrics persistence timeout increased from 10s to 30s to match policy flush timeout (#128)
 - **Docs**: Fan-out support level downgraded from `Supported` to `Experimental` in SUPPORT.md (#130)
 
 ### Upgrade Notes
 
-- **Breaking**: `storage.put()` now returns an error instead of silently discarding data when storage is not configured. Scripts using `storage.put()` must ensure `--storage-backend` and `--storage-path` are set. Previously, misconfigured runs would silently lose sidecar files.
+- **Breaking**: `storage.put()` now returns an error instead of silently discarding data when the run configures no storage. Scripts using `storage.put()` must set `--storage-backend` and `--storage-path`. Previously, misconfigured runs would silently lose sidecar files.
 
 ---
 
@@ -706,7 +706,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **CLI**: `--job` description clarified as "inline JSON object" to distinguish from `--job-json`
-- **CLI**: Job payload (`--job` and `--job-json`) now **requires** a top-level JSON object. Arrays, primitives, and null are rejected with actionable error messages
+- **CLI**: Job payload (`--job` and `--job-json`) now **requires** a top-level JSON object. The SDK rejects arrays, primitives, and null with actionable error messages
 - **CLI**: Normalized help text for job, storage, and policy flags for consistency
 - **Docs**: CLI parity artifact (`docs/CLI_PARITY.json`) added as machine-checkable source of truth
 
@@ -746,7 +746,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Runtime requirements**: Go 1.25.6 or later builds Quarry from source. Node.js 23 or later runs scripts, and so does Node.js 22.6 or later with `--experimental-strip-types`. Development uses pnpm 10.28.2.
 - **Puppeteer**: Puppeteer is a peer dependency, so a project installs it with `npm install puppeteer`.
-- **Storage**: `--storage-backend` and `--storage-path` are required flags, and the filesystem backend's path must exist before a run.
+- **Storage**: Each run requires the `--storage-backend` and `--storage-path` flags, and the filesystem backend's path must exist before a run.
 
 ---
 
