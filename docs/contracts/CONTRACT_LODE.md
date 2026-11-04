@@ -200,9 +200,8 @@ artifacts/<dataset>/<source>/<category>/<day>/<run_id>/commits/<artifact_id>
 - Because the runtime writes an entry only after the commit record
   persists, an entry proves that the record persisted. A missing entry
   proves nothing about the artifact.
-- The runtime of a release before 0.17 wrote no entries. For a run that
-  such a runtime executed, the reader reads the partition for each
-  artifact.
+- A run may hold no entries at all. For such a run, the reader reads the
+  partition for each artifact.
 
 ### Chunk Record Schema
 
@@ -318,7 +317,7 @@ Field names use the `_total` suffix to match [CONTRACT_METRICS.md](CONTRACT_METR
 | `lode_write_success_total`      | int64             | yes      | Storage counter                          |
 | `lode_write_failure_total`      | int64             | yes      | Storage counter                          |
 | `lode_write_retry_total`        | int64             | yes      | Storage counter (CAS retries, see Write Retry) |
-| `artifact_index_write_failure_total` | int64 | yes | Storage counter: commit index entries not written (§Commit Index). Absent in records written before release 0.17, and read as 0 |
+| `artifact_index_write_failure_total` | int64 | yes | Storage counter: commit index entries not written (§Commit Index). A reader reads an absent field as 0 |
 | `policy`                        | string            | yes      | Dimension: policy name                   |
 | `executor`                      | string            | yes      | Dimension: executor identity             |
 | `storage_backend`               | string            | yes      | Dimension: storage backend               |

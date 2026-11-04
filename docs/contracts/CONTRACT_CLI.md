@@ -821,8 +821,7 @@ snapshot that holds the commit record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Co
 number of store requests therefore stays the same however many artifacts
 the run holds. When the
 run has no entry for the artifact, the command finds the record by
-reading the run's artifact partition. A run from a release before 0.17
-has no entries. The number of store requests in a partition read
+reading the run's artifact partition. The number of store requests in a partition read
 grows with the number of the run's snapshots. The command therefore writes the reason for
 each partition read to stderr. For an artifact stored in a Volume, the command reads the
 Volume's snapshot one range at a time. A run from a release before 0.15 stores each
