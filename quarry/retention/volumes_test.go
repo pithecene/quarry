@@ -244,25 +244,29 @@ func TestPrune_SweepRemovesOrphanedVolumes(t *testing.T) {
 func TestArtifactKey(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		rel  string
-		key  reader.Key
-		id   string
-		ok   bool
-		note string
+		rel     string
+		key     reader.Key
+		id      string
+		segment string
+		ok      bool
+		note    string
 	}{
-		{"src/cat/2026-10-01/r1/volumes/a1/latest", reader.Key{Source: "src", Category: "cat", Day: "2026-10-01", RunID: "r1"}, "a1", true, "a pointer"},
-		{"s%20p/cat/2026-10-01/r1/volumes/a1/snapshots/1-0123456789abcdef/manifest.json", reader.Key{Source: "s p", Category: "cat", Day: "2026-10-01", RunID: "r1"}, "a1", true, "an encoded component"},
-		{"src/cat/2026-10-01/r1/volumes/a1", reader.Key{}, "", false, "no object within the volume"},
-		{"src/cat/2026-10-01/r1/files/a1/x", reader.Key{}, "", false, "not under volumes"},
-		{"src/cat/not-a-day/r1/volumes/a1/latest", reader.Key{}, "", false, "a day in another form"},
-		{"s p/cat/2026-10-01/r1/volumes/a1/latest", reader.Key{}, "", false, "an unencoded component"},
-		{"src/cat/2026-10-01/r1/volumes//latest", reader.Key{}, "", false, "an empty artifact ID"},
-		{"src/cat/2026-10-01/r1/volumes/.lode-tmp-x/latest", reader.Key{}, "", false, "an ID that Lode reserves"},
+		{"src/cat/2026-10-01/r1/volumes/a1/latest", reader.Key{Source: "src", Category: "cat", Day: "2026-10-01", RunID: "r1"}, "a1", "volumes", true, "a pointer"},
+		{"s%20p/cat/2026-10-01/r1/volumes/a1/snapshots/1-0123456789abcdef/manifest.json", reader.Key{Source: "s p", Category: "cat", Day: "2026-10-01", RunID: "r1"}, "a1", "volumes", true, "an encoded component"},
+		{"src/cat/2026-10-01/r1/commits/a1", reader.Key{Source: "src", Category: "cat", Day: "2026-10-01", RunID: "r1"}, "a1", "commits", true, "a commit index entry"},
+		{"src/cat/2026-10-01/r1/commits/a1/x", reader.Key{}, "", "", false, "a key below an entry"},
+		{"src/cat/2026-10-01/r1/commits/.lode-tmp-x", reader.Key{}, "", "", false, "an entry named by an ID that Lode reserves"},
+		{"src/cat/2026-10-01/r1/volumes/a1", reader.Key{}, "", "", false, "no object within the volume"},
+		{"src/cat/2026-10-01/r1/files/a1/x", reader.Key{}, "", "", false, "not under volumes"},
+		{"src/cat/not-a-day/r1/volumes/a1/latest", reader.Key{}, "", "", false, "a day in another form"},
+		{"s p/cat/2026-10-01/r1/volumes/a1/latest", reader.Key{}, "", "", false, "an unencoded component"},
+		{"src/cat/2026-10-01/r1/volumes//latest", reader.Key{}, "", "", false, "an empty artifact ID"},
+		{"src/cat/2026-10-01/r1/volumes/.lode-tmp-x/latest", reader.Key{}, "", "", false, "an ID that Lode reserves"},
 	}
 	for _, tc := range cases {
-		key, id, ok := artifactKey(tc.rel)
-		if ok != tc.ok || key != tc.key || id != tc.id {
-			t.Errorf("artifactKey(%q) = %+v, %q, %v; want %+v, %q, %v (%s)", tc.rel, key, id, ok, tc.key, tc.id, tc.ok, tc.note)
+		key, id, segment, ok := artifactKey(tc.rel)
+		if ok != tc.ok || key != tc.key || id != tc.id || segment != tc.segment {
+			t.Errorf("artifactKey(%q) = %+v, %q, %q, %v; want %+v, %q, %q, %v (%s)", tc.rel, key, id, segment, ok, tc.key, tc.id, tc.segment, tc.ok, tc.note)
 		}
 	}
 }
@@ -514,5 +518,111 @@ func TestPrune_KeepsAnUnterminatedRunWhoseVolumeCommitsAfterItWasDated(t *testin
 	start := qlode.RunRecordDir(cfg) + qlode.StartRecordName
 	if _, err := f.store.Get(t.Context(), start); err != nil {
 		t.Fatalf("start record removed: %v", err)
+	}
+}
+
+// putEntries writes a commit index entry for each artifact ID of the run, as
+// the runtime writes one after each commit record (CONTRACT_LODE.md §Commit
+// Index), and returns their keys.
+func (f *fixture) putEntries(cfg qlode.Config, ids ...string) []string {
+	f.t.Helper()
+	keys := make([]string, 0, len(ids))
+	for _, id := range ids {
+		key := qlode.CommitIndexKey(cfg, id)
+		if err := f.store.Put(f.t.Context(), key, strings.NewReader(`{"snapshot_id":"x"}`)); err != nil {
+			f.t.Fatalf("put entry: %v", err)
+		}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// present reports which of the keys the store holds.
+func (f *fixture) present(keys []string) []string {
+	f.t.Helper()
+	var out []string
+	for _, key := range keys {
+		if ok, err := f.store.Exists(f.t.Context(), key); err != nil {
+			f.t.Fatalf("exists: %v", err)
+		} else if ok {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
+// A pruned run loses its commit index entries with its Volumes. A key under
+// the run's commits/ prefix that is no entry is left in place, and a run the
+// prune keeps keeps its entries.
+func TestPrune_RemovesCommitIndexEntries(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	cfg := f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, artifacts: 2})
+	keptCfg := f.write(runSpec{source: "src", runID: "r2", day: recentDay, outcome: types.OutcomeSuccess, artifacts: 1})
+	entries := f.putEntries(cfg, "a1", "a2")
+	keptEntries := f.putEntries(keptCfg, "a1")
+	nested := qlode.CommitIndexPrefix(cfg) + "a1/x"
+	if err := f.store.Put(t.Context(), nested, strings.NewReader("x")); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	dry := f.prune(Options{Policy: Policy{Failed: days(7)}, DryRun: true})
+	if dry.IndexEntries != 2 || dry.Runs[0].IndexEntries != 2 || len(f.present(entries)) != 2 {
+		t.Fatalf("dry run = %+v, entries left %v", dry, f.present(entries))
+	}
+
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:pruned]"; got != want || report.IndexEntries != 2 || report.Runs[0].IndexEntries != 2 {
+		t.Fatalf("report = %+v", report)
+	}
+	if left := f.present(entries); len(left) != 0 {
+		t.Fatalf("entries left %v", left)
+	}
+	if left := f.present([]string{nested}); len(left) != 1 {
+		t.Fatalf("a key that is no entry was removed")
+	}
+	if left := f.present(keptEntries); len(left) != 1 {
+		t.Fatalf("a run the prune keeps lost its entries")
+	}
+}
+
+// The sweep deletes the commit index entries of a run without a start
+// record whose day is past the grace period, counts them, and reports none
+// of them as unparseable. A run with a start record keeps its entries.
+func TestPrune_SweepRemovesOrphanedCommitIndexEntries(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	kept := f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: types.OutcomeSuccess, artifacts: 1})
+	orphan := f.write(runSpec{source: "src", runID: "r2", day: oldDay, outcome: types.OutcomeScriptError, artifacts: 1})
+	keptEntries := f.putEntries(kept, "a1")
+	orphanEntries := f.putEntries(orphan, "a1", "a2")
+	// A run whose Volumes are gone already and whose entries remain.
+	bare := qlode.Config{Dataset: "quarry", Source: "src", Category: "cat", Day: oldDay, RunID: "r3"}
+	bareEntries := f.putEntries(bare, "a1")
+	dir := qlode.RunRecordDir(orphan)
+	for _, name := range []string{qlode.StartRecordName, qlode.EndRecordName} {
+		if err := f.store.Delete(t.Context(), dir+name); err != nil {
+			t.Fatalf("delete: %v", err)
+		}
+	}
+
+	opts := Options{Policy: Policy{Succeeded: days(90)}, SweepGrace: 24 * time.Hour}
+	dry := f.prune(Options{Policy: opts.Policy, SweepGrace: opts.SweepGrace, DryRun: true})
+	if dry.Sweep == nil || dry.Sweep.IndexEntries != 3 || len(dry.Sweep.Unparseable) != 0 {
+		t.Fatalf("dry sweep = %+v", dry.Sweep)
+	}
+	if left := f.present(slices.Concat(orphanEntries, bareEntries)); len(left) != 3 {
+		t.Fatalf("dry run removed entries: %v left", left)
+	}
+
+	report := f.prune(opts)
+	if report.Sweep == nil || report.Sweep.IndexEntries != 3 || report.Sweep.Volumes != 1 || len(report.Sweep.Unparseable) != 0 {
+		t.Fatalf("sweep = %+v", report.Sweep)
+	}
+	if left := f.present(slices.Concat(orphanEntries, bareEntries)); len(left) != 0 {
+		t.Fatalf("orphaned entries left %v", left)
+	}
+	if left := f.present(keptEntries); len(left) != 1 {
+		t.Fatalf("a run with a start record lost its entries")
 	}
 }

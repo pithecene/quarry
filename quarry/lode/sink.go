@@ -40,6 +40,11 @@ type Config struct {
 	// RetryObserver, if set, is invoked once per Lode CAS retry with the
 	// 1-indexed attempt number (see lode.WithRetryObserver). Optional.
 	RetryObserver func(attempt int)
+	// IndexFailureObserver, if set, is invoked once per commit index entry
+	// that could not be written (CONTRACT_LODE.md §Commit Index). The
+	// artifact's commit record is persisted, so the failure fails no write.
+	// Optional.
+	IndexFailureObserver func(artifactID string, err error)
 }
 
 // Sink is a Lode-backed implementation of policy.Sink.

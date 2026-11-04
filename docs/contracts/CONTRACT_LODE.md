@@ -44,6 +44,7 @@ sealed prefix is interpreted.
 | The rest of `datasets/<dataset>/` | Lode, sealed | The Dataset |
 | `artifacts/<dataset>/<run key>/volumes/` | Quarry | One name per artifact ID (§Artifact Storage) |
 | `artifacts/<dataset>/<run key>/volumes/<artifact_id>/` | Lode, sealed | One Volume |
+| `artifacts/<dataset>/<run key>/commits/` | Quarry | One commit index entry per committed artifact (§Commit Index) |
 
 - `<run partition>` is `source=<s>/category=<c>/day=<d>/run_id=<r>`, and
   `<run key>` is `<source>/<category>/<day>/<run_id>`, each encoded as
@@ -159,6 +160,49 @@ A run written by a release before 0.15 holds its artifact bytes as chunk
 records under `event_type=artifact`, which readers still read (§Chunk
 Record Schema). The runtime writes no chunk record.
 
+### Commit Index
+
+A reader that opens one artifact needs that artifact's commit record
+only. The run's artifact partition holds one snapshot for each batch that
+committed an artifact, so the cost of reading the partition grows with
+the run. The commit index holds one entry per committed artifact, and
+each entry names the snapshot that holds the artifact's record:
+
+```
+artifacts/<dataset>/<source>/<category>/<day>/<run_id>/commits/<artifact_id>
+```
+
+- An entry is a JSON object with one member, `snapshot_id`. That member
+  holds the ID of the Dataset snapshot whose `event_type=artifact`
+  partition holds the artifact's commit record.
+- The runtime writes an entry for each artifact commit record once the
+  Dataset write that persists the record succeeds, and never before. An
+  empty artifact has an entry too.
+- The runtime writes each entry with a create-only `Put`. When the entry
+  exists already, the runtime leaves it in place.
+- A failed entry write does not fail the Dataset write, which has
+  already persisted the commit record. The runtime counts the failure in
+  `artifact_index_write_failure_total` (§Metrics Record Schema).
+- An entry names a snapshot and states nothing else about its artifact.
+  A reader takes every fact about the artifact from the commit record in
+  the named snapshot.
+- The reader reads the artifact partition instead when the entry is absent
+  or is not an object with a snapshot ID. The reader also reads the
+  partition when the snapshot holds no commit record of the artifact, and
+  when retention has expired the snapshot, removed it, or deleted one of
+  its data objects. To recognize an
+  expired snapshot, the reader reads the snapshot's canonical manifest,
+  so the reader never serves a partition manifest that an interrupted expiry left behind. When the snapshot's commit record of the artifact names chunk storage,
+  the reader reads the partition as well, because the artifact's chunk
+  records can lie in other snapshots.
+- The reader's caller can supply an observer, and the reader reports each
+  of those fallbacks and its reason to that observer.
+- Because the runtime writes an entry only after the commit record
+  persists, an entry proves that the record persisted. A missing entry
+  proves nothing about the artifact.
+- A run may hold no entries at all. For such a run, the reader reads the
+  partition for each artifact.
+
 ### Chunk Record Schema
 
 Chunk records are read, not written, from release 0.15.
@@ -273,6 +317,7 @@ Field names use the `_total` suffix to match [CONTRACT_METRICS.md](CONTRACT_METR
 | `lode_write_success_total`      | int64             | yes      | Storage counter                          |
 | `lode_write_failure_total`      | int64             | yes      | Storage counter                          |
 | `lode_write_retry_total`        | int64             | yes      | Storage counter (CAS retries, see Write Retry) |
+| `artifact_index_write_failure_total` | int64 | yes | Storage counter: commit index entries not written (§Commit Index). A reader reads an absent field as 0 |
 | `policy`                        | string            | yes      | Dimension: policy name                   |
 | `executor`                      | string            | yes      | Dimension: executor identity             |
 | `storage_backend`               | string            | yes      | Dimension: storage backend               |
@@ -592,6 +637,10 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    its removal and keeps the run's records. Then list the names again. A
    name the preview did not list belongs to a Volume opened since, so the
    prune keeps the run's records, and the next prune removes it.
+   The prune then deletes the run's commit index entries (§Commit Index).
+   Without an entry, a reader finds the commit record by reading the
+   partition, so deleting the entries never changes what a reader returns. A prune that stops before this deletion leaves
+   entries, and the next prune deletes them.
 6. Delete the start record, and then the end record. A run without a
    start record is never listed, and an end record without one is
    ignored by readers.
@@ -627,9 +676,11 @@ is its start's day, and the grace period exceeds the longest run, so the
 Volume of a live run is never removed. Each Volume is previewed and
 removed as step 5 removes it. A Volume with a commit in flight, or one
 that commits meanwhile, is left for the next sweep, and a dry run does
-not count it. A Volume removed already is not counted. A key whose run
+not count it. A Volume removed already is not counted. The sweep also deletes the commit
+index entries of such a run. A key whose run
 key or artifact ID the write path could not have produced is reported
-and never acted on. The report counts the Volumes removed.
+and never acted on. The report counts the Volumes removed and the
+entries deleted.
 
 ### Concurrency
 

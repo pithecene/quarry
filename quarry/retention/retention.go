@@ -105,6 +105,9 @@ type Run struct {
 	SidecarObjects int `json:"sidecar_objects" yaml:"sidecar_objects"`
 	// Volumes counts the artifact Volumes removed (in a dry run, would be).
 	Volumes int `json:"volumes" yaml:"volumes"`
+	// IndexEntries counts the commit index entries deleted (in a dry run,
+	// would be).
+	IndexEntries int `json:"index_entries" yaml:"index_entries"`
 	// Kept gives the reason a selected run was not removed.
 	Kept string `json:"kept,omitempty" yaml:"kept,omitempty"`
 	// Skipped lists sidecar paths recorded for the run that lie outside its
@@ -123,6 +126,9 @@ type SweepReport struct {
 	Orphans int   `json:"orphans" yaml:"orphans"`
 	// Volumes counts the artifact Volumes removed (in a dry run, would be).
 	Volumes int `json:"volumes" yaml:"volumes"`
+	// IndexEntries counts the commit index entries of runs without a start
+	// record deleted (in a dry run, would be).
+	IndexEntries int `json:"index_entries" yaml:"index_entries"`
 	// Unparseable lists the keys, of the dataset and of the artifact
 	// namespace, that the write path could not have produced. The sweep
 	// never acts on them.
@@ -143,6 +149,7 @@ type Report struct {
 	Bytes          int64  `json:"bytes" yaml:"bytes"`
 	SidecarObjects int    `json:"sidecar_objects" yaml:"sidecar_objects"`
 	Volumes        int    `json:"volumes" yaml:"volumes"`
+	IndexEntries   int    `json:"index_entries" yaml:"index_entries"`
 	Runs           []Run  `json:"runs" yaml:"runs"`
 	// OrphanEndRecords counts end records without a start record that the
 	// prune deleted (in a dry run, would delete).
@@ -165,6 +172,7 @@ func (r *Report) add(run Run) {
 	r.Bytes += run.Bytes
 	r.SidecarObjects += run.SidecarObjects
 	r.Volumes += run.Volumes
+	r.IndexEntries += run.IndexEntries
 }
 
 // Prune removes the runs the policy selects, in key order, then sweeps when
@@ -222,9 +230,10 @@ func Prune(ctx context.Context, dataset string, factory lode.Factory[lode.RangeS
 			return report, fmt.Errorf("sweep: %w", err)
 		}
 		// Dataset.Sweep never reads the artifact namespace, so the Volumes
-		// of runs without a start record are swept here.
-		volumes, unparseable, err := p.sweepVolumes(ctx, opts.SweepGrace)
-		report.Sweep.Volumes = volumes
+		// and commit index entries of runs without a start record are swept
+		// here.
+		swept, unparseable, err := p.sweepVolumes(ctx, opts.SweepGrace)
+		report.Sweep.Volumes, report.Sweep.IndexEntries = swept.volumes, swept.entries
 		report.Sweep.Unparseable = append(report.Sweep.Unparseable, unparseable...)
 		if err != nil {
 			return report, fmt.Errorf("sweep: %w", err)

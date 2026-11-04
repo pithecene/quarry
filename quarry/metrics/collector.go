@@ -36,6 +36,9 @@ type Snapshot struct {
 	LodeWriteSuccess int64
 	LodeWriteFailure int64
 	LodeWriteRetry   int64 // CAS retries observed via lode.WithRetryObserver
+	// ArtifactIndexWriteFailure counts commit index entries that could not
+	// be written (CONTRACT_LODE.md §Commit Index).
+	ArtifactIndexWriteFailure int64
 
 	// Dimensions (informational, set at construction)
 	Policy         string
@@ -66,6 +69,7 @@ type Collector struct {
 	lodeWriteSuccess int64
 	lodeWriteFailure int64
 	lodeWriteRetry   int64
+	artifactIndexWriteFailure int64
 
 	// Ingestion (set once via AbsorbPolicyStats)
 	eventsReceived  int64
@@ -217,6 +221,18 @@ func (c *Collector) IncLodeWriteRetry() {
 	c.mu.Unlock()
 }
 
+// IncArtifactIndexWriteFailure records one commit index entry that could
+// not be written. The artifact's commit record is persisted, so the run
+// does not fail; a reader finds the record by reading the partition.
+func (c *Collector) IncArtifactIndexWriteFailure() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.artifactIndexWriteFailure++
+	c.mu.Unlock()
+}
+
 // --- Ingestion (absorbed from policy.Stats) ---
 
 // AbsorbPolicyStats copies ingestion counters from policy.Stats into the collector.
@@ -284,6 +300,7 @@ func (c *Collector) Snapshot() Snapshot {
 		LodeWriteSuccess: c.lodeWriteSuccess,
 		LodeWriteFailure: c.lodeWriteFailure,
 		LodeWriteRetry:   c.lodeWriteRetry,
+		ArtifactIndexWriteFailure: c.artifactIndexWriteFailure,
 
 		Policy:         c.policy,
 		Executor:       c.executor,

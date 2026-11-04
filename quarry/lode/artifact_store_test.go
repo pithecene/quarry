@@ -156,8 +156,12 @@ func TestArtifactStore_EmptyArtifact(t *testing.T) {
 	if a, got := f.readBack("e1"); a.Storage != reader.ArtifactStorageEmpty || len(got) != 0 {
 		t.Fatalf("read back %+v, %q; want an empty artifact", a, got)
 	}
-	if keys, _ := f.store.List(ctx, qlode.RunArtifactDir(f.cfg)); len(keys) != 0 {
+	if keys, _ := f.store.List(ctx, qlode.RunArtifactDir(f.cfg)+"volumes/"); len(keys) != 0 {
 		t.Fatalf("an empty artifact wrote %v; want no Volume", keys)
+	}
+	// Its commit record is the only fact that it exists, so it is indexed.
+	if _, found, err := qlode.ReadCommitIndex(ctx, f.store, f.cfg, "e1"); err != nil || !found {
+		t.Fatalf("commit index of an empty artifact: found %v, %v; want an entry", found, err)
 	}
 }
 

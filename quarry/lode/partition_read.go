@@ -43,7 +43,6 @@ func ReadPartitionRecords(ctx context.Context, ds lode.SnapshotReader, partition
 	if err != nil {
 		return nil, WrapReadError(err, partition.String())
 	}
-	dir := "/" + partition.String() + "/"
 	seen := map[string]bool{}
 	var out []lode.D
 	for _, ref := range manifests {
@@ -51,17 +50,46 @@ func ReadPartitionRecords(ctx context.Context, ds lode.SnapshotReader, partition
 		if err != nil {
 			return nil, WrapReadError(err, partition.String())
 		}
-		for _, f := range m.Files {
-			if seen[f.Path] || !strings.Contains(f.Path, dir) {
-				continue
-			}
-			seen[f.Path] = true
-			recs, err := readObject(ctx, ds, lode.ObjectRef{Manifest: ref, Path: f.Path})
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, recs...)
+		recs, err := readManifestRecords(ctx, ds, ref, m, partition, seen)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, recs...)
+	}
+	return out, nil
+}
+
+// ReadSnapshotPartitionRecords returns the records that one committed
+// snapshot stored in one partition. It reads the snapshot's canonical
+// manifest, so a snapshot that retention expired, whose partition manifest
+// may remain as a residual object, is never served (Lode
+// CONTRACT_RETENTION §Expired Snapshot). It returns lode.ErrNotFound or
+// lode.ErrSnapshotExpired, wrapped, when the snapshot is gone, and
+// lode.ErrNotFound when one of its data objects is.
+func ReadSnapshotPartitionRecords(ctx context.Context, ds lode.SnapshotReader, snapshot lode.DatasetSnapshotID, partition lode.PartitionPath) ([]lode.D, error) {
+	snap, err := ds.Snapshot(ctx, snapshot)
+	if err != nil {
+		return nil, WrapReadError(err, partition.String())
+	}
+	ref := lode.ManifestRef{ID: snapshot, Partition: partition}
+	return readManifestRecords(ctx, ds, ref, snap.Manifest, partition, map[string]bool{})
+}
+
+// readManifestRecords reads the records of the manifest's files in the
+// partition, skipping a file that seen holds and adding each file it reads.
+func readManifestRecords(ctx context.Context, ds lode.SnapshotReader, ref lode.ManifestRef, m *lode.Manifest, partition lode.PartitionPath, seen map[string]bool) ([]lode.D, error) {
+	dir := "/" + partition.String() + "/"
+	var out []lode.D
+	for _, f := range m.Files {
+		if seen[f.Path] || !strings.Contains(f.Path, dir) {
+			continue
+		}
+		seen[f.Path] = true
+		recs, err := readObject(ctx, ds, lode.ObjectRef{Manifest: ref, Path: f.Path})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, recs...)
 	}
 	return out, nil
 }

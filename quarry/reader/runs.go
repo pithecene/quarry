@@ -99,10 +99,25 @@ type Page struct {
 type Reader struct {
 	dataset string
 	store   lode.RangeStore // one store for listing runs and reading their events and artifacts
+	// onFallback, when set, is told each time OpenArtifact reads the run's
+	// artifact partition instead of the snapshot a commit index entry names.
+	onFallback func(artifactID string, why IndexFallback)
+}
+
+// Option configures a Reader.
+type Option func(*Reader)
+
+// WithIndexFallback reports to fn each time OpenArtifact cannot use the
+// artifact's commit index entry and reads the run's artifact partition
+// instead (CONTRACT_LODE.md §Commit Index), with the reason. A partition
+// read costs requests that grow with the run, so a caller that measures or
+// explains a read's cost supplies fn.
+func WithIndexFallback(fn func(artifactID string, why IndexFallback)) Option {
+	return func(r *Reader) { r.onFallback = fn }
 }
 
 // New returns a reader for the dataset stored behind factory.
-func New(dataset string, factory lode.Factory[lode.RangeStore]) (*Reader, error) {
+func New(dataset string, factory lode.Factory[lode.RangeStore], opts ...Option) (*Reader, error) {
 	// The dataset component is used unencoded; reject unsafe IDs as the
 	// write path does.
 	if err := qlode.ValidateRunKey(dataset, "x", "x", "x"); err != nil {
@@ -118,7 +133,11 @@ func New(dataset string, factory lode.Factory[lode.RangeStore]) (*Reader, error)
 	if store == nil {
 		return nil, errors.New("reader: store factory returned a nil store")
 	}
-	return &Reader{dataset: dataset, store: store}, nil
+	r := &Reader{dataset: dataset, store: store}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r, nil
 }
 
 // ListRuns lists the runs under the selector's key prefix, ordered by key

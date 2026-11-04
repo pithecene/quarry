@@ -112,6 +112,7 @@ type MetricsSnapshot struct {
 	LodeWriteSuccess int64 `json:"lode_write_success_total"`
 	LodeWriteFailure int64 `json:"lode_write_failure_total"`
 	LodeWriteRetry   int64 `json:"lode_write_retry_total"`
+	ArtifactIndexWriteFailure int64 `json:"artifact_index_write_failure_total"`
 
 	// Dimensions per CONTRACT_METRICS.md
 	Policy         string `json:"policy"`

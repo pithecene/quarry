@@ -30,6 +30,11 @@ const (
 // holds its Volumes, one per artifact ID (CONTRACT_LODE.md §Storage Layout).
 const volumesSegment = "volumes"
 
+// commitsSegment is the directory under a run's artifact directory that
+// holds its commit index, one entry per artifact ID (CONTRACT_LODE.md
+// §Commit Index).
+const commitsSegment = "commits"
+
 // Retention reads only the names of a run's Volumes. Each Volume's own
 // directory is Lode's, so its objects are reached only through Lode: a
 // Volume's head is read by volume.Head, a Volume is removed by
@@ -217,11 +222,13 @@ func (p *pruner) removeVolumes(ctx context.Context, cfg qlode.Config, preview vo
 	return removed, "", nil
 }
 
-// orphanVolumes is one run key's Volumes in the artifact namespace, without
-// a start record beside them.
+// orphanVolumes is one run key's Volumes and commit index entries in the
+// artifact namespace, without a start record beside them. Entries holds
+// the entries' keys.
 type orphanVolumes struct {
-	key reader.Key
-	ids []string
+	key     reader.Key
+	ids     []string
+	entries []string
 }
 
 // sweepVolumes removes the Volumes of every run in the artifact namespace
@@ -232,24 +239,39 @@ type orphanVolumes struct {
 // one that commits meanwhile, is left for the next sweep, and a dry run
 // does not count it. Keys the write path could not have produced are
 // returned as unparseable and never acted on.
-func (p *pruner) sweepVolumes(ctx context.Context, grace time.Duration) (volumes int, unparseable []string, err error) {
+func (p *pruner) sweepVolumes(ctx context.Context, grace time.Duration) (swept sweptArtifacts, unparseable []string, err error) {
 	orphans, unparseable, err := p.orphanVolumes(ctx, grace)
 	if err != nil {
-		return 0, unparseable, err
+		return swept, unparseable, err
 	}
 	for _, o := range orphans {
 		cfg := p.configOf(o.key)
 		for _, id := range o.ids {
 			removed, err := p.sweepVolume(ctx, cfg, id)
 			if err != nil {
-				return volumes, unparseable, err
+				return swept, unparseable, err
 			}
 			if removed {
-				volumes++
+				swept.volumes++
 			}
 		}
+		// An entry is never authoritative (CONTRACT_LODE.md §Commit Index), so
+		// a run's entries go whatever became of its Volumes.
+		if !p.opts.DryRun {
+			if err := p.deleteAll(ctx, o.entries); err != nil {
+				return swept, unparseable, err
+			}
+		}
+		swept.entries += len(o.entries)
 	}
-	return volumes, unparseable, nil
+	return swept, unparseable, nil
+}
+
+// sweptArtifacts counts what the sweep removed from the artifact namespace
+// (in a dry run, would remove).
+type sweptArtifacts struct {
+	volumes int
+	entries int
 }
 
 // sweepVolume removes one orphaned Volume, or in a dry run reports that it
@@ -287,7 +309,7 @@ func (p *pruner) orphanVolumes(ctx context.Context, grace time.Duration) (orphan
 	byRun := map[reader.Key]*orphanVolumes{}
 	var order []reader.Key
 	for _, key := range keys {
-		k, id, ok := artifactKey(strings.TrimPrefix(key, root))
+		k, id, segment, ok := artifactKey(strings.TrimPrefix(key, root))
 		if !ok {
 			unparseable = append(unparseable, key)
 			continue
@@ -298,7 +320,10 @@ func (p *pruner) orphanVolumes(ctx context.Context, grace time.Duration) (orphan
 			byRun[k] = run
 			order = append(order, k)
 		}
-		if n := len(run.ids); n == 0 || run.ids[n-1] != id {
+		switch {
+		case segment == commitsSegment:
+			run.entries = append(run.entries, key)
+		case len(run.ids) == 0 || run.ids[len(run.ids)-1] != id:
 			run.ids = append(run.ids, id)
 		}
 	}
@@ -331,29 +356,32 @@ func (p *pruner) orphanDue(ctx context.Context, cfg qlode.Config, grace time.Dur
 	return !exists, nil
 }
 
-// artifactKey decodes a key relative to the artifact namespace,
-// <source>/<category>/<day>/<run_id>/volumes/<artifact_id>/..., into the
-// run it belongs to and its artifact ID. What follows the artifact ID is
-// Lode's and is not read. It is false for a key in any other shape, or
-// whose components the write path could not have encoded (CONTRACT_LODE.md
-// §Key Encoding).
-func artifactKey(rel string) (reader.Key, string, bool) {
+// artifactKey decodes a key relative to the artifact namespace into the run
+// it belongs to, its artifact ID, and the segment it lies in: a Volume's
+// object, <source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...,
+// whose remainder is Lode's and is not read, or a commit index entry,
+// <source>/<category>/<day>/<run_id>/commits/<artifact_id>. It is false for
+// a key in any other shape, or whose components the write path could not
+// have encoded (CONTRACT_LODE.md §Key Encoding).
+func artifactKey(rel string) (reader.Key, string, string, bool) {
 	parts := strings.SplitN(rel, "/", 7)
-	if len(parts) != 7 || parts[4] != volumesSegment || qlode.ValidateArtifactID(parts[5]) != nil {
-		return reader.Key{}, "", false
+	volume := len(parts) == 7 && parts[4] == volumesSegment
+	entry := len(parts) == 6 && parts[4] == commitsSegment
+	if (!volume && !entry) || qlode.ValidateArtifactID(parts[5]) != nil {
+		return reader.Key{}, "", "", false
 	}
 	var decoded [4]string
 	for i, part := range parts[:4] {
 		v, err := url.PathUnescape(part)
 		if err != nil || url.PathEscape(v) != part || qlode.ValidateKeyComponent("key", v) != nil {
-			return reader.Key{}, "", false
+			return reader.Key{}, "", "", false
 		}
 		decoded[i] = v
 	}
 	if _, err := time.Parse(time.DateOnly, decoded[2]); err != nil {
-		return reader.Key{}, "", false // the write path writes only YYYY-MM-DD
+		return reader.Key{}, "", "", false // the write path writes only YYYY-MM-DD
 	}
-	return reader.Key{Source: decoded[0], Category: decoded[1], Day: decoded[2], RunID: decoded[3]}, parts[5], true
+	return reader.Key{Source: decoded[0], Category: decoded[1], Day: decoded[2], RunID: decoded[3]}, parts[5], parts[4], true
 }
 
 // volumePath names a Volume in errors.

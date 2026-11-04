@@ -230,6 +230,7 @@ func toMetricsRecordMap(snap metrics.Snapshot, cfg Config, completedAt time.Time
 		"lode_write_success_total": snap.LodeWriteSuccess,
 		"lode_write_failure_total": snap.LodeWriteFailure,
 		"lode_write_retry_total":   snap.LodeWriteRetry,
+		"artifact_index_write_failure_total": snap.ArtifactIndexWriteFailure,
 
 		// Dimensions
 		"policy":          snap.Policy,

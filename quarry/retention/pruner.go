@@ -159,6 +159,10 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 			return out, true, err
 		}
 	}
+	entries, err := p.indexEntries(ctx, cfg)
+	if err != nil {
+		return out, true, err
+	}
 	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition)
 	out.Skipped = skipped
 	if errors.Is(err, errMalformedInventory) {
@@ -171,6 +175,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if p.opts.DryRun {
 		out.SidecarObjects = len(sidecars)
 		out.Volumes = len(volumes.probes)
+		out.IndexEntries = len(entries)
 		out.Pruned = true
 		out.Snapshots, out.Objects, out.Bytes = len(preview.Expired), preview.Objects, preview.Bytes
 		return out, true, nil
@@ -209,6 +214,13 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		out.Kept = kept
 		return out, true, err
 	}
+	// An entry names a snapshot that is gone now, and no reader takes a fact
+	// from it (CONTRACT_LODE.md §Commit Index), so the entries go last of the
+	// run's artifact objects.
+	if err := p.deleteAll(ctx, entries); err != nil {
+		return out, true, err
+	}
+	out.IndexEntries = len(entries)
 	// The start record goes first: a run without one is never listed, and
 	// an end record left by an interruption here is ignored by readers.
 	dir := qlode.RunRecordDir(cfg)
