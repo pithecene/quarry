@@ -135,16 +135,10 @@ func (r *Reader) OpenArtifact(ctx context.Context, run Run, artifactID string) (
 	if err != nil {
 		return Artifact{}, nil, err
 	}
-	recs, err := r.artifactRecords(ctx, run)
+	a, recs, err := r.commitOf(ctx, run, cfg, artifactID)
 	if err != nil {
 		return Artifact{}, nil, err
 	}
-	artifacts := artifactsOf(recs)
-	i := slices.IndexFunc(artifacts, func(a Artifact) bool { return a.ArtifactID == artifactID })
-	if i < 0 {
-		return Artifact{}, nil, fmt.Errorf("%w: %q in run %q", ErrArtifactNotFound, artifactID, run.RunID)
-	}
-	a := artifacts[i]
 	if a.SizeBytes < 0 {
 		return Artifact{}, nil, fmt.Errorf("%w: artifact %q has size %d", ErrArtifactIncomplete, a.ArtifactID, a.SizeBytes)
 	}
@@ -167,6 +161,93 @@ func (r *Reader) OpenArtifact(ctx context.Context, run Run, artifactID string) (
 	}
 	return a, rd, nil
 }
+
+// commitOf finds the artifact's commit record: first through the run's
+// commit index (CONTRACT_LODE.md §Commit Index), which names the snapshot
+// that holds the record, and otherwise by reading the run's artifact
+// partition. It returns the partition's records too when it read them,
+// since a chunk-stored artifact is assembled from them.
+func (r *Reader) commitOf(ctx context.Context, run Run, cfg qlode.Config, artifactID string) (Artifact, []lode.D, error) {
+	a, why, err := r.indexedCommit(ctx, run, cfg, artifactID)
+	if err != nil || why == "" {
+		return a, nil, err
+	}
+	if r.onFallback != nil {
+		r.onFallback(artifactID, why)
+	}
+	recs, err := r.artifactRecords(ctx, run)
+	if err != nil {
+		return Artifact{}, nil, err
+	}
+	artifacts := artifactsOf(recs)
+	i := slices.IndexFunc(artifacts, func(a Artifact) bool { return a.ArtifactID == artifactID })
+	if i < 0 {
+		return Artifact{}, nil, fmt.Errorf("%w: %q in run %q", ErrArtifactNotFound, artifactID, run.RunID)
+	}
+	return artifacts[i], recs, nil
+}
+
+// indexedCommit reads the artifact's commit record from the snapshot that
+// its commit index entry names. It reports found false, so that the caller
+// reads the partition, when there is no entry, or the snapshot is gone or
+// holds no record of the artifact, or the record is of an artifact whose
+// bytes are chunk records, which the index never names. The entry is never
+// trusted: every fact comes from the record.
+func (r *Reader) indexedCommit(ctx context.Context, run Run, cfg qlode.Config, artifactID string) (Artifact, IndexFallback, error) {
+	snapshot, found, err := qlode.ReadCommitIndex(ctx, r.store, cfg, artifactID)
+	if err != nil {
+		return Artifact{}, "", err
+	}
+	if !found {
+		return Artifact{}, FallbackNoEntry, nil
+	}
+	partition, err := lode.ParsePartitionPath(run.Partition + artifactPartition)
+	if err != nil {
+		return Artifact{}, "", fmt.Errorf("%w: %w", ErrInvalidRun, err)
+	}
+	dr, err := qlode.OpenView(ctx, r.dataset, r.store)
+	if errors.Is(err, lode.ErrNotFound) {
+		return Artifact{}, FallbackSnapshotGone, nil
+	}
+	if err != nil {
+		return Artifact{}, "", qlode.WrapReadError(err, "datasets/"+r.dataset)
+	}
+	recs, err := qlode.ReadSnapshotPartitionRecords(ctx, dr, snapshot, partition)
+	if errors.Is(err, lode.ErrNotFound) || errors.Is(err, lode.ErrSnapshotExpired) || errors.Is(err, lode.ErrInvalidPath) {
+		return Artifact{}, FallbackSnapshotGone, nil
+	}
+	if err != nil {
+		return Artifact{}, "", err
+	}
+	for _, a := range artifactsOf(recs) {
+		switch {
+		case a.ArtifactID != artifactID:
+		case a.Storage == ArtifactStorageChunks:
+			return Artifact{}, FallbackChunkStorage, nil
+		default:
+			return a, "", nil
+		}
+	}
+	return Artifact{}, FallbackNoRecord, nil
+}
+
+// IndexFallback is why OpenArtifact read the run's artifact partition
+// instead of the snapshot a commit index entry names.
+type IndexFallback string
+
+const (
+	// FallbackNoEntry: the run has no usable entry for the artifact, as a
+	// run written before the index has none, or the entry does not decode.
+	FallbackNoEntry IndexFallback = "no usable commit index entry"
+	// FallbackSnapshotGone: the snapshot the entry names has no manifest in
+	// the artifact partition, as after retention expires it.
+	FallbackSnapshotGone IndexFallback = "the entry's snapshot is gone"
+	// FallbackNoRecord: the snapshot holds no commit record of the artifact.
+	FallbackNoRecord IndexFallback = "the entry's snapshot holds no record of the artifact"
+	// FallbackChunkStorage: the record names chunk storage, whose chunk
+	// records can lie in other snapshots.
+	FallbackChunkStorage IndexFallback = "the artifact is stored as chunk records"
+)
 
 // artifactOf reads a commit record. A record without a storage field was
 // written before Volumes, so its bytes are chunk records.

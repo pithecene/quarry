@@ -33,6 +33,7 @@ func ParseMetricsRecord(record map[string]any) (*MetricsSnapshot, error) {
 		LodeWriteSuccess: toInt64(record["lode_write_success_total"]),
 		LodeWriteFailure: toInt64(record["lode_write_failure_total"]),
 		LodeWriteRetry:   toInt64(record["lode_write_retry_total"]),
+		ArtifactIndexWriteFailure: toInt64(record["artifact_index_write_failure_total"]),
 
 		// Dimensions
 		Policy:         toString(record["policy"]),

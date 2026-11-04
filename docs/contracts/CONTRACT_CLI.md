@@ -614,6 +614,7 @@ MetricsSnapshot:
   lode_write_success_total: number
   lode_write_failure_total: number
   lode_write_retry_total: number
+  artifact_index_write_failure_total: number
   flush_triggers: map[string]number (optional, streaming policy only)
 ```
 
@@ -815,10 +816,18 @@ Verification:
 Exit codes: 0 when every requested byte was written and, for a whole read,
 the digest matched. Any other outcome exits 1 with the reason on stderr.
 
-An artifact stored in a Volume is read range by range from its snapshot.
-An artifact of a run that a release before 0.15 wrote is assembled from
-its chunk records, which the command reads with the rest of the run's
-artifact partition.
+The command reads the artifact's commit index entry, which names the
+snapshot that holds the commit record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Commit Index). The
+number of store requests therefore stays the same however many artifacts
+the run holds. When the
+run has no entry for the artifact, the command finds the record by
+reading the run's artifact partition. A run from a release before 0.17
+has no entries. The number of store requests in a partition read
+grows with the number of the run's snapshots. The command therefore writes the reason for
+each partition read to stderr. For an artifact stored in a Volume, the command reads the
+Volume's snapshot one range at a time. A run from a release before 0.15 stores each
+artifact as chunk records. The command reads those records together with
+the rest of the artifact partition and assembles the artifact from them.
 
 A run with no start record is an error (`run not found`), and so is an
 artifact ID that no commit record names (`artifact not found`).
@@ -916,6 +925,7 @@ PruneReport:
   bytes: number
   sidecar_objects: number
   volumes: number          # artifact Volumes removed
+  index_entries: number    # commit index entries deleted
   runs: PrunedRun[]
   orphan_end_records: number # end records without a start record; deleted
   unparseable: string[]    # malformed start-record keys; omitted when none
@@ -935,6 +945,7 @@ PrunedRun:
   bytes: number
   sidecar_objects: number  # sidecar files and their .meta.json companions
   volumes: number          # artifact Volumes removed
+  index_entries: number    # commit index entries deleted
   kept: string             # why a selected run was kept; omitted otherwise
   skipped: string[]        # recorded sidecar paths left in place; omitted when none
 
@@ -945,6 +956,7 @@ SweepReport:
   unsized: number
   orphans: number
   volumes: number          # artifact Volumes of runs without a start record, removed
+  index_entries: number    # commit index entries of runs without a start record, deleted
   unparseable: string[]    # omitted when none
 ```
 

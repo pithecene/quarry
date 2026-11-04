@@ -141,12 +141,13 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 		records = append(records, record)
 	}
 
-	_, err := c.dataset.Write(ctx, records, c.snapshotMetadata())
+	snap, err := c.dataset.Write(ctx, records, c.snapshotMetadata())
 	if err != nil {
 		return WrapWriteError(err, buildPartitionPath(c.config, string(events[0].Type)))
 	}
 
 	c.drainPendingFiles()
+	c.indexCommits(ctx, events, snap.ID)
 
 	return nil
 }

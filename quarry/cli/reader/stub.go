@@ -112,6 +112,7 @@ func (r *StubReader) StatsMetrics() *MetricsSnapshot {
 		LodeWriteSuccess:      980,
 		LodeWriteFailure:      3,
 		LodeWriteRetry:        0,
+		ArtifactIndexWriteFailure: 0,
 		Policy:                "strict",
 		Executor:              "executor.js",
 		StorageBackend:        "fs",
