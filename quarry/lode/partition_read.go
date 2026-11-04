@@ -37,20 +37,17 @@ func OpenView(ctx context.Context, dataset string, store lode.ObjectStore) (lode
 
 // ReadPartitionRecords returns every record stored in one partition (a path
 // as ListPartitions returns it), across all of its committed snapshots, each
-// data file read once.
+// data file read once. Lode's Manifests yields each manifest with the load
+// that its listing made, so no manifest is read twice, and it skips a
+// manifest that expired after the listing.
 func ReadPartitionRecords(ctx context.Context, ds lode.SnapshotReader, partition lode.PartitionPath) ([]lode.D, error) {
-	manifests, err := ds.ListManifests(ctx, partition, lode.ManifestListOptions{})
-	if err != nil {
-		return nil, WrapReadError(err, partition.String())
-	}
 	seen := map[string]bool{}
 	var out []lode.D
-	for _, ref := range manifests {
-		m, err := ds.GetManifest(ctx, ref)
+	for loaded, err := range ds.Manifests(ctx, partition, lode.ManifestListOptions{}) {
 		if err != nil {
 			return nil, WrapReadError(err, partition.String())
 		}
-		recs, err := readManifestRecords(ctx, ds, ref, m, partition, seen)
+		recs, err := readManifestRecords(ctx, ds, loaded.Ref, loaded.Manifest, partition, seen)
 		if err != nil {
 			return nil, err
 		}
