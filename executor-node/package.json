@@ -27,7 +27,13 @@
     "puppeteer-extra-plugin-stealth": "^2"
   },
   "peerDependenciesMeta": {
+    "puppeteer-extra": {
+      "optional": true
+    },
     "puppeteer-extra-plugin-adblocker": {
+      "optional": true
+    },
+    "puppeteer-extra-plugin-stealth": {
       "optional": true
     }
   },
