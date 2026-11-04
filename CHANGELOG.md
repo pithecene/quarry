@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.16.1] - 2026-11-03
+
 ### Fixed
 
 - **Puppeteer alone suffices with no plugin enabled**: the executor loaded `puppeteer-extra` for every launched browser, so a project that set `QUARRY_STEALTH=0` still had to install it and its transitive packages. It now loads `puppeteer-extra` only while a plugin is enabled. The SDK no longer declares `puppeteer-extra` as a peer, and nothing in the SDK imports it.
@@ -746,7 +750,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/pithecene/quarry/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/pithecene/quarry/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/pithecene/quarry/compare/v0.14.2...v0.15.0
 [0.14.2]: https://github.com/pithecene/quarry/compare/v0.14.1...v0.14.2

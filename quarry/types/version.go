@@ -5,4 +5,4 @@ package types
 // per the lockstep versioning policy.
 //
 // This version is authoritative. Contract docs must reference this constant.
-const Version = "0.16.0"
+const Version = "0.16.1"

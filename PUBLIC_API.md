@@ -37,24 +37,24 @@ in the project's `mise.toml`, and, with mise's shell activation
 (`mise activate`) configured, puts `quarry` on your `PATH` there:
 
 ```bash
-mise use github:pithecene/quarry@0.16.0
+mise use github:pithecene/quarry@0.16.1
 ```
 
 The resulting `mise.toml` entry:
 
 ```toml
 [tools]
-"github:pithecene/quarry" = "0.16.0"
+"github:pithecene/quarry" = "0.16.1"
 ```
 
 ### Via Docker
 
 ```bash
 # Full image: includes Chrome for Testing and fonts (amd64 only, recommended)
-docker pull ghcr.io/pithecene/quarry:0.16.0
+docker pull ghcr.io/pithecene/quarry:0.16.1
 
 # Slim image: no browser, multi-arch (bring your own Chromium through --browser-ws-endpoint)
-docker pull ghcr.io/pithecene/quarry:0.16.0-slim
+docker pull ghcr.io/pithecene/quarry:0.16.1-slim
 ```
 See the [container guide](docs/guides/container.md) for `docker run` and Docker Compose examples.
 
@@ -810,8 +810,8 @@ executor runs under Node ESM.
 
 Quarry ships container images via GHCR:
 
-- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.16.0`, which includes Chrome for Testing and fonts
-- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.16.0-slim`, which has no browser (bring your own through `--browser-ws-endpoint`)
+- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.16.1`, which includes Chrome for Testing and fonts
+- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.16.1-slim`, which has no browser (bring your own through `--browser-ws-endpoint`)
 
 For `docker run`, Docker Compose, and sidecar patterns, see the [container guide](docs/guides/container.md).
 
@@ -838,7 +838,7 @@ experimental.
 
 ---
 
-## Known Limitations (v0.16.0)
+## Known Limitations (v0.16.1)
 
 1. **Single executor type**: Only Node.js executor supported
 2. **No built-in retries**: Retry logic is caller's responsibility
@@ -972,7 +972,7 @@ real-time event streaming and post-run notification.
 
 ```bash
 quarry version
-# 0.16.0 (commit: ...)
+# 0.16.1 (commit: ...)
 ```
 
 SDK and runtime versions must match (lockstep versioning).
@@ -981,8 +981,8 @@ SDK and runtime versions must match (lockstep versioning).
 
 | Component | Channel | Install |
 |-----------|---------|---------|
-| CLI binary | GitHub Releases | `mise use github:pithecene/quarry@0.16.0` |
-| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.16.0` |
-| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.16.0-slim` |
+| CLI binary | GitHub Releases | `mise use github:pithecene/quarry@0.16.1` |
+| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.16.1` |
+| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.16.1-slim` |
 | SDK | JSR | `npx jsr add @pithecene/quarry-sdk` |
 | SDK | GitHub Packages | `pnpm add @pithecene/quarry-sdk` |
