@@ -138,14 +138,14 @@ func renderPrune(r *render.Renderer, report retention.Report) error {
 	if report.DryRun {
 		verb = "would remove"
 	}
-	fmt.Fprintf(os.Stderr, "Scanned %d runs: %d not due, %s %d (%d snapshots, %d objects, %d bytes, %d sidecar objects, %d artifact volumes), kept %d; %s %d orphaned end records\n",
-		report.RunsScanned, report.NotDue, verb, report.RunsPruned, report.Snapshots, report.Objects, report.Bytes, report.SidecarObjects, report.Volumes, report.RunsKept, verb, report.OrphanEndRecords)
+	fmt.Fprintf(os.Stderr, "Scanned %d runs: %d not due, %s %d (%d snapshots, %d objects, %d bytes, %d sidecar objects, %d artifact volumes, %d commit index entries), kept %d; %s %d orphaned end records\n",
+		report.RunsScanned, report.NotDue, verb, report.RunsPruned, report.Snapshots, report.Objects, report.Bytes, report.SidecarObjects, report.Volumes, report.IndexEntries, report.RunsKept, verb, report.OrphanEndRecords)
 	for _, key := range report.Unparseable {
 		fmt.Fprintf(os.Stderr, "Not addressed (malformed start-record key): %s\n", key)
 	}
 	if s := report.Sweep; s != nil {
-		fmt.Fprintf(os.Stderr, "Sweep: %s %d objects (%d bytes recorded, %d orphans) and %d orphaned artifact volumes, settled %d expiries, %d unparseable\n",
-			verb, s.Objects, s.Bytes, s.Orphans, s.Volumes, s.Settled, len(s.Unparseable))
+		fmt.Fprintf(os.Stderr, "Sweep: %s %d objects (%d bytes recorded, %d orphans) , %d orphaned artifact volumes and %d orphaned commit index entries, settled %d expiries, %d unparseable\n",
+			verb, s.Objects, s.Bytes, s.Orphans, s.Volumes, s.IndexEntries, s.Settled, len(s.Unparseable))
 	}
 	return r.Render(report.Runs)
 }

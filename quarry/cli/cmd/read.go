@@ -63,7 +63,12 @@ func readArtifactAction(c *cli.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(c.Context, artifactReadTimeout)
 	defer cancel()
-	rr, run, err := locatedRun(ctx, c, "read artifact")
+	// A read that falls back to the run's artifact partition costs requests
+	// that grow with the run, so the reason is reported.
+	fallback := runreader.WithIndexFallback(func(id string, why runreader.IndexFallback) {
+		fmt.Fprintf(os.Stderr, "read artifact: %s: %s; reading the run's artifact partition\n", id, why)
+	})
+	rr, run, err := locatedRun(ctx, c, "read artifact", fallback)
 	if err != nil {
 		return err
 	}

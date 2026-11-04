@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The command `quarry read artifact` opens an artifact with seven store requests**: the runtime now writes a commit index entry for each committed artifact. Each entry names the snapshot that holds the artifact's commit record, and the command reads that one snapshot. Before this release, the command read every commit record of the artifact's run. A run from an earlier release has no entries, so the command still reads all its commit records. The counter `artifact_index_write_failure_total` counts failed entry writes.
+
 ---
 
 ## [0.16.1] - 2026-11-03

@@ -1457,6 +1457,7 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 		// Collector increments are nil-receiver safe, so this is harmless
 		// when metrics are disabled.
 		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
+		IndexFailureObserver: func(string, error) { collector.IncArtifactIndexWriteFailure() },
 	}
 
 	// LodeClient implements both lode.Client and lode.FileWriter.
@@ -2023,6 +2024,7 @@ func printMetrics(snap metrics.Snapshot) {
 	fmt.Printf("lode_write_success_total:        %d\n", snap.LodeWriteSuccess)
 	fmt.Printf("lode_write_failure_total:        %d\n", snap.LodeWriteFailure)
 	fmt.Printf("lode_write_retry_total:          %d\n", snap.LodeWriteRetry)
+	fmt.Printf("artifact_index_write_failure_total: %d\n", snap.ArtifactIndexWriteFailure)
 
 	// Dimensions
 	fmt.Printf("\n  policy=%s executor=%s storage_backend=%s\n", snap.Policy, snap.Executor, snap.StorageBackend)

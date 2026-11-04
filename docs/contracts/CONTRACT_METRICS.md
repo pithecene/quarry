@@ -92,6 +92,8 @@ strict and buffered policies.
 - `lode_write_success_total` (counter)
 - `lode_write_failure_total` (counter)
 - `lode_write_retry_total` (counter)
+- `artifact_index_write_failure_total` (counter): commit index entries that
+  the runtime could not write ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Commit Index)
 - `lode_write_latency_ms` (histogram, optional)
 
 ---

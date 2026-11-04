@@ -157,7 +157,7 @@ func (m StatsModel) renderStatsMetrics() string {
 		{"Runs", []count{{"started", data.RunsStarted}, {"completed", data.RunsCompleted}, {"failed", data.RunsFailed}, {"crashed", data.RunsCrashed}}},
 		{"Events", []count{{"received", data.EventsReceived}, {"persisted", data.EventsPersisted}, {"dropped", data.EventsDropped}}},
 		{"Executor", []count{{"launched", data.ExecutorLaunchSuccess}, {"launch failures", data.ExecutorLaunchFailure}, {"crashes", data.ExecutorCrash}, {"IPC decode errors", data.IPCDecodeErrors}}},
-		{"Storage", []count{{"writes", data.LodeWriteSuccess}, {"write failures", data.LodeWriteFailure}, {"write retries", data.LodeWriteRetry}}},
+		{"Storage", []count{{"writes", data.LodeWriteSuccess}, {"write failures", data.LodeWriteFailure}, {"write retries", data.LodeWriteRetry}, {"index write failures", data.ArtifactIndexWriteFailure}}},
 	}
 
 	var b strings.Builder

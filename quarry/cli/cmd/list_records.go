@@ -64,12 +64,12 @@ func anyStorageFlagSet(c *cli.Context) bool {
 }
 
 // newRunReader builds a run-record reader from the storage flags.
-func newRunReader(c *cli.Context) (*runreader.Reader, error) {
+func newRunReader(c *cli.Context, opts ...runreader.Option) (*runreader.Reader, error) {
 	factory, err := storeFactoryFrom(c)
 	if err != nil {
 		return nil, err
 	}
-	return runreader.New(c.String("storage-dataset"), factory)
+	return runreader.New(c.String("storage-dataset"), factory, opts...)
 }
 
 // storeFactoryFrom builds the store factory the storage flags describe.
@@ -134,7 +134,7 @@ type listEventsResponse struct {
 // locatedRun opens the storage the flags describe and reads the run that
 // --source, --category, --day, and --run-id locate. command names the
 // command in its errors, which are cli exit errors.
-func locatedRun(ctx context.Context, c *cli.Context, command string) (*runreader.Reader, runreader.Run, error) {
+func locatedRun(ctx context.Context, c *cli.Context, command string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, error) {
 	ok, err := storageRequested(c)
 	if err != nil {
 		return nil, runreader.Run{}, cli.Exit(err.Error(), 1)
@@ -146,7 +146,7 @@ func locatedRun(ctx context.Context, c *cli.Context, command string) (*runreader
 	if sel.Source == "" || sel.Category == "" || sel.Day == "" {
 		return nil, runreader.Run{}, cli.Exit(command+" requires --source, --category, and --day to locate the run", 1)
 	}
-	rr, err := newRunReader(c)
+	rr, err := newRunReader(c, opts...)
 	if err != nil {
 		return nil, runreader.Run{}, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
 	}
