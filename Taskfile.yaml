@@ -1,5 +1,10 @@
 version: '3'
 
+# This repository does not install the stealth plugin, because its transitive
+# packages carry open advisories. Examples and e2e runs launch without it.
+env:
+  QUARRY_STEALTH: "0"
+
 vars:
   # The internal check's image, as CI's check job names it.
   BOSUN_IMAGE:

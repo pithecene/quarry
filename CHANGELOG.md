@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Dev install drops the browser plugins**: this repository no longer installs `puppeteer-extra` or its plugins for development, and its Taskfile sets `QUARRY_STEALTH=0`. Published packages and `quarry init` are unchanged.
+
 ---
 
 ## [0.16.1] - 2026-11-03

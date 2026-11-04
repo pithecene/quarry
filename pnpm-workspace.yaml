@@ -5,3 +5,7 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - puppeteer
+
+# Projects install the executor's optional plugins themselves. Installing them
+# here would put their transitive packages in this lockfile for nothing.
+autoInstallPeers: false
