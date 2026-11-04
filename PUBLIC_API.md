@@ -65,7 +65,8 @@ The `quarry init` command creates a new project with everything below
 by hand or add Quarry to an existing one.
 
 Scripts run as ES modules, and the executor loads Puppeteer, `puppeteer-extra`,
-and the stealth plugin from the script's project. Create the project and
+and the stealth plugin from the script's project. A project that sets
+`QUARRY_STEALTH=0` and enables no other plugin needs Puppeteer alone. Create the project and
 install the SDK with those packages. On Node 22.6 through 22.11, install
 `puppeteer@24` in place of `puppeteer` in either command below. Both commands
 install `proxy-agent` before the SDK, which brings in Puppeteer, so that Puppeteer's browser download

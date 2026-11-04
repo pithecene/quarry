@@ -2860,10 +2860,15 @@ async function getPuppeteer(scriptPath, plugins) {
     "Puppeteer is a peer dependency of quarry-executor."
   );
   const vanillaPuppeteer = puppeteerMod.default;
+  if (!plugins.stealth && !plugins.adblocker) {
+    cachedPluginConfig = plugins;
+    puppeteerModule = vanillaPuppeteer;
+    return vanillaPuppeteer;
+  }
   const extraMod = await resolveModuleOrThrow(
     "puppeteer-extra",
     scriptPath,
-    "puppeteer-extra is a peer dependency of quarry-executor."
+    "puppeteer-extra is required while a plugin is enabled, and stealth is enabled by default.\nOr disable stealth with QUARRY_STEALTH=0"
   );
   const { addExtra } = extraMod;
   const pptr = addExtra(vanillaPuppeteer);

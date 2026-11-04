@@ -60,6 +60,7 @@ vi.mock('puppeteer-extra-plugin-adblocker', () => ({
 }))
 
 import puppeteer from 'puppeteer'
+import { addExtra } from 'puppeteer-extra'
 import { loadScript, ScriptLoadError } from '../src/loader.js'
 
 /**
@@ -1122,6 +1123,25 @@ describe('puppeteer-extra plugin setup', () => {
     await execute(createConfig({ stealth: false }))
 
     expect(mockUse).not.toHaveBeenCalledWith(mockStealthInstance)
+  })
+
+  it('launches through vanilla puppeteer when no plugin is enabled', async () => {
+    ;(loadScript as Mock).mockResolvedValue(createMockScript())
+
+    await execute(createConfig({ stealth: false, adblocker: false }))
+
+    expect(addExtra).not.toHaveBeenCalled()
+    expect(puppeteer.launch).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads puppeteer-extra again when a later run enables a plugin', async () => {
+    ;(loadScript as Mock).mockResolvedValue(createMockScript())
+
+    await execute(createConfig({ stealth: false }))
+    await execute(createConfig({ stealth: true }))
+
+    expect(addExtra).toHaveBeenCalledTimes(1)
+    expect(mockUse).toHaveBeenCalledWith(mockStealthInstance)
   })
 
   it('does not apply adblocker by default', async () => {

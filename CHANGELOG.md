@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Puppeteer alone suffices with no plugin enabled**: the executor loaded `puppeteer-extra` for every launched browser, so a project that set `QUARRY_STEALTH=0` still had to install it and its transitive packages. It now loads `puppeteer-extra` only while a plugin is enabled. The SDK no longer declares `puppeteer-extra` as a peer, and nothing in the SDK imports it.
+
 ---
 
 ## [0.16.0] - 2026-11-02

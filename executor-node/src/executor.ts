@@ -101,8 +101,9 @@ async function resolveModuleOrThrow(
  *
  * Resolution strategy:
  * 1. Resolve vanilla puppeteer from the script's directory
- * 2. Resolve puppeteer-extra and wrap with addExtra()
- * 3. Apply configured plugins (stealth, adblocker)
+ * 2. With no plugin enabled, return it: puppeteer-extra has nothing to add
+ * 3. Resolve puppeteer-extra and wrap with addExtra()
+ * 4. Apply configured plugins (stealth, adblocker)
  *
  * Uses addExtra() rather than puppeteer-extra's default export to avoid
  * a top-level require('puppeteer') that would fail in the bundled executor
@@ -136,11 +137,18 @@ async function getPuppeteer(
     launch: (options?: LaunchOptions) => Promise<Browser>
   }
 
-  // 2. Resolve puppeteer-extra and wrap vanilla puppeteer
+  // 2. With no plugin enabled, a project need not install puppeteer-extra
+  if (!plugins.stealth && !plugins.adblocker) {
+    cachedPluginConfig = plugins
+    puppeteerModule = vanillaPuppeteer
+    return vanillaPuppeteer
+  }
+
+  // 3. Resolve puppeteer-extra and wrap vanilla puppeteer
   const extraMod = await resolveModuleOrThrow(
     'puppeteer-extra',
     scriptPath,
-    'puppeteer-extra is a peer dependency of quarry-executor.'
+    'puppeteer-extra is required while a plugin is enabled, and stealth is enabled by default.\nOr disable stealth with QUARRY_STEALTH=0'
   )
   const { addExtra } = extraMod as {
     addExtra: (puppeteer: unknown) => {
@@ -150,7 +158,7 @@ async function getPuppeteer(
   }
   const pptr = addExtra(vanillaPuppeteer)
 
-  // 3. Apply stealth plugin (on by default)
+  // 4. Apply stealth plugin (on by default)
   if (plugins.stealth) {
     const stealthMod = await resolveModuleOrThrow(
       'puppeteer-extra-plugin-stealth',
@@ -161,7 +169,7 @@ async function getPuppeteer(
     pptr.use(StealthPlugin())
   }
 
-  // 4. Apply adblocker plugin (off by default)
+  // 5. Apply adblocker plugin (off by default)
   if (plugins.adblocker) {
     const adblockerMod = await resolveModuleOrThrow(
       'puppeteer-extra-plugin-adblocker',
