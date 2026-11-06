@@ -35,6 +35,17 @@ func OpenView(ctx context.Context, dataset string, store lode.ObjectStore) (lode
 	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec())
 }
 
+// OpenViewAt opens a read-only view of the dataset over store at one
+// snapshot, which it reads in place of the head (Lode's WithPinnedSnapshot).
+// The view learns the layout from that snapshot, so the view's Snapshot of
+// that ID reads its canonical manifest with one store request. It returns
+// lode.ErrNotFound when the snapshot does not exist, lode.ErrSnapshotExpired
+// when retention expired it, and lode.ErrInvalidArgument when the ID is not
+// one path segment.
+func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, snapshot lode.DatasetSnapshotID) (lode.RecordView[lode.D], error) {
+	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), lode.WithPinnedSnapshot(snapshot))
+}
+
 // ReadPartitionRecords returns every record stored in one partition (a path
 // as ListPartitions returns it), across all of its committed snapshots, each
 // data file read once. Lode's Manifests yields each manifest with the load
