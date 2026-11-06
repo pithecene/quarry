@@ -205,8 +205,12 @@ func (r *Reader) indexedCommit(ctx context.Context, run Run, cfg qlode.Config, a
 	if err != nil {
 		return Artifact{}, "", fmt.Errorf("%w: %w", ErrInvalidRun, err)
 	}
-	dr, err := qlode.OpenView(ctx, r.dataset, r.store)
-	if errors.Is(err, lode.ErrNotFound) {
+	// The view opens at the entry's snapshot, so it reads neither the
+	// pointer nor the head, and the snapshot read below costs one store
+	// request. An entry whose ID is malformed names no snapshot, as a missing
+	// one does.
+	dr, err := qlode.OpenViewAt(ctx, r.dataset, r.store, snapshot)
+	if errors.Is(err, lode.ErrNotFound) || errors.Is(err, lode.ErrSnapshotExpired) || errors.Is(err, lode.ErrInvalidArgument) {
 		return Artifact{}, FallbackSnapshotGone, nil
 	}
 	if err != nil {
@@ -280,18 +284,19 @@ func (r *Reader) openVolume(ctx context.Context, cfg qlode.Config, a Artifact) (
 	if err != nil {
 		return nil, qlode.WrapReadError(err, dir)
 	}
-	snapshotID := volume.SnapshotID(a.VolumeSnapshotID)
-	snap, err := vol.Snapshot(ctx, snapshotID)
+	// The snapshot reader loads the manifest once, for the coverage check
+	// below and for every range read after it.
+	snapReader, err := vol.ReaderAt(ctx, volume.SnapshotID(a.VolumeSnapshotID))
 	if err != nil {
 		if errors.Is(err, lode.ErrNotFound) || errors.Is(err, volume.ErrRemoved) {
 			return nil, fmt.Errorf("%w: artifact %q volume snapshot %q: %w", ErrArtifactIncomplete, a.ArtifactID, a.VolumeSnapshotID, err)
 		}
 		return nil, qlode.WrapReadError(err, dir+"volumes/"+a.ArtifactID)
 	}
-	if covered := coveredPrefix(snap.Manifest.Blocks); covered < a.SizeBytes {
+	if covered := coveredPrefix(snapReader.Blocks()); covered < a.SizeBytes {
 		return nil, fmt.Errorf("%w: artifact %q volume snapshot %q covers %d of %d bytes", ErrArtifactIncomplete, a.ArtifactID, a.VolumeSnapshotID, covered, a.SizeBytes)
 	}
-	ra := &volumeReaderAt{ctx: ctx, vol: vol, snapshot: snapshotID, size: a.SizeBytes, artifactID: a.ArtifactID}
+	ra := &volumeReaderAt{snapshot: snapReader, artifactID: a.ArtifactID}
 	return io.NewSectionReader(ra, 0, a.SizeBytes), nil
 }
 
@@ -308,39 +313,25 @@ func coveredPrefix(blocks []volume.BlockRef) int64 {
 	return n
 }
 
-// volumeReaderAt reads ranges of one Volume snapshot. ReaderAt carries no
-// context, so it reads with the one OpenArtifact received.
+// volumeReaderAt reads ranges of one Volume snapshot through Lode's
+// snapshot reader, which reads with the context OpenArtifact received. The
+// Volume's length is the artifact's size, so the snapshot reader bounds
+// every read; volumeReaderAt only names the artifact in its errors.
 type volumeReaderAt struct {
-	ctx        context.Context
-	vol        volume.Reader
-	snapshot   volume.SnapshotID
-	size       int64
+	snapshot   volume.SnapshotReaderAt
 	artifactID string
 }
 
 func (v *volumeReaderAt) ReadAt(p []byte, off int64) (int, error) {
-	if off < 0 {
-		return 0, errors.New("reader: negative offset")
+	n, err := v.snapshot.ReadAt(p, off)
+	switch {
+	case err == nil, errors.Is(err, io.EOF):
+		return n, err
+	case errors.Is(err, volume.ErrRangeMissing):
+		return n, fmt.Errorf("%w: artifact %q range at offset %d of %d bytes: %w", ErrArtifactIncomplete, v.artifactID, off, len(p), err)
+	default:
+		return n, qlode.WrapReadError(err, "volumes/"+v.artifactID)
 	}
-	if off >= v.size {
-		return 0, io.EOF
-	}
-	n := min(int64(len(p)), v.size-off)
-	if n == 0 {
-		return 0, nil
-	}
-	data, err := v.vol.ReadAt(v.ctx, v.snapshot, off, n)
-	if err != nil {
-		if errors.Is(err, volume.ErrRangeMissing) {
-			return 0, fmt.Errorf("%w: artifact %q range [%d, %d): %w", ErrArtifactIncomplete, v.artifactID, off, off+n, err)
-		}
-		return 0, qlode.WrapReadError(err, "volumes/"+v.artifactID)
-	}
-	copy(p, data)
-	if n < int64(len(p)) {
-		return int(n), io.EOF
-	}
-	return int(n), nil
 }
 
 // chunkReader assembles the artifact from its chunk records, which must
