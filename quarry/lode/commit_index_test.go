@@ -318,16 +318,16 @@ func TestCommitIndex_ReaderFallsBack(t *testing.T) {
 	}
 }
 
-// Opening an artifact through its entry makes six store requests: the
-// entry; the canonical manifest of the entry's snapshot, which a view
-// opened at that snapshot looks for under the snapshots directory and then
-// under the segments directory; that manifest again, which the view's
-// Snapshot reads because the view keeps no snapshot; the commit record's
-// data object; and the Volume snapshot's manifest, which the snapshot
-// reader loads once for the coverage check and every range read.
-func TestCommitIndex_OpenThroughTheEntryCostsSixRequests(t *testing.T) {
+// Opening an artifact through its entry makes five store requests: the
+// entry; the canonical manifest of the entry's snapshot, which a view that
+// expects the Hive layout reads under the segments directory alone; that
+// manifest again, which the view's Snapshot reads because the view keeps no
+// snapshot; the commit record's data object; and the Volume snapshot's
+// manifest, which the snapshot reader loads once for the coverage check and
+// every range read.
+func TestCommitIndex_OpenThroughTheEntryCostsFiveRequests(t *testing.T) {
 	t.Parallel()
-	const want = 6
+	const want = 5
 	run := newIndexRun(t, &countingStore{RangeStore: lode.NewMemory()}, "r1")
 	run.writeArtifacts(3)
 	if got := run.openCost("a0001"); got != want {

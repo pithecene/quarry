@@ -17,6 +17,10 @@ var partitionKeys = []string{"source", "category", "day", "run_id", "event_type"
 // are maps, so the Hive layout reads partition values from their keys.
 func recordCodec() lode.Codec[lode.D] { return lode.JSONL[lode.D]() }
 
+// layout is the Hive layout over partitionKeys, which every Quarry writer
+// passes and every Quarry view expects.
+func layout() lode.ComponentOption { return lode.WithLayout(lode.Hive(partitionKeys...)) }
+
 // OpenDataset opens the dataset over store for writing with the settings
 // every Quarry writer shares (CONTRACT_LODE.md §Writer Settings): the Hive
 // layout, the JSONL codec, and bounded commit retry. Lode records the
@@ -24,26 +28,29 @@ func recordCodec() lode.Codec[lode.D] { return lode.JSONL[lode.D]() }
 // writer whose settings differ from the head's. Opening reads the head and
 // writes nothing.
 func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (lode.Records[lode.D], error) {
-	settings := []lode.DatasetOption{lode.WithLayout(lode.Hive(partitionKeys...)), lode.WithRetry(datasetRetryCount)}
+	settings := []lode.DatasetOption{layout(), lode.WithRetry(datasetRetryCount)}
 	return lode.Open(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), append(settings, opts...)...)
 }
 
 // OpenView opens a read-only view of the dataset over store, so reads come
-// from exactly that store. The view takes the layout from the dataset's
-// manifests. It returns lode.ErrNotFound when the dataset has no snapshot.
+// from exactly that store. The view expects the Hive layout that Quarry
+// writers use, so it reads only that layout's manifest directory. It returns
+// lode.ErrNotFound when the dataset has no snapshot and
+// lode.ErrSettingsMismatch when the dataset records another layout.
 func OpenView(ctx context.Context, dataset string, store lode.ObjectStore) (lode.RecordView[lode.D], error) {
-	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec())
+	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), layout())
 }
 
 // OpenViewAt opens a read-only view of the dataset over store at one
 // snapshot, which it reads in place of the head (Lode's WithPinnedSnapshot).
-// The view learns the layout from that snapshot, so the view's Snapshot of
-// that ID reads its canonical manifest with one store request. It returns
-// lode.ErrNotFound when the snapshot does not exist, lode.ErrSnapshotExpired
-// when retention expired it, and lode.ErrInvalidArgument when the ID is not
-// one path segment.
+// The view expects the Hive layout, so opening reads the snapshot's
+// canonical manifest with one store request, and so does the view's
+// Snapshot of that ID. It returns lode.ErrNotFound when the snapshot does
+// not exist, lode.ErrSnapshotExpired when retention expired it,
+// lode.ErrInvalidArgument when the ID is not one path segment, and
+// lode.ErrSettingsMismatch when the snapshot records another layout.
 func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, snapshot lode.DatasetSnapshotID) (lode.RecordView[lode.D], error) {
-	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), lode.WithPinnedSnapshot(snapshot))
+	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), layout(), lode.WithPinnedSnapshot(snapshot))
 }
 
 // ReadPartitionRecords returns every record stored in one partition (a path

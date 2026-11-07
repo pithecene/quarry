@@ -11,12 +11,12 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **The command `quarry read artifact` opens an artifact with six store requests**: the runtime now writes a commit index entry for each committed artifact. Each entry names the snapshot that holds the artifact's commit record, and the command reads that one snapshot. Before this release, the command read every commit record of the artifact's run. A run from an earlier release has no entries, so the command still reads all its commit records. The counter `artifact_index_write_failure_total` counts failed entry writes.
+- **The command `quarry read artifact` opens an artifact with five store requests**: the runtime now writes a commit index entry for each committed artifact. Each entry names the snapshot that holds the artifact's commit record, and the command reads that one snapshot. Before this release, the command read every commit record of the artifact's run. A run from an earlier release has no entries, so the command still reads all its commit records. The counter `artifact_index_write_failure_total` counts failed entry writes.
 
 ### Changed
 
 - **A partition read loads each manifest once**: Quarry now requires Lode v0.15.0 and reads a partition's manifests through Lode's `Manifests`, which yields the manifests that its listing has already loaded. Quarry therefore loads no manifest twice when it reads a run's partition or inventories sidecar files for a prune. For a 72-artifact run without commit index entries, `quarry read artifact` opens an artifact with 223 store requests instead of 295.
-- **Quarry opens an artifact at its commit index entry's snapshot**: Quarry now requires Lode v0.16.0. With Lode's `WithPinnedSnapshot`, Quarry opens a view at the entry's snapshot rather than at the dataset's head. Quarry reads the artifact's Volume snapshot through `ReaderAt`, which loads the Volume manifest once and serves every range read from that load. Opening an artifact through its entry therefore costs six store requests in place of seven.
+- **Quarry opens an artifact at its commit index entry's snapshot**: Quarry now requires Lode v0.17.0. With Lode's `WithPinnedSnapshot`, Quarry opens a view at the entry's snapshot, not the head. Quarry also passes its Hive layout with `WithLayout` to every view it opens, so each view reads manifests only from the segments directory. Quarry reads the artifact's Volume snapshot through `ReaderAt`, which loads the Volume manifest once and serves every range read from that load. Opening an artifact through its entry therefore costs five store requests in place of seven.
 
 ---
 

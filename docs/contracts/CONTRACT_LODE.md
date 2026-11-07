@@ -418,9 +418,12 @@ codec, no compressor, no checksum, and Lode's default path names.
   `ErrSettingsMismatch` before it writes anything.
 - Opening a writer reads the dataset's head, so constructing a client
   performs storage reads and takes a context.
-- Readers open read-only views, which take the layout from the dataset's
-  manifests. A view of a dataset without snapshots reports `ErrNotFound`,
-  which Quarry's readers return as an empty result.
+- Readers open read-only views with the writers' Hive layout, passed with
+  Lode's `WithLayout`. A view therefore reads manifests only from the
+  segments directory, and opening it reports `ErrSettingsMismatch` for a
+  dataset that records another layout. A view of a dataset without
+  snapshots reports `ErrNotFound`, which Quarry's readers return as an
+  empty result.
 - Retention (`Expire`, `Sweep`) is available only on writer handles, so
   `quarry prune` opens a writer with the settings above.
 - A dataset written before v0.12.0 has manifests in format 1.0.0, which
