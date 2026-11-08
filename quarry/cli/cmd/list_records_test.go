@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"flag"
 	"io"
 	"os"
 	"strings"
@@ -131,6 +132,54 @@ func TestListEvents_FromStorage(t *testing.T) {
 		"--source", "demo", "--category", "default", "--day", "2026-10-22", "--run-id", "missing")
 	if err == nil || !strings.Contains(err.Error(), "run not found") {
 		t.Fatalf("missing run err = %v", err)
+	}
+}
+
+func TestListEvents_ReadTimeoutBoundsTheRead(t *testing.T) {
+	t.Parallel()
+	set := flag.NewFlagSet("list events", flag.ContinueOnError)
+	for _, f := range []cli.Flag{readTimeoutFlag()} {
+		if err := f.Apply(set); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := set.Parse([]string{"--read-timeout", "42s"}); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	ctx, cancel := readContext(cli.NewContext(nil, set, nil))
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("readContext set no deadline")
+	}
+	if got := deadline.Sub(before); got < 41*time.Second || got > 43*time.Second {
+		t.Fatalf("deadline %v after the call, want about 42s", got)
+	}
+
+	unset := flag.NewFlagSet("list events", flag.ContinueOnError)
+	if err := readTimeoutFlag().Apply(unset); err != nil {
+		t.Fatal(err)
+	}
+	if err := unset.Parse(nil); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel = readContext(cli.NewContext(nil, unset, nil))
+	defer cancel()
+	deadline, _ = ctx.Deadline()
+	if got := deadline.Sub(before); got < defaultReadTimeout-time.Second || got > defaultReadTimeout+time.Second {
+		t.Fatalf("default deadline %v after the call, want about %v", got, defaultReadTimeout)
+	}
+}
+
+func TestListEvents_ReadTimeoutRejectsANonDuration(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
+	root := t.TempDir()
+	_, err := runListCLI(t, "events", "--storage-backend", "fs", "--storage-path", root,
+		"--source", "demo", "--category", "default", "--day", "2026-10-22", "--run-id", "run-a",
+		"--read-timeout", "soon")
+	if err == nil || !strings.Contains(err.Error(), "read-timeout") {
+		t.Fatalf("a read timeout that is not a duration should be refused, got %v", err)
 	}
 }
 

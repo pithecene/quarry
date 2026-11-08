@@ -42,6 +42,7 @@ func listRunsCommand() *cli.Command {
 		Name:  "runs",
 		Usage: "List runs",
 		Flags: append(append(append(ReadOnlyFlags(), storageReadFlags()...), runSelectorFlags()...),
+			readTimeoutFlag(),
 			&cli.StringFlag{
 				Name:  "state",
 				Usage: "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",

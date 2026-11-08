@@ -15,8 +15,24 @@ import (
 	runreader "github.com/pithecene/quarry/reader"
 )
 
-// readTimeout bounds a storage-backed read command.
-const readTimeout = 5 * time.Minute
+// defaultReadTimeout bounds a storage-backed listing unless --read-timeout
+// says otherwise. A run's events are one segment each under the strict
+// policy, so a listing of many events makes many requests.
+const defaultReadTimeout = 5 * time.Minute
+
+// readTimeoutFlag is the bound on the whole read of a listing command.
+func readTimeoutFlag() cli.Flag {
+	return &cli.DurationFlag{
+		Name:  "read-timeout",
+		Usage: "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)",
+		Value: defaultReadTimeout,
+	}
+}
+
+// readContext bounds a listing by --read-timeout.
+func readContext(c *cli.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(c.Context, c.Duration("read-timeout"))
+}
 
 // storageReadFlags are the storage flags of commands that read Lode
 // storage. They have the same meaning as on `run`.
@@ -96,7 +112,7 @@ func listRunsFromRecords(c *cli.Context, r *render.Renderer) error {
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
 	}
-	ctx, cancel := context.WithTimeout(c.Context, readTimeout)
+	ctx, cancel := readContext(c)
 	defer cancel()
 
 	page, err := rr.ListRuns(ctx, selectorFrom(c), runreader.ListOptions{
@@ -120,7 +136,7 @@ func listEventsCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "events",
 		Usage:  "List a run's events in sequence order (reads storage)",
-		Flags:  append(ReadOnlyFlags(), runLocatorFlags("Run whose events to list (required)")...),
+		Flags:  append(append(ReadOnlyFlags(), runLocatorFlags("Run whose events to list (required)")...), readTimeoutFlag()),
 		Action: listEventsAction,
 	}
 }
@@ -165,7 +181,7 @@ func listEventsAction(c *cli.Context) error {
 	if c.Bool("tui") {
 		return cli.Exit("--tui is not supported for list commands", 1)
 	}
-	ctx, cancel := context.WithTimeout(c.Context, readTimeout)
+	ctx, cancel := readContext(c)
 	defer cancel()
 	rr, run, err := locatedRun(ctx, c, "list events")
 	if err != nil {
@@ -193,7 +209,7 @@ func listArtifactsCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "artifacts",
 		Usage:  "List a run's artifacts from their commit records (reads storage)",
-		Flags:  append(ReadOnlyFlags(), runLocatorFlags("Run whose artifacts to list (required)")...),
+		Flags:  append(append(ReadOnlyFlags(), runLocatorFlags("Run whose artifacts to list (required)")...), readTimeoutFlag()),
 		Action: listArtifactsAction,
 	}
 }
@@ -212,7 +228,7 @@ func listArtifactsAction(c *cli.Context) error {
 	if c.Bool("tui") {
 		return cli.Exit("--tui is not supported for list commands", 1)
 	}
-	ctx, cancel := context.WithTimeout(c.Context, readTimeout)
+	ctx, cancel := readContext(c)
 	defer cancel()
 	rr, run, err := locatedRun(ctx, c, "list artifacts")
 	if err != nil {

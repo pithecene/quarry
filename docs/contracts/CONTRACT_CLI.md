@@ -651,6 +651,9 @@ Storage-backed flags:
   ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Record Namespace). `--category` requires
   `--source`, and `--day` requires `--category`. Omitting all three lists
   the whole dataset
+- `--read-timeout=<duration>`: the bound on the whole read of storage
+  (default `5m`). A listing that reads many objects, such as the events of
+  a run that wrote each event as its own segment, may need more.
 - `--state=succeeded|failed|unterminated`
 - `--limit=<n>` (0 = no limit)
 - `--after=<cursor>`: the `next` value of a previous page
@@ -717,6 +720,9 @@ Required flags:
   `list runs`)
 - `--source`, `--category`, `--day`, `--run-id`: these locate the run's
   records directly
+
+Optional flags:
+- `--read-timeout=<duration>`, as on `list runs`
 
 Response (`json`, `yaml`):
 ```
