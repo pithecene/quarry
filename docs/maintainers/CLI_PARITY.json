@@ -521,6 +521,12 @@
               "description": "Resume after the cursor a previous page returned (with storage)",
               "dependsOn": ["storage-backend"]
             },
+            "read-timeout": {
+              "type": "duration",
+              "required": false,
+              "default": "5m",
+              "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
+            },
             "storage-dataset": {
               "type": "string",
               "required": false,
@@ -600,6 +606,12 @@
               "required": true,
               "description": "Run whose events to list (required)"
             },
+            "read-timeout": {
+              "type": "duration",
+              "required": false,
+              "default": "5m",
+              "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
+            },
             "storage-dataset": {
               "type": "string",
               "required": false,
@@ -678,6 +690,12 @@
               "type": "string",
               "required": true,
               "description": "Run whose artifacts to list (required)"
+            },
+            "read-timeout": {
+              "type": "duration",
+              "required": false,
+              "default": "5m",
+              "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
             },
             "storage-dataset": {
               "type": "string",
