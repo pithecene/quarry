@@ -1,0 +1,50 @@
+name: 🧾 Check
+
+# The internal check, Bosun, on the repository and on each pull request's title
+# and body. A change of title or body alone reruns this workflow and no other.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # An edit of the title or body runs in its own group, so it never cancels
+  # the check of a push.
+  group: check-${{ github.event.pull_request.number || github.ref }}${{ github.event.action == 'edited' && '-edit' || '' }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 🧾 Internal Check
+    # A fork's pull request receives no secret, so it runs no internal check.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    # The image of the internal check's current release: the one line in this
+    # repository that names it.
+    container:
+      image: ghcr.io/pithecene/bosun:latest
+      credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: 📦 Go Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache
+          key: bosun-go-${{ hashFiles('quarry/go.sum') }}
+          restore-keys: bosun-go-
+
+      # The event holds the pull request, whose title and body the check
+      # reads. A push holds none.
+      - name: 🧾 Check
+        run: bosun check --pull-request "$GITHUB_EVENT_PATH"
