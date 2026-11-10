@@ -3,7 +3,7 @@
 # prose contract, which the changelog contract applies to every entry, and
 # the Go analysis runs Bosun's analyzers on the quarry module with their own
 # golangci-lint configuration. CI runs it in the check job of
-# .github/workflows/ci.yml, inside the image that the job pins, and
+# .github/workflows/check.yaml, inside the image that the job pins, and
 # `task check` runs that image on a workstation.
 version: 1
 prose:
