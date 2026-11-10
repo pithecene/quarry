@@ -45,7 +45,8 @@ jobs:
           key: bosun-go-${{ hashFiles('quarry/go.sum') }}
           restore-keys: bosun-go-
 
-      # The event holds the pull request, whose title and body the check
-      # reads. A push holds none.
+      # On a pull request, the event file holds the pull request, so Bosun
+      # checks its title and body as well as the repository. A push or a run
+      # by hand carries no pull request, so Bosun checks the repository alone.
       - name: 🧾 Check
         run: bosun check --pull-request "$GITHUB_EVENT_PATH"
