@@ -72,25 +72,20 @@ Hooks are invoked by the executor at well-defined points in the run lifecycle.
 
 ### Execution Order
 
+```mermaid
+flowchart TD
+  load[Load script] --> prepare{{prepare}}
+  prepare -- skip --> skipped["Emit run_complete({skipped})"] --> skipResult[run_result] --> skipReturn([Return])
+  prepare -- "continue, optionally with a transformed job" --> browser[Acquire browser] --> context[Create context]
+  context --> beforeRun{{beforeRun}} --> script["script()"]
+  script -- success --> afterRun{{afterRun}}
+  script -- error --> onError{{onError}}
+  afterRun --> beforeTerminal{{"beforeTerminal<br/>emit still open, terminal not yet written"}}
+  onError --> beforeTerminal
+  beforeTerminal --> terminal[Auto-emit terminal] --> cleanup{{cleanup}} --> result[run_result] --> done([Return])
 ```
-load script
-    │
-    ▼
-[prepare]  ──skip──▶ emit run_complete({skipped}) → run_result → return
-    │
-    │ continue (optionally with transformed job)
-    ▼
-acquire browser → create context
-    │
-    ▼
-[beforeRun] → script() → [afterRun] (success) / [onError] (error)
-    │
-    ▼
-[beforeTerminal]  (emit still open, terminal not yet written)
-    │
-    ▼
-auto-emit terminal → [cleanup] → run_result → return
-```
+
+Hexagons are the script's hooks, and rectangles are the runtime's own steps.
 
 ### `prepare`
 
