@@ -271,7 +271,7 @@ The `quarry run` command supports optional derived work execution via enqueue ev
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--max-duration` | duration | | Stop the root run at this age and end it as `deadline_exceeded` ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Deadline) |
+| `--max-duration` | duration | | Stop each run at this age and end it as `deadline_exceeded` ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Deadline) |
 | `--depth` | int | `0` | Max fan-out recursion depth (0 = disabled) |
 | `--max-runs` | int | | Total child run cap (required when `--depth > 0`) |
 | `--parallel` | int | `1` | Max concurrent child runs |

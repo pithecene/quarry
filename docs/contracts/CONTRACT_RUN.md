@@ -311,8 +311,8 @@ deadline.
 - The runtime decides whether the deadline stopped the run at the instant
   execution stops. The flush, close and cleanup that follow ignore
   cancellation, so a deadline that passes during them changes no outcome.
-- In a fan-out, the max duration applies to the root run, and child runs
-  declare none.
+- In a fan-out, each child run declares the root run's max duration,
+  counted from the child's own start.
 - `quarry prune` measures an unterminated run's age from `deadline_at` when
   the start record states one ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Selection).
 

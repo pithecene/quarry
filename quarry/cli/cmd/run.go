@@ -426,6 +426,9 @@ type childFactory struct {
 	browserWSEndpoint string
 	resolveFrom       string
 	eventSinks        []eventSinkChoice
+	// The max duration bounds each child run from its own start, as
+	// --max-duration bounds the root run.
+	maxDuration time.Duration
 }
 
 // Run constructs and executes a single child run for the fan-out operator.
@@ -486,6 +489,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		Collector:         childCollector,
 		Storage:           childLodeClient,
 		StartedAt:         childStartTime,
+		MaxDuration:       cf.maxDuration,
 	}
 
 	orchestrator, err := runtime.NewRunOrchestrator(config)
@@ -861,6 +865,7 @@ func runAction(c *cli.Context) error {
 		}
 
 		factory := &childFactory{
+			maxDuration:       rootConfig.MaxDuration,
 			policyChoice:      choice,
 			executorPath:      executorPath,
 			storage:           storageConfig,
