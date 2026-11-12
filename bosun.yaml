@@ -8,12 +8,6 @@
 # file extends, routes each change into its track's stack of pull requests.
 version: 1
 extends: ghcr.io/pithecene/bosun-config:v1
-# Codex runs the agent of the review steps, as it runs each reviewer, so no review stops on one provider's quota.
-# The key leaves once Bosun runs those steps on the reviewer role (pithecene/bosun#338).
-roles:
-  agent:
-    provider: codex
-    model: gpt-6-luna
 prose:
   documents:
     - CHANGELOG.md
