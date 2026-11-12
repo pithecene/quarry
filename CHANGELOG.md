@@ -9,13 +9,9 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
----
-
-## [0.18.0] - 2026-11-11
-
 ### Added
 
-- **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default stays at five minutes, the fixed bound of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.
+- **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default is the five minutes of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.
 
 ---
 
@@ -771,8 +767,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.18.0...HEAD
-[0.18.0]: https://github.com/pithecene/quarry/compare/v0.17.0...v0.18.0
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.17.0...HEAD
 [0.17.0]: https://github.com/pithecene/quarry/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/pithecene/quarry/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/pithecene/quarry/compare/v0.15.0...v0.16.0
