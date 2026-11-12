@@ -1077,9 +1077,11 @@ Each seam has an issue, and dogfooding found each one.
 - The resolved storage key in `file_write_ack` (B1), carried forward from
   v0.14.0.
 
-A seam that changes a run contract (#386, #391 and B1) lands before the
-v1.0 freeze, under that milestone's Carried Forward item. The others may
-follow the freeze.
+A seam that changes a run contract outside the experimental artifact
+surface (#386 and #391) lands before the v1.0 freeze, under that
+milestone's Carried Forward item. B1 belongs to the experimental artifact
+surface, as § Carried Forward states, so it does not gate the freeze. The
+others may follow the freeze.
 
 ### Mini-milestones
 
