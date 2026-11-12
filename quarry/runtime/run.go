@@ -142,6 +142,10 @@ type RunOrchestrator struct {
 	// runCtx is the context the run executes under. Its cause is
 	// ErrRunDeadline once the run's deadline passes.
 	runCtx context.Context
+	// stoppedByDeadline records, when execution stops, whether the deadline
+	// had passed by then. Cleanup after that instant ignores cancellation,
+	// so a deadline it crosses never changes the outcome.
+	stoppedByDeadline bool
 
 	policyClosed   bool  // the policy has been closed (Close is one-shot)
 	policyCloseErr error // the result of that close
@@ -208,9 +212,12 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		defer cancel()
 	}
 
-	if err := r.writeStartRecord(ctx, deadlineAt); err != nil {
+	// The deadline bounds the start record's write too: a run whose deadline
+	// passes first never starts.
+	if err := r.writeStartRecord(r.runCtx, deadlineAt); err != nil {
 		// The run never starts: no executor is launched and no run data is
 		// written. Retrying is safe, as for an executor that fails to launch.
+		r.stoppedByDeadline = r.pastDeadline()
 		r.logger.Error("run start record write failed", map[string]any{
 			"error": err.Error(),
 		})
@@ -399,6 +406,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 
 	// Start executor
 	if err := executor.Start(ctx); err != nil {
+		r.stoppedByDeadline = r.pastDeadline()
 		r.config.Collector.IncExecutorLaunchFailure()
 		r.logger.Error("failed to start executor", map[string]any{
 			"error": err.Error(),
@@ -470,6 +478,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	// NOW call Wait() to reap the child process
 	// This is safe because ingestion has already read all data from the pipe
 	execResult, execErr := executor.Wait()
+	r.stoppedByDeadline = r.pastDeadline()
 
 	// Always attempt policy flush (best effort) on all termination paths
 	// Per CONTRACT_POLICY.md: "Buffered events must be flushed on run_complete, run_error, runtime termination (best effort)"
@@ -688,7 +697,7 @@ func (r *RunOrchestrator) buildResult(
 ) *RunResult {
 	// A run stopped at its deadline fails however the stop surfaced: as a
 	// canceled ingestion, a killed executor, or a broken stream.
-	if outcome.Status != types.OutcomeSuccess && r.pastDeadline() {
+	if outcome.Status != types.OutcomeSuccess && r.stoppedByDeadline {
 		outcome = &types.RunOutcome{
 			Status:  types.OutcomeDeadlineExceeded,
 			Message: fmt.Sprintf("run exceeded its max duration of %s: %s", r.config.MaxDuration, outcome.Message),

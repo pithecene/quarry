@@ -305,9 +305,12 @@ deadline.
 - A run whose outcome is `success` keeps it even when the deadline passes
   before the runtime finishes with it, since its events are complete. A
   retry of such a run would only repeat finished work.
-- The runtime writes the start record even when the deadline has already
-  passed, since every run has one. The executor then stops at once, and
-  the run ends as `deadline_exceeded`.
+- The deadline bounds the start record's write too. A run whose deadline
+  passes before the runtime writes its start record never starts, and it
+  ends as `deadline_exceeded`.
+- The runtime decides whether the deadline stopped the run at the instant
+  execution stops. The flush, close and cleanup that follow ignore
+  cancellation, so a deadline that passes during them changes no outcome.
 - In a fan-out, the max duration applies to the root run, and child runs
   declare none.
 - `quarry prune` measures an unterminated run's age from `deadline_at` when

@@ -35,8 +35,12 @@ func (s *recordingStorage) record(call string) {
 	s.calls = append(s.calls, call)
 }
 
-func (s *recordingStorage) WriteStartRecord(_ context.Context, _ *types.RunMeta, startedAt time.Time, deadlineAt *time.Time) error {
+func (s *recordingStorage) WriteStartRecord(ctx context.Context, _ *types.RunMeta, startedAt time.Time, deadlineAt *time.Time) error {
 	s.record("start")
+	// A store honors its context, so a write after the context ends fails.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.startedAt = startedAt
 	s.deadlineAt = deadlineAt
 	return s.startErr
@@ -423,8 +427,8 @@ func TestNewRunOrchestrator_RejectsANegativeMaxDuration(t *testing.T) {
 	}
 }
 
-// A deadline that has passed by the time the run starts still leaves a start
-// record, and the run ends as deadline_exceeded.
+// The deadline bounds the start record's write, so a run whose deadline
+// passes first never starts, and it ends as deadline_exceeded.
 func TestExecute_DeadlinePastAtStart(t *testing.T) {
 	t.Parallel()
 
@@ -441,7 +445,46 @@ func TestExecute_DeadlinePastAtStart(t *testing.T) {
 	if result.Outcome.Status != types.OutcomeDeadlineExceeded {
 		t.Fatalf("outcome = %s (%s), want %s", result.Outcome.Status, result.Outcome.Message, types.OutcomeDeadlineExceeded)
 	}
-	if storage.deadlineAt == nil {
-		t.Error("the run wrote no start record with its deadline")
+	if exec.WasKilled() || exec.started {
+		t.Error("the executor started although the run's deadline had passed")
+	}
+}
+
+// slowFlushPolicy fails ingestion at once and then flushes slowly, so its
+// cleanup crosses the run's deadline after execution has decided the outcome.
+type slowFlushPolicy struct {
+	*flushTrackingPolicy
+	delay time.Duration
+}
+
+func (p *slowFlushPolicy) IngestEvent(_ context.Context, _ *types.EventEnvelope) error {
+	return &policyError{msg: "simulated policy failure"}
+}
+
+func (p *slowFlushPolicy) Flush(ctx context.Context) error {
+	time.Sleep(p.delay)
+	return p.flushTrackingPolicy.Flush(ctx)
+}
+
+// A failure that execution reached before the deadline keeps its outcome when
+// the cleanup that follows crosses the deadline.
+func TestExecute_CleanupPastTheDeadlineKeepsTheOutcome(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	runMeta := &types.RunMeta{RunID: "run-deadline", Attempt: 1}
+	exec := newMockExecutor(makeValidEventStream(runMeta), 0)
+	cfg := deadlineConfig(t, storage, exec, 100*time.Millisecond)
+	cfg.Policy = &slowFlushPolicy{flushTrackingPolicy: newFlushTrackingPolicy(), delay: 300 * time.Millisecond}
+	o, err := NewRunOrchestrator(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := o.Execute(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome.Status != types.OutcomePolicyFailure {
+		t.Fatalf("outcome = %s (%s), want %s", result.Outcome.Status, result.Outcome.Message, types.OutcomePolicyFailure)
 	}
 }
