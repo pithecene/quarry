@@ -34,6 +34,8 @@ type StorageConfig struct {
 	Region      string `yaml:"region"`
 	Endpoint    string `yaml:"endpoint"`
 	S3PathStyle bool   `yaml:"s3_path_style"`
+	// AttemptTimeout is the longest stall of an S3 request before its attempt fails.
+	AttemptTimeout Duration `yaml:"attempt_timeout,omitempty"`
 }
 
 // PolicyConfig holds policy defaults from the config file.

@@ -591,6 +591,7 @@ Optional flags:
 - `--storage-region=<region>`: AWS region for S3 backend
 - `--storage-endpoint=<url>`: custom S3 endpoint for S3-compatible providers, with the same meaning as on `run`
 - `--storage-s3-path-style`: force path-style S3 addressing (required by many S3-compatible providers), with the same meaning as on `run`
+- `--storage-attempt-timeout=<duration>`: the longest stall of an S3 request, default `60s`, with the same meaning as on `run`. Each read or write on the request's connection must make progress within it. Otherwise the attempt fails, and the SDK sends it again
 - `--run-id=<id>`: read metrics for a specific run
 - `--source=<source>`: filter by source partition
 

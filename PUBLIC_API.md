@@ -617,6 +617,7 @@ quarry run --dry-run --script ./my-script.ts --run-id test --source test \
 | `--storage-region <region>` | AWS region (uses default chain if omitted) |
 | `--storage-endpoint <url>` | Custom S3 endpoint URL for an S3-compatible provider |
 | `--storage-s3-path-style` | Force path-style addressing (required by many S3-compatible providers) |
+| `--storage-attempt-timeout <duration>` | Longest stall of an S3 request (default `60s`). An attempt that makes no progress for that long fails, and the SDK sends it again |
 
 ### Inspect Command
 
