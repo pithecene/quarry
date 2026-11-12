@@ -17,8 +17,8 @@ Scripts and executors remain **policy-agnostic**.
 - Latest release: v0.17.0 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
-- Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side & retention) →
-  v1.0 (contract freeze) → v1.x (first-party host). See the roadmap
+- Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side and retention) →
+  v1.0 (contract freeze) → v1.x (embedding seams). See the roadmap
   sections below; #245 is the umbrella issue, #239 and #240 the drivers.
 
 ---
@@ -750,8 +750,8 @@ public surface changes.
 ### Goal
 
 Give Quarry's own storage layout a reader that Quarry maintains, and a
-retention command that expresses run outcomes in Quarry's terms. Both are
-prerequisites for the v1.x host and stand on their own for batch
+retention command that expresses run outcomes in Quarry's terms. Both serve
+every host of the runtime and stand on their own for batch
 consumers (#240) and long-lived datasets (#239).
 
 Quarry owns the Hive layout, the event envelope, and the meaning of a run's
@@ -815,7 +815,7 @@ order on every backend — until Lode adds storage-native continuation
 (a Lode ask, not a prerequisite); the measurement below is what the
 change is judged by. C1 — index order is `source/category/day/run_id`,
 matching the layout and #240's query; a time-first secondary index is
-added only when the v1.x host has evidence it needs one. C2 — the ~11k
+added only when a host has evidence it needs one. C2 — the ~11k
 runs that predate records are backfilled by an explicit, operator-run,
 idempotent upgrade step (`quarry index rebuild`, dry-run first) that
 writes records carrying only what storage proves, all marked
@@ -986,9 +986,8 @@ land before the v1.0 freeze.
 ### Goal
 
 Freeze the run contracts (`CONTRACT_RUN`, `CONTRACT_EMIT`, `CONTRACT_IPC`,
-`CONTRACT_LODE`, `CONTRACT_POLICY`) and the SDK surface. v1.0 adds nothing;
-it is the point after which the v1.x host is built *on* the contracts
-rather than *in* them.
+`CONTRACT_LODE`, `CONTRACT_POLICY`) and the SDK surface. v1.0 adds nothing.
+After it, every host builds *on* the contracts rather than *in* them.
 
 ### Experimental Artifact Surface
 
@@ -1010,12 +1009,12 @@ freezes it with the other contracts. Lode's side follows its own gate.
   v1.0 blockers (§1–§5) are resolved; the Release Gates checklist and the
   Sign-Off table are still open and are completed as part of this
   milestone, not assumed.
-- [`PUBLIC_API.md`](../../PUBLIC_API.md) Known Limitations rewritten as decisions: the read side
-  limitation is retired by the v0.14.0 reader (shipped before v1.0); the
-  scheduling limitation stays in force, restated as "planned: the v1.x
-  first-party host", and is retired only when `quarry serve` ships.
-- `.grove.yaml` intent revised deliberately if the host changes the
-  project's stated shape; not by drift.
+- [`PUBLIC_API.md`](../../PUBLIC_API.md) Known Limitations rewritten as decisions. The v0.14.0
+  reader retires the limitation of the read side before v1.0. The
+  limitation of scheduling becomes a decision: a host schedules runs, and
+  Quarry offers every host the seams of the v1.x roadmap.
+- `.grove.yaml` intent revised deliberately if the seams change the
+  project's stated shape, never by drift.
 
 ### Mini-milestones
 
@@ -1029,17 +1028,15 @@ freezes it with the other contracts. Lode's side follows its own gate.
 
 ---
 
-## v1.x Roadmap — First-Party Host (`quarry serve`)
+## Embedding Seams (v1.x Roadmap)
 
 ### Goal
 
-Provide the machinery users expect around a crawler — job definitions,
-cadence, visibility, retry, retention — as a first-party host of the
-existing runtime, without changing what a run is.
-
-Ingestion cadence ranges from sparse, to always-on, to multi-hour bursts
-followed by idleness. The host is a scheduler and bounded executor pool
-that is allowed to idle, not a service that must be up.
+Make the runtime the unit of work that any host embeds. A host schedules
+runs, pools them and retries them. Quarry owns the run contract and its
+lineage, the evidence in Lode, the read side and retention. #245 records
+the decision of 2026-11-11, which replaced the first-party host
+(`quarry serve`) of the earlier roadmap with the seams that § Deliverables lists.
 
 ### Position
 
@@ -1047,73 +1044,68 @@ that is allowed to idle, not a service that must be up.
   `runtime.NewRunOrchestrator(config)`, which returns
   `(*RunOrchestrator, error)`, followed by `Execute(ctx)` on the result,
   and [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Orchestration Integration Semantics
-  already defines its boundary. `quarry serve` is one host of that seam; a
-  Temporal worker is another. Quarry must not become specific to either.
+  already defines its boundary. A scheduled job, a queue worker and a
+  Temporal worker are each a host of that seam. Quarry must not become
+  specific to any of them.
+- Durable execution belongs to the host or its orchestrator: timers,
+  retries, deduplication by key, fan-out and recovery after a crash.
+  Temporal and the queue libraries on Postgres already provide it, and a
+  host decides what falls due from rules of its own domain.
 - Lode remains the data plane and the system of record for everything a
-  run produces. The host never duplicates it.
+  run produces. A host never duplicates it.
 - Known scale constraint: a Lode dataset is one linear history with a
   single `latest` pointer, so every snapshot commit in a dataset
   serialises on one CAS round trip (~50–100 ms on S3, i.e. on the
   order of 10–20 commits/s per dataset before `WithRetryCount` exhausts).
-  Lode will not shard the pointer — per-partition histories are
-  per-partition datasets by design — so the relief is Quarry's: the host
-  partitions writers across dataset IDs (per crawl family or shard),
-  smooths scheduled bursts instead of firing N runs at :00, and sizes its
-  pool against the per-dataset ceiling. Quarry will ask Lode to document
+  Lode will not shard the pointer, since per-partition histories are
+  per-partition datasets by design. The relief is therefore the host's.
+  It partitions writers across dataset IDs, per crawl family or shard.
+  It smooths scheduled bursts instead of firing N runs at :00, and it
+  sizes its pool against the ceiling of each dataset. Quarry will ask Lode to document
   the contention bound in its write-API contract.
-- Single-operator trust model, same as the CLI. Multi-user, tenancy, and
-  auth are out of scope; the HTTP surface binds to localhost or sits behind
-  the operator's own proxy.
-- The CLI remains the full surface; `serve` composes it.
-
-### Control-Plane State
-
-Lode is append-only and immutable — the right home for runs, the wrong
-home for mutable job state (paused, next fire, concurrency leases).
-
-1. Declarative first: jobs and schedules are a file alongside the existing
-   config YAML; all run state is derived from Lode through the v0.14.0
-   reader. No new persistence. Pause/resume is an edit.
-2. Embedded store (single file, e.g. SQLite or bbolt) only when leases or
-   acknowledgements are needed, holding only what Lode cannot, and
-   rebuildable from Lode plus the job file.
-
-The store must never hold anything Lode already has.
 
 ### Deliverables
 
-- `quarry serve`: job file, scheduler, bounded pool, HTTP read API over the
-  v0.14.0 reader, scheduled `gc`.
-- `CONTRACT_JOBS.md` (job definition and lifecycle) and `CONTRACT_SERVE.md`
-  (HTTP read surface, process lifecycle).
-- Run actions with lineage: re-run / retry a run as a new attempt per
-  [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Lineage Preservation.
-- Proxy pool health over time. `inspect proxy` exposes selection state
-  only (round-robin index, sticky entries, recency, last-used) and
-  [`CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md) excludes health checking, so this needs new
-  per-endpoint success/failure instrumentation and persistence — a
-  [`CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md) change, scoped when the host exists.
-- A GUI, if built, is a consumer of the HTTP read API in its own package
-  or repository — never a second reader.
+Each seam has an issue, and dogfooding found each one.
+
+- A deadline declared per run and enforced by the runtime (D1): #390.
+- An outcome that tells a fault of the store from a failure that a retry
+  cannot resolve: #391.
+- Store requests bounded per attempt, and a `Put` that is safe to send
+  again: #389 and pithecene/lode#372.
+- A run mode without a browser: #386.
+- The resolved storage key in `file_write_ack` (B1), carried forward from
+  v0.14.0.
+
+A seam that changes a run contract outside the experimental artifact
+surface (#386 and #391) lands before the v1.0 freeze, under that
+milestone's Carried Forward item. B1 belongs to the experimental artifact
+surface, as § Carried Forward states, so it does not gate the freeze. The
+others may follow the freeze.
 
 ### Mini-milestones
 
-- [ ] Job definition format decided (extend config YAML vs. separate file)
-- [ ] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md) revised: `serve` leaves the forbidden list and is
-      defined as the one long-lived, work-executing command besides `run`
-- [ ] `CONTRACT_JOBS.md` / `CONTRACT_SERVE.md` drafted
-- [ ] `quarry serve` with scheduler and pool (declarative state only)
-- [ ] HTTP read API
-- [ ] Run retry action with lineage
-- [ ] Embedded store, if and when leases/acks are needed
-- [ ] GUI as a separate consumer
+- [ ] Store requests bounded per attempt, and Lode's `Put` safe to send again (#389, pithecene/lode#372)
+- [ ] Outcome classification for retry (#391)
+- [ ] Run deadline (#390)
+- [ ] Run mode without a browser (#386)
+- [ ] Storage key in `file_write_ack` (B1)
+- [ ] [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Orchestration Integration Semantics revised with the seams
 
-### Open Questions
+### Deferred
 
-- Job definition: extend the config YAML schema, or a separate jobs file.
-- HTTP surface in the first cut: read-only, or also job control
-  (pause/trigger).
-- Whether the module split is a prerequisite for the host or follows it.
+- `quarry serve`, with its job file, scheduler, bounded pool, HTTP read
+  API, scheduled prune, `CONTRACT_JOBS.md` and `CONTRACT_SERVE.md`. A
+  first-party host would rebuild what orchestrators already provide.
+- Reference integrations, such as a Temporal activity or a worker on a
+  Postgres queue, wait until a host asks for one.
+- A lookup of runs by `job_id` waits for a host that needs the lookup.
+- Proxy pool health over time waits for a host that asks for it. It needs
+  new instrumentation per endpoint and a
+  [`CONTRACT_PROXY.md`](../contracts/CONTRACT_PROXY.md) change.
+- A hosted platform for extraction is a separate business decision. Its
+  distinguishing parts would be a fleet of browsers, proxies and a crawl
+  frontier, not scheduling.
 
 ---
 
@@ -1122,7 +1114,7 @@ The store must never hold anything Lode already has.
 ### Goal
 
 Split the `quarry/` Go module into independent modules so that hosts
-(`quarry serve`, `quarry-temporal/`, future integrations) can depend on
+(`quarry-temporal/`, future integrations) can depend on
 core runtime types without pulling in CLI, TUI, or unrelated dependencies.
 
 ### Agreed Layout
@@ -1174,8 +1166,8 @@ quarry-core/      (no quarry-* dependencies)
 ## Temporal Orchestration Integration (Deferred Host)
 
 > Temporal is not being dogfooded. It is one host of the runtime seam
-> defined in [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md), alongside the first-party
-> `quarry serve` host in the v1.x roadmap. Nothing in Quarry may become
+> defined in [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md), alongside any other host of
+> that seam. Nothing in Quarry may become
 > Temporal-specific; this section is built when a Temporal deployment
 > exists to validate it against.
 

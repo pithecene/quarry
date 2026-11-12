@@ -563,7 +563,9 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
   An unterminated run's age is measured from the later of its start
   record's `started_at` and the instant its most recent snapshot began
   (read from the snapshot ID), so a run that started long ago and is
-  still writing is not selected. A backfilled start record has no
+  still writing is not selected. A start record that states `deadline_at`
+  dates the run from its deadline in place of `started_at`, since the
+  runtime may write until then ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Deadline). A backfilled start record has no
   `started_at`, so the end of its partition day stands in.
 - A commit to an artifact Volume is a write of the run, so its snapshot
   counts among the most recent snapshots. The prune lists the names under

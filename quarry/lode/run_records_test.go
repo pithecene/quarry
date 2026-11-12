@@ -106,7 +106,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	job := "job-1"
 	meta := &types.RunMeta{RunID: cfg.RunID, JobID: &job, Attempt: 1}
 	startedAt := time.Date(2026, 10, 21, 8, 30, 0, 123, time.UTC)
-	if err := client.WriteStartRecord(t.Context(), meta, startedAt); err != nil {
+	if err := client.WriteStartRecord(t.Context(), meta, startedAt, nil); err != nil {
 		t.Fatalf("WriteStartRecord: %v", err)
 	}
 	end := RunEnd{
@@ -132,6 +132,9 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	}
 	if _, ok := start["parent_run_id"]; ok {
 		t.Error("parent_run_id should be omitted for an initial run")
+	}
+	if _, ok := start["deadline_at"]; ok {
+		t.Error("deadline_at should be omitted for a run without a max duration")
 	}
 
 	var endRec map[string]any
@@ -171,10 +174,10 @@ func TestWriteStartRecord_DuplicateRunIDRefused(t *testing.T) {
 	client, _ := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
 	meta := &types.RunMeta{RunID: cfg.RunID, Attempt: 1}
 	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
-	if err := client.WriteStartRecord(t.Context(), meta, at); err != nil {
+	if err := client.WriteStartRecord(t.Context(), meta, at, nil); err != nil {
 		t.Fatalf("first WriteStartRecord: %v", err)
 	}
-	err := client.WriteStartRecord(t.Context(), meta, at)
+	err := client.WriteStartRecord(t.Context(), meta, at, nil)
 	// The runtime matches Quarry's sentinel to tell a duplicate run ID apart
 	// from a failed write (CONTRACT_RUN.md §Failure Semantics).
 	if !errors.Is(err, ErrPathExists) || !errors.Is(err, lode.ErrPathExists) {
@@ -215,7 +218,7 @@ func TestWriteStartRecord_RejectsUnsafeKey(t *testing.T) {
 	if err != nil {
 		t.Skipf("Lode rejected the dataset itself: %v", err)
 	}
-	if err := client.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "run-1", Attempt: 1}, time.Now()); !errors.Is(err, ErrInvalidRunKey) {
+	if err := client.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "run-1", Attempt: 1}, time.Now(), nil); !errors.Is(err, ErrInvalidRunKey) {
 		t.Fatalf("err = %v, want ErrInvalidRunKey", err)
 	}
 }
@@ -236,9 +239,32 @@ func TestWriteStartRecord_DayChecks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: tc.day, RunID: "run-1"}
 			client, _ := NewLodeClientWithFactory(t.Context(), cfg, sharedMemoryFactory())
-			if err := client.WriteStartRecord(t.Context(), meta, tc.at); !errors.Is(err, ErrInvalidRunKey) {
+			if err := client.WriteStartRecord(t.Context(), meta, tc.at, nil); !errors.Is(err, ErrInvalidRunKey) {
 				t.Fatalf("err = %v, want ErrInvalidRunKey", err)
 			}
 		})
+	}
+}
+
+// A run that declares a max duration states its deadline in the start record.
+func TestWriteStartRecord_StatesTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
+	factory := sharedMemoryFactory()
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory: %v", err)
+	}
+	startedAt := time.Date(2026, 10, 21, 8, 30, 0, 0, time.UTC)
+	deadline := startedAt.Add(90 * time.Minute)
+	if err := client.WriteStartRecord(t.Context(), &types.RunMeta{RunID: cfg.RunID, Attempt: 1}, startedAt, &deadline); err != nil {
+		t.Fatalf("WriteStartRecord: %v", err)
+	}
+	store, _ := factory()
+	var start map[string]any
+	readJSON(t, store, RunRecordDir(cfg)+"start.json", &start)
+	if got, want := start["deadline_at"], "2026-10-21T10:00:00Z"; got != want {
+		t.Errorf("deadline_at = %v, want %v", got, want)
 	}
 }

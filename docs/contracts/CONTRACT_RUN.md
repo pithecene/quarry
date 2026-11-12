@@ -154,9 +154,10 @@ The runtime owns a run's whole lifecycle. `Execute`
    interval flush still in progress is canceled and joined, never
    abandoned), so the close occurs here, before the end record. Close is
    one-shot, so a caller's later close writes nothing. The close occurs
-   while the outcome is still being determined: if it leaves accepted data
-   unpersisted, a run that would otherwise succeed fails with
-   `policy_failure` (a run that has already failed retains its outcome).
+   while the outcome is still being determined. If it leaves accepted data
+   unpersisted, a run that would otherwise succeed fails, and a run that has
+   already failed retains its outcome. The failure is `storage_error` when
+   the sink refused the data, and `policy_failure` otherwise.
    Policy statistics are taken after the close, so the metrics record and
    the exit report match what was persisted.
 3. Persist the run's metrics record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record
@@ -230,6 +231,7 @@ existed receive backfilled records (§Backfilled Run Records).
 | `day`            | string | yes      | Partition day, `YYYY-MM-DD`, derived from `started_at` |
 | `partition`      | string | yes      | The run's Lode partition prefix relative to the dataset's partition root, Hive-encoded: `source=…/category=…/day=…/run_id=…/`. Every `event_type` partition of the run sits under it |
 | `started_at`     | string \| null | yes | Run start time, RFC 3339 UTC with nanoseconds, `null` on a backfilled record |
+| `deadline_at`    | string | no       | `started_at` plus the run's max duration (§Run Deadline), RFC 3339 UTC with nanoseconds, omitted when the run declares none |
 | `quarry_version` | string | yes      | Version of the writer |
 | `backfilled`     | bool   | yes      | `true` when written by `quarry index rebuild` rather than the runtime |
 
@@ -241,7 +243,7 @@ existed receive backfilled records (§Backfilled Run Records).
 | `schema_version`    | int            | yes      | `1` |
 | `run_id`            | string         | yes      | Run identifier |
 | `ended_at`          | string         | yes      | RFC 3339 UTC with nanoseconds |
-| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements), `null` on a backfilled record |
+| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, `version_mismatch`, `storage_error`, or `deadline_exceeded` (§Observability Requirements), `null` on a backfilled record |
 | `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`), `null` when none was received |
 | `message`           | string         | no       | Outcome message, omitted when empty |
 | `event_count`       | int \| null    | yes      | Events processed, `null` on a backfilled record |
@@ -305,6 +307,36 @@ Readers ([CONTRACT_CLI.md](CONTRACT_CLI.md) §list runs) apply these rules:
 
 ---
 
+## Run Deadline
+
+A run may declare a max duration (`RunConfig.MaxDuration`, `quarry run
+--max-duration`). It has no default, and a run that declares none has no
+deadline.
+
+- The deadline is `started_at` plus the max duration. The start record
+  states it as `deadline_at`.
+- At the deadline the runtime stops the executor as it does for a
+  canceled run, flushes the policy, and finalizes the run. The run's
+  outcome is `deadline_exceeded`, and the end record's `message` names the
+  max duration.
+- A run that ends before its deadline keeps its own outcome, and so does a
+  run that its host cancels before the deadline.
+- A run whose outcome is `success` keeps it even when the deadline passes
+  before the runtime finishes with it, since its events are complete. A
+  retry of such a run would only repeat finished work.
+- The deadline bounds the start record's write too. A run whose deadline
+  passes before the runtime writes its start record never starts, and it
+  ends as `deadline_exceeded`.
+- The runtime decides whether the deadline stopped the run at the instant
+  execution stops. The flush, close and cleanup that follow ignore
+  cancellation, so a deadline that passes during them changes no outcome.
+- In a fan-out, each child run declares the root run's max duration,
+  counted from the child's own start.
+- `quarry prune` measures an unterminated run's age from `deadline_at` when
+  the start record states one ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Selection).
+
+---
+
 ## Idempotency Expectations
 
 - Runs are **append-only**. No event mutation is allowed after emission.
@@ -343,7 +375,7 @@ data fetching occurs.
   "run_id": "string",
   "job_id": "string (omitted if empty)",
   "attempt": 1,
-  "outcome": "success | script_error | executor_crash | policy_failure | version_mismatch",
+  "outcome": "success | script_error | executor_crash | policy_failure | version_mismatch | storage_error | deadline_exceeded",
   "message": "string",
   "exit_code": 0,
   "duration_ms": 12345,

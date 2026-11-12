@@ -38,6 +38,8 @@ const (
 	exitScriptError   = 1
 	exitExecutorCrash = 2
 	exitPolicyFailure = 3
+	exitStorageError  = 4
+	exitDeadline      = 5
 )
 
 // exitConfigError is used for CLI/input validation failures.
@@ -245,6 +247,11 @@ ADVANCED:
 				Name:  "resolve-from",
 				Usage: "Path to node_modules directory for bare-specifier ESM resolution fallback (monorepo/container support)",
 			},
+			// Deadline flag
+			&cli.DurationFlag{
+				Name:  "max-duration",
+				Usage: "Stop the run and end it as deadline_exceeded once it has run this long (0 = no deadline)",
+			},
 			// Fan-out flags
 			&cli.IntFlag{
 				Name:  "depth",
@@ -424,6 +431,9 @@ type childFactory struct {
 	noBrowser         bool
 	resolveFrom       string
 	eventSinks        []eventSinkChoice
+	// The max duration bounds each child run from its own start, as
+	// --max-duration bounds the root run.
+	maxDuration time.Duration
 }
 
 // Run constructs and executes a single child run for the fan-out operator.
@@ -485,6 +495,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		Collector:         childCollector,
 		Storage:           childLodeClient,
 		StartedAt:         childStartTime,
+		MaxDuration:       cf.maxDuration,
 	}
 
 	orchestrator, err := runtime.NewRunOrchestrator(config)
@@ -847,6 +858,7 @@ func runAction(c *cli.Context) error {
 		Collector:         collector,
 		Storage:           lodeClient,
 		StartedAt:         startTime,
+		MaxDuration:       c.Duration("max-duration"),
 	}
 
 	// Branch: fan-out or single run
@@ -864,6 +876,7 @@ func runAction(c *cli.Context) error {
 		}
 
 		factory := &childFactory{
+			maxDuration:       rootConfig.MaxDuration,
 			policyChoice:      choice,
 			executorPath:      executorPath,
 			storage:           storageConfig,
@@ -1812,6 +1825,10 @@ func outcomeToExitCode(status types.OutcomeStatus) int {
 		return exitPolicyFailure
 	case types.OutcomeVersionMismatch:
 		return exitPolicyFailure // non-retryable configuration error, same as policy_failure
+	case types.OutcomeStorageError:
+		return exitStorageError
+	case types.OutcomeDeadlineExceeded:
+		return exitDeadline
 	default:
 		return exitScriptError
 	}
