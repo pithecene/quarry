@@ -11,6 +11,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **`retainHttpObject`**: the SDK retains an HTTP object of up to 1 GiB as one artifact. A HEAD request states the length, and Range requests of at most one range frame cover the object in order. Each answer must answer its range exactly, with the HEAD length as its total and the HEAD ETag when one exists. The helper writes each chunk at its offset and digests the whole object. On a failed check it throws `RetainHttpObjectError` with each reason and commits nothing. `CONTRACT_EMIT.md` § `retainHttpObject` states the rules.
+
 - **Runs without a browser**: `quarry run --no-browser` and `RunConfig.NoBrowser` declare a run that needs no browser. The executor neither launches nor connects to one and never loads Puppeteer, and the runtime acquires no browser server. The script's `ctx.page`, `ctx.browser` and `ctx.browserContext` throw the new `NoBrowserError`, which names the member. A script that fetches over HTTP therefore runs without Puppeteer or a Chromium. `CONTRACT_RUN.md` § Runs Without a Browser states the rules.
 
 - **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default is the five minutes of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.

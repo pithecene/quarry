@@ -73,6 +73,8 @@ export type {
   StoredEvent
 } from './reader'
 export { listRuns, QuarryReadError, readRun } from './reader'
+export type { RetainedChunk, RetainedHttpObject, RetainHttpObjectOptions } from './retain'
+export { RetainHttpObjectError, retainHttpObject } from './retain'
 // Storage batcher utility (public — bounded-concurrency file uploads)
 export type { PendingStoragePut, StorageBatcher, StorageBatcherOptions } from './storage-batcher'
 export { createStorageBatcher } from './storage-batcher'
