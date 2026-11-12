@@ -302,6 +302,12 @@ deadline.
   max duration.
 - A run that ends before its deadline keeps its own outcome, and so does a
   run that its host cancels before the deadline.
+- A run whose outcome is `success` keeps it even when the deadline passes
+  before the runtime finishes with it, since its events are complete. A
+  retry of such a run would only repeat finished work.
+- The runtime writes the start record even when the deadline has already
+  passed, since every run has one. The executor then stops at once, and
+  the run ends as `deadline_exceeded`.
 - In a fan-out, the max duration applies to the root run, and child runs
   declare none.
 - `quarry prune` measures an unterminated run's age from `deadline_at` when

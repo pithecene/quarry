@@ -422,3 +422,26 @@ func TestNewRunOrchestrator_RejectsANegativeMaxDuration(t *testing.T) {
 		t.Fatal("NewRunOrchestrator accepted a negative max duration")
 	}
 }
+
+// A deadline that has passed by the time the run starts still leaves a start
+// record, and the run ends as deadline_exceeded.
+func TestExecute_DeadlinePastAtStart(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	exec := newOpenStdoutExecutor()
+	o, err := NewRunOrchestrator(deadlineConfig(t, storage, exec, time.Nanosecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := o.Execute(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome.Status != types.OutcomeDeadlineExceeded {
+		t.Fatalf("outcome = %s (%s), want %s", result.Outcome.Status, result.Outcome.Message, types.OutcomeDeadlineExceeded)
+	}
+	if storage.deadlineAt == nil {
+		t.Error("the run wrote no start record with its deadline")
+	}
+}
