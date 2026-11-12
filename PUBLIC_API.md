@@ -290,6 +290,12 @@ await writer.writeAt(0, firstRange);  // ranges in any order, none overlapping
 await writer.writeAt(8_388_608, secondRange);
 const zipId = await writer.commit();  // once the ranges cover size_bytes
 
+// Retain an HTTP object of up to 1 GiB as one artifact, in Range chunks
+// (import { retainHttpObject } from "@pithecene/quarry-sdk")
+const retained = await retainHttpObject(ctx, "https://example.com/day.zip", {
+  name: "day.zip"
+});  // retained.artifact_id, retained.sha256, retained.chunks
+
 // Emit progress checkpoint
 await ctx.emit.checkpoint({
   checkpoint_id: "page-2",

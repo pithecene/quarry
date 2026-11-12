@@ -46,7 +46,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // ../sdk/dist/index.mjs
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
 import v8 from "node:v8";
 function hasBrand(value, brand) {
