@@ -9,10 +9,6 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed
-
-- **A browser server that closes before its reply counts as gone on Darwin**: when a reusable browser server closed a lease connection before the run wrote its request, Darwin could refuse the write with `ENOTCONN`. The runtime then reported a failed lease, not a missing server. It now treats `ENOTCONN` as it treats `EPIPE` and `ECONNRESET`, so the run starts a new server.
-
 ---
 
 ## [0.18.0] - 2026-11-11
