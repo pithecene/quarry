@@ -312,11 +312,14 @@ to orchestrator-native error semantics:
 | `policy_failure` | Non-retryable error |
 | `version_mismatch` | Non-retryable error |
 | `storage_error` | Retryable error |
+| `deadline_exceeded` | Retryable error |
 
 The outcomes `policy_failure` and `version_mismatch` are non-retryable because they
 indicate systemic configuration problems that retries cannot resolve.
 The outcome `storage_error` is retryable because a sink's timeout or refusal is
 often transient, and a retry run writes under a new `run_id`.
+The outcome `deadline_exceeded` is retryable for the same reason: a run often
+outlives its deadline because a store or a source stalled.
 
 ### Lineage Preservation
 

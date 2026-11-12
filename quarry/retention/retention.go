@@ -253,11 +253,17 @@ func sweepSummary(r *lode.SweepReport) *SweepReport {
 }
 
 // ageSince is the instant a run's age is measured from: its end for a
-// terminated run, and its start for an unterminated one. A backfilled run
-// has no recorded start, so the end of its partition day stands in.
+// terminated run, and its start for an unterminated one, or its deadline
+// when it declares one, since the runtime may write until then. A
+// backfilled run has no recorded start, so the end of its partition day
+// stands in.
 func ageSince(run reader.Run) (time.Time, bool) {
 	if run.EndedAt != nil {
 		t, err := time.Parse(time.RFC3339Nano, *run.EndedAt)
+		return t, err == nil
+	}
+	if run.DeadlineAt != nil {
+		t, err := time.Parse(time.RFC3339Nano, *run.DeadlineAt)
 		return t, err == nil
 	}
 	if run.StartedAt != nil {

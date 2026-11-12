@@ -102,6 +102,7 @@ func TestRunExitCodes_Documentation(t *testing.T) {
 	// - 2: executor crash
 	// - 3: policy failure
 	// - 4: storage error
+	// - 5: deadline exceeded
 
 	codes := map[int]string{
 		0: "success (run_complete)",
@@ -109,6 +110,7 @@ func TestRunExitCodes_Documentation(t *testing.T) {
 		2: "executor crash",
 		3: "policy failure",
 		4: "storage error",
+		5: "deadline exceeded",
 	}
 
 	// Verify our constants match (defined in cli/cmd/run.go)
@@ -118,6 +120,7 @@ func TestRunExitCodes_Documentation(t *testing.T) {
 		"exitExecutorCrash": 2,
 		"exitPolicyFailure": 3,
 		"exitStorageError":  4,
+		"exitDeadline":      5,
 	}
 
 	for name, code := range expected {

@@ -79,7 +79,7 @@ func benchDataset(b *testing.B, runs, events int) lode.Factory[lode.RangeStore] 
 			b.Fatal(err)
 		}
 		started := time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC)
-		if err := c.WriteStartRecord(b.Context(), &types.RunMeta{Attempt: 1}, started); err != nil {
+		if err := c.WriteStartRecord(b.Context(), &types.RunMeta{Attempt: 1}, started, nil); err != nil {
 			b.Fatal(err)
 		}
 		for i := 0; i < events; i += 10 {

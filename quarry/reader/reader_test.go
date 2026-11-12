@@ -123,7 +123,7 @@ func (f *fixture) writeRun(spec runSpec, chunks []chunkRecord, commit *types.Eve
 	if err != nil {
 		f.t.Fatalf("day: %v", err)
 	}
-	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, day.Add(time.Hour)); err != nil {
+	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, day.Add(time.Hour), nil); err != nil {
 		f.t.Fatalf("start: %v", err)
 	}
 	// Write events in two batches, out of seq order across event types, so

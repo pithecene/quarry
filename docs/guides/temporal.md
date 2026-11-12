@@ -176,6 +176,7 @@ The activity maps `OutcomeStatus` to Temporal error types per
 | `policy_failure` | Non-retryable error | Return `temporal.NewNonRetryableApplicationError(...)` |
 | `version_mismatch` | Non-retryable error | Return `temporal.NewNonRetryableApplicationError(...)` |
 | `storage_error` | Retryable error | Return `temporal.NewApplicationError(...)` |
+| `deadline_exceeded` | Retryable error | Return `temporal.NewApplicationError(...)` |
 
 `policy_failure` is non-retryable because it indicates a configuration
 problem (e.g., invalid policy settings) that retries cannot resolve.
