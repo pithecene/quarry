@@ -101,12 +101,14 @@ func TestRunExitCodes_Documentation(t *testing.T) {
 	// - 1: script error (run_error)
 	// - 2: executor crash
 	// - 3: policy failure
+	// - 4: storage error
 
 	codes := map[int]string{
 		0: "success (run_complete)",
 		1: "script error (run_error)",
 		2: "executor crash",
 		3: "policy failure",
+		4: "storage error",
 	}
 
 	// Verify our constants match (defined in cli/cmd/run.go)
@@ -115,6 +117,7 @@ func TestRunExitCodes_Documentation(t *testing.T) {
 		"exitScriptError":   1,
 		"exitExecutorCrash": 2,
 		"exitPolicyFailure": 3,
+		"exitStorageError":  4,
 	}
 
 	for name, code := range expected {
