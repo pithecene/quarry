@@ -253,7 +253,7 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 		p.recalculateBufferBytes()
 		p.mu.Unlock()
 		p.logFlushFailure(trigger, err)
-		return err
+		return fmt.Errorf("%w: %w", ErrSinkWrite, err)
 	}
 	p.mu.Lock()
 	p.stats.incEventsPersistedLocked(int64(len(events)))

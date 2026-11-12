@@ -312,6 +312,12 @@
           "description": "Maximum concurrent child runs",
           "dependsOn": ["depth>0"]
         },
+        "max-duration": {
+          "type": "duration",
+          "required": false,
+          "description": "Stop the run and end it as deadline_exceeded once it has run this long (0 = no deadline)",
+          "notes": "Applies to the root run and to each fan-out child from its own start. The start record states deadline_at, and quarry run exits 5."
+        },
         "no-browser-reuse": {
           "type": "bool",
           "required": false,

@@ -155,7 +155,10 @@ type StartRecord struct {
 	Partition     string  `json:"partition"`
 	// StartedAt is null on a backfilled record: the stored data does not
 	// establish it.
-	StartedAt     *string `json:"started_at"`
+	StartedAt *string `json:"started_at"`
+	// DeadlineAt is the instant the run's max duration ends, omitted when
+	// the run declares none (CONTRACT_RUN.md §Run Deadline).
+	DeadlineAt    *string `json:"deadline_at,omitempty"`
 	QuarryVersion string  `json:"quarry_version"`
 	Backfilled    bool    `json:"backfilled"`
 }
@@ -231,13 +234,18 @@ func formatRecordTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-// WriteStartRecord writes the run's start record. Lode's Put is
-// create-only, so a run ID that already has a start record is refused.
-func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time) error {
+// WriteStartRecord writes the run's start record, with the instant its
+// deadline passes when it declares one. Lode's Put is create-only, so Lode
+// refuses a run ID that already has a start record.
+func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time, deadlineAt *time.Time) error {
 	if day := DeriveDay(startedAt); day != c.config.Day {
 		return fmt.Errorf("%w: started_at %s is on %s, not the client's day %s", ErrInvalidRunKey, formatRecordTime(startedAt), day, c.config.Day)
 	}
-	return c.putRecord(ctx, StartRecordName, NewStartRecord(c.config, meta, startedAt))
+	record := NewStartRecord(c.config, meta, startedAt)
+	if deadlineAt != nil {
+		record.DeadlineAt = new(formatRecordTime(*deadlineAt))
+	}
+	return c.putRecord(ctx, StartRecordName, record)
 }
 
 // WriteEndRecord writes the run's end record.
