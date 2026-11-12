@@ -62,6 +62,12 @@
           "envVar": "QUARRY_BROWSER_ENDPOINT",
           "notes": "When set, executor connects via puppeteer.connect() instead of launching a new browser. Proxy launch args are ignored; page.authenticate() still applies. A pre-run health check verifies the endpoint is reachable."
         },
+        "no-browser": {
+          "type": "bool",
+          "required": false,
+          "description": "Run without a browser: the executor launches none, and ctx.page, ctx.browser and ctx.browserContext throw NoBrowserError",
+          "notes": "The executor never loads Puppeteer, and the CLI acquires no reusable browser server. Conflicts with --browser-ws-endpoint."
+        },
         "quiet": {
           "type": "bool",
           "required": false,

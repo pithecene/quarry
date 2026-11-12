@@ -2028,3 +2028,22 @@ func TestChildFactory_InheritsEventSinks(t *testing.T) {
 		t.Errorf("expected second sink best_effort, got %v", factory.eventSinks[1].delivery)
 	}
 }
+
+// A run cannot both declare no browser and connect to one.
+func TestRunAction_NoBrowserConflictsWithEndpoint(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
+	app := newTestApp()
+	err := app.Run([]string{
+		"quarry", "run",
+		"--script", "./test.ts",
+		"--run-id", "run-001",
+		"--source", "test",
+		"--storage-backend", "fs",
+		"--storage-path", t.TempDir(),
+		"--no-browser",
+		"--browser-ws-endpoint", "ws://127.0.0.1:9222/devtools/browser/abc",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--no-browser cannot be combined with --browser-ws-endpoint") {
+		t.Fatalf("err = %v, want the conflict between --no-browser and --browser-ws-endpoint", err)
+	}
+}

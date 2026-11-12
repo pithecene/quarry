@@ -86,6 +86,25 @@ flowchart TD
 ```
 
 Hexagons are the script's hooks, and rectangles are the runtime's own steps.
+A run without a browser (§Runs Without a Browser) skips the browser step.
+
+### Runs Without a Browser
+
+A run may declare that it needs no browser (`quarry run --no-browser`,
+`RunConfig.NoBrowser`).
+
+- The executor neither launches nor connects to a browser, and it never
+  loads Puppeteer, so a project that runs only such scripts needs neither
+  Puppeteer nor a Chromium.
+- The runtime acquires no reusable browser server, and a fan-out launches no
+  shared browser. Each child run declares no browser either.
+- The script receives the usual context. Its `page`, `browser` and
+  `browserContext` throw `NoBrowserError` on use, and the error names the
+  member. `memory.snapshot` reports no browser usage.
+- A script that lets the error escape ends with `run_error`, as any thrown
+  error does. Its events, artifacts and run records otherwise match those
+  of the same script run with a browser.
+- The CLI refuses `--no-browser` together with `--browser-ws-endpoint`.
 
 ### `prepare`
 
