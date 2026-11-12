@@ -76,7 +76,7 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 | `--storage-region` | string | AWS region (S3 only, uses default credential chain) |
 | `--storage-endpoint` | string | Custom S3 endpoint URL for an S3-compatible provider |
 | `--storage-s3-path-style` | bool | Force path-style addressing (required by many S3-compatible providers) |
-| `--storage-attempt-timeout` | duration | Bound on the wait for an S3 store's answer to one attempt of a request (default `60s`). The SDK sends an attempt past the bound again |
+| `--storage-attempt-timeout` | duration | Longest stall of an S3 request (default `60s`). An attempt that makes no progress for that long fails, and the SDK sends it again |
 
 ### Policy
 

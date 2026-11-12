@@ -44,7 +44,7 @@ func storageReadFlags() []cli.Flag {
 		&cli.StringFlag{Name: "storage-region", Usage: "AWS region for S3 backend"},
 		&cli.StringFlag{Name: "storage-endpoint", Usage: "Custom S3 endpoint URL for S3-compatible providers"},
 		&cli.BoolFlag{Name: "storage-s3-path-style", Usage: "Force path-style addressing for S3 (required by many S3-compatible providers)"},
-		&cli.DurationFlag{Name: "storage-attempt-timeout", Usage: "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)"},
+		&cli.DurationFlag{Name: "storage-attempt-timeout", Usage: "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)"},
 	}
 }
 

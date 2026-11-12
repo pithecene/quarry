@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -29,15 +30,36 @@ type S3Config struct {
 	// UsePathStyle forces path-style addressing (bucket in path, not subdomain).
 	// Required by most S3-compatible providers.
 	UsePathStyle bool
-	// AttemptTimeout bounds the wait for a store's answer to one attempt of a
-	// request, from the moment the client has sent the request. The SDK
-	// retries an attempt that exceeds the bound. Zero means
-	// DefaultS3AttemptTimeout.
+	// AttemptTimeout is the longest stall of a request: each read or write on
+	// its connection must make progress within it, or the attempt fails and
+	// the SDK retries it. Zero means DefaultS3AttemptTimeout.
 	AttemptTimeout time.Duration
 }
 
-// DefaultS3AttemptTimeout bounds the wait for a store's answer to one
-// attempt when S3Config.AttemptTimeout is zero.
+// progressConn fails a read or a write that makes no progress within stall.
+// Each call moves the connection's deadline, so the bound applies to a stall,
+// not to the length of a transfer.
+type progressConn struct {
+	net.Conn
+	stall time.Duration
+}
+
+func (c *progressConn) Read(b []byte) (int, error) {
+	if err := c.SetReadDeadline(time.Now().Add(c.stall)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *progressConn) Write(b []byte) (int, error) {
+	if err := c.SetWriteDeadline(time.Now().Add(c.stall)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
+}
+
+// DefaultS3AttemptTimeout is the longest stall of a request when
+// S3Config.AttemptTimeout is zero.
 const DefaultS3AttemptTimeout = 60 * time.Second
 
 // The configured attempt bound, or DefaultS3AttemptTimeout when the
@@ -76,11 +98,22 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 	}
 
 	// A store that accepts a request and never answers would otherwise hold
-	// the run until the connection fails. The bound applies to each attempt,
-	// so the SDK's retryer sends a stalled request again.
+	// the run until the connection fails. Each read and write on a connection
+	// must make progress within the bound. A stall while sending the request,
+	// while awaiting the answer, or in the middle of a body therefore fails
+	// the attempt, and the SDK's retryer sends the request again. The bound
+	// never cuts short a transfer that keeps making progress.
 	timeout := s3cfg.attemptTimeout()
 	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(tr *http.Transport) {
 		tr.ResponseHeaderTimeout = timeout
+		dial := tr.DialContext
+		tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := dial(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			return &progressConn{Conn: conn, stall: timeout}, nil
+		}
 	})
 	opts := []func(*config.LoadOptions) error{config.WithHTTPClient(httpClient)}
 	if s3cfg.Region != "" {

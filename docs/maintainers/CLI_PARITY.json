@@ -194,7 +194,7 @@
         "storage-attempt-timeout": {
           "type": "duration",
           "required": false,
-          "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+          "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
           "dependsOn": ["storage-backend=s3"]
         },
         "adapter": {
@@ -505,7 +505,7 @@
             "storage-attempt-timeout": {
               "type": "duration",
               "required": false,
-              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "run-id": {
@@ -588,7 +588,7 @@
             "storage-attempt-timeout": {
               "type": "duration",
               "required": false,
-              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -679,7 +679,7 @@
             "storage-attempt-timeout": {
               "type": "duration",
               "required": false,
-              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -770,7 +770,7 @@
             "storage-attempt-timeout": {
               "type": "duration",
               "required": false,
-              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -883,7 +883,7 @@
               "storage-attempt-timeout": {
                 "type": "duration",
                 "required": false,
-                "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+                "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
                 "dependsOn": ["storage-backend=s3"]
               },
               "source": {
@@ -976,7 +976,7 @@
             "storage-attempt-timeout": {
               "type": "duration",
               "required": false,
-              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "format": {
@@ -1069,7 +1069,7 @@
         "storage-attempt-timeout": {
           "type": "duration",
           "required": false,
-          "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+          "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
           "dependsOn": ["storage-backend=s3"]
         },
         "source": {

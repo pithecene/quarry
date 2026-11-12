@@ -239,7 +239,7 @@ ADVANCED:
 			},
 			&cli.DurationFlag{
 				Name:  "storage-attempt-timeout",
-				Usage: "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+				Usage: "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
 			},
 			// Browser reuse flags
 			&cli.BoolFlag{
@@ -373,7 +373,7 @@ type storageChoice struct {
 	region       string // AWS region for S3 (optional)
 	endpoint     string // custom S3 endpoint for S3-compatible providers (optional)
 	usePathStyle bool   // force path-style addressing for S3 (optional)
-	// The bound on the wait for an S3 store's answer to one attempt. Zero
+	// The longest stall of an S3 request before its attempt fails. Zero
 	// means the default.
 	attemptTimeout time.Duration
 }

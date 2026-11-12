@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	lodelib "github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/internal/testutil"
 )
@@ -171,5 +173,96 @@ func TestS3Config_DefaultAttemptTimeout(t *testing.T) {
 	}
 	if got := (S3Config{AttemptTimeout: time.Second}).attemptTimeout(); got != time.Second {
 		t.Errorf("attemptTimeout() = %s, want 1s", got)
+	}
+}
+
+// bodyS3 answers a read request with its headers at once and then sends
+// the body in pieces, pausing between them. A nonzero stall holds the last
+// piece back for that long.
+type bodyS3 struct {
+	pieces int
+	pause  time.Duration
+	stall  time.Duration
+}
+
+func (s *bodyS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Length", fmt.Sprint(s.pieces))
+	w.WriteHeader(http.StatusOK)
+	flusher := w.(http.Flusher)
+	for i := range s.pieces {
+		if i == s.pieces-1 && s.stall > 0 {
+			select {
+			case <-time.After(s.stall):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		_, _ = w.Write([]byte{'x'})
+		flusher.Flush()
+		time.Sleep(s.pause)
+	}
+}
+
+func bodyStore(t *testing.T, handler http.Handler, bound time.Duration) lodelib.RangeStore {
+	t.Helper()
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_ENDPOINT_URL", "")
+	t.Setenv("AWS_ENDPOINT_URL_S3", "")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	factory, err := NewStoreFactory("s3", "test-bucket/data", S3Config{
+		Region: "us-east-1", Endpoint: srv.URL, UsePathStyle: true, AttemptTimeout: bound,
+	})
+	if err != nil {
+		t.Fatalf("NewStoreFactory: %v", err)
+	}
+	store, err := factory()
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	return store
+}
+
+// A body that stalls in the middle fails within the bound.
+func TestNewStoreFactoryS3_BoundsAStalledBody(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
+	handler := &bodyS3{pieces: 4, stall: 3 * time.Second}
+	store := bodyStore(t, handler, 200*time.Millisecond)
+
+	start := time.Now()
+	rc, err := store.Get(t.Context(), "events/one")
+	if err == nil {
+		_, err = io.ReadAll(rc)
+		_ = rc.Close()
+	}
+	if err == nil {
+		t.Fatal("reading a stalled body succeeded, want an error")
+	}
+	if elapsed := time.Since(start); elapsed >= handler.stall {
+		t.Errorf("the stalled read took %s, want it bounded below the %s stall", elapsed, handler.stall)
+	}
+}
+
+// A body that keeps arriving completes, although the whole transfer takes
+// longer than the bound.
+func TestNewStoreFactoryS3_KeepsAProgressingBody(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
+	handler := &bodyS3{pieces: 8, pause: 100 * time.Millisecond}
+	store := bodyStore(t, handler, 300*time.Millisecond)
+
+	rc, err := store.Get(t.Context(), "events/one")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("reading a progressing body: %v", err)
+	}
+	if len(body) != handler.pieces {
+		t.Errorf("read %d bytes, want %d", len(body), handler.pieces)
 	}
 }
