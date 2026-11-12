@@ -4,8 +4,10 @@
 # the Go analysis runs Bosun's analyzers on the quarry module with their own
 # golangci-lint configuration. CI runs it in the check job of
 # .github/workflows/check.yaml, inside the image that the job pins, and
-# `task check` runs that image on a workstation.
+# `task check` runs that image on a workstation. Pithecene's layer, which this
+# file extends, routes each change into its track's stack of pull requests.
 version: 1
+extends: ghcr.io/pithecene/bosun-config:v1
 prose:
   documents:
     - CHANGELOG.md

@@ -30,6 +30,9 @@ jobs:
     container:
       image: ghcr.io/pithecene/bosun:latest
       credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
+    # The same read-only token reads Pithecene's layer, which bosun.yaml extends.
+    env:
+      BOSUN_REGISTRY_TOKEN: ${{ secrets.BOSUN_REGISTRY_TOKEN }}
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
