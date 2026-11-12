@@ -13,6 +13,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default is the five minutes of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.
 
+### Fixed
+
+- **A browser server that closes before its reply counts as gone on Darwin**: when a reusable browser server closed a lease connection before the run wrote its request, Darwin could refuse the write with `ENOTCONN`. The runtime then reported a failed lease, not a missing server. It now treats `ENOTCONN` as it treats `EPIPE` and `ECONNRESET`, so the run starts a new server.
+
 ---
 
 ## [0.17.0] - 2026-11-07
