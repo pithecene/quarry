@@ -515,7 +515,9 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		// Classify the error
 		var outcome *types.RunOutcome
 		switch {
-		case IsPolicyError(ingErr) && isStorageFault(ingErr):
+		// A refusal after the run's context has ended comes from the run's own
+		// cancellation or deadline, not from a fault of the store.
+		case IsPolicyError(ingErr) && isStorageFault(ingErr) && ctx.Err() == nil:
 			outcome = &types.RunOutcome{
 				Status:  types.OutcomeStorageError,
 				Message: fmt.Sprintf("storage error: %v", ingErr),

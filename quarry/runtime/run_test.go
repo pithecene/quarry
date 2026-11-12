@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
 
@@ -1508,5 +1509,47 @@ func TestRunOrchestrator_SinkFlushFailureIsStorageError(t *testing.T) {
 	result := runWithPolicy(t, "run-sink-flush", pol)
 	if result.Outcome.Status != types.OutcomeStorageError {
 		t.Errorf("outcome = %s, want %s", result.Outcome.Status, types.OutcomeStorageError)
+	}
+}
+
+// deadlineSinkPolicy waits in its sink write until the run's context ends,
+// then fails as a sink that honors the context does.
+type deadlineSinkPolicy struct {
+	*flushTrackingPolicy
+}
+
+func (p *deadlineSinkPolicy) IngestEvent(ctx context.Context, _ *types.EventEnvelope) error {
+	<-ctx.Done()
+	return fmt.Errorf("%w: %w", policy.ErrSinkWrite, ctx.Err())
+}
+
+// A sink write that fails because the host's deadline for the run expired
+// is the run's own cancellation, so the run keeps policy_failure.
+func TestRunOrchestrator_HostDeadlineDuringSinkWrite(t *testing.T) {
+	t.Parallel()
+
+	runMeta := &types.RunMeta{RunID: "run-host-deadline", Attempt: 1}
+	mockExec := newMockExecutor(makeValidEventStream(runMeta), 0)
+	orchestrator, err := NewRunOrchestrator(&RunConfig{
+		ExecutorPath: "/fake/executor",
+		ScriptPath:   "/fake/script.js",
+		Job:          map[string]any{},
+		RunMeta:      runMeta,
+		Policy:       &deadlineSinkPolicy{flushTrackingPolicy: newFlushTrackingPolicy()},
+		ExecutorFactory: func(_ *ExecutorConfig) Executor {
+			return mockExec
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	result, err := orchestrator.Execute(ctx)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.Outcome.Status == types.OutcomeStorageError {
+		t.Fatalf("outcome = %s, want the outcome of the run's own deadline", result.Outcome.Status)
 	}
 }
