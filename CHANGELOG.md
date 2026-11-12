@@ -9,9 +9,17 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **A run whose sink refuses its events ends as `storage_error`**: under every policy, an error from a sink's `WriteEvents` now ends the run with the new outcome `storage_error` and exit code 4. Earlier releases reported `policy_failure` and exit code 3, which `CONTRACT_INTEGRATION.md` maps as non-retryable. The new outcome maps as retryable, since a store's timeout or refusal is often transient. A sink error that the run's own cancellation causes keeps `policy_failure`. The end record and `runs_failed_total` carry the new outcome, and `policy.ErrSinkWrite` marks the error.
+
 ### Added
 
 - **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default is the five minutes of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.
+
+### Upgrade Notes
+
+- **Exit codes**: a caller that retries a run by its exit code also retries on exit code 4, which `CONTRACT_CLI.md` § Exit Codes defines.
 
 ---
 

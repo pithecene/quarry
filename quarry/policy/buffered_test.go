@@ -262,6 +262,9 @@ func TestBufferedPolicy_SinkError(t *testing.T) {
 	if !errors.Is(err, expectedErr) {
 		t.Errorf("expected error %v, got %v", expectedErr, err)
 	}
+	if !errors.Is(err, policy.ErrSinkWrite) {
+		t.Errorf("expected the error to carry ErrSinkWrite, got %v", err)
+	}
 
 	stats := pol.Stats()
 	if stats.Errors != 1 {

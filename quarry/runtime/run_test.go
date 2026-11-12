@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 
@@ -1433,5 +1435,78 @@ func TestRunOrchestrator_NoSilentDataLoss_ErrorSurfaced(t *testing.T) {
 	// Outcome message should indicate the problem
 	if result.Outcome.Message == "" {
 		t.Error("outcome message should describe the failure (not empty)")
+	}
+}
+
+// sinkErrPolicy fails ingestion with err, as a policy does when its sink
+// refuses a write.
+type sinkErrPolicy struct {
+	*flushTrackingPolicy
+	err error
+}
+
+func (p *sinkErrPolicy) IngestEvent(_ context.Context, _ *types.EventEnvelope) error {
+	return p.err
+}
+
+func runWithPolicy(t *testing.T, runID string, pol policy.Policy) *RunResult {
+	t.Helper()
+	runMeta := &types.RunMeta{RunID: runID, Attempt: 1}
+	mockExec := newMockExecutor(makeValidEventStream(runMeta), 0)
+	orchestrator, err := NewRunOrchestrator(&RunConfig{
+		ExecutorPath: "/fake/executor",
+		ScriptPath:   "/fake/script.js",
+		Job:          map[string]any{},
+		RunMeta:      runMeta,
+		Policy:       pol,
+		ExecutorFactory: func(_ *ExecutorConfig) Executor {
+			return mockExec
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+	result, err := orchestrator.Execute(t.Context())
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	return result
+}
+
+// A sink that refuses a write ends the run as storage_error, which a retry
+// may resolve, and a refusal caused by cancellation stays policy_failure.
+func TestRunOrchestrator_SinkWriteFailureOutcome(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want types.OutcomeStatus
+	}{
+		{"store timeout", fmt.Errorf("%w: %w", policy.ErrSinkWrite, context.DeadlineExceeded), types.OutcomeStorageError},
+		{"store refusal", fmt.Errorf("%w: %w", policy.ErrSinkWrite, errors.New("put object: 503")), types.OutcomeStorageError},
+		{"run canceled", fmt.Errorf("%w: %w", policy.ErrSinkWrite, context.Canceled), types.OutcomePolicyFailure},
+		{"policy refusal", policy.ErrBufferFull, types.OutcomePolicyFailure},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol := &sinkErrPolicy{flushTrackingPolicy: newFlushTrackingPolicy(), err: tt.err}
+			result := runWithPolicy(t, "run-sink-"+strings.ReplaceAll(tt.name, " ", "-"), pol)
+			if result.Outcome.Status != tt.want {
+				t.Errorf("outcome = %s, want %s", result.Outcome.Status, tt.want)
+			}
+		})
+	}
+}
+
+// A flush that the sink refuses ends the run as storage_error.
+func TestRunOrchestrator_SinkFlushFailureIsStorageError(t *testing.T) {
+	t.Parallel()
+
+	pol := newFlushTrackingPolicy()
+	pol.flushErr = fmt.Errorf("%w: %w", policy.ErrSinkWrite, errors.New("put object: connection reset"))
+	result := runWithPolicy(t, "run-sink-flush", pol)
+	if result.Outcome.Status != types.OutcomeStorageError {
+		t.Errorf("outcome = %s, want %s", result.Outcome.Status, types.OutcomeStorageError)
 	}
 }

@@ -38,6 +38,7 @@ const (
 	exitScriptError   = 1
 	exitExecutorCrash = 2
 	exitPolicyFailure = 3
+	exitStorageError  = 4
 )
 
 // exitConfigError is used for CLI/input validation failures.
@@ -1800,6 +1801,8 @@ func outcomeToExitCode(status types.OutcomeStatus) int {
 		return exitPolicyFailure
 	case types.OutcomeVersionMismatch:
 		return exitPolicyFailure // non-retryable configuration error, same as policy_failure
+	case types.OutcomeStorageError:
+		return exitStorageError
 	default:
 		return exitScriptError
 	}
