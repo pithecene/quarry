@@ -327,6 +327,7 @@ on the first run and self-terminates after an idle timeout (default: 60s).
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--no-browser-reuse` | bool | `false` | Disable browser reuse (per-run browser) |
+| `--no-browser` | bool | `false` | Run without a browser ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Runs Without a Browser). The runtime acquires no browser server |
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|

@@ -11,6 +11,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Runs without a browser**: `quarry run --no-browser` and `RunConfig.NoBrowser` declare a run that needs no browser. The executor neither launches nor connects to one and never loads Puppeteer, and the runtime acquires no browser server. The script's `ctx.page`, `ctx.browser` and `ctx.browserContext` throw the new `NoBrowserError`, which names the member. A script that fetches over HTTP therefore runs without Puppeteer or a Chromium. `CONTRACT_RUN.md` § Runs Without a Browser states the rules.
+
 - **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default is the five minutes of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.
 
 ---

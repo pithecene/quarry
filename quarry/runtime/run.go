@@ -57,6 +57,10 @@ type RunConfig struct {
 	// BrowserWSEndpoint is the optional WebSocket URL of an externally managed browser.
 	// When set, the executor connects instead of launching a new Chromium instance.
 	BrowserWSEndpoint string
+	// NoBrowser declares a run without a browser (CONTRACT_RUN.md §Runs
+	// Without a Browser). The executor launches none, and the script's
+	// browser members throw NoBrowserError.
+	NoBrowser bool
 	// ResolveFrom is the optional path to a node_modules directory used for
 	// bare-specifier ESM resolution fallback in workspace/monorepo setups.
 	ResolveFrom string
@@ -335,6 +339,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		RunMeta:           r.config.RunMeta,
 		Proxy:             r.config.Proxy,
 		BrowserWSEndpoint: r.config.BrowserWSEndpoint,
+		NoBrowser:         r.config.NoBrowser,
 		ResolveFrom:       r.config.ResolveFrom,
 	}
 

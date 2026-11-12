@@ -9,6 +9,7 @@ import type {
   ProxyEndpoint,
   RunId
 } from '@pithecene/quarry-sdk'
+import { NoBrowserError } from '@pithecene/quarry-sdk'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import {
   _resetPuppeteerForTesting,
@@ -1178,5 +1179,120 @@ describe('puppeteer-extra plugin setup', () => {
       .slice(callsAfterFirst)
       .filter((args: unknown[]) => args[0] === mockStealthInstance)
     expect(stealthCallsAfterSecond).toHaveLength(0)
+  })
+})
+
+/** Every frame the executor wrote, decoded, with volatile fields removed. */
+function stableFrames(output: PassThrough): Record<string, unknown>[] {
+  const chunks: Buffer[] = []
+  let chunk: Buffer | null
+  while ((chunk = output.read()) !== null) {
+    chunks.push(chunk)
+  }
+  const data = Buffer.concat(chunks)
+  const frames: Record<string, unknown>[] = []
+  let offset = 0
+  while (offset + 4 <= data.length) {
+    const payloadLen = data.readUInt32BE(offset)
+    offset += 4
+    const decoded = msgpackDecode(data.subarray(offset, offset + payloadLen)) as Record<
+      string,
+      unknown
+    >
+    offset += payloadLen
+    const { event_id: _id, ts: _ts, ...stable } = decoded
+    frames.push(stable)
+  }
+  return frames
+}
+
+describe('runs without a browser', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    _resetPuppeteerForTesting()
+    ;(puppeteer.launch as Mock).mockResolvedValue(createMockPuppeteer().browser)
+  })
+
+  function config(output: PassThrough, overrides: Partial<ExecutorConfig> = {}): ExecutorConfig {
+    return {
+      scriptPath: '/path/to/script.js',
+      job: { test: true },
+      run: { run_id: 'run-123' as RunId, attempt: 1 },
+      output,
+      ...overrides
+    }
+  }
+
+  const emittingScript = (): LoadedScript => ({
+    script: vi.fn().mockImplementation(async (ctx) => {
+      await ctx.emit.item({ item_type: 'probe', data: { status: 200 } })
+      await ctx.emit.runComplete({ summary: { items: 1 } })
+    }),
+    hooks: {},
+    module: { default: vi.fn() }
+  })
+
+  it('launches no browser and completes the run', async () => {
+    ;(loadScript as Mock).mockResolvedValue(emittingScript())
+
+    const result = await execute(config(createMockOutput(), { noBrowser: true }))
+
+    expect(result.outcome.status).toBe('completed')
+    expect(puppeteer.launch).not.toHaveBeenCalled()
+    expect(addExtra).not.toHaveBeenCalled()
+  })
+
+  it('writes the frames that the same script writes under a browser', async () => {
+    ;(loadScript as Mock).mockResolvedValue(emittingScript())
+    const withBrowser = createMockOutput()
+    await execute(config(withBrowser))
+
+    ;(loadScript as Mock).mockResolvedValue(emittingScript())
+    const withoutBrowser = createMockOutput()
+    await execute(config(withoutBrowser, { noBrowser: true }))
+
+    expect(stableFrames(withoutBrowser)).toEqual(stableFrames(withBrowser))
+  })
+
+  it('names the member in a NoBrowserError and keeps the memory API', async () => {
+    let caught: unknown = null
+    let browserUsage: unknown = 'unset'
+    ;(loadScript as Mock).mockResolvedValue({
+      script: vi.fn().mockImplementation(async (ctx) => {
+        try {
+          ctx.browser.version()
+        } catch (err) {
+          caught = err
+        }
+        browserUsage = (await ctx.memory.snapshot({ browser: true })).browser
+      }),
+      hooks: {},
+      module: { default: vi.fn() }
+    })
+
+    await execute(config(createMockOutput(), { noBrowser: true }))
+
+    expect(caught).toBeInstanceOf(NoBrowserError)
+    expect((caught as NoBrowserError).member).toBe('browser')
+    expect(browserUsage).toBeNull()
+  })
+
+  it('fails a script that uses the page with NoBrowserError', async () => {
+    ;(loadScript as Mock).mockResolvedValue({
+      script: vi.fn().mockImplementation(async (ctx) => {
+        await ctx.page.goto('https://example.com')
+      }),
+      hooks: {},
+      module: { default: vi.fn() }
+    })
+
+    const result = await execute(config(createMockOutput(), { noBrowser: true }))
+
+    expect(result.outcome.status).toBe('error')
+    if (result.outcome.status === 'error') {
+      expect(result.outcome.message).toContain('ctx.page is unavailable')
+      expect(result.outcome.message).toContain('--no-browser')
+    }
+    expect(puppeteer.launch).not.toHaveBeenCalled()
   })
 })

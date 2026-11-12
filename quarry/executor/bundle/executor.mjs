@@ -384,25 +384,45 @@ function createMemoryAPI(options) {
     }
   };
 }
+function noBrowserHandle(member) {
+  const fail = () => {
+    throw new NoBrowserError(member);
+  };
+  return new Proxy(/* @__PURE__ */ Object.create(null), {
+    get: (_target, key) => typeof key === "symbol" || key === "then" ? void 0 : fail(),
+    has: fail,
+    set: fail,
+    ownKeys: fail,
+    apply: fail
+  });
+}
+function requireHandle(value, member) {
+  if (value === void 0) throw new Error(`createContext needs ${member} unless noBrowser is set`);
+  return value;
+}
 function createContext(options) {
   const { emit, storage } = createAPIs(options.run, options.sink, options.storagePartition);
+  const noBrowser = options.noBrowser === true;
+  const page = noBrowser ? noBrowserHandle("page") : requireHandle(options.page, "page");
+  const browser = noBrowser ? noBrowserHandle("browser") : requireHandle(options.browser, "browser");
+  const browserContext = noBrowser ? noBrowserHandle("browserContext") : requireHandle(options.browserContext, "browserContext");
   const memory = createMemoryAPI({
-    page: options.page,
+    page: noBrowser ? null : page,
     thresholds: options.memoryThresholds
   });
   const ctx = {
     job: options.job,
     run: Object.freeze(options.run),
-    page: options.page,
-    browser: options.browser,
-    browserContext: options.browserContext,
+    page,
+    browser,
+    browserContext,
     emit,
     storage,
     memory
   };
   return Object.freeze(ctx);
 }
-var ARTIFACT_RANGE_MAX_BYTES, ARTIFACT_MAX_BYTES, RANGE_REFUSED_BRAND, WRITER_ERROR_BRAND, ArtifactRangeRefusedError, ArtifactWriterError, RangeSet, CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, SHA256_HEX, OpenArtifact, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
+var ARTIFACT_RANGE_MAX_BYTES, ARTIFACT_MAX_BYTES, RANGE_REFUSED_BRAND, WRITER_ERROR_BRAND, ArtifactRangeRefusedError, ArtifactWriterError, RangeSet, CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, SHA256_HEX, OpenArtifact, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, NoBrowserError, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
 var init_dist = __esm({
   "../sdk/dist/index.mjs"() {
     "use strict";
@@ -550,6 +570,15 @@ var init_dist = __esm({
       critical: 0.9
     };
     CGROUP_UNLIMITED_THRESHOLD = 2 ** 62;
+    NoBrowserError = class extends Error {
+      /** The context member the script used. */
+      member;
+      constructor(member) {
+        super(`ctx.${member} is unavailable: this run declares no browser (quarry run --no-browser)`);
+        this.name = "NoBrowserError";
+        this.member = member;
+      }
+    };
     isString = (v) => typeof v === "string";
     isNumber = (v) => typeof v === "number";
     oneOf = (...values) => (v) => values.includes(v);
@@ -3103,7 +3132,8 @@ async function execute(config) {
         return { outcome: crashOutcome, terminalEmitted: false };
       }
     }
-    if (config.browserWSEndpoint) {
+    if (config.noBrowser === true) {
+    } else if (config.browserWSEndpoint) {
       const puppeteer = await getVanillaPuppeteer(config.scriptPath);
       browser = await puppeteer.connect({ browserWSEndpoint: config.browserWSEndpoint });
       isConnected = true;
@@ -3116,9 +3146,11 @@ async function execute(config) {
       const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy);
       browser = await puppeteer.launch(launchOptions);
     }
-    browserContext = await browser.createBrowserContext();
-    page = await browserContext.newPage();
-    if (config.proxy?.username && config.proxy?.password) {
+    if (browser) {
+      browserContext = await browser.createBrowserContext();
+      page = await browserContext.newPage();
+    }
+    if (page && config.proxy?.username && config.proxy?.password) {
       await page.authenticate({
         username: config.proxy.username,
         password: config.proxy.password
@@ -3127,9 +3159,10 @@ async function execute(config) {
     ctx = createContext({
       job: effectiveJob,
       run: config.run,
-      page,
-      browser,
-      browserContext,
+      page: page ?? void 0,
+      browser: browser ?? void 0,
+      browserContext: browserContext ?? void 0,
+      noBrowser: config.noBrowser === true,
       sink,
       storagePartition: config.storagePartition
     });
@@ -3995,6 +4028,7 @@ async function main() {
 `);
   });
   const browserWSEndpoint = typeof inputObj.browser_ws_endpoint === "string" && inputObj.browser_ws_endpoint !== "" ? inputObj.browser_ws_endpoint : void 0;
+  const noBrowser = inputObj.no_browser === true;
   const ackReader = new AckReader(process.stdin);
   ackReader.start();
   const result = await execute({
@@ -4004,6 +4038,7 @@ async function main() {
     proxy,
     storagePartition,
     browserWSEndpoint,
+    noBrowser,
     ackReader,
     output: ipcOutput,
     outputWrite: ipcWrite,
