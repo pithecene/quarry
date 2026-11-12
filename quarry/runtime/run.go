@@ -81,15 +81,23 @@ type RunConfig struct {
 	// Recorded in the start record so started_at and day agree. Required
 	// when Storage is set.
 	StartedAt time.Time
+	// MaxDuration bounds the run (CONTRACT_RUN.md §Run Deadline). At
+	// StartedAt plus MaxDuration the runtime stops the executor and ends the
+	// run as deadline_exceeded. Zero declares no deadline.
+	MaxDuration time.Duration
 }
 
 // RunStorage persists a run's finalization records. lode.LodeClient
 // implements it.
 type RunStorage interface {
-	WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time) error
+	WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time, deadlineAt *time.Time) error
 	WriteMetrics(ctx context.Context, snap metrics.Snapshot, completedAt time.Time) error
 	WriteEndRecord(ctx context.Context, end lode.RunEnd) error
 }
+
+// ErrRunDeadline is the cause of the run's context once its deadline
+// passes (RunConfig.MaxDuration).
+var ErrRunDeadline = errors.New("run deadline exceeded")
 
 // finalizeTimeout bounds the metrics and end-record writes after a run.
 const finalizeTimeout = 30 * time.Second
@@ -131,6 +139,9 @@ type RunOrchestrator struct {
 	config    *RunConfig
 	logger    *log.Logger
 	startTime time.Time
+	// runCtx is the context the run executes under. Its cause is
+	// ErrRunDeadline once the run's deadline passes.
+	runCtx context.Context
 
 	policyClosed   bool  // the policy has been closed (Close is one-shot)
 	policyCloseErr error // the result of that close
@@ -142,6 +153,9 @@ func NewRunOrchestrator(config *RunConfig) (*RunOrchestrator, error) {
 	// Validate run metadata per CONTRACT_RUN.md
 	if err := config.RunMeta.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid run metadata: %w", err)
+	}
+	if config.MaxDuration < 0 {
+		return nil, fmt.Errorf("RunConfig.MaxDuration must not be negative: %s", config.MaxDuration)
 	}
 	// Run records are keyed by these values; reject unsafe ones before
 	// anything is written (CONTRACT_LODE.md §Key Encoding).
@@ -186,7 +200,15 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 	r.startTime = time.Now()
 	r.config.Collector.IncRunStarted()
 
-	if err := r.writeStartRecord(ctx); err != nil {
+	deadlineAt := r.deadlineAt()
+	r.runCtx = ctx
+	if deadlineAt != nil {
+		var cancel context.CancelFunc
+		r.runCtx, cancel = context.WithDeadlineCause(ctx, *deadlineAt, ErrRunDeadline)
+		defer cancel()
+	}
+
+	if err := r.writeStartRecord(ctx, deadlineAt); err != nil {
 		// The run never starts: no executor is launched and no run data is
 		// written. Retrying is safe, as for an executor that fails to launch.
 		r.logger.Error("run start record write failed", map[string]any{
@@ -206,7 +228,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		return result, nil
 	}
 
-	result := r.execute(ctx)
+	result := r.execute(r.runCtx)
 	r.closePolicy(result)
 	r.finalize(ctx, result)
 	return result, nil
@@ -251,12 +273,31 @@ func (r *RunOrchestrator) absorbPolicyStats(ps policy.Stats) {
 	r.config.Collector.AbsorbPolicyStats(ps.TotalEvents, ps.EventsPersisted, ps.EventsDropped, droppedByType, ps.FlushTriggers)
 }
 
+// deadlineAt is the instant the run's deadline passes, nil when the run
+// declares none. It runs from StartedAt, the instant the start record
+// states, or from the start of Execute when no storage sets StartedAt.
+func (r *RunOrchestrator) deadlineAt() *time.Time {
+	if r.config.MaxDuration == 0 {
+		return nil
+	}
+	start := r.config.StartedAt
+	if start.IsZero() {
+		start = r.startTime
+	}
+	return new(start.Add(r.config.MaxDuration))
+}
+
+// pastDeadline reports whether the run's deadline has passed.
+func (r *RunOrchestrator) pastDeadline() bool {
+	return r.runCtx != nil && errors.Is(context.Cause(r.runCtx), ErrRunDeadline)
+}
+
 // writeStartRecord writes the run's start record when storage is configured.
-func (r *RunOrchestrator) writeStartRecord(ctx context.Context) error {
+func (r *RunOrchestrator) writeStartRecord(ctx context.Context, deadlineAt *time.Time) error {
 	if r.config.Storage == nil {
 		return nil
 	}
-	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, r.config.StartedAt)
+	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, r.config.StartedAt, deadlineAt)
 }
 
 // finalize persists the metrics record and then the end record. Neither
@@ -643,6 +684,14 @@ func (r *RunOrchestrator) buildResult(
 	artifacts *ArtifactManager,
 	ingestion *IngestionEngine,
 ) *RunResult {
+	// A run stopped at its deadline fails however the stop surfaced: as a
+	// canceled ingestion, a killed executor, or a broken stream.
+	if outcome.Status != types.OutcomeSuccess && r.pastDeadline() {
+		outcome = &types.RunOutcome{
+			Status:  types.OutcomeDeadlineExceeded,
+			Message: fmt.Sprintf("run exceeded its max duration of %s: %s", r.config.MaxDuration, outcome.Message),
+		}
+	}
 	result := &RunResult{
 		RunMeta:      r.config.RunMeta,
 		Outcome:      outcome,
@@ -684,7 +733,8 @@ func (r *RunOrchestrator) buildResult(
 	switch outcome.Status {
 	case types.OutcomeSuccess:
 		r.config.Collector.IncRunCompleted()
-	case types.OutcomeScriptError, types.OutcomePolicyFailure, types.OutcomeVersionMismatch, types.OutcomeStorageError:
+	case types.OutcomeScriptError, types.OutcomePolicyFailure, types.OutcomeVersionMismatch, types.OutcomeStorageError,
+		types.OutcomeDeadlineExceeded:
 		r.config.Collector.IncRunFailed()
 	case types.OutcomeExecutorCrash:
 		r.config.Collector.IncRunCrashed()

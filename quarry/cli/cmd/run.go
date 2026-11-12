@@ -39,6 +39,7 @@ const (
 	exitExecutorCrash = 2
 	exitPolicyFailure = 3
 	exitStorageError  = 4
+	exitDeadline      = 5
 )
 
 // exitConfigError is used for CLI/input validation failures.
@@ -241,6 +242,11 @@ ADVANCED:
 			&cli.StringFlag{
 				Name:  "resolve-from",
 				Usage: "Path to node_modules directory for bare-specifier ESM resolution fallback (monorepo/container support)",
+			},
+			// Deadline flag
+			&cli.DurationFlag{
+				Name:  "max-duration",
+				Usage: "Stop the run and end it as deadline_exceeded once it has run this long (0 = no deadline)",
 			},
 			// Fan-out flags
 			&cli.IntFlag{
@@ -837,6 +843,7 @@ func runAction(c *cli.Context) error {
 		Collector:         collector,
 		Storage:           lodeClient,
 		StartedAt:         startTime,
+		MaxDuration:       c.Duration("max-duration"),
 	}
 
 	// Branch: fan-out or single run
@@ -1803,6 +1810,8 @@ func outcomeToExitCode(status types.OutcomeStatus) int {
 		return exitPolicyFailure // non-retryable configuration error, same as policy_failure
 	case types.OutcomeStorageError:
 		return exitStorageError
+	case types.OutcomeDeadlineExceeded:
+		return exitDeadline
 	default:
 		return exitScriptError
 	}

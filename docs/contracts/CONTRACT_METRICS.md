@@ -57,6 +57,7 @@ Outcome-to-metric mapping:
 | `policy_failure` | `runs_failed_total` |
 | `version_mismatch` | `runs_failed_total` |
 | `storage_error` | `runs_failed_total` |
+| `deadline_exceeded` | `runs_failed_total` |
 | `executor_crash` | `runs_crashed_total` |
 
 The `version_mismatch` outcome increments `runs_failed_total` (not `runs_crashed_total`)

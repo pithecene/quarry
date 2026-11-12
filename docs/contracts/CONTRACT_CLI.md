@@ -153,11 +153,14 @@ The `run` command exit code is determined by execution outcome:
 | 3 | `policy_failure` | Ingestion policy failed (non-retryable) |
 | 3 | `version_mismatch` | SDK/CLI contract version mismatch (non-retryable) |
 | 4 | `storage_error` | A sink failed to persist the run's events (retryable) |
+| 5 | `deadline_exceeded` | The runtime stopped the run at its deadline (retryable) |
 
 The outcomes `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
 The outcome `storage_error` has its own exit code because a store's timeout or
 refusal is often transient, so a caller can retry on exit code 4 alone.
+The outcome `deadline_exceeded` has its own exit code, so a caller can tell a
+run that its own `--max-duration` stopped from a crash.
 
 ### Structured Exit Report
 
@@ -268,6 +271,7 @@ The `quarry run` command supports optional derived work execution via enqueue ev
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--max-duration` | duration | | Stop the root run at this age and end it as `deadline_exceeded` ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Deadline) |
 | `--depth` | int | `0` | Max fan-out recursion depth (0 = disabled) |
 | `--max-runs` | int | | Total child run cap (required when `--depth > 0`) |
 | `--parallel` | int | `1` | Max concurrent child runs |
@@ -678,6 +682,7 @@ Run:
   day: string             # YYYY-MM-DD
   partition: string       # Hive-encoded partition prefix
   started_at: time | null # null when backfilled
+  deadline_at: time       # omitted when the run declares no max duration
   state: succeeded | failed | unterminated  # backfilled: from the terminal event
   backfilled: bool        # records written by index rebuild
   ended_at: time | null   # null when unterminated

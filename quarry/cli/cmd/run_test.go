@@ -949,6 +949,7 @@ func TestOutcomeToExitCode(t *testing.T) {
 		{types.OutcomeExecutorCrash, exitExecutorCrash},
 		{types.OutcomePolicyFailure, exitPolicyFailure},
 		{types.OutcomeStorageError, exitStorageError},
+		{types.OutcomeDeadlineExceeded, exitDeadline},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.status), func(t *testing.T) {
