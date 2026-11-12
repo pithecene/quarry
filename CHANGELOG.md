@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.18.0] - 2026-11-12
+
 ### Breaking Changes
 
 - **A run whose sink refuses its events ends as `storage_error`**: under every policy, an error from a sink's `WriteEvents` now ends the run with the new outcome `storage_error` and exit code 4. Earlier releases reported `policy_failure` and exit code 3, which `CONTRACT_INTEGRATION.md` maps as non-retryable. The new outcome maps as retryable, since a store's timeout or refusal is often transient. A sink error that the run's own cancellation causes keeps `policy_failure`. The end record and `runs_failed_total` carry the new outcome, and `policy.ErrSinkWrite` marks the error.
@@ -784,7 +788,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/pithecene/quarry/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/pithecene/quarry/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/pithecene/quarry/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/pithecene/quarry/compare/v0.15.0...v0.16.0
