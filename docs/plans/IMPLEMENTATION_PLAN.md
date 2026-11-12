@@ -13,13 +13,15 @@ Quarry’s core principle:
 
 Scripts and executors remain **policy-agnostic**.
 
-## Current Status (as of v0.17.0)
-- Latest release: v0.17.0 (see CHANGELOG.md).
+## Current Status (as of v0.18.0)
+- Latest release: v0.18.0 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
 - Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side and retention) →
   v1.0 (contract freeze) → v1.x (embedding seams). See the roadmap
   sections below; #245 is the umbrella issue, #239 and #240 the drivers.
+- v0.18.0 ships four of the five embedding seams. The storage key in
+  `file_write_ack` (B1) remains, and it does not gate the freeze.
 
 ---
 
@@ -961,7 +963,7 @@ land before the v1.0 freeze.
 - [ ] Measurements on the dogfood dataset (about 11k runs): store calls
       per `list runs` page (B2/C) and `quarry prune --dry-run` candidate
       counts by outcome (A/D)
-- [ ] Run deadline declared per run and enforced by the runtime (D1)
+- [x] Run deadline declared per run and enforced by the runtime (D1), shipped in v0.18.0 (#390)
 - [ ] Consumer-supplied run list for retention (`--runs-from`, D2)
 - [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
       tasks, executors) removed, and [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data
@@ -1085,12 +1087,12 @@ others may follow the freeze.
 
 ### Mini-milestones
 
-- [ ] Store requests bounded per attempt, and Lode's `Put` safe to send again (#389, pithecene/lode#372)
-- [ ] Outcome classification for retry (#391)
-- [ ] Run deadline (#390)
-- [ ] Run mode without a browser (#386)
+- [x] Store requests bounded per attempt, and Lode's `Put` safe to send again (#389, pithecene/lode#372), in v0.18.0
+- [x] Outcome classification for retry (#391), in v0.18.0
+- [x] Run deadline (#390), in v0.18.0
+- [x] Run mode without a browser (#386), in v0.18.0
 - [ ] Storage key in `file_write_ack` (B1)
-- [ ] [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Orchestration Integration Semantics revised with the seams
+- [x] [`CONTRACT_INTEGRATION.md`](../contracts/CONTRACT_INTEGRATION.md) § Orchestration Integration Semantics revised with the seams: `storage_error` and `deadline_exceeded` map as retryable
 
 ### Deferred
 

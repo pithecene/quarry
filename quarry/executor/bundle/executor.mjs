@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Quarry Executor Bundle v0.17.0
+// Quarry Executor Bundle v0.18.0
 // This is a bundled version for embedding in the quarry binary.
 // Do not edit directly - regenerate with: task executor:bundle
 
@@ -503,7 +503,7 @@ var init_dist = __esm({
         return lo;
       }
     };
-    CONTRACT_VERSION = "0.17.0";
+    CONTRACT_VERSION = "0.18.0";
     TerminalEventError = class extends Error {
       constructor() {
         super("Cannot emit: a terminal event (run_error or run_complete) has already been emitted");
