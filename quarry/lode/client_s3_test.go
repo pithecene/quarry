@@ -1,11 +1,13 @@
 package lode
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
@@ -91,5 +93,83 @@ func TestS3ClientOptions_SilenceSkippedChecksumWarning(t *testing.T) {
 				t.Error("the skipped-checksum warning is not silenced")
 			}
 		})
+	}
+}
+
+// stallingS3 holds its answer to the first PUT past the attempt bound, as a
+// store that accepts a request and stalls does, and answers later PUTs at once.
+type stallingS3 struct {
+	mu    sync.Mutex
+	puts  int
+	stall time.Duration
+}
+
+func (s *stallingS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	s.mu.Lock()
+	s.puts++
+	first := s.puts == 1
+	s.mu.Unlock()
+	if first {
+		select {
+		case <-time.After(s.stall):
+		case <-r.Context().Done():
+			return
+		}
+	}
+	w.Header().Set("ETag", `"etag"`)
+	w.WriteHeader(http.StatusOK)
+}
+
+// A store request whose answer stalls fails its attempt within the attempt
+// bound, and the SDK sends it again (issue #389).
+func TestNewStoreFactoryS3_BoundsEachAttempt(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_ENDPOINT_URL", "")
+	t.Setenv("AWS_ENDPOINT_URL_S3", "")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+
+	fake := &stallingS3{stall: 3 * time.Second}
+	srv := httptest.NewServer(fake)
+	t.Cleanup(srv.Close)
+
+	factory, err := NewStoreFactory("s3", "test-bucket/data", S3Config{
+		Region:         "us-east-1",
+		Endpoint:       srv.URL,
+		UsePathStyle:   true,
+		AttemptTimeout: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewStoreFactory: %v", err)
+	}
+	store, err := factory()
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	start := time.Now()
+	if err := store.Put(t.Context(), "events/one", strings.NewReader("payload")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed >= fake.stall {
+		t.Errorf("Put took %s, want it bounded below the %s stall", elapsed, fake.stall)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if fake.puts != 2 {
+		t.Errorf("store received %d PUTs, want 2: the stalled attempt and its retry", fake.puts)
+	}
+}
+
+func TestS3Config_DefaultAttemptTimeout(t *testing.T) {
+	t.Parallel()
+	if got := (S3Config{}).attemptTimeout(); got != DefaultS3AttemptTimeout {
+		t.Errorf("attemptTimeout() = %s, want %s", got, DefaultS3AttemptTimeout)
+	}
+	if got := (S3Config{AttemptTimeout: time.Second}).attemptTimeout(); got != time.Second {
+		t.Errorf("attemptTimeout() = %s, want 1s", got)
 	}
 }

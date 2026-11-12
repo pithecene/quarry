@@ -191,6 +191,12 @@
           "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
           "dependsOn": ["storage-backend=s3"]
         },
+        "storage-attempt-timeout": {
+          "type": "duration",
+          "required": false,
+          "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+          "dependsOn": ["storage-backend=s3"]
+        },
         "adapter": {
           "type": "string",
           "required": false,
@@ -496,6 +502,12 @@
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "dependsOn": ["storage-backend=s3"]
+            },
             "run-id": {
               "type": "string",
               "required": false,
@@ -571,6 +583,12 @@
               "type": "bool",
               "required": false,
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -658,6 +676,12 @@
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "dependsOn": ["storage-backend=s3"]
+            },
             "source": {
               "type": "string",
               "required": true,
@@ -741,6 +765,12 @@
               "type": "bool",
               "required": false,
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -850,6 +880,12 @@
                 "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
                 "dependsOn": ["storage-backend=s3"]
               },
+              "storage-attempt-timeout": {
+                "type": "duration",
+                "required": false,
+                "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+                "dependsOn": ["storage-backend=s3"]
+              },
               "source": {
                 "type": "string",
                 "required": true,
@@ -937,6 +973,12 @@
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+              "dependsOn": ["storage-backend=s3"]
+            },
             "format": {
               "type": "string",
               "aliases": ["f"],
@@ -1022,6 +1064,12 @@
           "type": "bool",
           "required": false,
           "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+          "dependsOn": ["storage-backend=s3"]
+        },
+        "storage-attempt-timeout": {
+          "type": "duration",
+          "required": false,
+          "description": "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
           "dependsOn": ["storage-backend=s3"]
         },
         "source": {

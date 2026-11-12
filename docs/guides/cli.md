@@ -130,6 +130,7 @@ Storage flags:
 - `--storage-region <region>` (AWS region, uses default chain if omitted)
 - `--storage-endpoint <url>` (custom endpoint for an S3-compatible provider)
 - `--storage-s3-path-style` (force path-style addressing, which many S3-compatible providers require)
+- `--storage-attempt-timeout <duration>` (the bound on the wait for an S3 store's answer to one attempt, default `60s`, after which the SDK sends the attempt again)
 
 Adapter flags (event-bus notification):
 - `--adapter <type>` (event-bus adapter, e.g. `webhook`, `redis`)

@@ -44,6 +44,7 @@ func storageReadFlags() []cli.Flag {
 		&cli.StringFlag{Name: "storage-region", Usage: "AWS region for S3 backend"},
 		&cli.StringFlag{Name: "storage-endpoint", Usage: "Custom S3 endpoint URL for S3-compatible providers"},
 		&cli.BoolFlag{Name: "storage-s3-path-style", Usage: "Force path-style addressing for S3 (required by many S3-compatible providers)"},
+		&cli.DurationFlag{Name: "storage-attempt-timeout", Usage: "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)"},
 	}
 }
 
@@ -96,9 +97,10 @@ func storeFactoryFrom(c *cli.Context) (lodelib.Factory[lodelib.RangeStore], erro
 		fmt.Fprintf(os.Stderr, "Warning: --storage-endpoint and --storage-s3-path-style are ignored for fs backend\n")
 	}
 	return lode.NewStoreFactory(backend, c.String("storage-path"), lode.S3Config{
-		Region:       c.String("storage-region"),
-		Endpoint:     endpoint,
-		UsePathStyle: pathStyle,
+		Region:         c.String("storage-region"),
+		Endpoint:       endpoint,
+		UsePathStyle:   pathStyle,
+		AttemptTimeout: c.Duration("storage-attempt-timeout"),
 	})
 }
 

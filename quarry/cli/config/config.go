@@ -34,6 +34,8 @@ type StorageConfig struct {
 	Region      string `yaml:"region"`
 	Endpoint    string `yaml:"endpoint"`
 	S3PathStyle bool   `yaml:"s3_path_style"`
+	// AttemptTimeout bounds the wait for an S3 store's answer to one attempt.
+	AttemptTimeout Duration `yaml:"attempt_timeout,omitempty"`
 }
 
 // PolicyConfig holds policy defaults from the config file.

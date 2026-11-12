@@ -237,6 +237,10 @@ ADVANCED:
 				Name:  "storage-s3-path-style",
 				Usage: "Force path-style addressing for S3 (required by many S3-compatible providers)",
 			},
+			&cli.DurationFlag{
+				Name:  "storage-attempt-timeout",
+				Usage: "Bound on the wait for an S3 store's answer to one attempt of a request; the SDK retries an attempt past it (default 60s)",
+			},
 			// Browser reuse flags
 			&cli.BoolFlag{
 				Name:  "no-browser-reuse",
@@ -369,6 +373,9 @@ type storageChoice struct {
 	region       string // AWS region for S3 (optional)
 	endpoint     string // custom S3 endpoint for S3-compatible providers (optional)
 	usePathStyle bool   // force path-style addressing for S3 (optional)
+	// The bound on the wait for an S3 store's answer to one attempt. Zero
+	// means the default.
+	attemptTimeout time.Duration
 }
 
 // adapterChoice holds parsed adapter configuration.
@@ -691,6 +698,11 @@ func runAction(c *cli.Context) error {
 		endpoint:     resolveString(c, "storage-endpoint", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Endpoint })),
 		usePathStyle: resolveBool(c, "storage-s3-path-style", configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.Storage.S3PathStyle })),
 	}
+	var configAttemptTimeout time.Duration
+	if cfg != nil {
+		configAttemptTimeout = cfg.Storage.AttemptTimeout.Duration
+	}
+	storageConfig.attemptTimeout = resolveDuration(c, "storage-attempt-timeout", configAttemptTimeout)
 	if err := validateStorageConfig(storageConfig); err != nil {
 		return cli.Exit(err.Error(), exitConfigError)
 	}
@@ -1503,7 +1515,8 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 			Prefix:       prefix,
 			Region:       storageConfig.region,
 			Endpoint:     storageConfig.endpoint,
-			UsePathStyle: storageConfig.usePathStyle,
+			UsePathStyle:   storageConfig.usePathStyle,
+			AttemptTimeout: storageConfig.attemptTimeout,
 		}
 		lc, err = lode.NewLodeS3Client(ctx, cfg, s3cfg)
 		if err != nil {

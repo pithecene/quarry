@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pithecene/lode/lode"
@@ -26,6 +29,24 @@ type S3Config struct {
 	// UsePathStyle forces path-style addressing (bucket in path, not subdomain).
 	// Required by most S3-compatible providers.
 	UsePathStyle bool
+	// AttemptTimeout bounds the wait for a store's answer to one attempt of a
+	// request, from the moment the client has sent the request. The SDK
+	// retries an attempt that exceeds the bound. Zero means
+	// DefaultS3AttemptTimeout.
+	AttemptTimeout time.Duration
+}
+
+// DefaultS3AttemptTimeout bounds the wait for a store's answer to one
+// attempt when S3Config.AttemptTimeout is zero.
+const DefaultS3AttemptTimeout = 60 * time.Second
+
+// The configured attempt bound, or DefaultS3AttemptTimeout when the
+// configuration states none.
+func (c S3Config) attemptTimeout() time.Duration {
+	if c.AttemptTimeout > 0 {
+		return c.AttemptTimeout
+	}
+	return DefaultS3AttemptTimeout
 }
 
 // Validate checks that required S3 configuration is present.
@@ -54,7 +75,14 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 		return nil, err
 	}
 
-	var opts []func(*config.LoadOptions) error
+	// A store that accepts a request and never answers would otherwise hold
+	// the run until the connection fails. The bound applies to each attempt,
+	// so the SDK's retryer sends a stalled request again.
+	timeout := s3cfg.attemptTimeout()
+	httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(tr *http.Transport) {
+		tr.ResponseHeaderTimeout = timeout
+	})
+	opts := []func(*config.LoadOptions) error{config.WithHTTPClient(httpClient)}
 	if s3cfg.Region != "" {
 		opts = append(opts, config.WithRegion(s3cfg.Region))
 	}
