@@ -135,9 +135,10 @@ The runtime owns a run's whole lifecycle. `Execute`
    interval flush still in progress is canceled and joined, never
    abandoned), so the close occurs here, before the end record. Close is
    one-shot, so a caller's later close writes nothing. The close occurs
-   while the outcome is still being determined: if it leaves accepted data
-   unpersisted, a run that would otherwise succeed fails with
-   `policy_failure` (a run that has already failed retains its outcome).
+   while the outcome is still being determined. If it leaves accepted data
+   unpersisted, a run that would otherwise succeed fails, and a run that has
+   already failed retains its outcome. The failure is `storage_error` when
+   the sink refused the data, and `policy_failure` otherwise.
    Policy statistics are taken after the close, so the metrics record and
    the exit report match what was persisted.
 3. Persist the run's metrics record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record
@@ -222,7 +223,7 @@ existed receive backfilled records (§Backfilled Run Records).
 | `schema_version`    | int            | yes      | `1` |
 | `run_id`            | string         | yes      | Run identifier |
 | `ended_at`          | string         | yes      | RFC 3339 UTC with nanoseconds |
-| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, or `version_mismatch` (§Observability Requirements), `null` on a backfilled record |
+| `outcome`           | string \| null | yes      | `success`, `script_error`, `executor_crash`, `policy_failure`, `version_mismatch`, or `storage_error` (§Observability Requirements), `null` on a backfilled record |
 | `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`), `null` when none was received |
 | `message`           | string         | no       | Outcome message, omitted when empty |
 | `event_count`       | int \| null    | yes      | Events processed, `null` on a backfilled record |
@@ -324,7 +325,7 @@ data fetching occurs.
   "run_id": "string",
   "job_id": "string (omitted if empty)",
   "attempt": 1,
-  "outcome": "success | script_error | executor_crash | policy_failure | version_mismatch",
+  "outcome": "success | script_error | executor_crash | policy_failure | version_mismatch | storage_error",
   "message": "string",
   "exit_code": 0,
   "duration_ms": 12345,

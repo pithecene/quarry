@@ -146,7 +146,7 @@ func (p *BufferedPolicy) Flush(ctx context.Context) error {
 			p.stats.incErrorsLocked()
 			p.mu.Unlock()
 			p.logFlushFailure(err)
-			return err
+			return fmt.Errorf("%w: %w", ErrSinkWrite, err)
 		}
 		p.mu.Lock()
 		p.stats.incEventsPersistedLocked(int64(len(events)))

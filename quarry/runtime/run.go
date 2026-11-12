@@ -474,6 +474,13 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		// Classify the error
 		var outcome *types.RunOutcome
 		switch {
+		// A refusal after the run's context has ended comes from the run's own
+		// cancellation or deadline, not from a fault of the store.
+		case IsPolicyError(ingErr) && isStorageFault(ingErr) && ctx.Err() == nil:
+			outcome = &types.RunOutcome{
+				Status:  types.OutcomeStorageError,
+				Message: fmt.Sprintf("storage error: %v", ingErr),
+			}
 		case IsPolicyError(ingErr):
 			outcome = &types.RunOutcome{
 				Status:  types.OutcomePolicyFailure,
@@ -500,7 +507,14 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion)
 	}
 
-	// If flush failed and there were no other errors, report policy failure
+	// If flush failed and there were no other errors, report a storage error
+	// when the sink refused the events, and a policy failure otherwise.
+	if flushErr != nil && isStorageFault(flushErr) {
+		return r.buildResult(&types.RunOutcome{
+			Status:  types.OutcomeStorageError,
+			Message: fmt.Sprintf("policy flush failed: %v", flushErr),
+		}, string(execResult.StderrBytes), artifacts, ingestion)
+	}
 	if flushErr != nil {
 		return r.buildResult(&types.RunOutcome{
 			Status:  types.OutcomePolicyFailure,
@@ -672,7 +686,7 @@ func (r *RunOrchestrator) buildResult(
 	switch outcome.Status {
 	case types.OutcomeSuccess:
 		r.config.Collector.IncRunCompleted()
-	case types.OutcomeScriptError, types.OutcomePolicyFailure, types.OutcomeVersionMismatch:
+	case types.OutcomeScriptError, types.OutcomePolicyFailure, types.OutcomeVersionMismatch, types.OutcomeStorageError:
 		r.config.Collector.IncRunFailed()
 	case types.OutcomeExecutorCrash:
 		r.config.Collector.IncRunCrashed()

@@ -152,9 +152,12 @@ The `run` command exit code is determined by execution outcome:
 | 2 | `executor_crash` | Executor crashed or exited abnormally |
 | 3 | `policy_failure` | Ingestion policy failed (non-retryable) |
 | 3 | `version_mismatch` | SDK/CLI contract version mismatch (non-retryable) |
+| 4 | `storage_error` | A sink failed to persist the run's events (retryable) |
 
 The outcomes `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
+The outcome `storage_error` has its own exit code because a store's timeout or
+refusal is often transient, so a caller can retry on exit code 4 alone.
 
 ### Structured Exit Report
 
