@@ -50,7 +50,7 @@ func TestExecutorInputJSON_OmitsUnsetFields(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	for _, field := range []string{"browser_ws_endpoint", "storage"} {
+	for _, field := range []string{"browser_ws_endpoint", "no_browser", "storage"} {
 		t.Run(field, func(t *testing.T) {
 			if _, exists := decoded[field]; exists {
 				t.Errorf("%s should be omitted when unset", field)
@@ -328,5 +328,21 @@ func TestStoragePartition_MatchesGoPathFormula(t *testing.T) {
 
 	if got != want {
 		t.Errorf("path formula mismatch:\n  got:  %s\n  want: %s", got, want)
+	}
+}
+
+// A run without a browser tells the executor so in its input.
+func TestExecutorInputJSON_NoBrowser(t *testing.T) {
+	t.Parallel()
+	data, err := json.Marshal(executorInput{RunID: "run-001", Attempt: 1, Job: map[string]any{}, NoBrowser: true})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded["no_browser"] != true {
+		t.Errorf("no_browser = %v, want true", decoded["no_browser"])
 	}
 }

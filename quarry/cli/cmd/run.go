@@ -133,6 +133,10 @@ ADVANCED:
 				EnvVars: []string{"QUARRY_BROWSER_ENDPOINT"},
 			},
 			&cli.BoolFlag{
+				Name:  "no-browser",
+				Usage: "Run without a browser: the executor launches none, and ctx.page, ctx.browser and ctx.browserContext throw NoBrowserError",
+			},
+			&cli.BoolFlag{
 				Name:  "quiet",
 				Usage: "Suppress result output",
 			},
@@ -417,6 +421,7 @@ type childFactory struct {
 	category          string
 	proxy             *types.ProxyEndpoint
 	browserWSEndpoint string
+	noBrowser         bool
 	resolveFrom       string
 	eventSinks        []eventSinkChoice
 }
@@ -471,6 +476,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		ArtifactStore:     artifactStoreOf(childLodeClient),
 		EnqueueObserver:   observer,
 		BrowserWSEndpoint: cf.browserWSEndpoint,
+		NoBrowser:         cf.noBrowser,
 		ResolveFrom:       cf.resolveFrom,
 		Source:            childSource,
 		Category:          childCategory,
@@ -581,6 +587,10 @@ func runAction(c *cli.Context) error {
 	category := resolveString(c, "category", configVal(cfg, func(c *quarryconfig.Config) string { return c.Category }))
 	executor := resolveString(c, "executor", configVal(cfg, func(c *quarryconfig.Config) string { return c.Executor }))
 	browserWSEndpoint := resolveString(c, "browser-ws-endpoint", configVal(cfg, func(c *quarryconfig.Config) string { return c.BrowserWSEndpoint }))
+	noBrowser := c.Bool("no-browser")
+	if noBrowser && browserWSEndpoint != "" {
+		return cli.Exit("--no-browser cannot be combined with --browser-ws-endpoint", exitConfigError)
+	}
 	resolveFrom := resolveString(c, "resolve-from", configVal(cfg, func(c *quarryconfig.Config) string { return c.ResolveFrom }))
 
 	dryRun := c.Bool("dry-run")
@@ -788,7 +798,7 @@ func runAction(c *cli.Context) error {
 	// Resolve browser reuse:
 	// Priority: explicit --browser-ws-endpoint > browser reuse > per-run launch
 	noBrowserReuse := resolveBool(c, "no-browser-reuse", configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.NoBrowserReuse }))
-	if browserWSEndpoint == "" && !noBrowserReuse {
+	if browserWSEndpoint == "" && !noBrowserReuse && !noBrowser {
 		idleTimeout := runtime.IdleTimeoutFromEnv()
 		reuseCfg := runtime.ReusableBrowserConfig{
 			ExecutorPath: executorPath,
@@ -828,6 +838,7 @@ func runAction(c *cli.Context) error {
 		FileWriter:        fileWriter,
 		ArtifactStore:     artifactStoreOf(lodeClient),
 		BrowserWSEndpoint: browserWSEndpoint,
+		NoBrowser:         noBrowser,
 		ResolveFrom:       resolveFrom,
 		Source:            source,
 		Category:          category,
@@ -842,7 +853,7 @@ func runAction(c *cli.Context) error {
 	if fanOut.depth > 0 {
 		// Use reusable browser if already acquired; otherwise launch a managed
 		// browser for fan-out to avoid N cold startups (one per child run).
-		if browserWSEndpoint == "" {
+		if browserWSEndpoint == "" && !noBrowser {
 			managedBrowser, err := runtime.LaunchManagedBrowser(ctx, executorPath, c.String("script"))
 			if err != nil {
 				return cli.Exit(fmt.Sprintf("failed to launch shared browser: %v", err), exitExecutorCrash)
@@ -861,6 +872,7 @@ func runAction(c *cli.Context) error {
 			category:          category,
 			proxy:             resolvedProxy,
 			browserWSEndpoint: browserWSEndpoint,
+			noBrowser:         noBrowser,
 			resolveFrom:       resolveFrom,
 			eventSinks:        eventSinks,
 		}

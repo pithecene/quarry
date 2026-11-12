@@ -37,24 +37,24 @@ in the project's `mise.toml`, and, with mise's shell activation
 (`mise activate`) configured, puts `quarry` on your `PATH` there:
 
 ```bash
-mise use github:pithecene/quarry@0.18.0
+mise use github:pithecene/quarry@0.17.0
 ```
 
 The resulting `mise.toml` entry:
 
 ```toml
 [tools]
-"github:pithecene/quarry" = "0.18.0"
+"github:pithecene/quarry" = "0.17.0"
 ```
 
 ### Via Docker
 
 ```bash
 # Full image: includes Chrome for Testing and fonts (amd64 only, recommended)
-docker pull ghcr.io/pithecene/quarry:0.18.0
+docker pull ghcr.io/pithecene/quarry:0.17.0
 
 # Slim image: no browser, multi-arch (bring your own Chromium through --browser-ws-endpoint)
-docker pull ghcr.io/pithecene/quarry:0.18.0-slim
+docker pull ghcr.io/pithecene/quarry:0.17.0-slim
 ```
 See the [container guide](docs/guides/container.md) for `docker run` and Docker Compose examples.
 
@@ -559,6 +559,7 @@ CLI flags always override config file values.
 |------|---------|-------------|
 | `--browser-ws-endpoint <url>` | `QUARRY_BROWSER_ENDPOINT` | Connect to an externally managed browser via WebSocket URL (skips the per-run Chromium launch, as the [CLI guide](docs/guides/cli.md) describes) |
 | `--no-browser-reuse` | — | Disable transparent browser reuse across runs (forces per-run Chromium launch) |
+| `--no-browser` | — | Run without a browser: the executor launches none and never loads Puppeteer, and `ctx.page`, `ctx.browser` and `ctx.browserContext` throw `NoBrowserError` |
 
 By default, Quarry transparently reuses a persistent Chromium process across sequential runs.
 The browser auto-terminates after idle timeout (default 60s, configurable via `QUARRY_BROWSER_IDLE_TIMEOUT`).
@@ -805,8 +806,8 @@ executor runs under Node ESM.
 
 Quarry ships container images via GHCR:
 
-- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.18.0`, which includes Chrome for Testing and fonts
-- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.18.0-slim`, which has no browser (bring your own through `--browser-ws-endpoint`)
+- **Full** (amd64 only): `ghcr.io/pithecene/quarry:0.17.0`, which includes Chrome for Testing and fonts
+- **Slim** (amd64 + arm64): `ghcr.io/pithecene/quarry:0.17.0-slim`, which has no browser (bring your own through `--browser-ws-endpoint`)
 
 For `docker run`, Docker Compose, and sidecar patterns, see the [container guide](docs/guides/container.md).
 
@@ -833,14 +834,14 @@ experimental.
 
 ---
 
-## Known Limitations (v0.18.0)
+## Known Limitations (v0.17.0)
 
 1. **Single executor type**: Only Node.js executor supported
 2. **No built-in retries**: Retry logic is caller's responsibility
 3. **Artifact reads go through the CLI**: `quarry list artifacts` lists a run's artifacts, and `quarry read artifact` writes one artifact's bytes, whole or by range. The SDK has no artifact read helper, and the Go packages are not a public API (the `streaming` *ingestion policy* controls write batching, not reads)
 4. **No transactional storage writes**: S3 and S3-compatible providers do not provide transactional guarantees across writes
 5. **No job scheduling**: Quarry supports in-process derived work via `--depth` but is not a scheduler. External orchestration is the caller's responsibility
-6. **Puppeteer required**: All scripts run in a browser context
+6. **Puppeteer required by default**: a script runs in a browser context unless its run declares none with `--no-browser`, which needs neither Puppeteer nor a Chromium (`CONTRACT_RUN.md` § Runs Without a Browser)
 7. **Adapters and sinks**: Quarry provides a webhook adapter, a Redis Pub/Sub adapter, and a Redis Streams event sink. It has no orchestration host. A Temporal activity can call the Quarry runtime directly, as the [Temporal guide](docs/guides/temporal.md) describes. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release. Config-based logical names are under consideration.
@@ -967,7 +968,7 @@ real-time event streaming and post-run notification.
 
 ```bash
 quarry version
-# 0.18.0 (commit: ...)
+# 0.17.0 (commit: ...)
 ```
 
 SDK and runtime versions must match (lockstep versioning).
@@ -976,8 +977,8 @@ SDK and runtime versions must match (lockstep versioning).
 
 | Component | Channel | Install |
 |-----------|---------|---------|
-| CLI binary | GitHub Releases | `mise use github:pithecene/quarry@0.18.0` |
-| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.18.0` |
-| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.18.0-slim` |
+| CLI binary | GitHub Releases | `mise use github:pithecene/quarry@0.17.0` |
+| Container (full, amd64) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.17.0` |
+| Container (slim, multi-arch) | GHCR | `docker pull ghcr.io/pithecene/quarry:0.17.0-slim` |
 | SDK | JSR | `npx jsr add @pithecene/quarry-sdk` |
 | SDK | GitHub Packages | `pnpm add @pithecene/quarry-sdk` |

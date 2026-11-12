@@ -4,7 +4,7 @@
 export type { Batcher, BatcherOptions } from './batcher'
 export { createBatcher } from './batcher'
 export type { CreateContextOptions } from './context'
-export { createContext } from './context'
+export { createContext, NoBrowserError } from './context'
 // Emit types
 // Internal exports for executor-node (@internal — not for user scripts)
 export type {
