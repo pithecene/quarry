@@ -22,7 +22,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **A stalled S3 request no longer holds a run**: the S3 client set no bound on a request's progress. A store that accepted a write and never answered held a run until the connection failed. A run on Cloudflare R2 stalled 96 minutes this way. Each read or write on a store connection must now progress within 60 seconds by default, or the attempt fails and the SDK sends it again. `--storage-attempt-timeout` and `storage.attempt_timeout` set the bound for `run` and every command that reads storage.
+- **A stalled S3 request no longer holds a run**: the S3 client set no bound on a request's progress. A store that accepted a write and never answered held a run until the connection failed. A run on Cloudflare R2 stalled 96 minutes this way. Each read or write on a store connection must now progress within 60 seconds by default, or the attempt fails and the SDK sends it again. `--storage-attempt-timeout` sets the bound for `run` and every command that reads storage. `storage.attempt_timeout` configures it for `run` through `--config`.
 - **A browser server that closes before its reply counts as gone on Darwin**: when a reusable browser server closed a lease connection before the run wrote its request, Darwin could refuse the write with `ENOTCONN`. The runtime then reported a failed lease, not a missing server. It now treats `ENOTCONN` as it treats `EPIPE` and `ECONNRESET`, so the run starts a new server.
 
 ### Upgrade Notes
