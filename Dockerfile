@@ -72,7 +72,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true
 # override for basic-ftp (transitive via @puppeteer/browsers → proxy-agent)
 # must be restated here as an npm root override.
 RUN npm init -y >/dev/null \
-  && npm pkg set 'overrides.basic-ftp=6.2.3' \
+  && npm pkg set 'overrides.basic-ftp=6.2.4' \
   && npm install --omit=dev \
   puppeteer@25.14.0 \
   puppeteer-extra@3.3.6 \
