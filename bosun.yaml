@@ -2,12 +2,12 @@
 # the changelog to the changelog contract, the prose gate holds it to the
 # prose contract, which the changelog contract applies to every entry, and
 # the Go analysis runs Bosun's analyzers on the quarry module with their own
-# golangci-lint configuration. CI runs it in the check job of
-# .github/workflows/check.yaml, inside the image that the job pins, and
-# `task check` runs that image on a workstation. Pithecene's layer, which this
+# golangci-lint configuration. The check job of .github/workflows/check.yaml
+# runs it in the image of the release that mise.toml pins, and `task check`
+# runs that image on a workstation. Pithecene's layer, which this
 # file extends, routes each change into its track's stack of pull requests.
 version: 1
-extends: ghcr.io/pithecene/bosun-config:v1
+extends: ghcr.io/pithecene/bosun-config:v2
 prose:
   documents:
     - CHANGELOG.md
