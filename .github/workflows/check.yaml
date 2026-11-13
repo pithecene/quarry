@@ -20,31 +20,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # This job reads the Bosun release that mise.toml pins, which names the check job's image.
-  bosun-release:
-    name: 🔖 Bosun Release
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.pin.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - id: pin
-        run: |
-          version=$(sed -n 's/^"github:pithecene\/bosun" = "\(.*\)"$/\1/p' mise.toml)
-          test -n "$version" || { echo "mise.toml pins no github:pithecene/bosun" >&2; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
   check:
     name: 🧾 Internal Check
-    needs: bosun-release
     # A fork's pull request receives no secret, so it runs no internal check.
     if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
-    # The image of the Bosun release that mise.toml pins.
+    # The image of the internal check's pinned release: the one line in this
+    # repository that names it.
     container:
-      image: ghcr.io/pithecene/bosun:${{ needs.bosun-release.outputs.version }}
+      image: ghcr.io/pithecene/bosun:0.19.0
       credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
     # The same read-only token reads Pithecene's layer, which bosun.yaml extends.
     env:
