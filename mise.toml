@@ -2,6 +2,7 @@
 "aqua:go-task/task" = "3.48.0"
 "aqua:golangci/golangci-lint" = "2.15.0"
 "aqua:pnpm/pnpm" = "10.28.2"
+"github:pithecene/bosun" = "0.23.0"
 go = "1.27.3"
 node = "24.13.0"
 shellcheck = "0.11.0"
