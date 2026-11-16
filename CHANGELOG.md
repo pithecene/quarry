@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, which `puppeteer-extra-plugin-user-preferences` merges static browser preferences with, has no patched release, and Quarry passes it no outside input.
+- **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, the library that `puppeteer-extra-plugin-user-preferences` uses to merge static browser preferences, has no patched release, and Quarry passes it no outside input.
 
 ---
 
@@ -101,7 +101,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Flush mode**: remove `--flush-mode` from `quarry run` commands and `flush_mode` from the `policy` section of config files.
 - **Custom sinks**: drop `WriteChunks` from a `policy.Sink` or `lode.Client` implementation, and read artifacts through `quarry/reader` rather than from chunk records.
-- **Executors**: send an artifact as `artifact_open` and `artifact_range` frames and wait for each `artifact_range_ack`. The bundled executor does.
+- **Executors**: send an artifact as `artifact_open` and `artifact_range` frames and wait for each `artifact_range_ack`. The bundled executor already sends and waits this way.
 
 ---
 
@@ -133,7 +133,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Docs**: The README, `PUBLIC_API.md`, the guides, the contracts, and this changelog follow Chicago style: no semicolons or dashes as sentence punctuation, no contractions, active voice where an agent acts, and headline-style headings. A heading that is a command or a field in code font remains that name.
 - **Docs**: Examples no longer name particular vendors or subjects. The documentation describes S3-compatible providers generically, with `https://s3.example.com` as the example endpoint, the proxy examples use a placeholder provider, and the README pipeline extracts the catalog of an example store. The CLI help for `--storage-endpoint` and `--storage-s3-path-style` changes to match.
 - **Docs**: The README quick start runs end to end. It creates a script project, installs the CLI into it with `mise use`, and installs the SDK and the Puppeteer packages the executor loads (`puppeteer`, `puppeteer-extra`, and `puppeteer-extra-plugin-stealth`). The example script reads `https://example.com` and types its job payload, and the guide runs it with `quarry run` and confirms the run with `quarry list runs`.
-- **Docs**: The README quick start creates its project with `quarry init`, run once through `mise exec`, so a first run takes four commands: `init`, `cd`, `npm install`, and `quarry run`. A new section runs the same script in the full container image without a local Node.js project. The container guide's standalone `docker run` passes `--user` so that the run can write a bind-mounted storage directory, and `PUBLIC_API.md` points to `quarry init` ahead of its manual setup.
+- **Docs**: The README quick start creates its project with `quarry init`, run once through `mise exec`, so a first run takes `init`, `cd`, `npm install`, and `quarry run`. A new section runs the same script in the full container image without a local Node.js project. The container guide's standalone `docker run` passes `--user` so that the run can write a bind-mounted storage directory, and `PUBLIC_API.md` points to `quarry init` ahead of its manual setup.
 - **Docs**: `PUBLIC_API.md` setup matches what a run needs. The Node.js prerequisite is 22.18 or later, or 22.6 or later with `--experimental-strip-types`. The CLI installs with `mise use`, which puts `quarry` on `PATH`. The SDK step creates an ES module project and installs `proxy-agent` and then the Puppeteer packages the executor loads, and the from-source example passes `--executor` so that it resolves them from the workspace.
 - **Known limitations**: Known Limitation 7 of `PUBLIC_API.md`, which covered adapters, stored-data reads, backfill, pruning, and Temporal, splits into limitations on adapters, stored-data reads, and runs written before v0.14.0. The CLI guide keeps the pruning details that it repeated.
 
