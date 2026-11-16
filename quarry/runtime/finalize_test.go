@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -18,13 +19,14 @@ import (
 // recordingStorage records RunStorage calls, in order, alongside executor
 // starts, so tests can assert CONTRACT_RUN.md §Run Finalization ordering.
 type recordingStorage struct {
-	mu        sync.Mutex
-	calls     []string
-	startErr  error
-	endErr    error
-	metricErr error
-	end       *lode.RunEnd
-	startedAt time.Time
+	mu         sync.Mutex
+	calls      []string
+	startErr   error
+	endErr     error
+	metricErr  error
+	end        *lode.RunEnd
+	startedAt  time.Time
+	deadlineAt *time.Time
 }
 
 func (s *recordingStorage) record(call string) {
@@ -33,9 +35,14 @@ func (s *recordingStorage) record(call string) {
 	s.calls = append(s.calls, call)
 }
 
-func (s *recordingStorage) WriteStartRecord(_ context.Context, _ *types.RunMeta, startedAt time.Time) error {
+func (s *recordingStorage) WriteStartRecord(ctx context.Context, _ *types.RunMeta, startedAt time.Time, deadlineAt *time.Time) error {
 	s.record("start")
+	// A store honors its context, so a write after the context ends fails.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.startedAt = startedAt
+	s.deadlineAt = deadlineAt
 	return s.startErr
 }
 
@@ -284,5 +291,200 @@ func TestNewRunOrchestrator_StartedAtMustMatchDay(t *testing.T) {
 	config.StorageDay = "2026-10-22"
 	if _, err := NewRunOrchestrator(config); err == nil {
 		t.Error("StartedAt on another day than StorageDay accepted")
+	}
+}
+
+// openStdoutExecutor keeps its stdout open until the runtime kills it, as a
+// live executor does, so a run ends only when the runtime stops it.
+type openStdoutExecutor struct {
+	*mockExecutor
+	stdout *io.PipeReader
+	writer *io.PipeWriter
+}
+
+func newOpenStdoutExecutor() *openStdoutExecutor {
+	r, w := io.Pipe()
+	return &openStdoutExecutor{mockExecutor: newBlockingMockExecutor(nil, 0), stdout: r, writer: w}
+}
+
+func (e *openStdoutExecutor) Stdout() io.Reader { return e.stdout }
+
+// Start kills the executor when ctx ends, as exec.CommandContext does for
+// the real executor process.
+func (e *openStdoutExecutor) Start(ctx context.Context) error {
+	if err := e.mockExecutor.Start(ctx); err != nil {
+		return err
+	}
+	go func() {
+		<-ctx.Done()
+		_ = e.Kill()
+	}()
+	return nil
+}
+
+func (e *openStdoutExecutor) Kill() error {
+	_ = e.writer.Close()
+	return e.mockExecutor.Kill()
+}
+
+func deadlineConfig(t *testing.T, storage *recordingStorage, exec Executor, maxDuration time.Duration) *RunConfig {
+	t.Helper()
+	startedAt := time.Now().UTC()
+	return &RunConfig{
+		ExecutorPath:    "/fake/executor",
+		ScriptPath:      "/fake/script.js",
+		Job:             map[string]any{},
+		RunMeta:         &types.RunMeta{RunID: "run-deadline", Attempt: 1},
+		Policy:          newFlushTrackingPolicy(),
+		Storage:         storage,
+		StorageDataset:  "quarry",
+		Source:          "src",
+		Category:        "default",
+		StartedAt:       startedAt,
+		StorageDay:      lode.DeriveDay(startedAt),
+		MaxDuration:     maxDuration,
+		ExecutorFactory: func(_ *ExecutorConfig) Executor { return exec },
+	}
+}
+
+// The runtime stops a run that outlives its max duration at the deadline
+// and ends it as deadline_exceeded, and its start record states the deadline.
+func TestExecute_StopsTheRunAtItsDeadline(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	exec := newOpenStdoutExecutor()
+	cfg := deadlineConfig(t, storage, exec, 50*time.Millisecond)
+	o, err := NewRunOrchestrator(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := o.Execute(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome.Status != types.OutcomeDeadlineExceeded {
+		t.Fatalf("outcome = %s (%s), want %s", result.Outcome.Status, result.Outcome.Message, types.OutcomeDeadlineExceeded)
+	}
+	if !exec.WasKilled() {
+		t.Error("the executor was not stopped at the deadline")
+	}
+	want := cfg.StartedAt.Add(cfg.MaxDuration)
+	if storage.deadlineAt == nil || !storage.deadlineAt.Equal(want) {
+		t.Errorf("start record deadline = %v, want %v", storage.deadlineAt, want)
+	}
+	if storage.end == nil || storage.end.Outcome != types.OutcomeDeadlineExceeded {
+		t.Errorf("end record outcome = %v, want %s", storage.end, types.OutcomeDeadlineExceeded)
+	}
+}
+
+// A host's cancellation before the deadline keeps its own outcome.
+func TestExecute_HostCancellationBeforeTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	exec := newOpenStdoutExecutor()
+	cfg := deadlineConfig(t, storage, exec, time.Hour)
+	o, err := NewRunOrchestrator(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	result, err := o.Execute(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome.Status == types.OutcomeDeadlineExceeded {
+		t.Fatalf("outcome = %s, want the outcome of a canceled run", result.Outcome.Status)
+	}
+}
+
+// A run without a max duration declares no deadline.
+func TestExecute_NoMaxDurationDeclaresNoDeadline(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-deadline", Attempt: 1}), 0)
+	o, err := NewRunOrchestrator(deadlineConfig(t, storage, exec, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.Execute(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if storage.deadlineAt != nil {
+		t.Errorf("start record deadline = %v, want none", storage.deadlineAt)
+	}
+}
+
+func TestNewRunOrchestrator_RejectsANegativeMaxDuration(t *testing.T) {
+	t.Parallel()
+
+	cfg := deadlineConfig(t, &recordingStorage{}, newMockExecutor(nil, 0), -time.Second)
+	if _, err := NewRunOrchestrator(cfg); err == nil {
+		t.Fatal("NewRunOrchestrator accepted a negative max duration")
+	}
+}
+
+// The deadline bounds the start record's write, so a run whose deadline
+// passes first never starts, and it ends as deadline_exceeded.
+func TestExecute_DeadlinePastAtStart(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	exec := newOpenStdoutExecutor()
+	o, err := NewRunOrchestrator(deadlineConfig(t, storage, exec, time.Nanosecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := o.Execute(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome.Status != types.OutcomeDeadlineExceeded {
+		t.Fatalf("outcome = %s (%s), want %s", result.Outcome.Status, result.Outcome.Message, types.OutcomeDeadlineExceeded)
+	}
+	if exec.WasKilled() || exec.started {
+		t.Error("the executor started although the run's deadline had passed")
+	}
+}
+
+// slowFlushPolicy fails ingestion at once and then flushes slowly, so its
+// cleanup crosses the run's deadline after execution has decided the outcome.
+type slowFlushPolicy struct {
+	*flushTrackingPolicy
+	delay time.Duration
+}
+
+func (p *slowFlushPolicy) IngestEvent(_ context.Context, _ *types.EventEnvelope) error {
+	return &policyError{msg: "simulated policy failure"}
+}
+
+func (p *slowFlushPolicy) Flush(ctx context.Context) error {
+	time.Sleep(p.delay)
+	return p.flushTrackingPolicy.Flush(ctx)
+}
+
+// A failure that execution reached before the deadline keeps its outcome when
+// the cleanup that follows crosses the deadline.
+func TestExecute_CleanupPastTheDeadlineKeepsTheOutcome(t *testing.T) {
+	t.Parallel()
+
+	storage := &recordingStorage{}
+	runMeta := &types.RunMeta{RunID: "run-deadline", Attempt: 1}
+	exec := newMockExecutor(makeValidEventStream(runMeta), 0)
+	cfg := deadlineConfig(t, storage, exec, 100*time.Millisecond)
+	cfg.Policy = &slowFlushPolicy{flushTrackingPolicy: newFlushTrackingPolicy(), delay: 300 * time.Millisecond}
+	o, err := NewRunOrchestrator(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := o.Execute(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome.Status != types.OutcomePolicyFailure {
+		t.Fatalf("outcome = %s (%s), want %s", result.Outcome.Status, result.Outcome.Message, types.OutcomePolicyFailure)
 	}
 }

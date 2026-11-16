@@ -152,9 +152,15 @@ The `run` command exit code is determined by execution outcome:
 | 2 | `executor_crash` | Executor crashed or exited abnormally |
 | 3 | `policy_failure` | Ingestion policy failed (non-retryable) |
 | 3 | `version_mismatch` | SDK/CLI contract version mismatch (non-retryable) |
+| 4 | `storage_error` | A sink failed to persist the run's events (retryable) |
+| 5 | `deadline_exceeded` | The runtime stopped the run at its deadline (retryable) |
 
 The outcomes `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
+The outcome `storage_error` has its own exit code because a store's timeout or
+refusal is often transient, so a caller can retry on exit code 4 alone.
+The outcome `deadline_exceeded` has its own exit code, so a caller can tell a
+run that its own `--max-duration` stopped from a crash.
 
 ### Structured Exit Report
 
@@ -265,6 +271,7 @@ The `quarry run` command supports optional derived work execution via enqueue ev
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--max-duration` | duration | | Stop each run at this age and end it as `deadline_exceeded` ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Deadline) |
 | `--depth` | int | `0` | Max fan-out recursion depth (0 = disabled) |
 | `--max-runs` | int | | Total child run cap (required when `--depth > 0`) |
 | `--parallel` | int | `1` | Max concurrent child runs |
@@ -327,6 +334,7 @@ on the first run and self-terminates after an idle timeout (default: 60s).
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--no-browser-reuse` | bool | `false` | Disable browser reuse (per-run browser) |
+| `--no-browser` | bool | `false` | Run without a browser ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Runs Without a Browser). The runtime acquires no browser server |
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
@@ -583,6 +591,7 @@ Optional flags:
 - `--storage-region=<region>`: AWS region for S3 backend
 - `--storage-endpoint=<url>`: custom S3 endpoint for S3-compatible providers, with the same meaning as on `run`
 - `--storage-s3-path-style`: force path-style S3 addressing (required by many S3-compatible providers), with the same meaning as on `run`
+- `--storage-attempt-timeout=<duration>`: the longest stall of an S3 request, default `60s`, with the same meaning as on `run`. Each read or write on the request's connection must make progress within it. Otherwise the attempt fails, and the SDK sends it again
 - `--run-id=<id>`: read metrics for a specific run
 - `--source=<source>`: filter by source partition
 
@@ -675,6 +684,7 @@ Run:
   day: string             # YYYY-MM-DD
   partition: string       # Hive-encoded partition prefix
   started_at: time | null # null when backfilled
+  deadline_at: time       # omitted when the run declares no max duration
   state: succeeded | failed | unterminated  # backfilled: from the terminal event
   backfilled: bool        # records written by index rebuild
   ended_at: time | null   # null when unterminated

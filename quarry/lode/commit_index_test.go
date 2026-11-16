@@ -100,7 +100,7 @@ func newIndexRun(t *testing.T, store *countingStore, runID string) *indexRun {
 	}
 	run.client = client
 	day, _ := time.Parse(time.DateOnly, artifactTestDay)
-	if err := client.WriteStartRecord(t.Context(), &types.RunMeta{RunID: runID, Attempt: 1}, day.Add(time.Hour)); err != nil {
+	if err := client.WriteStartRecord(t.Context(), &types.RunMeta{RunID: runID, Attempt: 1}, day.Add(time.Hour), nil); err != nil {
 		t.Fatalf("start record: %v", err)
 	}
 	return run
@@ -449,7 +449,7 @@ func newBenchRun(b *testing.B, store *countingStore, n int, index bool) qlode.Co
 		b.Fatal(err)
 	}
 	day, _ := time.Parse(time.DateOnly, artifactTestDay)
-	if err := client.WriteStartRecord(ctx, &types.RunMeta{RunID: cfg.RunID, Attempt: 1}, day.Add(time.Hour)); err != nil {
+	if err := client.WriteStartRecord(ctx, &types.RunMeta{RunID: cfg.RunID, Attempt: 1}, day.Add(time.Hour), nil); err != nil {
 		b.Fatal(err)
 	}
 	for i := range n {

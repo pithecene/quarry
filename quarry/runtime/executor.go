@@ -30,6 +30,9 @@ type ExecutorConfig struct {
 	// BrowserWSEndpoint is the optional WebSocket URL of an externally managed browser.
 	// When set, the executor connects instead of launching a new Chromium instance.
 	BrowserWSEndpoint string
+	// NoBrowser declares a run without a browser: the executor neither
+	// launches nor connects to one (CONTRACT_RUN.md §Runs Without a Browser).
+	NoBrowser bool
 	// ResolveFrom is the optional path to a node_modules directory used for
 	// bare-specifier ESM resolution fallback. When set, the executor registers
 	// a custom resolve hook via module.register().
@@ -84,6 +87,7 @@ type executorInput struct {
 	Job               any                  `json:"job"`
 	Proxy             *types.ProxyEndpoint `json:"proxy,omitempty"`
 	BrowserWSEndpoint string               `json:"browser_ws_endpoint,omitempty"`
+	NoBrowser         bool                 `json:"no_browser,omitempty"`
 	Storage           *StoragePartition    `json:"storage,omitempty"`
 }
 
@@ -147,6 +151,7 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		Job:               m.config.Job,
 		Proxy:             m.config.Proxy,
 		BrowserWSEndpoint: m.config.BrowserWSEndpoint,
+		NoBrowser:         m.config.NoBrowser,
 		Storage:           m.config.Storage,
 	}
 

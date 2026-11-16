@@ -59,6 +59,12 @@ const (
 	OutcomePolicyFailure OutcomeStatus = "policy_failure"
 	// OutcomeVersionMismatch indicates an SDK/CLI contract version mismatch.
 	OutcomeVersionMismatch OutcomeStatus = "version_mismatch"
+	// OutcomeStorageError indicates that a sink failed to persist the run's
+	// events. A retry of the run may succeed.
+	OutcomeStorageError OutcomeStatus = "storage_error"
+	// OutcomeDeadlineExceeded indicates that the runtime stopped the run at
+	// the deadline its max duration declared. A retry of the run may succeed.
+	OutcomeDeadlineExceeded OutcomeStatus = "deadline_exceeded"
 )
 
 // RunOutcome represents the final outcome of a run.

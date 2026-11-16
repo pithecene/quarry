@@ -448,6 +448,9 @@ async function main(): Promise<never> {
       ? inputObj.browser_ws_endpoint
       : undefined
 
+  // The run declares no browser (CONTRACT_RUN.md §Runs Without a Browser)
+  const noBrowser = inputObj.no_browser === true
+
   // Start AckReader on stdin (phase 2 of two-phase stdin).
   // stdin remains open after metadata read for runtime→executor ack frames.
   const ackReader = new AckReader(process.stdin)
@@ -461,6 +464,7 @@ async function main(): Promise<never> {
     proxy,
     storagePartition,
     browserWSEndpoint,
+    noBrowser,
     ackReader,
     output: ipcOutput,
     outputWrite: ipcWrite,

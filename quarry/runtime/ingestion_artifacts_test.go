@@ -111,7 +111,7 @@ func TestIngestionEngine_Artifact_OpenRangesCommit(t *testing.T) {
 	if err := f.client.WriteEvents(t.Context(), f.cfg.Dataset, f.cfg.RunID, pol.artifacts); err != nil {
 		t.Fatalf("WriteEvents: %v", err)
 	}
-	if err := f.client.WriteStartRecord(t.Context(), runMeta, startOf(f.cfg.Day)); err != nil {
+	if err := f.client.WriteStartRecord(t.Context(), runMeta, startOf(f.cfg.Day), nil); err != nil {
 		t.Fatalf("WriteStartRecord: %v", err)
 	}
 	r, err := reader.New(f.cfg.Dataset, f.factory)

@@ -197,6 +197,9 @@ func TestStreamingPolicy_FlushFailure_PreservesBuffers(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected flush to fail")
 	}
+	if !errors.Is(err, policy.ErrSinkWrite) {
+		t.Errorf("expected the error to carry ErrSinkWrite, got %v", err)
+	}
 
 	// Buffer should still have data
 	stats := pol.Stats()

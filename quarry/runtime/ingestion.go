@@ -61,6 +61,13 @@ func IsCanceledError(err error) bool {
 	return false
 }
 
+// isStorageFault reports whether err carries a sink's refusal to persist
+// events (policy.ErrSinkWrite). A refusal caused by the run's own
+// cancellation is not a fault of the store.
+func isStorageFault(err error) bool {
+	return errors.Is(err, policy.ErrSinkWrite) && !errors.Is(err, context.Canceled)
+}
+
 // IsVersionMismatchError returns true if the error is a contract version mismatch.
 func IsVersionMismatchError(err error) bool {
 	if ingErr, ok := errors.AsType[*IngestionError](err); ok {

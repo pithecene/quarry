@@ -76,6 +76,7 @@ See [YAML Config File](#yaml-config-file) below for schema and examples.
 | `--storage-region` | string | AWS region (S3 only, uses default credential chain) |
 | `--storage-endpoint` | string | Custom S3 endpoint URL for an S3-compatible provider |
 | `--storage-s3-path-style` | bool | Force path-style addressing (required by many S3-compatible providers) |
+| `--storage-attempt-timeout` | duration | Longest stall of an S3 request (default `60s`). An attempt that makes no progress for that long fails, and the SDK sends it again |
 
 ### Policy
 
@@ -293,6 +294,7 @@ storage:
   region: us-east-1
   endpoint: https://s3.example.com
   s3_path_style: true
+  attempt_timeout: 60s
 
 policy:
   name: buffered

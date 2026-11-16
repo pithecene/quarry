@@ -173,7 +173,7 @@ func TestRebuild_LeavesRuntimeRecordsAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "r1", Attempt: 1}, time.Date(2026, 10, 21, 1, 0, 0, 0, time.UTC)); err != nil {
+	if err := c.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "r1", Attempt: 1}, time.Date(2026, 10, 21, 1, 0, 0, 0, time.UTC), nil); err != nil {
 		t.Fatal(err)
 	}
 	report := rebuild(t, factory, false)

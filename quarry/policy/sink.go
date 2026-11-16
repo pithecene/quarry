@@ -3,10 +3,16 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/pithecene/quarry/types"
 )
+
+// ErrSinkWrite marks an error that a policy received from its sink's
+// WriteEvents. The runtime reports a run that fails with it as
+// storage_error, which a retry may resolve, and not as policy_failure.
+var ErrSinkWrite = errors.New("sink write failed")
 
 // Sink abstracts persistence for policies.
 // Implementations may write to storage, forward to a queue, or stub for testing.

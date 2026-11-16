@@ -4,7 +4,7 @@
 export type { Batcher, BatcherOptions } from './batcher'
 export { createBatcher } from './batcher'
 export type { CreateContextOptions } from './context'
-export { createContext } from './context'
+export { createContext, NoBrowserError } from './context'
 // Emit types
 // Internal exports for executor-node (@internal — not for user scripts)
 export type {
@@ -73,6 +73,8 @@ export type {
   StoredEvent
 } from './reader'
 export { listRuns, QuarryReadError, readRun } from './reader'
+export type { RetainedChunk, RetainedHttpObject, RetainHttpObjectOptions } from './retain'
+export { RetainHttpObjectError, retainHttpObject } from './retain'
 // Storage batcher utility (public — bounded-concurrency file uploads)
 export type { PendingStoragePut, StorageBatcher, StorageBatcherOptions } from './storage-batcher'
 export { createStorageBatcher } from './storage-batcher'

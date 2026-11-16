@@ -9,9 +9,34 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, which `puppeteer-extra-plugin-user-preferences` merges static browser preferences with, has no patched release, and Quarry passes it no outside input.
+
+---
+
+## [0.18.0] - 2026-11-12
+
+### Breaking Changes
+
+- **A run whose sink refuses its events ends as `storage_error`**: under every policy, an error from a sink's `WriteEvents` now ends the run with the new outcome `storage_error` and exit code 4. Earlier releases reported `policy_failure` and exit code 3, which `CONTRACT_INTEGRATION.md` maps as non-retryable. The new outcome maps as retryable, since a store's timeout or refusal is often transient. A sink error that the run's own cancellation causes keeps `policy_failure`. The end record and `runs_failed_total` carry the new outcome, and `policy.ErrSinkWrite` marks the error.
+
 ### Added
 
+- **`retainHttpObject`**: the SDK retains an HTTP object of up to 1 GiB as one artifact. A HEAD request states the length, and Range requests of at most one range frame cover the object in order. Each answer must answer its range exactly, with the HEAD length as its total and the HEAD ETag when one exists. The helper writes each chunk at its offset and digests the whole object. On a failed check it throws `RetainHttpObjectError` with each reason and commits nothing. `CONTRACT_EMIT.md` § `retainHttpObject` states the rules.
+- **Runs without a browser**: `quarry run --no-browser` and `RunConfig.NoBrowser` declare a run that needs no browser. The executor neither launches nor connects to one and never loads Puppeteer, and the runtime acquires no browser server. The script's `ctx.page`, `ctx.browser` and `ctx.browserContext` throw the new `NoBrowserError`, which names the member. A script that fetches over HTTP therefore runs without Puppeteer or a Chromium. `CONTRACT_RUN.md` § Runs Without a Browser states the rules.
+- **A deadline declared per run**: `quarry run --max-duration` and `RunConfig.MaxDuration` bound a run. At `started_at` plus the max duration the runtime stops the executor, flushes the policy, and ends the run with the new outcome `deadline_exceeded` and exit code 5, which `CONTRACT_INTEGRATION.md` maps as retryable. The start record states `deadline_at`, `list runs` reports it, and `quarry prune` dates an unterminated run from it. The max duration has no default, and in a fan-out each child run declares it from its own start. `CONTRACT_RUN.md` § Run Deadline states the rules.
 - **A bound of the caller's choosing on a listing's read**: `quarry list runs`, `list events` and `list artifacts` take `--read-timeout`, the bound on the whole read of storage. Its default is the five minutes of earlier releases. The strict policy writes each event as its own segment, so a listing makes two requests per event. A run of some hundreds of events on a remote store did not finish within five minutes. `CONTRACT_CLI.md` § `list runs` states the flag.
+
+### Fixed
+
+- **A retried S3 write that already landed no longer fails a run**: Quarry now requires Lode v0.17.1. When a transport retry met the object that its own first attempt stored, Lode refused the write as another writer's with `ErrPathExists`, and a strict run failed with "path already exists". Lode now compares the stored object with the bytes sent and treats a match as success.
+- **A stalled S3 request no longer holds a run**: the S3 client set no bound on a request's progress. A store that accepted a write and never answered held a run until the connection failed. A run on Cloudflare R2 stalled 96 minutes this way. Each read or write on a store connection must now progress within 60 seconds by default, or the attempt fails and the SDK sends it again. `--storage-attempt-timeout` sets the bound for `run` and every command that reads storage. `storage.attempt_timeout` configures it for `run` through `--config`.
+- **A browser server that closes before its reply counts as gone on Darwin**: when a reusable browser server closed a lease connection before the run wrote its request, Darwin could refuse the write with `ENOTCONN`. The runtime then reported a failed lease, not a missing server. It now treats `ENOTCONN` as it treats `EPIPE` and `ECONNRESET`, so the run starts a new server.
+
+### Upgrade Notes
+
+- **Exit codes**: a caller that retries a run by its exit code also retries on exit code 4, which `CONTRACT_CLI.md` § Exit Codes defines.
 
 ---
 
@@ -767,7 +792,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/pithecene/quarry/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/pithecene/quarry/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/pithecene/quarry/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/pithecene/quarry/compare/v0.15.0...v0.16.0

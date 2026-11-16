@@ -77,7 +77,10 @@ type Run struct {
 	Day         string  `json:"day" yaml:"day"`
 	Partition   string  `json:"partition" yaml:"partition"`
 	// StartedAt is null for a run whose records were backfilled.
-	StartedAt  *string `json:"started_at" yaml:"started_at"`
+	StartedAt *string `json:"started_at" yaml:"started_at"`
+	// DeadlineAt is the instant the run's max duration ends, omitted when the
+	// run declares none.
+	DeadlineAt *string `json:"deadline_at,omitempty" yaml:"deadline_at,omitempty"`
 	State      State   `json:"state" yaml:"state"`
 	Backfilled bool    `json:"backfilled" yaml:"backfilled"`
 	// The fields below come from the end record and are null for an
@@ -286,7 +289,7 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 	run := Run{
 		RunID: start.RunID, JobID: start.JobID, ParentRunID: start.ParentRunID, Attempt: start.Attempt,
 		Dataset: start.Dataset, Source: start.Source, Category: start.Category, Day: start.Day,
-		Partition: start.Partition, StartedAt: start.StartedAt, State: StateUnterminated, Backfilled: start.Backfilled,
+		Partition: start.Partition, StartedAt: start.StartedAt, DeadlineAt: start.DeadlineAt, State: StateUnterminated, Backfilled: start.Backfilled,
 	}
 
 	endKey := strings.TrimSuffix(startKey, qlode.StartRecordName) + qlode.EndRecordName

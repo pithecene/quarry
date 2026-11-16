@@ -59,7 +59,7 @@ func (f *artifactFixture) readBack(artifactID string) (reader.Artifact, []byte) 
 	f.t.Helper()
 	ctx := f.t.Context()
 	day, _ := time.Parse(time.DateOnly, artifactTestDay)
-	if err := f.client.WriteStartRecord(ctx, &types.RunMeta{RunID: f.cfg.RunID, Attempt: 1}, day.Add(time.Hour)); err != nil {
+	if err := f.client.WriteStartRecord(ctx, &types.RunMeta{RunID: f.cfg.RunID, Attempt: 1}, day.Add(time.Hour), nil); err != nil {
 		f.t.Fatalf("start record: %v", err)
 	}
 	r, err := reader.New(f.cfg.Dataset, f.factory)

@@ -135,10 +135,13 @@ func exchange(conn net.Conn, proxyHash string) (browserLease, error) {
 
 // classifyExchangeError reports a connection closed without a reply as
 // errNoServer: a server closes its listener, resetting connections still
-// waiting to be accepted, only as it shuts down. A timeout or any other
-// error leaves the server's state unknown.
+// waiting to be accepted, only as it shuts down. On Darwin, a write to a
+// Unix socket whose peer has already closed can fail with ENOTCONN rather
+// than EPIPE, so that error means the same. A timeout or any other error
+// leaves the server's state unknown.
 func classifyExchangeError(step string, err error) error {
-	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) {
+	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ENOTCONN) {
 		return fmt.Errorf("%w: %s: %w", errNoServer, step, err)
 	}
 	if isTimeout(err) {

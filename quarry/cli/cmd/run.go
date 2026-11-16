@@ -38,6 +38,8 @@ const (
 	exitScriptError   = 1
 	exitExecutorCrash = 2
 	exitPolicyFailure = 3
+	exitStorageError  = 4
+	exitDeadline      = 5
 )
 
 // exitConfigError is used for CLI/input validation failures.
@@ -131,6 +133,10 @@ ADVANCED:
 				Name:    "browser-ws-endpoint",
 				Usage:   "WebSocket URL of an externally managed browser (connect instead of launch)",
 				EnvVars: []string{"QUARRY_BROWSER_ENDPOINT"},
+			},
+			&cli.BoolFlag{
+				Name:  "no-browser",
+				Usage: "Run without a browser: the executor launches none, and ctx.page, ctx.browser and ctx.browserContext throw NoBrowserError",
 			},
 			&cli.BoolFlag{
 				Name:  "quiet",
@@ -231,6 +237,10 @@ ADVANCED:
 				Name:  "storage-s3-path-style",
 				Usage: "Force path-style addressing for S3 (required by many S3-compatible providers)",
 			},
+			&cli.DurationFlag{
+				Name:  "storage-attempt-timeout",
+				Usage: "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+			},
 			// Browser reuse flags
 			&cli.BoolFlag{
 				Name:  "no-browser-reuse",
@@ -240,6 +250,11 @@ ADVANCED:
 			&cli.StringFlag{
 				Name:  "resolve-from",
 				Usage: "Path to node_modules directory for bare-specifier ESM resolution fallback (monorepo/container support)",
+			},
+			// Deadline flag
+			&cli.DurationFlag{
+				Name:  "max-duration",
+				Usage: "Stop the run and end it as deadline_exceeded once it has run this long (0 = no deadline)",
 			},
 			// Fan-out flags
 			&cli.IntFlag{
@@ -358,6 +373,9 @@ type storageChoice struct {
 	region       string // AWS region for S3 (optional)
 	endpoint     string // custom S3 endpoint for S3-compatible providers (optional)
 	usePathStyle bool   // force path-style addressing for S3 (optional)
+	// The longest stall of an S3 request before its attempt fails. Zero
+	// means the default.
+	attemptTimeout time.Duration
 }
 
 // adapterChoice holds parsed adapter configuration.
@@ -417,8 +435,12 @@ type childFactory struct {
 	category          string
 	proxy             *types.ProxyEndpoint
 	browserWSEndpoint string
+	noBrowser         bool
 	resolveFrom       string
 	eventSinks        []eventSinkChoice
+	// The max duration bounds each child run from its own start, as
+	// --max-duration bounds the root run.
+	maxDuration time.Duration
 }
 
 // Run constructs and executes a single child run for the fan-out operator.
@@ -471,6 +493,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		ArtifactStore:     artifactStoreOf(childLodeClient),
 		EnqueueObserver:   observer,
 		BrowserWSEndpoint: cf.browserWSEndpoint,
+		NoBrowser:         cf.noBrowser,
 		ResolveFrom:       cf.resolveFrom,
 		Source:            childSource,
 		Category:          childCategory,
@@ -479,6 +502,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		Collector:         childCollector,
 		Storage:           childLodeClient,
 		StartedAt:         childStartTime,
+		MaxDuration:       cf.maxDuration,
 	}
 
 	orchestrator, err := runtime.NewRunOrchestrator(config)
@@ -581,6 +605,10 @@ func runAction(c *cli.Context) error {
 	category := resolveString(c, "category", configVal(cfg, func(c *quarryconfig.Config) string { return c.Category }))
 	executor := resolveString(c, "executor", configVal(cfg, func(c *quarryconfig.Config) string { return c.Executor }))
 	browserWSEndpoint := resolveString(c, "browser-ws-endpoint", configVal(cfg, func(c *quarryconfig.Config) string { return c.BrowserWSEndpoint }))
+	noBrowser := c.Bool("no-browser")
+	if noBrowser && browserWSEndpoint != "" {
+		return cli.Exit("--no-browser cannot be combined with --browser-ws-endpoint", exitConfigError)
+	}
 	resolveFrom := resolveString(c, "resolve-from", configVal(cfg, func(c *quarryconfig.Config) string { return c.ResolveFrom }))
 
 	dryRun := c.Bool("dry-run")
@@ -670,6 +698,11 @@ func runAction(c *cli.Context) error {
 		endpoint:     resolveString(c, "storage-endpoint", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Endpoint })),
 		usePathStyle: resolveBool(c, "storage-s3-path-style", configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.Storage.S3PathStyle })),
 	}
+	var configAttemptTimeout time.Duration
+	if cfg != nil {
+		configAttemptTimeout = cfg.Storage.AttemptTimeout.Duration
+	}
+	storageConfig.attemptTimeout = resolveDuration(c, "storage-attempt-timeout", configAttemptTimeout)
 	if err := validateStorageConfig(storageConfig); err != nil {
 		return cli.Exit(err.Error(), exitConfigError)
 	}
@@ -788,7 +821,7 @@ func runAction(c *cli.Context) error {
 	// Resolve browser reuse:
 	// Priority: explicit --browser-ws-endpoint > browser reuse > per-run launch
 	noBrowserReuse := resolveBool(c, "no-browser-reuse", configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.NoBrowserReuse }))
-	if browserWSEndpoint == "" && !noBrowserReuse {
+	if browserWSEndpoint == "" && !noBrowserReuse && !noBrowser {
 		idleTimeout := runtime.IdleTimeoutFromEnv()
 		reuseCfg := runtime.ReusableBrowserConfig{
 			ExecutorPath: executorPath,
@@ -828,6 +861,7 @@ func runAction(c *cli.Context) error {
 		FileWriter:        fileWriter,
 		ArtifactStore:     artifactStoreOf(lodeClient),
 		BrowserWSEndpoint: browserWSEndpoint,
+		NoBrowser:         noBrowser,
 		ResolveFrom:       resolveFrom,
 		Source:            source,
 		Category:          category,
@@ -836,13 +870,14 @@ func runAction(c *cli.Context) error {
 		Collector:         collector,
 		Storage:           lodeClient,
 		StartedAt:         startTime,
+		MaxDuration:       c.Duration("max-duration"),
 	}
 
 	// Branch: fan-out or single run
 	if fanOut.depth > 0 {
 		// Use reusable browser if already acquired; otherwise launch a managed
 		// browser for fan-out to avoid N cold startups (one per child run).
-		if browserWSEndpoint == "" {
+		if browserWSEndpoint == "" && !noBrowser {
 			managedBrowser, err := runtime.LaunchManagedBrowser(ctx, executorPath, c.String("script"))
 			if err != nil {
 				return cli.Exit(fmt.Sprintf("failed to launch shared browser: %v", err), exitExecutorCrash)
@@ -853,6 +888,7 @@ func runAction(c *cli.Context) error {
 		}
 
 		factory := &childFactory{
+			maxDuration:       rootConfig.MaxDuration,
 			policyChoice:      choice,
 			executorPath:      executorPath,
 			storage:           storageConfig,
@@ -861,6 +897,7 @@ func runAction(c *cli.Context) error {
 			category:          category,
 			proxy:             resolvedProxy,
 			browserWSEndpoint: browserWSEndpoint,
+			noBrowser:         noBrowser,
 			resolveFrom:       resolveFrom,
 			eventSinks:        eventSinks,
 		}
@@ -1478,7 +1515,8 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 			Prefix:       prefix,
 			Region:       storageConfig.region,
 			Endpoint:     storageConfig.endpoint,
-			UsePathStyle: storageConfig.usePathStyle,
+			UsePathStyle:   storageConfig.usePathStyle,
+			AttemptTimeout: storageConfig.attemptTimeout,
 		}
 		lc, err = lode.NewLodeS3Client(ctx, cfg, s3cfg)
 		if err != nil {
@@ -1800,6 +1838,10 @@ func outcomeToExitCode(status types.OutcomeStatus) int {
 		return exitPolicyFailure
 	case types.OutcomeVersionMismatch:
 		return exitPolicyFailure // non-retryable configuration error, same as policy_failure
+	case types.OutcomeStorageError:
+		return exitStorageError
+	case types.OutcomeDeadlineExceeded:
+		return exitDeadline
 	default:
 		return exitScriptError
 	}

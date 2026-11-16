@@ -1,5 +1,5 @@
 {
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "CLI flag/config parity artifact. Machine-checkable source of truth for CLI flags.",
   "commands": {
     "run": {
@@ -61,6 +61,12 @@
           "description": "WebSocket URL of an externally managed browser (connect instead of launch)",
           "envVar": "QUARRY_BROWSER_ENDPOINT",
           "notes": "When set, executor connects via puppeteer.connect() instead of launching a new browser. Proxy launch args are ignored; page.authenticate() still applies. A pre-run health check verifies the endpoint is reachable."
+        },
+        "no-browser": {
+          "type": "bool",
+          "required": false,
+          "description": "Run without a browser: the executor launches none, and ctx.page, ctx.browser and ctx.browserContext throw NoBrowserError",
+          "notes": "The executor never loads Puppeteer, and the CLI acquires no reusable browser server. Conflicts with --browser-ws-endpoint."
         },
         "quiet": {
           "type": "bool",
@@ -185,6 +191,12 @@
           "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
           "dependsOn": ["storage-backend=s3"]
         },
+        "storage-attempt-timeout": {
+          "type": "duration",
+          "required": false,
+          "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+          "dependsOn": ["storage-backend=s3"]
+        },
         "adapter": {
           "type": "string",
           "required": false,
@@ -305,6 +317,12 @@
           "default": 1,
           "description": "Maximum concurrent child runs",
           "dependsOn": ["depth>0"]
+        },
+        "max-duration": {
+          "type": "duration",
+          "required": false,
+          "description": "Stop the run and end it as deadline_exceeded once it has run this long (0 = no deadline)",
+          "notes": "Applies to the root run and to each fan-out child from its own start. The start record states deadline_at, and quarry run exits 5."
         },
         "no-browser-reuse": {
           "type": "bool",
@@ -484,6 +502,12 @@
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+              "dependsOn": ["storage-backend=s3"]
+            },
             "run-id": {
               "type": "string",
               "required": false,
@@ -559,6 +583,12 @@
               "type": "bool",
               "required": false,
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -646,6 +676,12 @@
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+              "dependsOn": ["storage-backend=s3"]
+            },
             "source": {
               "type": "string",
               "required": true,
@@ -729,6 +765,12 @@
               "type": "bool",
               "required": false,
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+              "dependsOn": ["storage-backend=s3"]
+            },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
               "dependsOn": ["storage-backend=s3"]
             },
             "source": {
@@ -838,6 +880,12 @@
                 "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
                 "dependsOn": ["storage-backend=s3"]
               },
+              "storage-attempt-timeout": {
+                "type": "duration",
+                "required": false,
+                "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+                "dependsOn": ["storage-backend=s3"]
+              },
               "source": {
                 "type": "string",
                 "required": true,
@@ -925,6 +973,12 @@
               "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
               "dependsOn": ["storage-backend=s3"]
             },
+            "storage-attempt-timeout": {
+              "type": "duration",
+              "required": false,
+              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+              "dependsOn": ["storage-backend=s3"]
+            },
             "format": {
               "type": "string",
               "aliases": ["f"],
@@ -1010,6 +1064,12 @@
           "type": "bool",
           "required": false,
           "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+          "dependsOn": ["storage-backend=s3"]
+        },
+        "storage-attempt-timeout": {
+          "type": "duration",
+          "required": false,
+          "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
           "dependsOn": ["storage-backend=s3"]
         },
         "source": {

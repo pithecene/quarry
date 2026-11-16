@@ -74,7 +74,7 @@ func (f *fixture) write(spec runSpec) qlode.Config {
 		}
 		return cfg
 	}
-	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, day.Add(time.Hour)); err != nil {
+	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: spec.runID, Attempt: 1}, day.Add(time.Hour), nil); err != nil {
 		f.t.Fatalf("start: %v", err)
 	}
 	if err := c.PutFile(ctx, "page.html", "text/html", []byte("<p>")); err != nil {
@@ -556,5 +556,29 @@ func TestSidecarRefPaths(t *testing.T) {
 				t.Fatalf("got %v, %v; want %v, %v", got, ok, tc.want, tc.ok)
 			}
 		})
+	}
+}
+
+// An unterminated run that declares a deadline ages from it, since the
+// runtime may write until then. Its end record, once written, dates it
+// instead.
+func TestAgeSince_Deadline(t *testing.T) {
+	t.Parallel()
+	started := "2026-10-21T08:00:00Z"
+	deadline := "2026-10-21T10:00:00Z"
+	ended := "2026-10-21T09:00:00Z"
+	for _, tc := range []struct {
+		name string
+		run  reader.Run
+		want string
+	}{
+		{"start only", reader.Run{Day: "2026-10-21", StartedAt: &started}, started},
+		{"deadline", reader.Run{Day: "2026-10-21", StartedAt: &started, DeadlineAt: &deadline}, deadline},
+		{"ended", reader.Run{Day: "2026-10-21", StartedAt: &started, DeadlineAt: &deadline, EndedAt: &ended}, ended},
+	} {
+		got, ok := ageSince(tc.run)
+		if !ok || got.Format(time.RFC3339) != tc.want {
+			t.Errorf("%s: ageSince = %v (%v), want %s", tc.name, got, ok, tc.want)
+		}
 	}
 }

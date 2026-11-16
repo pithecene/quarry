@@ -123,7 +123,7 @@ func appendRun(t *testing.T, root string) {
 	if err != nil {
 		t.Fatalf("open a client on the v0.13.7 dataset: %v", err)
 	}
-	if err := c.WriteStartRecord(ctx, &types.RunMeta{Attempt: 1}, started); err != nil {
+	if err := c.WriteStartRecord(ctx, &types.RunMeta{Attempt: 1}, started, nil); err != nil {
 		t.Fatalf("start record: %v", err)
 	}
 	ev := &types.EventEnvelope{

@@ -238,6 +238,11 @@ export type ExecutorConfig<Job = unknown> = {
   readonly adblocker?: boolean
   /** Optional WebSocket URL of an externally managed browser. When set, executor connects instead of launching. */
   readonly browserWSEndpoint?: string
+  /**
+   * The run declares no browser: the executor neither launches nor connects
+   * to one and never loads Puppeteer (CONTRACT_RUN.md §Runs Without a Browser).
+   */
+  readonly noBrowser?: boolean
   /** Optional storage partition metadata for SDK-side key computation. */
   readonly storagePartition?: StoragePartitionMeta
   /** Optional AckReader for file_write_ack correlation on stdin. */
@@ -594,8 +599,11 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
       }
     }
 
-    // 3. Acquire browser (connect to existing or launch new)
-    if (config.browserWSEndpoint) {
+    // 3. Acquire browser (connect to existing or launch new), unless the run
+    // declares none
+    if (config.noBrowser === true) {
+      // No browser: the context's browser members throw NoBrowserError
+    } else if (config.browserWSEndpoint) {
       // Connect mode: use vanilla puppeteer (no stealth/adblocker plugins)
       const puppeteer = await getVanillaPuppeteer(config.scriptPath)
       browser = await puppeteer.connect({ browserWSEndpoint: config.browserWSEndpoint })
@@ -610,11 +618,13 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
       const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy)
       browser = await puppeteer.launch(launchOptions)
     }
-    browserContext = await browser.createBrowserContext()
-    page = await browserContext.newPage()
+    if (browser) {
+      browserContext = await browser.createBrowserContext()
+      page = await browserContext.newPage()
+    }
 
     // Apply proxy authentication if needed (per CONTRACT_PROXY.md)
-    if (config.proxy?.username && config.proxy?.password) {
+    if (page && config.proxy?.username && config.proxy?.password) {
       await page.authenticate({
         username: config.proxy.username,
         password: config.proxy.password
@@ -625,9 +635,10 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
     ctx = createContext<Job>({
       job: effectiveJob,
       run: config.run,
-      page,
-      browser,
-      browserContext,
+      page: page ?? undefined,
+      browser: browser ?? undefined,
+      browserContext: browserContext ?? undefined,
+      noBrowser: config.noBrowser === true,
       sink,
       storagePartition: config.storagePartition
     })

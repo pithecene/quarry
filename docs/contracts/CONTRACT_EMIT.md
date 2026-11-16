@@ -111,6 +111,31 @@ run fails.
 Orphaned bytes (no corresponding artifact event) are removed when the run
 ends, and `quarry prune` removes what the runtime could not.
 
+#### `retainHttpObject`
+
+The SDK function `retainHttpObject(ctx, url, options)` retains an HTTP
+object of any size up to 1 GiB as one artifact, written through
+`emit.artifactWriter`.
+
+1. A HEAD request states the object's length in `Content-Length`.
+2. Contiguous Range requests of at most `chunk_bytes` cover the object in
+   order. `chunk_bytes` defaults to the range frame maximum of 8 MiB and
+   cannot exceed it.
+3. Each answer must be 206, its `Content-Range` must be exactly the range
+   requested, its total must equal the HEAD length, and its body must hold
+   that many bytes. When the HEAD answer carries an ETag, each answer must
+   carry the same one.
+4. Each chunk goes to the writer at its offset, so no more than one chunk
+   sits in memory, and a SHA-256 runs over the whole object.
+5. The first chunk that fails a check stops the transfer with
+   `RetainHttpObjectError`, whose `reasons` name each failed check of that
+   chunk. The helper then commits nothing, so no artifact event names the
+   object.
+
+The helper returns the artifact ID, the length, the digest, the HEAD
+answer, and each chunk's range, status, headers and digest. The script keeps
+its own record of what the transfer means for its source.
+
 ### 3) `checkpoint`
 Represents an explicit script checkpoint.
 

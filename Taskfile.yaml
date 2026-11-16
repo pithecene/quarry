@@ -3,7 +3,7 @@ version: '3'
 vars:
   # The internal check's image, as CI's check job names it.
   BOSUN_IMAGE:
-    sh: grep -m1 -oE 'ghcr.io/pithecene/bosun:[^ "]+' .github/workflows/ci.yml
+    sh: grep -m1 -oE 'ghcr.io/pithecene/bosun:[^ "]+' .github/workflows/check.yaml
   TS_PACKAGES: sdk executor-node
   COMMIT:
     sh: git rev-parse --short HEAD 2>/dev/null || echo unknown

@@ -33,7 +33,7 @@ func writeFSArtifactRun(t *testing.T, root string, data []byte, digest string) {
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
-	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: artifactRunID, Attempt: 1}, time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC)); err != nil {
+	if err := c.WriteStartRecord(ctx, &types.RunMeta{RunID: artifactRunID, Attempt: 1}, time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC), nil); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	w, err := c.OpenArtifact(ctx, "a1", int64(len(data)), "")

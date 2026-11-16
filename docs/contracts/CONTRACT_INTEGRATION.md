@@ -114,7 +114,7 @@ not contribute to the error result.
 ### Failure Behavior
 
 - A `mandatory` sink failure propagates through the ingestion policy. Under
-  `StrictPolicy`, this fails the run with `policy_failure`.
+  `StrictPolicy`, this fails the run with `storage_error`.
 - A `best_effort` sink failure is logged to stderr with the sink label and
   error. The run continues unaffected.
 - Close errors from any sink are collected. Close always attempts all sinks.
@@ -311,9 +311,15 @@ to orchestrator-native error semantics:
 | `executor_crash` | Retryable error |
 | `policy_failure` | Non-retryable error |
 | `version_mismatch` | Non-retryable error |
+| `storage_error` | Retryable error |
+| `deadline_exceeded` | Retryable error |
 
 The outcomes `policy_failure` and `version_mismatch` are non-retryable because they
 indicate systemic configuration problems that retries cannot resolve.
+The outcome `storage_error` is retryable because a sink's timeout or refusal is
+often transient, and a retry run writes under a new `run_id`.
+The outcome `deadline_exceeded` is retryable for the same reason: a run often
+outlives its deadline because a store or a source stalled.
 
 ### Lineage Preservation
 

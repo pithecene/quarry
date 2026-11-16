@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/alicebob/miniredis/v2 v2.36.1
+	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3
 	github.com/charmbracelet/bubbles v0.21.1
@@ -11,7 +12,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20
-	github.com/pithecene/lode v0.17.0
+	github.com/pithecene/lode v0.17.1
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -21,7 +22,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect

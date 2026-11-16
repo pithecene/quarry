@@ -251,6 +251,7 @@ CI/CD workflows.
 ### .github/workflows/
 
 - `workflows/ci.yml` — continuous integration
+- `workflows/check.yaml` — the internal check on the repository and on each pull request's title and body
 - `workflows/nightly.yml` — nightly checks
 - `workflows/release.yml` — release automation
 - `workflows/release-dry-run.yml` — release dry-run validation
