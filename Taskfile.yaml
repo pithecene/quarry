@@ -54,6 +54,8 @@ tasks:
       - test -f examples/toy-pagination/script.ts
       - test -f examples/artifact-snapshot/script.ts
       - test -f examples/intentional-failure/script.ts
+      - test -f examples/harbor-notices/listing.ts
+      - test -f examples/harbor-notices/notice.ts
       - test -f examples/manifest.json
 
   typecheck:

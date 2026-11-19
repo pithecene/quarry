@@ -1,9 +1,18 @@
 {
   "name": "@pithecene/quarry-sdk",
   "version": "0.18.0",
+  "description": "TypeScript SDK for authoring Quarry web extraction scripts and reading persisted runs.",
+  "keywords": [
+    "quarry",
+    "web-scraping",
+    "data-extraction",
+    "puppeteer",
+    "etl",
+    "s3"
+  ],
   "license": "Apache-2.0",
   "author": "Pithecene <contact@pithecene.sh>",
-  "homepage": "https://github.com/pithecene/quarry#readme",
+  "homepage": "https://pithecene.sh/foundations/quarry",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pithecene/quarry.git",
