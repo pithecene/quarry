@@ -1,10 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import type { QuarryContext } from '@pithecene/quarry-sdk'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 type NoticeJob = {
   file: string
@@ -18,12 +14,14 @@ type Notice = {
   text: string
 }
 
+const fixturesDir = new URL('./fixtures/', import.meta.url)
+
 /**
  * Child script: parses one harbor-notice fixture and emits a typed notice item.
  */
 export default async function run(ctx: QuarryContext): Promise<void> {
-  const job = ctx.job as NoticeJob
-  const html = await readFile(resolve(__dirname, 'fixtures', job.file), 'utf8')
+  const { file } = ctx.job as NoticeJob
+  const html = await readFile(new URL(file, fixturesDir), 'utf8')
   await ctx.page.setContent(html, { waitUntil: 'domcontentloaded' })
 
   const data: Notice = await ctx.page.$eval('article.harbor-notice', (el) => ({
