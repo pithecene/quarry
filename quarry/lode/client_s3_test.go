@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,6 +76,35 @@ func TestNewStoreFactoryS3_ReadHonorsEndpointAndPathStyle(t *testing.T) {
 		if !strings.HasPrefix(path, "/test-bucket") {
 			t.Errorf("request path %q is not path-style (want /test-bucket/...)", path)
 		}
+	}
+}
+
+func TestNewStoreFactoryS3_AcceptsLegacyPrefixes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		prefix string
+		err    error
+	}{
+		{name: "empty"},
+		{name: "bucket root", prefix: "."},
+		{name: "leading slash", prefix: "/data"},
+		{name: "repeated slash", prefix: "data//quarry"},
+		{name: "relative segments", prefix: "data/./old/../quarry/"},
+		{name: "relative escape", prefix: "../data", err: lodelib.ErrInvalidPath},
+		{name: "backslash", prefix: "old\\data/../quarry", err: lodelib.ErrInvalidPath},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, err := NewStoreFactory("s3", "test-bucket/"+tc.prefix, S3Config{Region: "us-east-1"})
+			if err != nil {
+				t.Fatalf("NewStoreFactory: %v", err)
+			}
+			_, err = factory()
+			if !errors.Is(err, tc.err) {
+				t.Errorf("opening a store with prefix %q: got %v, want %v", tc.prefix, err, tc.err)
+			}
+		})
 	}
 }
 
