@@ -126,10 +126,12 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 	}
 
 	s3Client := s3.NewFromConfig(awsConfig, s3ClientOptions(s3cfg)...)
-	return lodes3.Factory(s3Client, lodes3.Config{
-		Bucket: s3cfg.Bucket,
-		Prefix: s3cfg.Prefix,
-	}), nil
+	bucket := lodes3.Bucket(s3Client, s3cfg.Bucket)
+	// lode.Prefixed refuses an empty prefix, which means the bucket's root.
+	if s3cfg.Prefix == "" {
+		return bucket, nil
+	}
+	return lode.Prefixed(bucket, s3cfg.Prefix), nil
 }
 
 // s3ClientOptions applies the endpoint and path-style overrides for

@@ -26,7 +26,7 @@ var ErrMissingArtifactID = errors.New("artifact commit rejected: missing or empt
 // LodeClient is a real Lode-backed implementation of Client.
 // Uses Lode's HiveLayout with partition keys: source/category/day/run_id/event_type.
 type LodeClient struct { //nolint:revive // intentional naming for clarity
-	dataset lode.Records[lode.D]
+	dataset *lode.Records[lode.D]
 	config  Config
 	// store is the dataset's store; sidecar files, run records, and
 	// artifact Volumes are written to it directly, outside the dataset's

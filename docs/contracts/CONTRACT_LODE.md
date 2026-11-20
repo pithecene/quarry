@@ -432,6 +432,12 @@ codec, no compressor, no checksum, and Lode's default path names.
   and extend datasets that Lode v0.12.0 has written, and Lode v0.11.0 also
   expires and sweeps them, so a rollback to an earlier Quarry release needs
   no migration either.
+- Quarry on Lode v0.18 writes manifests in format 1.2.0 and reads the
+  manifests of formats 1.0.0 and 1.1.0 in place, so an upgrade requires no
+  migration. Lode v0.17.1 and earlier reject a format 1.2.0 manifest, so
+  Quarry v0.18.0 and earlier cannot read a snapshot that a later release
+  wrote. A rollback across that boundary must restore the dataset as it was
+  before the upgrade's first write.
 
 ---
 
@@ -504,7 +510,7 @@ re-deriving keys.
 
 Sidecar files written via `storage.put()` land at Hive-partitioned paths
 under `files/`, bypassing the Dataset segment/manifest machinery. These files
-are **not** tracked by Lode's `Manifest.Files`. They are the caller's
+are **not** tracked by Lode's `Manifest.Objects`. They are the caller's
 responsibility.
 
 Quarry tracks sidecar files in Lode snapshot `Metadata` under the

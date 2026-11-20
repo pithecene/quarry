@@ -165,7 +165,7 @@ func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
 	}
 
 	// Fabricate a stale snapshot ID that doesn't exist
-	staleID := lode.DatasetSnapshotID("nonexistent-snapshot-id")
+	staleID := lode.SnapshotID("nonexistent-snapshot-id")
 	_, err = ds.Read(t.Context(), staleID)
 	if err == nil {
 		t.Fatal("expected error for stale snapshot ID, got nil")

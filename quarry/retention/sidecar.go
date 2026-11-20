@@ -85,13 +85,13 @@ func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]stri
 	if err != nil {
 		return nil, qlode.WrapReadError(err, partition)
 	}
-	seen := map[lode.DatasetSnapshotID]bool{}
+	seen := map[lode.SnapshotID]bool{}
 	var out []string
 	for _, part := range parts {
 		// Manifests skips a manifest that expired after the listing.
-		for loaded, err := range p.ds.Manifests(ctx, part.Path, lode.ManifestListOptions{}) {
+		for loaded, err := range p.ds.Manifests(ctx, part, lode.ManifestListOptions{}) {
 			if err != nil {
-				return nil, qlode.WrapReadError(err, part.Path.String())
+				return nil, qlode.WrapReadError(err, part.String())
 			}
 			ref, m := loaded.Ref, loaded.Manifest
 			if seen[ref.ID] {

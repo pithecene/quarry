@@ -9,6 +9,11 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Quarry requires Lode v0.18.1**: Quarry adopts Lode's v1.0 API and reads datasets of formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration. Payloads stay uncompressed and without checksums.
+- **New snapshots use manifest format 1.2.0**: Lode v0.17.1 rejects that format, so Quarry v0.18.0 and earlier cannot read a snapshot that this release wrote. `CONTRACT_LODE.md` § Writer Settings states the rollback rule.
+
 ### Fixed
 
 - **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, the library that `puppeteer-extra-plugin-user-preferences` uses to merge static browser preferences, has no patched release, and Quarry passes it no outside input.

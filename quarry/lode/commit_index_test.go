@@ -206,7 +206,7 @@ func TestCommitIndex_WrittenPerArtifact(t *testing.T) {
 	run.commit(run.storeArtifact("a1", []byte("one"), 1), run.storeArtifact("a2", []byte("two"), 2))
 	run.commit(run.storeArtifact("e1", nil, 3))
 
-	snapshots := map[string]lode.DatasetSnapshotID{}
+	snapshots := map[string]lode.SnapshotID{}
 	for _, id := range []string{"a1", "a2", "e1"} {
 		snap, found, err := qlode.ReadCommitIndex(ctx, run.store, run.cfg, id)
 		if err != nil || !found {
@@ -276,18 +276,18 @@ func TestCommitIndex_ReaderFallsBack(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name  string
-		entry func(run *indexRun, other lode.DatasetSnapshotID) []byte // nil: delete the entry
+		entry func(run *indexRun, other lode.SnapshotID) []byte // nil: delete the entry
 		why   reader.IndexFallback
 	}{
-		{"absent", func(*indexRun, lode.DatasetSnapshotID) []byte { return nil }, reader.FallbackNoEntry},
-		{"not JSON", func(*indexRun, lode.DatasetSnapshotID) []byte { return []byte("{") }, reader.FallbackNoEntry},
-		{"no snapshot", func(*indexRun, lode.DatasetSnapshotID) []byte { return []byte(`{}`) }, reader.FallbackNoEntry},
-		{"oversized", func(*indexRun, lode.DatasetSnapshotID) []byte { return bytes.Repeat([]byte(" "), 8<<10) }, reader.FallbackNoEntry},
-		{"a snapshot that is gone", func(*indexRun, lode.DatasetSnapshotID) []byte {
+		{"absent", func(*indexRun, lode.SnapshotID) []byte { return nil }, reader.FallbackNoEntry},
+		{"not JSON", func(*indexRun, lode.SnapshotID) []byte { return []byte("{") }, reader.FallbackNoEntry},
+		{"no snapshot", func(*indexRun, lode.SnapshotID) []byte { return []byte(`{}`) }, reader.FallbackNoEntry},
+		{"oversized", func(*indexRun, lode.SnapshotID) []byte { return bytes.Repeat([]byte(" "), 8<<10) }, reader.FallbackNoEntry},
+		{"a snapshot that is gone", func(*indexRun, lode.SnapshotID) []byte {
 			return []byte(`{"snapshot_id":"20260101T000000.000000000Z-0000000000000000"}`)
 		}, reader.FallbackSnapshotGone},
-		{"a path, not a snapshot", func(*indexRun, lode.DatasetSnapshotID) []byte { return []byte(`{"snapshot_id":"../x"}`) }, reader.FallbackSnapshotGone},
-		{"another artifact's snapshot", func(_ *indexRun, other lode.DatasetSnapshotID) []byte {
+		{"a path, not a snapshot", func(*indexRun, lode.SnapshotID) []byte { return []byte(`{"snapshot_id":"../x"}`) }, reader.FallbackSnapshotGone},
+		{"another artifact's snapshot", func(_ *indexRun, other lode.SnapshotID) []byte {
 			return []byte(`{"snapshot_id":"` + string(other) + `"}`)
 		}, reader.FallbackNoRecord},
 	}
@@ -318,16 +318,18 @@ func TestCommitIndex_ReaderFallsBack(t *testing.T) {
 	}
 }
 
-// Opening an artifact through its entry makes five store requests: the
-// entry; the canonical manifest of the entry's snapshot, which a view that
-// expects the Hive layout reads under the segments directory alone; that
-// manifest again, which the view's Snapshot reads because the view keeps no
-// snapshot; the commit record's data object; and the Volume snapshot's
-// manifest, which the snapshot reader loads once for the coverage check and
-// every range read.
-func TestCommitIndex_OpenThroughTheEntryCostsFiveRequests(t *testing.T) {
+// Opening an artifact through its entry makes seven store requests: the
+// entry; the dataset's latest pointer, which opening the anchored view reads
+// for Lode's removal fence; the canonical manifest of the entry's snapshot,
+// which a view that expects the Hive layout reads under the segments
+// directory alone; the latest pointer again and an existence check of that
+// manifest, which the view's Snapshot makes before it reuses the manifest
+// that opening loaded; the commit record's data object; and the Volume
+// snapshot's manifest, which the snapshot reader loads once for the coverage
+// check and every range read.
+func TestCommitIndex_OpenThroughTheEntryCostsSevenRequests(t *testing.T) {
 	t.Parallel()
-	const want = 5
+	const want = 7
 	run := newIndexRun(t, &countingStore{RangeStore: lode.NewMemory()}, "r1")
 	run.writeArtifacts(3)
 	if got := run.openCost("a0001"); got != want {
@@ -581,7 +583,7 @@ func TestCommitIndex_ExpiredSnapshotFallsBack(t *testing.T) {
 	if len(residual) == 0 {
 		t.Fatal("the snapshot has no partition objects to leave behind")
 	}
-	if _, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.DatasetSnapshotID{expired}}); err != nil {
+	if _, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.SnapshotID{expired}}); err != nil {
 		t.Fatalf("Expire: %v", err)
 	}
 	for k, b := range residual {
