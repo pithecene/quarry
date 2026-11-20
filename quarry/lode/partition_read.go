@@ -46,8 +46,8 @@ func OpenView(ctx context.Context, dataset string, store lode.ObjectStore) (*lod
 // view expects the Hive layout, so opening reads the snapshot's canonical
 // manifest with one store request after Lode's removal fence check. The
 // view's Snapshot of that ID reuses that manifest after it checks the fence
-// and the manifest's existence again. It returns lode.ErrNotFound when the snapshot does
-// not exist, lode.ErrSnapshotExpired when retention expired it,
+// and the manifest's existence again. It returns lode.ErrNotFound when the
+// snapshot does not exist, lode.ErrSnapshotExpired when retention expired it,
 // lode.ErrInvalidArgument when the ID is not one path segment, and
 // lode.ErrSettingsMismatch when the snapshot records another layout.
 func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, snapshot lode.SnapshotID) (*lode.RecordView[lode.D], error) {
