@@ -1,14 +1,20 @@
 # @pithecene/quarry-sdk
 
-TypeScript SDK for writing Quarry extraction scripts.
+TypeScript SDK for authoring [Quarry](https://pithecene.sh/foundations/quarry) extraction scripts and reading persisted runs. Scripts written against this SDK run under the `quarry` CLI runtime, which must match the SDK version in lockstep; see the [Quick Start](https://pithecene.sh/docs/quarry/quick-start) and [`PUBLIC_API.md`](../PUBLIC_API.md) for CLI installation (`mise` or container images) and `quarry init` project scaffolding.
 
 ## Installation
 
-```bash
-# via JSR (recommended)
-npx jsr add @pithecene/quarry-sdk
+Install from [JSR](https://jsr.io/@pithecene/quarry-sdk) (recommended, no registry credentials required):
 
-# via GitHub Packages
+```bash
+npx jsr add @pithecene/quarry-sdk
+```
+
+To install from GitHub Packages instead, configure `.npmrc` with `@pithecene:registry=https://npm.pkg.github.com` and a GitHub token carrying `read:packages` as shown in [`PUBLIC_API.md` § SDK](https://github.com/pithecene/quarry/blob/main/PUBLIC_API.md#sdk):
+
+```bash
+echo "@pithecene:registry=https://npm.pkg.github.com" >> .npmrc
+echo '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}' >> .npmrc
 pnpm add @pithecene/quarry-sdk
 ```
 

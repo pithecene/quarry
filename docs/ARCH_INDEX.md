@@ -133,6 +133,7 @@ Example usage and integration references. Non-normative.
 - `artifact-snapshot/` — artifact snapshot capture example
 - `intentional-failure/` — deliberate failure mode demonstration
 - `fan-out-chain/` — fan-out execution chain example
+- `harbor-notices/` — harbor-notice fan-out adaptation example
 - `integration-patterns/` — downstream integration pattern examples
 - `hooks-prepare/` — prepare-phase hook example
 - `hooks-before-terminal/` — before-terminal hook example

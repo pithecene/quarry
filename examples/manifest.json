@@ -80,6 +80,23 @@
       }
     },
     {
+      "name": "harbor-notices",
+      "script": "harbor-notices/listing.ts",
+      "description": "Harbor-notice fan-out adaptation (index → notice items)",
+      "fan_out": {
+        "depth": 1,
+        "max_runs": 10,
+        "parallel": 3
+      },
+      "expected": {
+        "events": {
+          "enqueue": 3,
+          "item": 3
+        },
+        "terminal": "run_complete"
+      }
+    },
+    {
       "name": "hooks-prepare",
       "script": "hooks-prepare/script.ts",
       "description": "Prepare hook: skip stale jobs before browser launch",

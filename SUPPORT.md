@@ -36,9 +36,11 @@ to avoid it.
 | Component | Support Level |
 |-----------|---------------|
 | `quarry run` command | Supported |
+| `quarry list` (`runs`, `events`, `artifacts`) | Supported |
+| `quarry read artifact` (whole or range) | Supported (artifact byte storage/transport remains experimental; see `PUBLIC_API.md` § Experimental Surface) |
 | `quarry inspect` command | Supported |
 | `quarry stats` command | Supported |
-| Node.js executor | Supported |
+| Node.js executor (browser and `--no-browser`) | Supported |
 | Filesystem storage backend | Supported |
 | S3 storage backend | Supported |
 | SDK emit API | Supported |
@@ -63,8 +65,8 @@ to avoid it.
 | Runtime | Version | Notes |
 |---------|---------|-------|
 | Go | 1.27.3 | Exact version |
-| Node.js | 23+ | Native TS support |
-| Node.js | 22.6+ | Requires `--experimental-strip-types`; puppeteer 25 requires 22.12+ (stay on puppeteer 24 below that) |
+| Node.js | 22.18+, 23.6+ | Native TypeScript type stripping enabled by default |
+| Node.js | 22.6–22.17, 23.0–23.5 | Requires `NODE_OPTIONS=--experimental-strip-types`; puppeteer 25 requires 22.12+ (stay on puppeteer 24 on 22.6–22.11) |
 
 ### Required Tooling
 
@@ -80,8 +82,7 @@ to avoid it.
 
 - **Job scheduling**: Quarry is an execution runtime, not a scheduler
 - **Automatic retries**: Retry logic is the caller's responsibility
-- **Streaming reads**: Artifacts must fit in memory
-- **Headless-only mode**: Scripts require Puppeteer (browser context)
+- **SDK artifact-byte helpers**: Artifact reads go through the CLI (`quarry list artifacts` and `quarry read artifact`, whole or by range); the artifact byte path remains experimental (`PUBLIC_API.md` § Experimental Surface)
 - **Alternative executors**: Only Node.js executor is supported
 
 ### Experimental Features

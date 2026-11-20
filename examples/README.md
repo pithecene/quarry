@@ -33,6 +33,11 @@ Tests the error path by throwing after one item:
 Demonstrates fan-out derived work execution (list → detail):
 - [`examples/fan-out-chain/`](fan-out-chain/)
 
+## harbor-notices
+
+Harbor-notice fan-out adaptation behind the run inspector on `pithecene.sh`:
+- [`examples/harbor-notices/`](harbor-notices/)
+
 ## integration-patterns
 
 Conceptual examples for downstream event-bus and polling integration:

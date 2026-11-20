@@ -647,6 +647,8 @@ All examples use local fixtures (no external network calls).
 | [`examples/toy-pagination/`](examples/toy-pagination/) | Multi-page pagination | 6 items |
 | [`examples/artifact-snapshot/`](examples/artifact-snapshot/) | Screenshot artifact | 1 artifact |
 | [`examples/intentional-failure/`](examples/intentional-failure/) | Error handling test | 1 item + error |
+| [`examples/fan-out-chain/`](examples/fan-out-chain/) | Fan-out derived work (listing → detail) | 3 enqueue + 3 items |
+| [`examples/harbor-notices/`](examples/harbor-notices/) | Harbor-notice fan-out adaptation | 3 enqueue + 3 items |
 | [`examples/hooks-prepare/`](examples/hooks-prepare/) | Job filtering with `prepare` | skipped or 1 item |
 | [`examples/hooks-before-terminal/`](examples/hooks-before-terminal/) | Summary emission via `beforeTerminal` | items + summary |
 
