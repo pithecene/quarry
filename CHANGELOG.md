@@ -11,13 +11,13 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **New datasets use zstd and SHA-256**: Quarry creates a dataset without snapshots with zstd compression and a SHA-256 digest of each data object. A read verifies the digest and fails with `ErrChecksumMismatch` when the stored bytes differ. An existing dataset keeps the compressor and checksum that its head records, so an upgrade changes no existing dataset. `CONTRACT_LODE.md` § Writer Settings states the rules.
+- **New datasets use zstd and SHA-256**: Quarry creates a dataset without snapshots with zstd compression and a SHA-256 digest of each data object. A read verifies the digest and fails with `ErrChecksumMismatch` when the stored bytes differ. An existing dataset keeps the compressor and checksum that its head records, published or staged by an interrupted first commit, so an upgrade changes no existing dataset. `qlode.OpenDataset` refuses a layout, compressor, or checksum option with `ErrInvalidArgument`. `CONTRACT_LODE.md` § Writer Settings states the rules.
 
 ### Changed
 
 - **Quarry adopts Lode's v1.0 API**.
 
-  Quarry requires Lode v0.18.2. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration.
+  Quarry requires Lode at commit c3b93ed, ahead of v0.18.3, for `WithRecordedComponents`. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration.
 - **New dataset snapshots use manifest format 1.2.0**.
 
   Lode v0.17.1 rejects this format. To roll back to Quarry v0.18.0 or earlier after the first format 1.2.0 write, restore the dataset to its state before that write.
