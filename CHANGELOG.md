@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **New datasets use zstd and SHA-256**: Quarry creates a dataset without snapshots with zstd compression and a SHA-256 digest of each data object. A read verifies the digest and fails with `ErrChecksumMismatch` when the stored bytes differ. An existing dataset keeps the compressor and checksum that its head records, published or staged by an interrupted first commit, so an upgrade changes no existing dataset. `qlode.OpenDataset` refuses a layout, compressor, or checksum option with `ErrInvalidArgument`. `CONTRACT_LODE.md` § Writer Settings states the rules.
+- **New datasets use zstd and SHA-256**: Quarry creates a dataset without a head with zstd compression and a SHA-256 digest of each data object. A read verifies the digest and fails with `ErrChecksumMismatch` when the stored bytes differ. An existing dataset keeps the compressor and checksum that its head records, published or staged by an interrupted first commit, so an upgrade changes no existing dataset. `qlode.OpenDataset` refuses a layout, compressor, or checksum option with `ErrInvalidArgument`. `CONTRACT_LODE.md` § Writer Settings states the rules.
 
 ### Changed
 

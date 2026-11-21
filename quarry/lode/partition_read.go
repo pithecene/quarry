@@ -25,12 +25,11 @@ func layout() lode.ComponentOption { return lode.WithLayout(lode.Hive(partitionK
 
 // OpenDataset opens the dataset over store for writing with the settings
 // every Quarry writer shares (CONTRACT_LODE.md §Writer Settings): the Hive
-// layout, the JSONL codec, bounded commit retry, and the head's compressor
-// and checksum, or zstd and SHA-256 for a dataset without snapshots.
-// Before the first snapshot, Quarry's layout, compressor, and checksum
-// take precedence over caller options. For an existing dataset, Lode
-// rejects settings that differ from the head with lode.ErrSettingsMismatch,
-// and the writer uses the bundled implementations named by the head.
+// layout, the JSONL codec, bounded commit retry, and the compressor and
+// checksum that the head records, published or staged, or zstd and SHA-256
+// for a dataset without a head. A layout, compressor, or checksum option fails
+// with lode.ErrInvalidArgument, and a head that records a component Lode does
+// not bundle fails with lode.ErrSettingsMismatch.
 // Opening reads the head and writes nothing.
 func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (*lode.Records[lode.D], error) {
 	settings, err := writerOptions(ctx, dataset, opts)
