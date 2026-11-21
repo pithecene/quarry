@@ -624,7 +624,6 @@ quarry run --dry-run --script ./my-script.ts --run-id test --source test \
 ```bash
 quarry inspect run --storage-backend <fs|s3> --storage-path <path> \
   --source <source> --category <category> --day <YYYY-MM-DD> <run-id>
-quarry inspect proxy <pool>     # Inspect a proxy pool
 ```
 
 `inspect run` requires the same selectors as `list events` to address the
@@ -635,9 +634,7 @@ that stays in sync with the run records.
 ### Stats Command
 
 ```bash
-quarry stats runs               # Run statistics
-quarry stats proxies            # Proxy statistics
-quarry stats metrics            # Contract metrics (reads storage with --storage-backend and --storage-path)
+quarry stats metrics --storage-backend fs --storage-path ./quarry-data
 ```
 
 ---
@@ -860,7 +857,7 @@ experimental.
 7. **Adapters and sinks**: Quarry provides a webhook adapter, a Redis Pub/Sub adapter, and a Redis Streams event sink. It has no orchestration host. A Temporal activity can call the Quarry runtime directly, as the [Temporal guide](docs/guides/temporal.md) describes. See the [integration guide](docs/guides/integration.md).
 8. **Fan-out partition defaults**: Child runs inherit the root run's `--source` and `--category` unless overridden via `emit.enqueue({ source, category })`. Overrides apply to individual child runs only and do not propagate to grandchildren.
 9. **Fan-out target resolution**: `target` in `emit.enqueue()` is resolved as a file path relative to CWD (same as `--script`). Target resolution semantics may change in a future release. Config-based logical names are under consideration.
-10. **Stored-data reads**: `quarry list events`, `quarry list artifacts`, `quarry read artifact`, and `quarry inspect run` require `--storage-backend` and `--storage-path`. `quarry list runs` and `quarry stats metrics` read storage with both flags and return stub data when storage flags are omitted. `quarry list pools`, `quarry inspect proxy`, `quarry stats runs`, and `quarry stats proxies` return stub data. The SDK's `listRuns` and `readRun` call the `quarry` CLI, so the CLI must be installed (§ Reading Runs).
+10. **Stored-data reads**: `quarry list runs`, `quarry list events`, `quarry list artifacts`, `quarry read artifact`, `quarry inspect run`, and `quarry stats metrics` read storage and require `--storage-backend` and `--storage-path`. The SDK's `listRuns` and `readRun` call the `quarry` CLI, so the CLI must be installed (§ Reading Runs).
 11. **Runs written before v0.14.0**: These runs have no run records until `quarry index rebuild` backfills them. A backfilled run has no start time or recorded outcome, and its state follows its terminal event.
 
 ---

@@ -206,11 +206,10 @@ Go module root. Contains runtime, CLI, and core types.
 
 ### quarry/cli/
 
-- `cli/cmd/` — CLI command implementations and shared flags (run, inspect, stats, list, debug, version)
+- `cli/cmd/` — CLI command implementations and shared flags (run, init, inspect, stats, list, read, index, prune, debug, version)
 - `cli/config/` — YAML config file parsing with duration handling and proxy pool definitions
-- `cli/reader/` — read-side data access layer abstraction with dependency injection
+- `cli/reader/` — response types of the read commands and metrics record parsing
 - `cli/render/` — output renderer: JSON, YAML, and table formats with TTY detection
-- `cli/tui/` — terminal UI dispatcher for inspect and stats commands (Bubble Tea)
 
 ### quarry/cmd/quarry/
 

@@ -47,12 +47,8 @@ func pruneAction(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	ok, err := storageRequested(c)
-	if err != nil {
-		return cli.Exit(err.Error(), 1)
-	}
-	if !ok {
-		return cli.Exit("prune writes storage: --storage-backend and --storage-path are required", 1)
+	if err := requireStorage(c, "prune", writesStorage); err != nil {
+		return err
 	}
 	if err := rejectEmptySelectors(c); err != nil {
 		return cli.Exit(err.Error(), 1)

@@ -8,7 +8,6 @@
 //
 // Color handling:
 //   - --no-color affects table output only
-//   - TUI mode is unaffected by --no-color (uses its own styling)
 package render
 
 import (
@@ -24,7 +23,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/pithecene/quarry/cli/reader"
-	"github.com/pithecene/quarry/cli/tui"
 	"github.com/pithecene/quarry/iox"
 )
 
@@ -112,18 +110,6 @@ func (r *Renderer) Render(data any) error {
 	default:
 		return fmt.Errorf("unknown format: %s", r.format)
 	}
-}
-
-// RenderTUI initiates TUI mode for the given view type.
-// Per CONTRACT_CLI.md, TUI is opt-in only and read-only only.
-func (r *Renderer) RenderTUI(viewType string, data any) error {
-	// Validate TUI is supported for this view type
-	if !tui.IsTUISupported(viewType) {
-		return fmt.Errorf("--tui is not supported for %s", viewType)
-	}
-
-	// Run the TUI
-	return tui.Run(viewType, data)
 }
 
 func (r *Renderer) renderJSON(data any) error {

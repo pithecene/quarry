@@ -234,258 +234,6 @@ func TestCLIParityRunCommand(t *testing.T) {
 	}
 }
 
-// TestCLIParityListCommand validates the list command flags against the parity artifact.
-func TestCLIParityListCommand(t *testing.T) {
-	t.Parallel()
-
-	artifact := loadParityArtifact(t)
-	listCmd := ListCommand()
-
-	parityList, ok := artifact.Commands["list"]
-	if !ok {
-		t.Fatal("parity artifact missing 'list' command")
-	}
-
-	// Check each subcommand
-	for _, subCmd := range listCmd.Subcommands {
-		subName := subCmd.Name
-		paritySubCmd, ok := parityList.Subcommands[subName]
-		if !ok {
-			t.Errorf("CLI has list subcommand %q but it is not in parity artifact", subName)
-			continue
-		}
-
-		actualFlags := extractFlags(subCmd)
-
-		// Check all parity flags exist
-		for flagName := range paritySubCmd.Flags {
-			if _, exists := actualFlags[flagName]; !exists {
-				t.Errorf("parity artifact declares flag --%s for 'list %s' but it does not exist", flagName, subName)
-			}
-		}
-
-		// Check all actual flags exist in parity
-		for flagName := range actualFlags {
-			if _, exists := paritySubCmd.Flags[flagName]; !exists {
-				t.Errorf("CLI 'list %s' has flag --%s but it is not in parity artifact", subName, flagName)
-			}
-		}
-	}
-}
-
-// TestCLIParityIndexCommand validates the index command flags against the parity artifact.
-func TestCLIParityIndexCommand(t *testing.T) {
-	t.Parallel()
-	parityIndex, ok := loadParityArtifact(t).Commands["index"]
-	if !ok {
-		t.Fatal("parity artifact missing 'index' command")
-	}
-	for _, subCmd := range IndexCommand().Subcommands {
-		paritySubCmd, ok := parityIndex.Subcommands[subCmd.Name]
-		if !ok {
-			t.Errorf("CLI has index subcommand %q but it is not in parity artifact", subCmd.Name)
-			continue
-		}
-		actualFlags := extractFlags(subCmd)
-		for flagName := range paritySubCmd.Flags {
-			if _, exists := actualFlags[flagName]; !exists {
-				t.Errorf("parity artifact declares flag --%s for 'index %s' but it does not exist", flagName, subCmd.Name)
-			}
-		}
-		for flagName := range actualFlags {
-			if _, exists := paritySubCmd.Flags[flagName]; !exists {
-				t.Errorf("CLI 'index %s' has flag --%s but it is not in parity artifact", subCmd.Name, flagName)
-			}
-		}
-	}
-}
-
-// TestCLIParityPruneCommand validates the prune command flags against the parity artifact.
-func TestCLIParityPruneCommand(t *testing.T) {
-	t.Parallel()
-	parityPrune, ok := loadParityArtifact(t).Commands["prune"]
-	if !ok {
-		t.Fatal("parity artifact missing 'prune' command")
-	}
-	actualFlags := extractFlags(PruneCommand())
-	for flagName := range parityPrune.Flags {
-		if _, exists := actualFlags[flagName]; !exists {
-			t.Errorf("parity artifact declares flag --%s for 'prune' but it does not exist", flagName)
-		}
-	}
-	for flagName := range actualFlags {
-		if _, exists := parityPrune.Flags[flagName]; !exists {
-			t.Errorf("CLI 'prune' has flag --%s but it is not in parity artifact", flagName)
-		}
-	}
-}
-
-// TestCLIParityDebugCommand validates the debug command flags against the parity artifact.
-func TestCLIParityDebugCommand(t *testing.T) {
-	t.Parallel()
-
-	artifact := loadParityArtifact(t)
-	debugCmd := DebugCommand()
-
-	parityDebug, ok := artifact.Commands["debug"]
-	if !ok {
-		t.Fatal("parity artifact missing 'debug' command")
-	}
-
-	// Build a map of subcommand paths (e.g., "resolve proxy", "ipc")
-	for _, subCmd := range debugCmd.Subcommands {
-		if len(subCmd.Subcommands) > 0 {
-			// Nested subcommand (e.g., resolve -> proxy)
-			for _, nestedCmd := range subCmd.Subcommands {
-				subPath := subCmd.Name + " " + nestedCmd.Name
-				paritySubCmd, ok := parityDebug.Subcommands[subPath]
-				if !ok {
-					t.Errorf("CLI has debug subcommand %q but it is not in parity artifact", subPath)
-					continue
-				}
-
-				actualFlags := extractFlags(nestedCmd)
-
-				for flagName := range paritySubCmd.Flags {
-					if _, exists := actualFlags[flagName]; !exists {
-						t.Errorf("parity declares flag --%s for 'debug %s' but it does not exist", flagName, subPath)
-					}
-				}
-
-				for flagName := range actualFlags {
-					if _, exists := paritySubCmd.Flags[flagName]; !exists {
-						t.Errorf("CLI 'debug %s' has flag --%s but it is not in parity artifact", subPath, flagName)
-					}
-				}
-			}
-		} else {
-			// Direct subcommand (e.g., ipc)
-			subPath := subCmd.Name
-			paritySubCmd, ok := parityDebug.Subcommands[subPath]
-			if !ok {
-				t.Errorf("CLI has debug subcommand %q but it is not in parity artifact", subPath)
-				continue
-			}
-
-			actualFlags := extractFlags(subCmd)
-
-			for flagName := range paritySubCmd.Flags {
-				if _, exists := actualFlags[flagName]; !exists {
-					t.Errorf("parity declares flag --%s for 'debug %s' but it does not exist", flagName, subPath)
-				}
-			}
-
-			for flagName := range actualFlags {
-				if _, exists := paritySubCmd.Flags[flagName]; !exists {
-					t.Errorf("CLI 'debug %s' has flag --%s but it is not in parity artifact", subPath, flagName)
-				}
-			}
-		}
-	}
-}
-
-// TestCLIParityInspectCommand validates the inspect command flags against the parity artifact.
-func TestCLIParityInspectCommand(t *testing.T) {
-	t.Parallel()
-
-	artifact := loadParityArtifact(t)
-	inspectCmd := InspectCommand()
-
-	parityInspect, ok := artifact.Commands["inspect"]
-	if !ok {
-		t.Fatal("parity artifact missing 'inspect' command")
-	}
-
-	// Inspect has subcommands, not top-level flags
-	for _, subCmd := range inspectCmd.Subcommands {
-		subName := subCmd.Name
-		paritySubCmd, ok := parityInspect.Subcommands[subName]
-		if !ok {
-			t.Errorf("CLI has inspect subcommand %q but it is not in parity artifact", subName)
-			continue
-		}
-
-		actualFlags := extractFlags(subCmd)
-
-		for flagName := range paritySubCmd.Flags {
-			if _, exists := actualFlags[flagName]; !exists {
-				t.Errorf("parity declares flag --%s for 'inspect %s' but it does not exist", flagName, subName)
-			}
-		}
-
-		for flagName := range actualFlags {
-			if _, exists := paritySubCmd.Flags[flagName]; !exists {
-				t.Errorf("CLI 'inspect %s' has flag --%s but it is not in parity artifact", subName, flagName)
-			}
-		}
-	}
-}
-
-// TestCLIParityStatsCommand validates the stats command flags against the parity artifact.
-func TestCLIParityStatsCommand(t *testing.T) {
-	t.Parallel()
-
-	artifact := loadParityArtifact(t)
-	statsCmd := StatsCommand()
-
-	parityStats, ok := artifact.Commands["stats"]
-	if !ok {
-		t.Fatal("parity artifact missing 'stats' command")
-	}
-
-	// Stats has subcommands, not top-level flags
-	for _, subCmd := range statsCmd.Subcommands {
-		subName := subCmd.Name
-		paritySubCmd, ok := parityStats.Subcommands[subName]
-		if !ok {
-			t.Errorf("CLI has stats subcommand %q but it is not in parity artifact", subName)
-			continue
-		}
-
-		actualFlags := extractFlags(subCmd)
-
-		for flagName := range paritySubCmd.Flags {
-			if _, exists := actualFlags[flagName]; !exists {
-				t.Errorf("parity declares flag --%s for 'stats %s' but it does not exist", flagName, subName)
-			}
-		}
-
-		for flagName := range actualFlags {
-			if _, exists := paritySubCmd.Flags[flagName]; !exists {
-				t.Errorf("CLI 'stats %s' has flag --%s but it is not in parity artifact", subName, flagName)
-			}
-		}
-	}
-}
-
-// TestCLIParityVersionCommand validates the version command flags against the parity artifact.
-func TestCLIParityVersionCommand(t *testing.T) {
-	t.Parallel()
-
-	artifact := loadParityArtifact(t)
-	versionCmd := VersionCommand("", "test-commit")
-	actualFlags := extractFlags(versionCmd)
-
-	parityVersion, ok := artifact.Commands["version"]
-	if !ok {
-		t.Fatal("parity artifact missing 'version' command")
-	}
-
-	// Check all parity flags exist in actual CLI
-	for flagName := range parityVersion.Flags {
-		if _, exists := actualFlags[flagName]; !exists {
-			t.Errorf("parity artifact declares flag --%s for 'version' but it does not exist", flagName)
-		}
-	}
-
-	// Check all actual flags exist in parity
-	for flagName := range actualFlags {
-		if _, exists := parityVersion.Flags[flagName]; !exists {
-			t.Errorf("CLI 'version' has flag --%s but it is not in parity artifact", flagName)
-		}
-	}
-}
-
 // TestCLIParityJobPayloadContract validates the job payload contract is correctly documented.
 func TestCLIParityJobPayloadContract(t *testing.T) {
 	t.Parallel()
@@ -604,49 +352,111 @@ func getFlagDefault(f cli.Flag) any {
 	}
 }
 
-// TestCLIParityInitCommand validates the init command flags against the parity artifact.
-func TestCLIParityInitCommand(t *testing.T) {
-	t.Parallel()
-	parityInit, ok := loadParityArtifact(t).Commands["init"]
-	if !ok {
-		t.Fatal("parity artifact missing 'init' command")
-	}
-	actualFlags := extractFlags(InitCommand())
-	for flagName := range parityInit.Flags {
-		if _, exists := actualFlags[flagName]; !exists {
-			t.Errorf("parity artifact declares flag --%s for 'init' but it does not exist", flagName)
+// checkFlagNames reports each flag that the parity artifact declares for
+// command but the CLI lacks, and each flag that the CLI has but the artifact
+// omits.
+func checkFlagNames(t *testing.T, command string, declared map[string]ParityFlag, actual map[string]cli.Flag) {
+	t.Helper()
+	for name := range declared {
+		if _, ok := actual[name]; !ok {
+			t.Errorf("parity declares flag --%s for '%s' but it does not exist", name, command)
 		}
 	}
-	for flagName := range actualFlags {
-		if _, exists := parityInit.Flags[flagName]; !exists {
-			t.Errorf("CLI 'init' has flag --%s but it is not in parity artifact", flagName)
+	for name := range actual {
+		if _, ok := declared[name]; !ok {
+			t.Errorf("CLI '%s' has flag --%s but it is not in parity artifact", command, name)
 		}
 	}
 }
 
-// TestCLIParityReadCommand validates the read command flags against the parity artifact.
-func TestCLIParityReadCommand(t *testing.T) {
-	t.Parallel()
-	parityRead, ok := loadParityArtifact(t).Commands["read"]
+// checkSubcommandFlags checks the flags of each leaf subcommand of cmd, a nested
+// one by its path such as "resolve proxy", against the parity artifact's entry
+// for the command named name.
+func checkSubcommandFlags(t *testing.T, name string, cmd *cli.Command) {
+	t.Helper()
+	parity, ok := loadParityArtifact(t).Commands[name]
 	if !ok {
-		t.Fatal("parity artifact missing 'read' command")
+		t.Fatalf("parity artifact missing '%s' command", name)
 	}
-	for _, subCmd := range ReadCommand().Subcommands {
-		paritySubCmd, ok := parityRead.Subcommands[subCmd.Name]
+	for path, sub := range leafSubcommands(cmd, "") {
+		paritySub, ok := parity.Subcommands[path]
 		if !ok {
-			t.Errorf("CLI has read subcommand %q but it is not in parity artifact", subCmd.Name)
+			t.Errorf("CLI has %s subcommand %q but it is not in parity artifact", name, path)
 			continue
 		}
-		actualFlags := extractFlags(subCmd)
-		for flagName := range paritySubCmd.Flags {
-			if _, exists := actualFlags[flagName]; !exists {
-				t.Errorf("parity artifact declares flag --%s for 'read %s' but it does not exist", flagName, subCmd.Name)
+		checkFlagNames(t, name+" "+path, paritySub.Flags, extractFlags(sub))
+	}
+}
+
+// Every command and subcommand that the parity artifact declares exists in
+// the CLI, so the artifact cannot keep a command that the CLI removed, and
+// each command's description is the CLI's usage text. A
+// nested debug subcommand is declared by its path, such as "resolve proxy".
+func TestCLIParityArtifactDeclaresOnlyExistingCommands(t *testing.T) {
+	t.Parallel()
+	commands := map[string]*cli.Command{}
+	for _, cmd := range []*cli.Command{
+		RunCommand(), InitCommand(), InspectCommand(), StatsCommand(), ListCommand(),
+		ReadCommand(), IndexCommand(), PruneCommand(), DebugCommand(), VersionCommand("", "test-commit"),
+	} {
+		commands[cmd.Name] = cmd
+	}
+	for name, parity := range loadParityArtifact(t).Commands {
+		cmd, ok := commands[name]
+		if !ok {
+			t.Errorf("parity artifact declares command %q but the CLI has none", name)
+			continue
+		}
+		if parity.Description != cmd.Usage {
+			t.Errorf("parity description of %q = %q, want the CLI usage %q", name, parity.Description, cmd.Usage)
+		}
+		leaves := leafSubcommands(cmd, "")
+		for sub := range parity.Subcommands {
+			if _, ok := leaves[sub]; !ok {
+				t.Errorf("parity artifact declares '%s %s' but the CLI has no such subcommand", name, sub)
 			}
 		}
-		for flagName := range actualFlags {
-			if _, exists := paritySubCmd.Flags[flagName]; !exists {
-				t.Errorf("CLI 'read %s' has flag --%s but it is not in parity artifact", subCmd.Name, flagName)
-			}
+	}
+}
+
+// leafSubcommands maps the path of each of cmd's leaf subcommands below prefix,
+// such as "resolve proxy", to the subcommand.
+func leafSubcommands(cmd *cli.Command, prefix string) map[string]*cli.Command {
+	leaves := map[string]*cli.Command{}
+	for _, sub := range cmd.Subcommands {
+		path := strings.TrimSpace(prefix + " " + sub.Name)
+		if len(sub.Subcommands) > 0 {
+			maps.Copy(leaves, leafSubcommands(sub, path))
+			continue
 		}
+		leaves[path] = sub
+	}
+	return leaves
+}
+
+// Each command's subcommands declare exactly the flags that the CLI defines.
+func TestCLIParitySubcommandFlags(t *testing.T) {
+	t.Parallel()
+	for _, cmd := range []*cli.Command{ListCommand(), InspectCommand(), StatsCommand(), IndexCommand(), ReadCommand(), DebugCommand()} {
+		t.Run(cmd.Name, func(t *testing.T) {
+			checkSubcommandFlags(t, cmd.Name, cmd)
+		})
+	}
+}
+
+// Each command without subcommands declares exactly the flags that the CLI
+// defines. run is checked on its own, because its check also compares types,
+// required flags, and defaults.
+func TestCLIParityCommandFlags(t *testing.T) {
+	t.Parallel()
+	artifact := loadParityArtifact(t)
+	for _, cmd := range []*cli.Command{PruneCommand(), InitCommand(), VersionCommand("", "test-commit")} {
+		t.Run(cmd.Name, func(t *testing.T) {
+			parity, ok := artifact.Commands[cmd.Name]
+			if !ok {
+				t.Fatalf("parity artifact missing '%s' command", cmd.Name)
+			}
+			checkFlagNames(t, cmd.Name, parity.Flags, extractFlags(cmd))
+		})
 	}
 }

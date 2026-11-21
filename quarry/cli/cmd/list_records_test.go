@@ -26,7 +26,7 @@ func runListCLI(t *testing.T, args ...string) (string, error) {
 func runCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	app := cli.NewApp()
-	app.Commands = []*cli.Command{ListCommand(), ReadCommand(), IndexCommand(), PruneCommand(), InspectCommand()}
+	app.Commands = []*cli.Command{ListCommand(), ReadCommand(), IndexCommand(), PruneCommand(), InspectCommand(), StatsCommand(), DebugCommand()}
 	app.ExitErrHandler = func(*cli.Context, error) {}
 
 	orig := os.Stdout
@@ -95,14 +95,6 @@ func TestListRuns_FromRecords(t *testing.T) {
 	}
 	if !strings.Contains(out, `"run-b"`) || strings.Contains(out, `"run-a"`) {
 		t.Fatalf("page 2 = %s", out)
-	}
-}
-
-func TestListRuns_StorageFlagPairRequired(t *testing.T) {
-	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
-	_, err := runListCLI(t, "runs", "--storage-backend", "fs")
-	if err == nil || !strings.Contains(err.Error(), "both --storage-backend and --storage-path") {
-		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -183,23 +175,6 @@ func TestListEvents_ReadTimeoutRejectsANonDuration(t *testing.T) {
 	}
 }
 
-func TestListRuns_StorageOnlyFlagsRejectedOnStub(t *testing.T) {
-	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
-	for _, flag := range []string{"--after", "--source", "--category", "--day"} {
-		_, err := runListCLI(t, "runs", flag, "x")
-		if err == nil || !strings.Contains(err.Error(), "requires --storage-backend") {
-			t.Errorf("%s on the stub path: err = %v", flag, err)
-		}
-	}
-}
-
-func TestListRuns_StubRejectsStorageOnlyState(t *testing.T) {
-	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
-	if _, err := runListCLI(t, "runs", "--state", "unterminated"); err == nil || !strings.Contains(err.Error(), "requires storage") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestListEvents_TableSummaryRows(t *testing.T) {
 	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
@@ -212,20 +187,6 @@ func TestListEvents_TableSummaryRows(t *testing.T) {
 	for _, want := range []string{"seq", "record_kind", "event_id", "run_complete"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("table output lacks %q:\n%s", want, out)
-		}
-	}
-}
-
-// An optional storage flag alone is an error, never stub data.
-func TestListRuns_OptionalStorageFlagWithoutPairFails(t *testing.T) {
-	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
-	for _, args := range [][]string{
-		{"runs", "--storage-dataset", "other"},
-		{"runs", "--storage-region", "us-east-1"},
-		{"runs", "--storage-s3-path-style"},
-	} {
-		if _, err := runListCLI(t, args...); err == nil {
-			t.Errorf("%v: want error, got stub output", args)
 		}
 	}
 }
@@ -260,5 +221,47 @@ func TestEventSummaries_ArtifactCommitType(t *testing.T) {
 	})
 	if got[0].Type != "item" || got[1].Type != "artifact" {
 		t.Fatalf("types = %v, %v", got[0].Type, got[1].Type)
+	}
+}
+
+// Every command that reads or writes storage needs --storage-backend and
+// --storage-path together, and without them fails before writing anything:
+// the read commands never return invented data.
+func TestStorageCommands_StorageFlags(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
+	const missing, unpaired = "--storage-backend and --storage-path are required", "both --storage-backend and --storage-path"
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"list runs without storage", []string{"list", "runs"}, missing},
+		{"list runs with a selector only", []string{"list", "runs", "--source", "x"}, missing},
+		{"stats metrics without storage", []string{"stats", "metrics"}, missing},
+		{"list events without storage", []string{"list", "events", "--run-id", "r"}, missing},
+		{"list artifacts without storage", []string{"list", "artifacts", "--run-id", "r"}, missing},
+		{"read artifact without storage", []string{"read", "artifact", "--run-id", "r", "--artifact-id", "a"}, missing},
+		{"inspect run without storage", []string{"inspect", "run", "r"}, missing},
+		{"index rebuild without storage", []string{"index", "rebuild"}, "index rebuild writes storage: --storage-backend and --storage-path are required"},
+		{"prune without storage", []string{"prune", "--succeeded-days", "1"}, "prune writes storage: --storage-backend and --storage-path are required"},
+		{"list events names its read", []string{"list", "events", "--run-id", "r"}, "list events reads storage: --storage-backend and --storage-path are required"},
+		{"list runs with the backend alone", []string{"list", "runs", "--storage-backend", "fs"}, unpaired},
+		{"stats metrics with the backend alone", []string{"stats", "metrics", "--storage-backend", "fs"}, unpaired},
+		{"list runs with the dataset alone", []string{"list", "runs", "--storage-dataset", "other"}, unpaired},
+		{"list runs with the region alone", []string{"list", "runs", "--storage-region", "us-east-1"}, unpaired},
+		{"list runs with path style alone", []string{"list", "runs", "--storage-s3-path-style"}, unpaired},
+		{"index rebuild with the backend alone", []string{"index", "rebuild", "--storage-backend", "fs"}, unpaired},
+		{"prune with the backend alone", []string{"prune", "--succeeded-days", "1", "--storage-backend", "fs"}, unpaired},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runCLI(t, tc.args...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want one that contains %q", err, tc.want)
+			}
+			if out != "" {
+				t.Errorf("wrote output without storage: %q", out)
+			}
+		})
 	}
 }

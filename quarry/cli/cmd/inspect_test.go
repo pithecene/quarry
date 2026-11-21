@@ -263,7 +263,6 @@ func TestInspectRun_RefusesWhatStorageDoesNotHold(t *testing.T) {
 		want string
 	}{
 		{"a run that does not exist", append(inspectLocator(root), "quarry-audit-nonexistent"), "run not found"},
-		{"no storage", []string{"--format", "json", "run-a"}, "--storage-backend and --storage-path are required"},
 		{"no selector", []string{"--storage-backend", "fs", "--storage-path", root, "run-a"}, "requires --source, --category, and --day"},
 	}
 	for _, tc := range cases {

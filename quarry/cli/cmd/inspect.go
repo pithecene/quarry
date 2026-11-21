@@ -18,16 +18,15 @@ import (
 func InspectCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "inspect",
-		Usage: "Inspect a single entity (run, proxy)",
+		Usage: "Inspect a single entity (run)",
 		Subcommands: []*cli.Command{
 			inspectRunCommand(),
-			inspectProxyCommand(),
 		},
 	}
 }
 
 func inspectRunCommand() *cli.Command {
-	flags := append(append(TUIReadOnlyFlags(), storageReadFlags()...), runSelectorFlags()...)
+	flags := append(append(ReadOnlyFlags(), storageReadFlags()...), runSelectorFlags()...)
 	return &cli.Command{
 		Name:      "run",
 		Usage:     "Inspect a run by ID (reads storage)",
@@ -61,9 +60,6 @@ func inspectRunAction(c *cli.Context) error {
 		return cli.Exit(fmt.Sprintf("inspect run: %v", err), 1)
 	}
 
-	if c.Bool("tui") {
-		return r.RenderTUI("inspect_run", resp)
-	}
 	return r.Render(resp)
 }
 
@@ -92,32 +88,4 @@ func inspectRunDetails(ctx context.Context, c *cli.Context, factory lodelib.Fact
 		})
 	}
 	return resp, nil
-}
-
-func inspectProxyCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "proxy",
-		Usage:     "Inspect a proxy pool by name",
-		ArgsUsage: "<pool-name>",
-		Flags:     TUIReadOnlyFlags(),
-		Action:    inspectProxyAction,
-	}
-}
-
-func inspectProxyAction(c *cli.Context) error {
-	if c.NArg() < 1 {
-		return cli.Exit("pool-name required", 1)
-	}
-	poolName := c.Args().First()
-
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	if c.Bool("tui") {
-		return r.RenderTUI("inspect_proxy", reader.InspectProxy(poolName))
-	}
-
-	return r.Render(reader.InspectProxy(poolName))
 }

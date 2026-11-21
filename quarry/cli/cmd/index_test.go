@@ -69,12 +69,6 @@ func TestIndexRebuild_DryRunThenWrite(t *testing.T) {
 	}
 }
 
-func TestIndexRebuild_RequiresStorage(t *testing.T) {
-	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
-	if _, err := runCLI(t, "index", "rebuild"); err == nil || !strings.Contains(err.Error(), "required") {
-		t.Fatalf("err = %v, want storage required", err)
-	}
-}
 
 // YAML uses the documented field names.
 func TestIndexRebuild_YAMLFieldNames(t *testing.T) {

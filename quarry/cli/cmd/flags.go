@@ -15,33 +15,16 @@ var (
 	// NoColorFlag disables colored output in table format.
 	// Note: Currently a placeholder - table output doesn't emit ANSI colors yet.
 	// The flag is defined for forward compatibility when table coloring is added.
-	// TUI mode is unaffected by this flag (uses its own styling).
 	NoColorFlag = &cli.BoolFlag{
 		Name:  "no-color",
 		Usage: "Disable colored output (table format only)",
 	}
-
-	// TUIFlag enables Bubble Tea interactive mode.
-	// Only valid for select read-only commands (inspect, stats).
-	TUIFlag = &cli.BoolFlag{
-		Name:  "tui",
-		Usage: "Enable interactive TUI mode (inspect, stats only)",
-	}
 )
 
-// ReadOnlyFlags returns the shared flags for all read-only commands.
-// Includes --tui so that unsupported commands can provide explicit error messages
-// instead of generic "flag not defined" errors.
+// ReadOnlyFlags returns the shared output flags of the read-only commands.
 func ReadOnlyFlags() []cli.Flag {
 	return []cli.Flag{
 		FormatFlag,
 		NoColorFlag,
-		TUIFlag,
 	}
-}
-
-// TUIReadOnlyFlags returns flags for commands that support TUI mode.
-// This is an alias for ReadOnlyFlags, kept for documentation clarity.
-func TUIReadOnlyFlags() []cli.Flag {
-	return ReadOnlyFlags()
 }

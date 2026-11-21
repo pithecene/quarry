@@ -157,7 +157,6 @@ at runtime. `--max-runs` is mandatory as a safety rail.
 |------|------|---------|---------|
 | `--format` | `table`, `json`, `yaml` | auto (TTY=table, pipe=json) | Output format |
 | `--no-color` | bool | `false` | Disable color in table output |
-| `--tui` | bool | `false` | Interactive TUI (inspect/stats only) |
 | `--quiet` | bool | `false` | Suppress run result output |
 | `--report` | string | | Path to write JSON report on exit (use `-` for stderr) |
 | `--dry-run` | bool | `false` | Validate script loadability without execution (no browser, no storage) |

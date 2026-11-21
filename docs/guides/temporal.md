@@ -256,12 +256,12 @@ delivery guarantees.
 ## Module Structure
 
 The Temporal integration requires a Go module split so `quarry-temporal/`
-can depend on core runtime types without pulling in CLI/TUI dependencies.
+can depend on core runtime types without pulling in CLI dependencies.
 
 | Module | Contains | Depends On |
 |--------|----------|-----------|
 | `quarry-core/` | types, runtime, policy, lode, adapter, proxy, metrics | (standalone) |
-| `quarry-cli/` | CLI commands, TUI, config | `quarry-core/` |
+| `quarry-cli/` | CLI commands, config | `quarry-core/` |
 | `quarry-temporal/` | activity, workflow, worker | `quarry-core/`, `go.temporal.io/sdk` |
 
 See [`docs/plans/IMPLEMENTATION_PLAN.md`](../plans/IMPLEMENTATION_PLAN.md) for the module split roadmap and
