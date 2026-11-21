@@ -428,6 +428,15 @@ codec, no compressor, no checksum, and Lode's default path names.
   `quarry prune` opens a writer with the settings above.
 - Quarry reads and extends datasets with manifest formats 1.0.0 and 1.1.0
   in place under the default path names.
+- A dataset written before v0.12.0 has manifests in format 1.0.0, which
+  record no settings, and opens under the default path names. No migration is
+  required. Lode v0.10.0, which Quarry v0.13.7 uses, and Lode v0.11.0 read
+  and extend datasets that Lode v0.12.0 has written, and Lode v0.11.0 also
+  expires and sweeps them.
+- Lode v0.17.1 and earlier reject a format 1.2.0 manifest, so Quarry v0.18.0
+  and earlier cannot read a snapshot that a later release wrote. A rollback
+  across that boundary must restore the dataset as it was before the
+  upgrade's first write.
 
 ---
 
