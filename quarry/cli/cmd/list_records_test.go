@@ -26,7 +26,7 @@ func runListCLI(t *testing.T, args ...string) (string, error) {
 func runCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	app := cli.NewApp()
-	app.Commands = []*cli.Command{ListCommand(), ReadCommand(), IndexCommand(), PruneCommand()}
+	app.Commands = []*cli.Command{ListCommand(), ReadCommand(), IndexCommand(), PruneCommand(), InspectCommand()}
 	app.ExitErrHandler = func(*cli.Context, error) {}
 
 	orig := os.Stdout

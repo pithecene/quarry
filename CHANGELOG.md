@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **`quarry inspect run` reads the run from storage**: the command now takes the storage flags and `--source`, `--category`, and `--day`, as `list events` does, and exits 1 when storage holds no such run. Before, it read no storage and printed the same invented run for any ID. The response is the run as `list runs` describes it, the policy from its metrics record, and its sidecar files. `CONTRACT_CLI.md` § `inspect run` states the shape.
+
 ### Added
 
 - **New datasets use zstd and SHA-256**: Quarry creates a dataset without a head with zstd compression and a SHA-256 digest of each data object. A read verifies the digest and fails with `ErrChecksumMismatch` when the stored bytes differ. An existing dataset keeps the compressor and checksum that its head records, published or staged by an interrupted first commit, so an upgrade changes no existing dataset. `qlode.OpenDataset` refuses a layout, compressor, or checksum option with `ErrInvalidArgument`. `CONTRACT_LODE.md` § Writer Settings states the rules.
@@ -24,10 +28,15 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **`stats metrics` finds a run whose source or run ID Lode escapes**: `--source` and `--run-id` now match the escaped partition values that Lode writes, so a value such as `test source` finds its metrics record. Before, the filter compared the raw value with the escaped path and reported that no metrics records existed. `qlode.QuerySidecarFiles` matches escaped run IDs the same way, and a malformed sidecar inventory now fails it with an error that names the snapshot, where it skipped the entry before.
 - **A run_result frame no longer passes a run without its terminal event**: an executor that exits 0 must emit `run_complete`, and one that exits 1 must emit `run_error`. This now holds when the executor also sends a run_result frame. Before, the frame skipped that check, so an executor that exited 0 without `run_complete` ended its run as `success`. Such a run now ends as `executor_crash`, the outcome that a run without the frame already received. `CONTRACT_IPC.md` § Outcome Status Mapping states the rule.
 - **An executor's stderr no longer stalls its run**: the runtime now drains the executor's stderr while it reads stdout. Before, it read stderr only after stdout ended, so an executor that wrote more stderr than the pipe holds blocked, and its run never ended. A run keeps the last 1 MiB of stderr, after a note of the bytes it dropped.
 - **The managed fan-out browser uses the run's proxy**: when a fan-out run launches its own shared browser, the browser now routes its traffic through the run's resolved proxy, like the reusable browser. Before, it launched without a proxy, and the credentials that each child applied to its pages did not route them through one.
 - **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, the library that `puppeteer-extra-plugin-user-preferences` uses to merge static browser preferences, has no patched release, and Quarry passes it no outside input.
+
+### Upgrade Notes
+
+- **Run inspection**: pass `--storage-backend`, `--storage-path`, `--source`, `--category`, and `--day` before the run ID. Use the run's UTC start date for `--day`. In JSON and YAML, read run fields such as `run_id` and `state` under `run`.
 
 ---
 

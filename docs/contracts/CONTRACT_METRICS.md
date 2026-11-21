@@ -133,6 +133,10 @@ A read command that has no Lode-backed reader returns stub data.
   same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`). `list events`
   requires the storage flags and has no stub ([CONTRACT_CLI.md](CONTRACT_CLI.md)
   §`list events`).
+- `inspect run` requires the storage flags and has no stub. It reads the
+  selected run's ingestion policy from the latest metrics record visible in
+  the run's indexed partitions. The policy is null when none is visible
+  ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`inspect run`).
 - Every other `stats`, `inspect`, and `list` command returns stub data
   only. No global reader configuration exists, and the commands read
   storage only through their own storage flags.

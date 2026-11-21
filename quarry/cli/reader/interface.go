@@ -6,8 +6,7 @@ package reader
 // All methods are read-only and must not mutate state (except ephemeral
 // mutations like debug.resolve-proxy --commit, which are in-memory only).
 type Reader interface {
-	// Inspect operations
-	InspectRun(runID string) *InspectRunResponse
+	// Inspect operations. inspect run reads storage (cmd/inspect.go).
 	InspectProxy(poolName string) *InspectProxyPoolResponse
 
 	// Stats operations

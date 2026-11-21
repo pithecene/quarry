@@ -23,6 +23,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
 
+	"github.com/pithecene/quarry/cli/reader"
 	"github.com/pithecene/quarry/cli/tui"
 	"github.com/pithecene/quarry/iox"
 )
@@ -138,6 +139,10 @@ func (r *Renderer) renderYAML(data any) error {
 }
 
 func (r *Renderer) renderTable(data any) error {
+	if resp, ok := data.(*reader.InspectRunResponse); ok {
+		return r.renderInspectRunTable(resp)
+	}
+
 	// Handle slice of items
 	v := reflect.ValueOf(data)
 	if v.Kind() == reflect.Slice {
@@ -184,13 +189,7 @@ func (r *Renderer) renderStructTable(data any) error {
 
 	switch v.Kind() {
 	case reflect.Struct:
-		t := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := t.Field(i)
-			name := r.getFieldName(field)
-			val := r.formatValue(v.Field(i))
-			_, _ = fmt.Fprintf(w, "%s:\t%s\n", name, val)
-		}
+		return r.writeStructRows(w, v)
 	case reflect.Map:
 		iter := v.MapRange()
 		for iter.Next() {
@@ -202,6 +201,15 @@ func (r *Renderer) renderStructTable(data any) error {
 		_, _ = fmt.Fprintf(w, "%v\n", data)
 	}
 
+	return nil
+}
+
+func (r *Renderer) writeStructRows(w io.Writer, v reflect.Value) error {
+	for field, val := range v.Fields() {
+		if _, err := fmt.Fprintf(w, "%s:\t%s\n", r.getFieldName(field), r.formatValue(val)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

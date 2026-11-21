@@ -16,27 +16,26 @@ var ErrNoMetricsFound = errors.New("no metrics records found")
 // dataset stored behind factory. Filters by runID and source if non-empty.
 // Returns the raw record map or ErrNoMetricsFound if none exist.
 func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStore], dataset, runID, source string) (map[string]any, error) {
-	ds, ok, err := openReadView(ctx, dataset, factory)
+	ds, snapshots, err := readSnapshots(ctx, dataset, factory)
 	if err != nil {
-		return nil, WrapReadError(err, "datasets/"+dataset)
+		return nil, err
 	}
-	if !ok {
+	if ds == nil {
 		return nil, ErrNoMetricsFound
 	}
-	snapshots, err := ds.Snapshots(ctx)
-	if err != nil {
-		return nil, WrapReadError(err, "quarry/snapshots")
-	}
+	return latestMetrics(ctx, ds, snapshots, Config{RunID: runID, Source: source})
+}
 
+func latestMetrics(ctx context.Context, ds *lode.RecordView[lode.D], snapshots []*lode.Snapshot, filter Config) (map[string]any, error) {
 	// Iterate in reverse (latest first) — snapshots are ordered by creation time
 	for _, snap := range slices.Backward(snapshots) {
 		if !isMetricsSnapshot(snap) {
 			continue
 		}
-		if !snapshotMatchesFilter(snap, "run_id", runID) {
+		if !snapshotMatchesFilter(snap, "run_id", filter.RunID) {
 			continue
 		}
-		if !snapshotMatchesFilter(snap, "source", source) {
+		if !snapshotMatchesFilter(snap, "source", filter.Source) {
 			continue
 		}
 
@@ -50,20 +49,21 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 		// Manifest path filtering is a coarse pre-filter; record fields
 		// are authoritative (handles cumulative/multi-record snapshots).
 		for _, record := range data {
-			if record["record_kind"] != RecordKindMetrics {
-				continue
+			if matchesMetricsRecord(record, filter) {
+				return record, nil
 			}
-			if runID != "" && toString(record["run_id"]) != runID {
-				continue
-			}
-			if source != "" && toString(record["source"]) != source {
-				continue
-			}
-			return record, nil
 		}
 	}
 
 	return nil, ErrNoMetricsFound
+}
+
+func matchesMetricsRecord(record lode.D, filter Config) bool {
+	return record["record_kind"] == RecordKindMetrics &&
+		(filter.RunID == "" || toString(record["run_id"]) == filter.RunID) &&
+		(filter.Source == "" || toString(record["source"]) == filter.Source) &&
+		(filter.Category == "" || toString(record["category"]) == filter.Category) &&
+		(filter.Day == "" || toString(record["day"]) == filter.Day)
 }
 
 // toString converts a value to string, returning empty string for nil/non-string.

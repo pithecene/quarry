@@ -345,3 +345,27 @@ func TestQueryLatestMetrics_TsRoundTrip(t *testing.T) {
 		t.Errorf("ts = %q, want %q", v, "2026-02-03T15:30:00Z")
 	}
 }
+
+// Lode escapes partition values in paths, so a source or run ID that
+// escaping changes still matches the snapshot that holds its metrics.
+func TestQueryLatestMetrics_FiltersOnEscapedValues(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	factory := sharedFactory(store)
+	cfg := Config{Dataset: "quarry", Source: "test source", Category: "test-category", Day: "2026-02-03", RunID: "run 001"}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+	}
+	snap := metrics.Snapshot{RunsStarted: 1, Policy: "strict", RunID: cfg.RunID}
+	if err := client.WriteMetrics(t.Context(), snap, time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("WriteMetrics failed: %v", err)
+	}
+	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", cfg.RunID, cfg.Source)
+	if err != nil {
+		t.Fatalf("QueryLatestMetrics(%q, %q): %v", cfg.RunID, cfg.Source, err)
+	}
+	if v := toString(record["run_id"]); v != cfg.RunID {
+		t.Errorf("run_id = %q, want %q", v, cfg.RunID)
+	}
+}
