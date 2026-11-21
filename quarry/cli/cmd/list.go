@@ -50,7 +50,7 @@ func listRunsAction(c *cli.Context) error {
 		return err
 	}
 
-	if err := requireStorage(c, "list runs", "reads"); err != nil {
+	if err := requireStorage(c, "list runs", readsStorage); err != nil {
 		return err
 	}
 	return listRunsFromRecords(c, r)

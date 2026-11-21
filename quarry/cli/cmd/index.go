@@ -34,7 +34,7 @@ func indexRebuildAction(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireStorage(c, "index rebuild", "writes"); err != nil {
+	if err := requireStorage(c, "index rebuild", writesStorage); err != nil {
 		return err
 	}
 	factory, err := storeFactoryFrom(c)

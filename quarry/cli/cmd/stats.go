@@ -37,7 +37,7 @@ func statsMetricsCommand() *cli.Command {
 }
 
 func statsMetricsAction(c *cli.Context) error {
-	if err := requireStorage(c, "stats metrics", "reads"); err != nil {
+	if err := requireStorage(c, "stats metrics", readsStorage); err != nil {
 		return err
 	}
 	// The store is built exactly as `quarry run` builds it, so data written

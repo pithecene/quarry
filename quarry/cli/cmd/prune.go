@@ -47,7 +47,7 @@ func pruneAction(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireStorage(c, "prune", "writes"); err != nil {
+	if err := requireStorage(c, "prune", writesStorage); err != nil {
 		return err
 	}
 	if err := rejectEmptySelectors(c); err != nil {

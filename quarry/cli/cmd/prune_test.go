@@ -60,7 +60,6 @@ func TestPrune_Errors(t *testing.T) {
 	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	root := t.TempDir()
 	cases := map[string][]string{
-		"no storage":             {"prune", "--succeeded-days", "1"},
 		"no state":               {"prune", "--storage-backend", "fs", "--storage-path", root},
 		"unterminated too young": {"prune", "--storage-backend", "fs", "--storage-path", root, "--unterminated-days", "0"},
 		"run without day":        {"prune", "--storage-backend", "fs", "--storage-path", root, "--failed-days", "1", "--run-id", "r"},

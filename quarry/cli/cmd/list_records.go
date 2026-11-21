@@ -70,17 +70,25 @@ func storageRequested(c *cli.Context) (bool, error) {
 	return true, nil
 }
 
+// storageAccess is what a command does to storage, as its errors name it.
+type storageAccess string
+
+const (
+	readsStorage  storageAccess = "reads"
+	writesStorage storageAccess = "writes"
+)
+
 // requireStorage returns a cli exit error unless the storage flags name a
-// store. access is "reads" or "writes", as the command does to storage: the
-// stats, inspect, list, and read commands answer only from what storage holds,
-// never from invented data.
-func requireStorage(c *cli.Context, command, access string) error {
+// store. The stats, inspect, list, and read commands answer only from what
+// storage holds, never from invented data, and index rebuild and prune write
+// it.
+func requireStorage(c *cli.Context, command string, access storageAccess) error {
 	ok, err := storageRequested(c)
 	if err != nil {
 		return cli.Exit(err.Error(), 1)
 	}
 	if !ok {
-		return cli.Exit(command+" "+access+" storage: --storage-backend and --storage-path are required", 1)
+		return cli.Exit(command+" "+string(access)+" storage: --storage-backend and --storage-path are required", 1)
 	}
 	return nil
 }
@@ -180,7 +188,7 @@ func locatedRunID(ctx context.Context, c *cli.Context, command, runID string, op
 // locateRun is locatedRunID that also returns the store factory, so a command
 // that reads more of the run's storage builds the store once.
 func locateRun(ctx context.Context, c *cli.Context, command, runID string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, lodelib.Factory[lodelib.RangeStore], error) {
-	if err := requireStorage(c, command, "reads"); err != nil {
+	if err := requireStorage(c, command, readsStorage); err != nil {
 		return nil, runreader.Run{}, nil, err
 	}
 	sel := selectorFrom(c)

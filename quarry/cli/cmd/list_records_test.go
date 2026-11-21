@@ -224,10 +224,10 @@ func TestEventSummaries_ArtifactCommitType(t *testing.T) {
 	}
 }
 
-// The stats, inspect, list, and read commands answer only from storage: each
-// needs --storage-backend and --storage-path together, and without them it
-// fails before writing anything, rather than returning invented data.
-func TestReadCommands_StorageFlags(t *testing.T) {
+// Every command that reads or writes storage needs --storage-backend and
+// --storage-path together, and without them fails before writing anything:
+// the read commands never return invented data.
+func TestStorageCommands_StorageFlags(t *testing.T) {
 	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
 	const missing, unpaired = "--storage-backend and --storage-path are required", "both --storage-backend and --storage-path"
 	cases := []struct {
@@ -242,11 +242,16 @@ func TestReadCommands_StorageFlags(t *testing.T) {
 		{"list artifacts without storage", []string{"list", "artifacts", "--run-id", "r"}, missing},
 		{"read artifact without storage", []string{"read", "artifact", "--run-id", "r", "--artifact-id", "a"}, missing},
 		{"inspect run without storage", []string{"inspect", "run", "r"}, missing},
+		{"index rebuild without storage", []string{"index", "rebuild"}, "index rebuild writes storage: --storage-backend and --storage-path are required"},
+		{"prune without storage", []string{"prune", "--succeeded-days", "1"}, "prune writes storage: --storage-backend and --storage-path are required"},
+		{"list events names its read", []string{"list", "events", "--run-id", "r"}, "list events reads storage: --storage-backend and --storage-path are required"},
 		{"list runs with the backend alone", []string{"list", "runs", "--storage-backend", "fs"}, unpaired},
 		{"stats metrics with the backend alone", []string{"stats", "metrics", "--storage-backend", "fs"}, unpaired},
 		{"list runs with the dataset alone", []string{"list", "runs", "--storage-dataset", "other"}, unpaired},
 		{"list runs with the region alone", []string{"list", "runs", "--storage-region", "us-east-1"}, unpaired},
 		{"list runs with path style alone", []string{"list", "runs", "--storage-s3-path-style"}, unpaired},
+		{"index rebuild with the backend alone", []string{"index", "rebuild", "--storage-backend", "fs"}, unpaired},
+		{"prune with the backend alone", []string{"prune", "--succeeded-days", "1", "--storage-backend", "fs"}, unpaired},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
