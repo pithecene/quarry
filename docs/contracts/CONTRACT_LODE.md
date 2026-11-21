@@ -396,10 +396,9 @@ Lode's [CONTRACT_READ_API.md](https://github.com/pithecene/lode/blob/main/docs/c
 - `Store.List` matches a string prefix on every backend (filesystem,
   memory, S3). Keys, prefixes, and S3 prefixes containing a backslash are
   `ErrInvalidPath` on every platform.
-- Refused caller values (a nil store factory, out-of-range `WithRetry*`
-  options) are classified `ErrInvalidArgument` and reported before the
-  store factory is called. Quarry's `WithRetry(3)` and
-  `WithRetryObserver` registration are valid values and unaffected.
+- Lode classifies a nil store factory and out-of-range `WithRetry*` options
+  as `ErrInvalidArgument`. Quarry validates caller writer options before
+  reading the dataset's head.
 
 Quarry matches Lode errors on their sentinels with `errors.Is`, never on
 message text.
@@ -410,7 +409,26 @@ message text.
 
 Every Quarry writer of a dataset opens it with the same settings: the Hive
 layout over the required partition keys in the recommended order, the JSONL
-codec, no compressor, no checksum, and Lode's default path names.
+codec, the dataset's compressor and checksum, and Lode's default path names.
+
+- A writer takes the compressor and checksum that the dataset's head records,
+  so a dataset keeps the settings it was created with. The head may be
+  published or staged by an interrupted first commit, and Lode's
+  `WithRecordedComponents` resolves either. A dataset without a head is
+  created with zstd and SHA-256.
+- A writer opened before the dataset had a head keeps zstd and SHA-256. If
+  another writer first commits other components, each of its commits fails
+  with `ErrSettingsMismatch`, and only a writer opened again takes the head's
+  components.
+- A caller of `OpenDataset` cannot set the layout, compressor, or checksum:
+  such an option fails with `ErrInvalidArgument` before Quarry reads the
+  dataset.
+- A head that records a compressor or checksum other than Lode's bundled
+  ones refuses the writer with `ErrSettingsMismatch`.
+- Every read of a dataset's data object decompresses it with the compressor
+  that its manifest records and, when the manifest records a checksum,
+  verifies the stored bytes at the end of the object. A mismatch fails the
+  read with Lode's `ErrChecksumMismatch`.
 
 - Lode writes dataset manifests in format 1.2.0 and records the ordered
   partition keys and path layout. On open, Lode compares a writer's settings

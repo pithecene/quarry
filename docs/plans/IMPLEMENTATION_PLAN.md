@@ -864,22 +864,28 @@ Command and flag names used above (`quarry index rebuild`,
 provisional labels for the decisions, not API; the contract PRs fix the
 names and shapes.
 
-**Compression** is a property of the dataset, not of an invocation. Lode
-v0.12.0 enforces this itself: each manifest records its compressor, a
-read decompresses each snapshot with the compressor its manifest names,
-and a writer whose compressor differs from the head manifest's is
-refused with `ErrSettingsMismatch` before it writes anything. A
-Quarry-side pin (`datasets/<dataset>/quarry.json`) is therefore
-unnecessary and is dropped. Today every Quarry writer opens a dataset
-without a compressor, and no option selects one. The planned change,
-carried forward, has every writer, `run` and `prune` alike, open a
-dataset that has snapshots with the compressor its head manifest
-records, since Lode refuses any other. A compressor option will choose
-the compressor only for a dataset without snapshots, and `run` will
-refuse a value that differs from an existing head's. The option will
-ship with the benchmark below.
-Recompressing an existing dataset waits on a Lode rewrite primitive. No
-lockstep or contract-version impact.
+**Compression and data-object checksums** are dataset settings. Quarry
+opens writers for `run` and `prune` with the settings in the head manifest.
+Lode refuses a settings mismatch with `ErrSettingsMismatch` and uses the
+settings recorded in each snapshot when reading. Quarry uses zstd and
+SHA-256 for a dataset without a head, published or staged, as specified in
+[`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md#writer-settings).
+
+The [strict-policy comparison](../guides/benchmarks.md#dataset-compression-under-strict)
+shows zstd stores about 29% fewer data bytes than uncompressed JSONL and
+about 2% fewer than gzip on the fixture. For commits of one small event, the
+store holds about 9% more bytes in total with zstd and SHA-256, because the
+manifests grow by more than compression saves. The fixed default prioritizes
+data size and verified digests over total size for the smallest commits.
+Uncompressed writes have the highest throughput in memory, and zstd commits
+take about one-sixth as long as gzip commits on this fixture.
+SHA-256 gives data objects the same digest algorithm Quarry uses for whole
+artifacts. Omitting the digest would remove object-level verification, and
+CRC32C provides a shorter 32-bit checksum.
+
+An operator-selectable compressor remains a separate decision for datasets
+without snapshots. Recompressing an existing dataset waits on a Lode rewrite
+primitive.
 
 **Known constraints, recorded not hidden:** a Lode dataset is one linear
 history with one `latest` pointer (commit rate is bounded per dataset;
@@ -901,8 +907,8 @@ Each decision is judged by a number in its PR, not by argument:
 - A/D: zero runs without an end record among runs that completed
   finalization; `quarry prune --dry-run` candidate counts by outcome on the dogfood
   dataset before any deletion ships.
-- Compression: write throughput, per-event latency under `strict`, and
-  bytes stored for none/gzip/zstd, same benchmark harness.
+- [Dataset compression under `strict`](../guides/benchmarks.md#dataset-compression-under-strict):
+  per-event write latency and stored data bytes for none, gzip, and zstd.
 
 ### Prerequisites
 
@@ -968,10 +974,10 @@ land before the v1.0 freeze.
 - [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): stub-backed views with no data model (jobs,
       tasks, executors) removed, and [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data
       Source Progression aligned (E)
-- [ ] Writers that open a dataset with its head's compressor, a
-      compressor option for datasets without snapshots, and the
-      none/gzip/zstd benchmark, with `--recompress` once the Lode
-      primitive exists
+- [x] Writers use the head's compressor and checksum or use zstd and SHA-256
+      for a dataset without a head. The `strict` comparison is recorded above.
+- [ ] Decide whether to expose a compressor option for datasets without snapshots.
+- [ ] `--recompress` once the Lode rewrite primitive exists.
 
 ### Resolved Questions
 

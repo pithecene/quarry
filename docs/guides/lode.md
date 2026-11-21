@@ -63,15 +63,21 @@ commit is written, chunks are considered orphans.
 
 ---
 
-## Checksum (Optional)
+## Dataset Data Objects
+
+New datasets use zstd compression and SHA-256 digests on Lode data objects.
+Existing datasets keep their recorded compressor and checksum settings.
+Lode verifies a recorded digest when a read reaches the end of the object.
+
+## Chunk Record Checksums
 
 Chunk records may include an MD5 checksum for integrity verification.
 
 - `checksum`: hex-encoded MD5 digest of chunk data
 - `checksum_algo`: always `"md5"` when checksum is present
 
-Quarry writes no checksum by default, and no setting enables one.
-Validation is the responsibility of downstream consumers.
+Quarry leaves these chunk fields unset. Downstream consumers validate them
+when present.
 
 ---
 

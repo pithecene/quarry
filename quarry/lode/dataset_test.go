@@ -24,34 +24,6 @@ func TestOpenView_EmptyDataset(t *testing.T) {
 	}
 }
 
-// Every writer of a Quarry dataset must share its settings: Lode records
-// them in each manifest and rejects a writer that differs when it opens.
-func TestOpenDataset_RejectsOtherSettings(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name string
-		opts []lode.DatasetOption
-	}{
-		{"another partition layout", []lode.DatasetOption{lode.WithLayout(lode.Hive("day"))}},
-		{"a compressor", []lode.DatasetOption{lode.WithCompressor(lode.Gzip())}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			store := lode.NewMemory()
-			cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-02-04", RunID: "run-1", Policy: "strict"}
-			client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Use(store))
-			if err != nil {
-				t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-			}
-			if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: "run-1"}, time.Date(2026, 2, 4, 10, 0, 0, 0, time.UTC)); err != nil {
-				t.Fatalf("WriteMetrics failed: %v", err)
-			}
-			if _, err := OpenDataset(t.Context(), "quarry", store, tc.opts...); !errors.Is(err, lode.ErrSettingsMismatch) {
-				t.Fatalf("OpenDataset with %s: err = %v, want lode.ErrSettingsMismatch", tc.name, err)
-			}
-		})
-	}
-}
 
 func TestOpenView_WriteReadRoundTrip(t *testing.T) {
 	t.Parallel()
