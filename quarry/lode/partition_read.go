@@ -33,7 +33,7 @@ func layout() lode.ComponentOption { return lode.WithLayout(lode.Hive(partitionK
 // and the writer uses the bundled implementations named by the head.
 // Opening reads the head and writes nothing.
 func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (*lode.Records[lode.D], error) {
-	settings, err := writerOptions(ctx, dataset, store, opts)
+	settings, err := writerOptions(ctx, dataset, opts)
 	if err != nil {
 		return nil, err
 	}

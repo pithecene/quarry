@@ -2,6 +2,7 @@ package lode_test
 
 import (
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -151,8 +152,9 @@ var benchCompressions = []struct {
 
 // BenchmarkLodeClient_WriteEvents_Compression measures one strict commit of
 // one event into a dataset whose head records each compressor. The client
-// adopts the head's settings, as every Quarry writer does. Stored data bytes
-// are measured after timing ends.
+// adopts the head's settings, as every Quarry writer does. After timing ends,
+// it reports the data bytes and the total bytes that the measured commits
+// added to the store, manifests and pointer included.
 func BenchmarkLodeClient_WriteEvents_Compression(b *testing.B) {
 	for _, comp := range benchCompressions {
 		b.Run(comp.name, func(b *testing.B) {
@@ -177,6 +179,7 @@ func BenchmarkLodeClient_WriteEvents_Compression(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
+			before := totalStoredBytes(b, store)
 			b.ReportAllocs()
 			var seq int64 = 1
 			for b.Loop() {
@@ -186,6 +189,7 @@ func BenchmarkLodeClient_WriteEvents_Compression(b *testing.B) {
 				seq++
 			}
 			reportStoredDataBytes(b, store, cfg.Dataset, seedSnapshot.ID)
+			b.ReportMetric(float64(totalStoredBytes(b, store)-before)/float64(b.N), "stored-total-B/op")
 		})
 	}
 }
@@ -217,4 +221,27 @@ func reportStoredDataBytes(b *testing.B, store lode.Store, dataset string, seedI
 		b.Fatalf("found %d measured commits, want %d", commits, b.N)
 	}
 	b.ReportMetric(float64(storedBytes)/float64(commits), "stored-B/op")
+}
+
+// totalStoredBytes sums the size of every object in store.
+func totalStoredBytes(b *testing.B, store lode.Store) int64 {
+	b.Helper()
+	keys, err := store.List(b.Context(), "")
+	if err != nil {
+		b.Fatal(err)
+	}
+	var total int64
+	for _, key := range keys {
+		rc, err := store.Get(b.Context(), key)
+		if err != nil {
+			b.Fatal(err)
+		}
+		n, err := io.Copy(io.Discard, rc)
+		_ = rc.Close()
+		if err != nil {
+			b.Fatal(err)
+		}
+		total += n
+	}
+	return total
 }
