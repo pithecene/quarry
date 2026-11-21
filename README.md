@@ -5,12 +5,12 @@
 
 # Quarry
 
+**Browser-driven extraction, durably ingested.**
+
 [![CI](https://github.com/pithecene/quarry/actions/workflows/ci.yml/badge.svg)](https://github.com/pithecene/quarry/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-pithecene.sh-1b1a17)](https://pithecene.sh/docs/quarry)
 
-**A CLI-first web extraction runtime for browser-driven crawling and durable ingestion**
-
-Quarry runs a Puppeteer script you write under a strict runtime contract, streams what the script observes as events, and hands persistence to an external storage layer (typically [Lode](https://github.com/pithecene/lode)). It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
+Quarry is a CLI-first web extraction runtime. It runs a Puppeteer script you write under a strict runtime contract, streams what the script observes as events, and hands persistence to an external storage layer (typically [Lode](https://github.com/pithecene/lode)). It is designed for adversarial sites, bespoke extraction logic, and long-lived ETL pipelines where correctness, observability, and durability matter more than convenience abstractions.
 
 ---
 
