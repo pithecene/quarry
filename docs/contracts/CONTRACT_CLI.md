@@ -351,7 +351,8 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   unreachable, the run fails with `OutcomeExecutorCrash` and a descriptive
   message.
 - Fan-out (`--depth > 0`) uses the reusable browser if available and falls back
-  to `LaunchManagedBrowser` when reuse is disabled.
+  to `LaunchManagedBrowser` when reuse is disabled. The managed browser routes
+  its traffic through the run's resolved proxy, as the reusable browser does.
 - Proxy mismatch between runs causes a graceful fallback to per-run browser
   launch (the reusable browser is not killed).
 - The runtime and the server keep their state in the discovery directory,

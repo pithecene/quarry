@@ -6,11 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"os/exec"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/types"
 )
 
 // ManagedBrowser represents a Quarry-managed browser process.
@@ -24,9 +29,12 @@ type ManagedBrowser struct {
 // LaunchManagedBrowser starts a shared browser via the executor's --launch-browser mode.
 // The executor resolves puppeteer from the script's directory and launches Chrome.
 // The WS endpoint is read from the executor's stdout (first line).
-// The browser stays alive until Close() is called.
-func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string) (*ManagedBrowser, error) {
+// The browser stays alive until Close() is called. A non-nil proxy is the
+// run's resolved proxy, which the browser routes all traffic through, as the
+// reusable browser server does (AcquireReusableBrowser).
+func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string, proxy *types.ProxyEndpoint) (*ManagedBrowser, error) {
 	cmd := exec.CommandContext(ctx, executorPath, "--launch-browser", scriptPath)
+	cmd.Env = browserProxyEnv(proxy)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -119,4 +127,24 @@ func (mb *ManagedBrowser) Close() error {
 		<-done
 		return nil
 	}
+}
+
+// browserProxyEnv keeps the runtime's proxy selection authoritative for
+// shared browsers. Each run applies credentials to its own pages.
+func browserProxyEnv(proxy *types.ProxyEndpoint) []string {
+	const key = "QUARRY_BROWSER_PROXY="
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, key)
+	})
+	if proxy == nil {
+		return env
+	}
+
+	// Existing proxy configurations can already have brackets around IPv6 hosts.
+	host := proxy.Host
+	if strings.Contains(host, ":") && strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
+	authority := net.JoinHostPort(host, strconv.Itoa(proxy.Port))
+	return append(env, key+string(proxy.Protocol)+"://"+authority)
 }

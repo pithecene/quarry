@@ -3325,6 +3325,10 @@ function chromiumArgs(extra = []) {
   }
   return args;
 }
+function browserProxyArgs() {
+  const proxyUrl = process.env.QUARRY_BROWSER_PROXY;
+  return proxyUrl ? [`--proxy-server=${proxyUrl}`] : [];
+}
 
 // src/browser-lease-server.ts
 import { once } from "node:events";
@@ -3889,11 +3893,9 @@ async function browserServer(scriptPath) {
     stealth: process.env.QUARRY_STEALTH !== "0",
     adblocker: process.env.QUARRY_ADBLOCKER === "1"
   });
-  const proxyUrl = process.env.QUARRY_BROWSER_PROXY;
-  const proxyArgs = proxyUrl ? [`--proxy-server=${proxyUrl}`] : [];
   const browser = await puppeteer.launch({
     headless: true,
-    args: chromiumArgs(proxyArgs)
+    args: chromiumArgs(browserProxyArgs())
   });
   try {
     recordBrowsers(recordPath, [...stillListed, browser.wsEndpoint()]);
@@ -3940,7 +3942,7 @@ async function launchBrowserServer(scriptPath) {
   });
   const browser = await puppeteer.launch({
     headless: true,
-    args: chromiumArgs()
+    args: chromiumArgs(browserProxyArgs())
   });
   const wsEndpoint = browser.wsEndpoint();
   process.stdout.write(`${wsEndpoint}
