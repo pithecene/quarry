@@ -29,9 +29,6 @@ __coverage__/
 # Claude Code local config
 .claude/
 
-# AI skill output (generated, non-authoritative)
-ai/out/
-
 # Go build output
 quarry/quarry
 
