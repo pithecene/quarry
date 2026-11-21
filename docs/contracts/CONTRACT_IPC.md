@@ -133,19 +133,25 @@ ProxyEndpointRedacted:
 
 ### Outcome Status Mapping
 
-Exit codes are authoritative. The table shows how exit code determines
-the final outcome regardless of run_result status:
+The exit code decides the outcome, and the terminal event must agree with
+it. One rule applies whether or not the executor sent a run_result frame:
 
-| Exit code | Meaning        | Final outcome    | run_result used for |
-|-----------|----------------|------------------|---------------------|
-| 0         | completed      | success          | context only        |
-| 1         | script error   | script_error     | message, stack      |
-| 2         | executor crash | executor_crash   | message, stack      |
-| 3         | invalid input  | executor_crash   | message             |
+| Exit code | Terminal event required | Final outcome    | run_result used for |
+|-----------|-------------------------|------------------|---------------------|
+| 0         | `run_complete`          | success          | context only        |
+| 1         | `run_error`             | script_error     | message, stack      |
+| 2         | none                    | executor_crash   | message, stack      |
+| 3         | none                    | executor_crash   | message             |
 
-If run_result status conflicts with exit code (e.g., run_result says
-"completed" but exit code is 1), exit code wins and a warning is logged.
-The run_result's message, error_type, and stack are still used for context.
+An exit code of 0 or 1 without its terminal event is `executor_crash`,
+whatever the run_result frame reports: the frame cannot stand in for the
+terminal event.
+
+If the run_result status conflicts with the outcome (for example, the
+frame says "completed" but the executor exits 1 after `run_error`), the
+outcome stands, a warning is logged, and the outcome's message names the
+status that the frame reported. When the frame agrees with the outcome,
+its message, error_type, and stack replace the runtime's own.
 
 ---
 

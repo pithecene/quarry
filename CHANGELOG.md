@@ -20,6 +20,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A run_result frame no longer passes a run without its terminal event**: an executor that exits 0 must emit `run_complete`, and one that exits 1 must emit `run_error`. This now holds when the executor also sends a run_result frame. Before, the frame skipped that check, so an executor that exited 0 without `run_complete` ended its run as `success`. Such a run now ends as `executor_crash`, the outcome that a run without the frame already received. `CONTRACT_IPC.md` § Outcome Status Mapping states the rule.
 - **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, the library that `puppeteer-extra-plugin-user-preferences` uses to merge static browser preferences, has no patched release, and Quarry passes it no outside input.
 
 ---
