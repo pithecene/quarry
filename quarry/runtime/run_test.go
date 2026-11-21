@@ -667,13 +667,17 @@ func makeEventStreamWithRunResult(runMeta *types.RunMeta, status types.RunResult
 
 // makeEventStreamWithRunResultMessage creates a stream with event + run_result frame including message.
 func makeEventStreamWithRunResultMessage(runMeta *types.RunMeta, status types.RunResultStatus, message *string) []byte {
-	// Event frame
+	// The terminal event agrees with the reported status, as a real executor's does.
+	terminal := types.EventTypeRunComplete
+	if status == types.RunResultStatusError {
+		terminal = types.EventTypeRunError
+	}
 	envelope := &types.EventEnvelope{
 		ContractVersion: types.ContractVersion,
 		EventID:         "evt-1",
 		RunID:           runMeta.RunID,
 		Seq:             1,
-		Type:            types.EventTypeRunComplete,
+		Type:            terminal,
 		Ts:              "2024-01-01T00:00:00Z",
 		Payload:         map[string]any{},
 		Attempt:         runMeta.Attempt,
@@ -728,10 +732,46 @@ func TestRunOrchestrator_ExitCodeConflictWithRunResult(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
-	// Exit code is authoritative: exit code 1 = script_error
-	// (even though run_result said "completed")
-	if result.Outcome.Status != types.OutcomeScriptError {
-		t.Errorf("expected OutcomeScriptError (exit code authoritative), got %s: %s",
+	// Exit code 1 needs run_error, and the executor sent run_complete, so the
+	// run is a crash, as it is without a run_result frame. The frame's
+	// "completed" cannot make it a success either.
+	if result.Outcome.Status != types.OutcomeExecutorCrash {
+		t.Errorf("expected OutcomeExecutorCrash (terminal event disagrees with exit code 1), got %s: %s",
+			result.Outcome.Status, result.Outcome.Message)
+	}
+}
+
+// makeRunResultOnlyStream is a run_result frame without any terminal event.
+func makeRunResultOnlyStream(status types.RunResultStatus) []byte {
+	return encodeTestRunResultFrame(status, nil)
+}
+
+// An executor that exits 0 and sends a "completed" run_result but never
+// emits run_complete is a crash: the run_result frame no longer skips the
+// terminal event check that a run without the frame gets.
+func TestRunOrchestrator_RunResultDoesNotReplaceRunComplete(t *testing.T) {
+	t.Parallel()
+	runMeta := &types.RunMeta{RunID: "run-no-terminal", Attempt: 1}
+	mockExec := newMockExecutor(makeRunResultOnlyStream(types.RunResultStatusCompleted), 0)
+	orchestrator, err := NewRunOrchestrator(&RunConfig{
+		ExecutorPath: "/fake/executor",
+		ScriptPath:   "/fake/script.js",
+		Job:          map[string]any{},
+		RunMeta:      runMeta,
+		Policy:       newFlushTrackingPolicy(),
+		ExecutorFactory: func(_ *ExecutorConfig) Executor {
+			return mockExec
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+	result, err := orchestrator.Execute(t.Context())
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.Outcome.Status != types.OutcomeExecutorCrash {
+		t.Errorf("exit 0 with run_result but no run_complete: got %s (%s), want executor_crash",
 			result.Outcome.Status, result.Outcome.Message)
 	}
 }

@@ -107,3 +107,39 @@ func extractRunErrorOutcome(event *types.EventEnvelope) *types.RunOutcome {
 
 	return outcome
 }
+
+// reduceOutcome is the one rule that classifies a run whose ingestion and
+// policy flush succeeded (CONTRACT_IPC.md §Outcome Status Mapping). The exit
+// code decides the category, and the terminal event must agree with it, as
+// DetermineOutcome checks: exit 0 without run_complete, or exit 1 without
+// run_error, is an executor crash. A run_result frame, when the executor sent
+// one, only adds the executor's own message, error type, and stack to an
+// outcome that the check confirmed. conflict reports a run_result whose
+// status differs from the outcome, which the caller logs.
+func reduceOutcome(exitCode int, hasTerminal bool, terminal *types.EventEnvelope, frame *types.RunResultFrame) (outcome *types.RunOutcome, conflict bool) {
+	outcome = DetermineOutcome(exitCode, hasTerminal, terminal)
+	if frame == nil {
+		return outcome, false
+	}
+	reported := runResultOutcomeToRunOutcome(frame)
+	conflict = reported.Status != outcome.Status
+	if outcome.Status != outcomeFromExitCode(exitCode) {
+		// The terminal event disagrees with the exit code, so the run is a
+		// crash whatever the executor reported.
+		return outcome, conflict
+	}
+	if conflict {
+		outcome.Message = fmt.Sprintf("exit code %d but run_result reported %s: %s", exitCode, frame.Outcome.Status, reported.Message)
+		return outcome, true
+	}
+	if frame.Outcome.Message != nil {
+		outcome.Message = reported.Message
+	}
+	if reported.ErrorType != nil {
+		outcome.ErrorType = reported.ErrorType
+	}
+	if reported.Stack != nil {
+		outcome.Stack = reported.Stack
+	}
+	return outcome, false
+}
