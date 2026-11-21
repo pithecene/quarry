@@ -2,8 +2,8 @@
 // code of Quarry v0.18.0 (Lode v0.17.1, format 1.1.0), so that later releases
 // are tested against data the last release on Lode v0.17.1 wrote: run
 // records, commit index entries, artifact Volumes, sidecar files, and
-// metrics. Every input is fixed; only snapshot IDs, Volume block nonces, and
-// manifest creation times vary between generations.
+// metrics. Every input is fixed. Snapshot IDs and manifest creation times
+// vary between generations.
 //
 // The program builds against a copy of the v0.18.0 tag. From an empty
 // directory holding a copy of this file, with <tree> a directory into which

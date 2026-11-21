@@ -11,8 +11,12 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
-- **Quarry requires Lode v0.18.1**: Quarry adopts Lode's v1.0 API and reads datasets of formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration. Payloads stay uncompressed and without checksums.
-- **New snapshots use manifest format 1.2.0**: Lode v0.17.1 rejects that format, so Quarry v0.18.0 and earlier cannot read a snapshot that this release wrote. `CONTRACT_LODE.md` § Writer Settings states the rollback rule.
+- **Quarry adopts Lode's v1.0 API**.
+
+  Quarry requires Lode v0.18.1. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration. Dataset payloads remain uncompressed and use no Lode checksums.
+- **New dataset snapshots use manifest format 1.2.0**.
+
+  Lode v0.17.1 rejects this format. To roll back to Quarry v0.18.0 or earlier after the first format 1.2.0 write, restore the dataset to its state before that write.
 
 ### Fixed
 
