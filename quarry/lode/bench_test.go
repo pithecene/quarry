@@ -153,8 +153,8 @@ var benchCompressions = []struct {
 // BenchmarkLodeClient_WriteEvents_Compression measures one strict commit of
 // one event into a dataset whose head records each compressor. The client
 // adopts the head's settings, as every Quarry writer does. After timing ends,
-// it reports the data bytes and the total bytes that the measured commits
-// added to the store, manifests and pointer included.
+// it reports the data bytes and the growth of the whole store across the
+// measured commits, manifests included.
 func BenchmarkLodeClient_WriteEvents_Compression(b *testing.B) {
 	for _, comp := range benchCompressions {
 		b.Run(comp.name, func(b *testing.B) {

@@ -24,6 +24,8 @@ func (s *failingHeadStore) Get(context.Context, string) (io.ReadCloser, error) {
 	return nil, s.err
 }
 
+// OpenDataset refuses an invalid option, and any layout, compressor, or checksum
+// option since every Quarry writer shares those, before it reads the head.
 func TestOpenDataset_ValidatesOptionsBeforeReadingHead(t *testing.T) {
 	t.Parallel()
 	readErr := errors.New("head unavailable")
@@ -38,6 +40,9 @@ func TestOpenDataset_ValidatesOptionsBeforeReadingHead(t *testing.T) {
 		{"negative max delay", lode.WithRetryMaxDelay(-1), lode.ErrInvalidArgument, 0},
 		{"out-of-range jitter", lode.WithRetryJitter(2), lode.ErrInvalidArgument, 0},
 		{"nil option", nil, lode.ErrInvalidArgument, 0},
+		{"another partition layout", lode.WithLayout(lode.Hive("day")), lode.ErrInvalidArgument, 0},
+		{"a compressor", lode.WithCompressor(lode.Gzip()), lode.ErrInvalidArgument, 0},
+		{"a checksum", lode.WithChecksum(lode.CRC32C()), lode.ErrInvalidArgument, 0},
 		{"valid retry count", lode.WithRetry(1), readErr, 1},
 	}
 	for _, tc := range cases {
@@ -61,10 +66,10 @@ func settingsRecord(seq int) lode.D {
 
 // writeAndReadHead writes one record through OpenDataset and returns the
 // head manifest and a view of the dataset.
-func writeAndReadHead(t *testing.T, store lode.Store, opts ...lode.DatasetOption) (*lode.Manifest, *lode.RecordView[lode.D]) {
+func writeAndReadHead(t *testing.T, store lode.Store) (*lode.Manifest, *lode.RecordView[lode.D]) {
 	t.Helper()
 	ctx := t.Context()
-	ds, err := qlode.OpenDataset(ctx, "quarry", store, opts...)
+	ds, err := qlode.OpenDataset(ctx, "quarry", store)
 	if err != nil {
 		t.Fatalf("open dataset: %v", err)
 	}
@@ -104,29 +109,6 @@ func TestOpenDataset_NewDatasetUsesZstdAndSHA256(t *testing.T) {
 	}
 }
 
-// A dataset that an earlier release created uncompressed and without
-// checksums keeps those settings, so its writers stay compatible with the
-// head (Lode rejects a writer whose settings differ).
-func TestOpenDataset_ExistingDatasetKeepsItsSettings(t *testing.T) {
-	t.Parallel()
-	ctx := t.Context()
-	store := lode.NewMemory()
-	legacy, err := lode.Open(lode.Use(store)).Records(ctx, "quarry", lode.JSONL[lode.D](),
-		lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := legacy.Write(ctx, []lode.D{settingsRecord(0)}, nil); err != nil {
-		t.Fatal(err)
-	}
-	m, view := writeAndReadHead(t, store)
-	if m.Compressor != "noop" || m.ChecksumAlgorithm != "" {
-		t.Fatalf("head records compressor %q and checksum %q, want noop and none", m.Compressor, m.ChecksumAlgorithm)
-	}
-	if recs := readFirstPartition(t, view); len(recs) != 2 {
-		t.Errorf("read %d records, want 2", len(recs))
-	}
-}
 
 type namedCompressor struct {
 	lode.Compressor
@@ -142,44 +124,6 @@ type namedChecksum struct {
 
 func (c namedChecksum) Name() string { return c.name }
 
-// A head that records other bundled components keeps them: Lode reconstructs
-// each by the name its manifest records, and the new objects read back.
-func TestOpenDataset_UsesRecordedImplementations(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name       string
-		compressor lode.Compressor
-		checksum   lode.Checksum
-	}{
-		{"zstd without a checksum", lode.Zstd(), nil},
-		{"gzip with CRC32C", lode.Gzip(), lode.CRC32C()},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := t.Context()
-			store := lode.NewMemory()
-			head, err := lode.Open(lode.Use(store)).Records(ctx, "quarry", lode.JSONL[lode.D](),
-				lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type")),
-				lode.WithCompressor(tc.compressor), lode.WithChecksum(tc.checksum))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := head.Write(ctx, []lode.D{settingsRecord(0)}, nil); err != nil {
-				t.Fatal(err)
-			}
-			m, view := writeAndReadHead(t, store)
-			if m.Compressor != tc.compressor.Name() {
-				t.Errorf("head records compressor %q, want %q", m.Compressor, tc.compressor.Name())
-			}
-			if got := m.Objects[0].Checksum != ""; got != (tc.checksum != nil) {
-				t.Errorf("new object has a digest: %t, want %t", got, tc.checksum != nil)
-			}
-			if recs := readFirstPartition(t, view); len(recs) != 2 {
-				t.Errorf("read %d records, want 2", len(recs))
-			}
-		})
-	}
-}
 
 // A stored-byte mismatch takes precedence even when the JSONL decoder
 // stops before Lode reaches the end of the stream.
@@ -253,31 +197,6 @@ func (s manifestFailingStore) Put(ctx context.Context, key string, r io.Reader) 
 	return s.Store.Put(ctx, key, r)
 }
 
-// A first commit that staged its manifest and advanced the pointer, then
-// stopped before publishing the canonical manifest, leaves a pending head
-// with the settings of its writer. Quarry adopts those settings, as Lode's
-// writer does, and appends to the dataset.
-func TestOpenDataset_PendingFirstHeadKeepsItsSettings(t *testing.T) {
-	t.Parallel()
-	ctx := t.Context()
-	store := lode.NewMemory()
-	legacy, err := lode.Open(lode.Use(manifestFailingStore{store})).Records(ctx, "quarry", lode.JSONL[lode.D](),
-		lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := legacy.Write(ctx, []lode.D{settingsRecord(0)}, nil); err == nil {
-		t.Fatal("first write succeeded, want the injected manifest failure")
-	}
-
-	ds, err := qlode.OpenDataset(ctx, "quarry", store)
-	if err != nil {
-		t.Fatalf("reopen after the interrupted first commit: %v", err)
-	}
-	if _, err := ds.Write(ctx, []lode.D{settingsRecord(1)}, nil); err != nil {
-		t.Fatalf("append after the interrupted first commit: %v", err)
-	}
-}
 
 // A head that records a compressor or checksum without a bundled match
 // cannot be extended, so the writer is refused when it opens.
@@ -304,6 +223,67 @@ func TestOpenDataset_UnbundledRecordedComponentIsASettingsMismatch(t *testing.T)
 			}
 			if _, err := qlode.OpenDataset(ctx, "quarry", store); !errors.Is(err, lode.ErrSettingsMismatch) {
 				t.Fatalf("OpenDataset = %v, want ErrSettingsMismatch", err)
+			}
+		})
+	}
+}
+
+// seedHead commits one record through a plain Lode writer with Quarry's
+// layout and opts. A pending seed loses its canonical manifest after it
+// advances the latest pointer, as a process that stops there leaves a first
+// commit: the head is staged, not published.
+func seedHead(t *testing.T, store lode.Store, pending bool, opts []lode.DatasetOption) {
+	t.Helper()
+	ctx := t.Context()
+	seedStore := store
+	if pending {
+		seedStore = manifestFailingStore{store}
+	}
+	opts = append([]lode.DatasetOption{lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type"))}, opts...)
+	seed, err := lode.Open(lode.Use(seedStore)).Records(ctx, "quarry", lode.JSONL[lode.D](), opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seed.Write(ctx, []lode.D{settingsRecord(0)}, nil); (err != nil) != pending {
+		t.Fatalf("seed write: err = %v, want an error only for a pending seed", err)
+	}
+}
+
+// A dataset whose head records bundled components keeps them, whether an
+// earlier release published that head or an interrupted first commit staged
+// it: Lode reconstructs each component by its recorded name, and Quarry's
+// commit appends to the dataset. A staged head's commit is abandoned, so its
+// record is not in the next snapshot (Lode's CONTRACT_CORE.md, pending commits).
+func TestOpenDataset_ExistingHeadKeepsItsComponents(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		pending    bool
+		opts       []lode.DatasetOption
+		compressor string
+		digest     bool
+		records    int
+	}{
+		{"uncompressed without a checksum", false, nil, "noop", false, 2},
+		{"zstd without a checksum", false, []lode.DatasetOption{lode.WithCompressor(lode.Zstd())}, "zstd", false, 2},
+		{"gzip with CRC32C", false, []lode.DatasetOption{lode.WithCompressor(lode.Gzip()), lode.WithChecksum(lode.CRC32C())}, "gzip", true, 2},
+		{"a staged first head, uncompressed", true, nil, "noop", false, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := lode.NewMemory()
+			seedHead(t, store, tc.pending, tc.opts)
+			m, view := writeAndReadHead(t, store)
+			if m.Compressor != tc.compressor {
+				t.Errorf("head records compressor %q, want %q", m.Compressor, tc.compressor)
+			}
+			for _, obj := range m.Objects {
+				if got := obj.Checksum != ""; got != tc.digest {
+					t.Errorf("object %s has a digest: %t, want %t", obj.Path, got, tc.digest)
+				}
+			}
+			if recs := readFirstPartition(t, view); len(recs) != tc.records {
+				t.Errorf("read %d records, want %d", len(recs), tc.records)
 			}
 		})
 	}
