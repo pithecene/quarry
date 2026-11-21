@@ -98,6 +98,7 @@ type executorInput struct {
 func (m *ExecutorManager) Start(ctx context.Context) error {
 	// Build command: quarry-executor <script-path>
 	m.cmd = exec.CommandContext(ctx, m.config.ExecutorPath, m.config.ScriptPath)
+	m.stderr = nil
 
 	// Set module resolution env vars when --resolve-from is configured.
 	// QUARRY_RESOLVE_FROM tells the executor's ESM hook where to look.
@@ -173,6 +174,17 @@ func (m *ExecutorManager) Stdout() io.Reader {
 	return m.stdout
 }
 
+// Stderr returns the live stderr reader for diagnostic capture, or nil if the
+// process did not start. Reads advance a shared position. If that position
+// falls behind the retained tail, reading resumes at the oldest retained byte.
+// Wait reports any truncation and includes the tail even if it was read here.
+func (m *ExecutorManager) Stderr() io.Reader {
+	if m.stderr == nil {
+		return nil
+	}
+	return stderrReader{capture: m.stderr}
+}
+
 // Stdin returns the stdin writer for sending ack frames to the executor.
 // The caller must close it after ingestion completes to signal EOF.
 func (m *ExecutorManager) Stdin() io.WriteCloser {
@@ -182,7 +194,7 @@ func (m *ExecutorManager) Stdin() io.WriteCloser {
 // Wait waits for the executor to exit and returns the result.
 // Must be called after Start.
 func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
-	if m.cmd == nil {
+	if m.stderr == nil {
 		return nil, errors.New("executor not started")
 	}
 
