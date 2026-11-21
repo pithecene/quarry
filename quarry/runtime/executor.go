@@ -57,7 +57,7 @@ type ExecutorManager struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
-	stderr io.ReadCloser
+	stderr *stderrCapture
 }
 
 // NewExecutorManager creates a new executor manager.
@@ -98,6 +98,7 @@ type executorInput struct {
 func (m *ExecutorManager) Start(ctx context.Context) error {
 	// Build command: quarry-executor <script-path>
 	m.cmd = exec.CommandContext(ctx, m.config.ExecutorPath, m.config.ScriptPath)
+	m.stderr = nil
 
 	// Set module resolution env vars when --resolve-from is configured.
 	// QUARRY_RESOLVE_FROM tells the executor's ESM hook where to look.
@@ -135,12 +136,14 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
-	m.stderr = stderr
 
 	// Start process
 	if err := m.cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start executor: %w", err)
 	}
+	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
+	// an executor blocked on a full stderr pipe would never end it.
+	m.stderr = startStderrCapture(stderr)
 
 	// Write run metadata and job to stdin
 	input := executorInput{
@@ -171,9 +174,15 @@ func (m *ExecutorManager) Stdout() io.Reader {
 	return m.stdout
 }
 
-// Stderr returns the stderr reader for diagnostic capture.
+// Stderr returns the live stderr reader for diagnostic capture, or nil if the
+// process did not start. Reads advance a shared position. If that position
+// falls behind the retained tail, reading resumes at the oldest retained byte.
+// Wait reports any truncation and includes the tail even if it was read here.
 func (m *ExecutorManager) Stderr() io.Reader {
-	return m.stderr
+	if m.stderr == nil {
+		return nil
+	}
+	return stderrReader{capture: m.stderr}
 }
 
 // Stdin returns the stdin writer for sending ack frames to the executor.
@@ -185,12 +194,13 @@ func (m *ExecutorManager) Stdin() io.WriteCloser {
 // Wait waits for the executor to exit and returns the result.
 // Must be called after Start.
 func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
-	if m.cmd == nil {
+	if m.stderr == nil {
 		return nil, errors.New("executor not started")
 	}
 
-	// Read stderr (non-blocking capture)
-	stderrBytes, _ := io.ReadAll(m.stderr)
+	// The capture ends when the executor closes stderr, and the pipe must be
+	// drained before cmd.Wait closes it.
+	stderrBytes := m.stderr.wait()
 
 	// Wait for exit
 	err := m.cmd.Wait()
