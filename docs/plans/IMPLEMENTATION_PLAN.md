@@ -873,9 +873,12 @@ SHA-256 for datasets without snapshots, as specified in
 
 The [strict-policy comparison](../guides/benchmarks.md#dataset-compression-under-strict)
 shows zstd stores about 29% fewer data bytes than uncompressed JSONL and
-about 2% fewer than gzip on the fixture. The fixed default prioritizes stored
-data size. Uncompressed writes have the highest throughput in memory, and
-zstd commits take about one-eighth as long as gzip commits on this fixture.
+about 2% fewer than gzip on the fixture. For commits of one small event, the
+store holds about 9% more bytes in total with zstd and SHA-256, because the
+manifests grow by more than compression saves. The fixed default prioritizes
+data size and verified digests over total size for the smallest commits.
+Uncompressed writes have the highest throughput in memory, and zstd commits
+take about one-sixth as long as gzip commits on this fixture.
 SHA-256 gives data objects the same digest algorithm Quarry uses for whole
 artifacts. Omitting the digest would remove object-level verification, and
 CRC32C provides a shorter 32-bit checksum.

@@ -24,9 +24,9 @@ func TestOpenView_EmptyDataset(t *testing.T) {
 	}
 }
 
-// Every writer of a Quarry dataset must share its settings: Lode records
-// them in each manifest and rejects a writer that differs when it opens.
-func TestOpenDataset_RejectsOtherSettings(t *testing.T) {
+// Every writer of a Quarry dataset shares its settings, so OpenDataset refuses
+// a caller's layout, compressor, or checksum before it reads the head.
+func TestOpenDataset_RejectsComponentOptions(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
@@ -34,6 +34,7 @@ func TestOpenDataset_RejectsOtherSettings(t *testing.T) {
 	}{
 		{"another partition layout", []lode.DatasetOption{lode.WithLayout(lode.Hive("day"))}},
 		{"a compressor", []lode.DatasetOption{lode.WithCompressor(lode.Gzip())}},
+		{"a checksum", []lode.DatasetOption{lode.WithChecksum(lode.CRC32C())}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -46,8 +47,8 @@ func TestOpenDataset_RejectsOtherSettings(t *testing.T) {
 			if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: "run-1"}, time.Date(2026, 2, 4, 10, 0, 0, 0, time.UTC)); err != nil {
 				t.Fatalf("WriteMetrics failed: %v", err)
 			}
-			if _, err := OpenDataset(t.Context(), "quarry", store, tc.opts...); !errors.Is(err, lode.ErrSettingsMismatch) {
-				t.Fatalf("OpenDataset with %s: err = %v, want lode.ErrSettingsMismatch", tc.name, err)
+			if _, err := OpenDataset(t.Context(), "quarry", store, tc.opts...); !errors.Is(err, lode.ErrInvalidArgument) {
+				t.Fatalf("OpenDataset with %s: err = %v, want lode.ErrInvalidArgument", tc.name, err)
 			}
 		})
 	}

@@ -412,8 +412,13 @@ layout over the required partition keys in the recommended order, the JSONL
 codec, the dataset's compressor and checksum, and Lode's default path names.
 
 - A writer takes the compressor and checksum that the dataset's head records,
-  so a dataset keeps the settings it was created with. A dataset without
-  snapshots is created with zstd and SHA-256.
+  so a dataset keeps the settings it was created with. The head may be
+  published or staged by an interrupted first commit, and Lode's
+  `WithRecordedComponents` resolves either. A dataset without a head is
+  created with zstd and SHA-256.
+- A caller of `OpenDataset` cannot set the layout, compressor, or checksum:
+  such an option fails with `ErrInvalidArgument` before Quarry reads the
+  dataset.
 - A head that records a compressor or checksum other than Lode's bundled
   ones refuses the writer with `ErrSettingsMismatch`.
 - Every read of a dataset's data object decompresses it with the compressor

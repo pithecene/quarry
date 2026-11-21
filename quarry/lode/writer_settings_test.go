@@ -83,37 +83,24 @@ func writeAndReadHead(t *testing.T, store lode.Store, opts ...lode.DatasetOption
 }
 
 // A dataset without snapshots is created with Quarry's layout, zstd, and
-// SHA-256 even when the caller passes other settings: each data object
-// carries the zstd extension and a digest, and reads back.
+// SHA-256: each data object carries the zstd extension and a digest, and
+// reads back.
 func TestOpenDataset_NewDatasetUsesZstdAndSHA256(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name string
-		opts []lode.DatasetOption
-	}{
-		{"defaults", nil},
-		{"different compressor and checksum", []lode.DatasetOption{lode.WithCompressor(lode.Gzip()), lode.WithChecksum(lode.CRC32C())}},
-		{"disabled checksum", []lode.DatasetOption{lode.WithChecksum(nil)}},
-		{"different layout", []lode.DatasetOption{lode.WithLayout(lode.Hive("day"))}},
+	m, view := writeAndReadHead(t, lode.NewMemory())
+	if m.Compressor != "zstd" || m.ChecksumAlgorithm != "sha256" {
+		t.Fatalf("head records compressor %q and checksum %q, want zstd and sha256", m.Compressor, m.ChecksumAlgorithm)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m, view := writeAndReadHead(t, lode.NewMemory(), tc.opts...)
-			if m.Compressor != "zstd" || m.ChecksumAlgorithm != "sha256" {
-				t.Fatalf("head records compressor %q and checksum %q, want zstd and sha256", m.Compressor, m.ChecksumAlgorithm)
-			}
-			if len(m.Objects) != 1 {
-				t.Fatalf("head has %d objects, want 1", len(m.Objects))
-			}
-			obj := m.Objects[0]
-			if !strings.HasSuffix(obj.Path, ".zst") || obj.Checksum == "" {
-				t.Errorf("object %s has checksum %q, want a .zst object with a digest", obj.Path, obj.Checksum)
-			}
-			recs := readFirstPartition(t, view)
-			if len(recs) != 1 || recs[0]["seq"] != float64(1) {
-				t.Errorf("read %v, want the one record written", recs)
-			}
-		})
+	if len(m.Objects) != 1 {
+		t.Fatalf("head has %d objects, want 1", len(m.Objects))
+	}
+	obj := m.Objects[0]
+	if !strings.HasSuffix(obj.Path, ".zst") || obj.Checksum == "" {
+		t.Errorf("object %s has checksum %q, want a .zst object with a digest", obj.Path, obj.Checksum)
+	}
+	recs := readFirstPartition(t, view)
+	if len(recs) != 1 || recs[0]["seq"] != float64(1) {
+		t.Errorf("read %v, want the one record written", recs)
 	}
 }
 
@@ -155,16 +142,17 @@ type namedChecksum struct {
 
 func (c namedChecksum) Name() string { return c.name }
 
+// A head that records other bundled components keeps them: Lode reconstructs
+// each by the name its manifest records, and the new objects read back.
 func TestOpenDataset_UsesRecordedImplementations(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name         string
-		headChecksum lode.Checksum
-		option       lode.DatasetOption
+		name       string
+		compressor lode.Compressor
+		checksum   lode.Checksum
 	}{
-		{"same compressor name", lode.SHA256(), lode.WithCompressor(namedCompressor{lode.Uncompressed(), "zstd"})},
-		{"same checksum name", lode.SHA256(), lode.WithChecksum(namedChecksum{lode.MD5(), "sha256"})},
-		{"no recorded checksum", nil, lode.WithChecksum(namedChecksum{Checksum: lode.MD5()})},
+		{"zstd without a checksum", lode.Zstd(), nil},
+		{"gzip with CRC32C", lode.Gzip(), lode.CRC32C()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,16 +160,19 @@ func TestOpenDataset_UsesRecordedImplementations(t *testing.T) {
 			store := lode.NewMemory()
 			head, err := lode.Open(lode.Use(store)).Records(ctx, "quarry", lode.JSONL[lode.D](),
 				lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type")),
-				lode.WithCompressor(lode.Zstd()), lode.WithChecksum(tc.headChecksum))
+				lode.WithCompressor(tc.compressor), lode.WithChecksum(tc.checksum))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := head.Write(ctx, []lode.D{settingsRecord(0)}, nil); err != nil {
 				t.Fatal(err)
 			}
-			m, view := writeAndReadHead(t, store, tc.option)
-			if got := m.Objects[0].Checksum != ""; got != (tc.headChecksum != nil) {
-				t.Errorf("new object has a digest: %t, want %t", got, tc.headChecksum != nil)
+			m, view := writeAndReadHead(t, store)
+			if m.Compressor != tc.compressor.Name() {
+				t.Errorf("head records compressor %q, want %q", m.Compressor, tc.compressor.Name())
+			}
+			if got := m.Objects[0].Checksum != ""; got != (tc.checksum != nil) {
+				t.Errorf("new object has a digest: %t, want %t", got, tc.checksum != nil)
 			}
 			if recs := readFirstPartition(t, view); len(recs) != 2 {
 				t.Errorf("read %d records, want 2", len(recs))
@@ -249,4 +240,71 @@ func readFirstPartition(t *testing.T, view *lode.RecordView[lode.D]) []lode.D {
 		t.Fatalf("read: %v", err)
 	}
 	return recs
+}
+
+// manifestFailingStore fails every write of a canonical manifest, as a
+// process that stops after advancing the latest pointer leaves the dataset.
+type manifestFailingStore struct{ lode.Store }
+
+func (s manifestFailingStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if strings.HasSuffix(key, "/manifest.json") {
+		return errors.New("injected: manifest write lost")
+	}
+	return s.Store.Put(ctx, key, r)
+}
+
+// A first commit that staged its manifest and advanced the pointer, then
+// stopped before publishing the canonical manifest, leaves a pending head
+// with the settings of its writer. Quarry adopts those settings, as Lode's
+// writer does, and appends to the dataset.
+func TestOpenDataset_PendingFirstHeadKeepsItsSettings(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store := lode.NewMemory()
+	legacy, err := lode.Open(lode.Use(manifestFailingStore{store})).Records(ctx, "quarry", lode.JSONL[lode.D](),
+		lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Write(ctx, []lode.D{settingsRecord(0)}, nil); err == nil {
+		t.Fatal("first write succeeded, want the injected manifest failure")
+	}
+
+	ds, err := qlode.OpenDataset(ctx, "quarry", store)
+	if err != nil {
+		t.Fatalf("reopen after the interrupted first commit: %v", err)
+	}
+	if _, err := ds.Write(ctx, []lode.D{settingsRecord(1)}, nil); err != nil {
+		t.Fatalf("append after the interrupted first commit: %v", err)
+	}
+}
+
+// A head that records a compressor or checksum without a bundled match
+// cannot be extended, so the writer is refused when it opens.
+func TestOpenDataset_UnbundledRecordedComponentIsASettingsMismatch(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		opts []lode.DatasetOption
+	}{
+		{"unknown compressor", []lode.DatasetOption{lode.WithCompressor(namedCompressor{lode.Gzip(), "brotli"})}},
+		{"unknown checksum", []lode.DatasetOption{lode.WithChecksum(namedChecksum{lode.MD5(), "blake3"})}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			store := lode.NewMemory()
+			opts := append([]lode.DatasetOption{lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type"))}, tc.opts...)
+			head, err := lode.Open(lode.Use(store)).Records(ctx, "quarry", lode.JSONL[lode.D](), opts...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := head.Write(ctx, []lode.D{settingsRecord(0)}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := qlode.OpenDataset(ctx, "quarry", store); !errors.Is(err, lode.ErrSettingsMismatch) {
+				t.Fatalf("OpenDataset = %v, want ErrSettingsMismatch", err)
+			}
+		})
+	}
 }

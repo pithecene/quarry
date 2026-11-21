@@ -171,19 +171,27 @@ cd quarry && go test -run '^$' -bench 'WriteEvents_Compression' -benchmem -count
 ```
 
 The table gives medians across five runs of 2,000 commits each on macOS
-arm64 (Apple M5) with Go 1.27.3, `GOMAXPROCS=2`, and Lode v0.18.2.
-After timing ends, the benchmark sums the data-object sizes recorded in the
-manifests and reports the average per measured commit as `stored-B/op`.
-This metric excludes manifest bytes and the seed snapshot.
+arm64 (Apple M5) with Go 1.27.3, `GOMAXPROCS=10`, and Lode v0.18.2.
+After timing ends, the benchmark reports two sizes per measured commit.
+`stored-B/op` sums the data-object sizes that the manifests record.
+`stored-total-B/op` sums every object that the measured commits added to the
+store: data objects, manifests, and the latest pointer. Neither counts the
+seed snapshot.
 
-| Compression | Checksum | Time per commit | Stored bytes per commit | Bytes allocated | Allocations |
-|---|---|---:|---:|---:|---:|
-| None | None | 26.4 µs | 315.9 | 9,652 | 101 |
-| gzip | SHA-256 | 339.3 µs | 228.4 | 1,088,125 | 126 |
-| zstd | SHA-256 | 40.2 µs | 224.1 | 13,939 | 108 |
+| Compression | Checksum | Time per commit | Data bytes per commit | Total bytes per commit | Bytes allocated | Allocations |
+|---|---|---:|---:|---:|---:|---:|
+| None | None | 13.9 µs | 315.9 | 1,696 | 9,670 | 101 |
+| gzip | SHA-256 | 127.4 µs | 228.4 | 1,854 | 1,089,170 | 128 |
+| zstd | SHA-256 | 22.0 µs | 224.1 | 1,852 | 16,620 | 108 |
+
+For commits of one small event, zstd stores 29% fewer data bytes than
+uncompressed JSONL, but the store holds 9% more bytes in total: the
+manifests and the pointer grow by about 248 bytes per commit, more than the
+92 bytes that compression saves. Larger payloads shift that balance toward compression.
+The checksum gives each data object a verified digest at that cost.
 
 Lode v0.18.2 reuses zstd encoders across streams. In this benchmark a zstd
-commit took about 1.5 times as long as an uncompressed commit, and a gzip
-commit took about 8.4 times as long as a zstd commit. The timings cover
+commit took about 1.6 times as long as an uncompressed commit, and a gzip
+commit took about 5.8 times as long as a zstd commit. The timings cover
 local write costs for one small event per snapshot. Storage latency and
 larger payloads can change the trade-off.
