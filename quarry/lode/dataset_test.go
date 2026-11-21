@@ -33,7 +33,7 @@ func TestOpenDataset_RejectsOtherSettings(t *testing.T) {
 		opts []lode.DatasetOption
 	}{
 		{"another partition layout", []lode.DatasetOption{lode.WithLayout(lode.Hive("day"))}},
-		{"a compressor", []lode.DatasetOption{lode.WithCompressor(lode.NewGzipCompressor())}},
+		{"a compressor", []lode.DatasetOption{lode.WithCompressor(lode.Gzip())}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

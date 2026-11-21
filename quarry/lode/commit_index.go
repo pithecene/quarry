@@ -45,7 +45,7 @@ type commitIndexEntry struct {
 // commit records are persisted already, so a failed entry fails nothing:
 // it is reported to the IndexFailureObserver, and a reader finds the
 // artifact's record by reading the partition.
-func (c *LodeClient) indexCommits(ctx context.Context, events []*types.EventEnvelope, snapshot lode.DatasetSnapshotID) {
+func (c *LodeClient) indexCommits(ctx context.Context, events []*types.EventEnvelope, snapshot lode.SnapshotID) {
 	for _, e := range events {
 		if e.Type != types.EventTypeArtifact {
 			continue
@@ -59,7 +59,7 @@ func (c *LodeClient) indexCommits(ctx context.Context, events []*types.EventEnve
 
 // putCommitIndex writes one entry, create-only: an entry that exists
 // already is left as it is, and the write returns lode.ErrPathExists.
-func putCommitIndex(ctx context.Context, store lode.Store, cfg Config, artifactID string, snapshot lode.DatasetSnapshotID) error {
+func putCommitIndex(ctx context.Context, store lode.Store, cfg Config, artifactID string, snapshot lode.SnapshotID) error {
 	if err := ValidateArtifactID(artifactID); err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func putCommitIndex(ctx context.Context, store lode.Store, cfg Config, artifactI
 // absent or is not an entry the runtime wrote: either way the reader reads
 // the partition instead. A store error other than a missing entry is
 // returned.
-func ReadCommitIndex(ctx context.Context, store lode.Store, cfg Config, artifactID string) (snapshot lode.DatasetSnapshotID, found bool, err error) {
+func ReadCommitIndex(ctx context.Context, store lode.Store, cfg Config, artifactID string) (snapshot lode.SnapshotID, found bool, err error) {
 	if ValidateArtifactID(artifactID) != nil {
 		return "", false, nil
 	}
@@ -100,5 +100,5 @@ func ReadCommitIndex(ctx context.Context, store lode.Store, cfg Config, artifact
 	if len(data) > commitIndexMaxBytes || json.Unmarshal(data, &entry) != nil || entry.SnapshotID == "" {
 		return "", false, nil
 	}
-	return lode.DatasetSnapshotID(entry.SnapshotID), true, nil
+	return lode.SnapshotID(entry.SnapshotID), true, nil
 }

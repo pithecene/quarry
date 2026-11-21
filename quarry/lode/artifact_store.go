@@ -96,7 +96,7 @@ func (c *LodeClient) OpenArtifact(ctx context.Context, artifactID string, size i
 // volumeOptions gives a Volume the bounded commit retry of the dataset
 // (OpenDataset) and the run's retry observer, through the same gate.
 func (c *LodeClient) volumeOptions() []volume.Option {
-	opts := []volume.Option{volume.WithRetryCount(datasetRetryCount)}
+	opts := []volume.Option{volume.WithRetry(datasetRetryCount)}
 	if c.config.RetryObserver != nil {
 		opts = append(opts, volume.WithRetryObserver(c.retryGate.wrap(c.config.RetryObserver)))
 	}

@@ -175,7 +175,7 @@ func listKeys(ctx context.Context, store lode.Store, prefix string) (map[string]
 }
 
 // legacyRuns groups the dataset's partitions by run, in key order.
-func legacyRuns(ctx context.Context, dr lode.SnapshotReader, dataset string) ([]legacyRun, error) {
+func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string) ([]legacyRun, error) {
 	parts, err := dr.ListPartitions(ctx, lode.PartitionListOptions{})
 	if errors.Is(err, lode.ErrNotFound) {
 		return nil, nil
@@ -185,7 +185,7 @@ func legacyRuns(ctx context.Context, dr lode.SnapshotReader, dataset string) ([]
 	}
 	byPrefix := map[string]*legacyRun{}
 	for _, p := range parts {
-		path := p.Path.String()
+		path := p.String()
 		values, ok := splitPartition(path)
 		if !ok {
 			return nil, fmt.Errorf("rebuild: partition %q does not have the layout %s", path, strings.Join(partitionKeys, "/"))
@@ -198,7 +198,7 @@ func legacyRuns(ctx context.Context, dr lode.SnapshotReader, dataset string) ([]
 			}}
 			byPrefix[prefix] = run
 		}
-		run.partitions[values[4]] = p.Path
+		run.partitions[values[4]] = p
 	}
 	out := make([]legacyRun, 0, len(byPrefix))
 	for _, run := range byPrefix {
@@ -231,7 +231,7 @@ func splitPartition(path string) ([]string, bool) {
 
 type rebuilder struct {
 	store    lode.Store
-	dr       lode.SnapshotReader
+	dr       *lode.RecordView[lode.D]
 	existing map[string]bool
 	dryRun   bool
 }

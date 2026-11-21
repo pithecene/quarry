@@ -304,8 +304,14 @@ func TestPrune_RecordForAnotherKeyIsKept(t *testing.T) {
 func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	cfg := f.write(runSpec{source: "a/b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, lateFile: true})
+	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, lateFile: true})
 	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
+
+	prefix := "datasets/quarry/partitions/source=a/b/category=cat/day=" + oldDay + "/run_id=r1/files/"
+	files, err := qlode.QuerySidecarFiles(t.Context(), f.factory, "quarry", "r1")
+	if err != nil || len(files) != 1 || files[0].Path != prefix+"page.html" {
+		t.Fatalf("sidecar files = %+v, %v; want recorded page.html at %s", files, err, prefix)
+	}
 
 	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
 	if got, want := outcomes(report), "[r1:pruned]"; got != want {
@@ -316,12 +322,12 @@ func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
 	if report.SidecarObjects != 2 {
 		t.Fatalf("sidecar objects = %d, want 2", report.SidecarObjects)
 	}
-	left, err := f.store.List(t.Context(), qlode.SidecarFilesPrefix(cfg))
+	left, err := f.store.List(t.Context(), prefix)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	slices.Sort(left)
-	if want := []string{qlode.SidecarFilesPrefix(cfg) + "late.txt", qlode.SidecarFilesPrefix(cfg) + "late.txt" + metaSuffix}; !slices.Equal(left, want) {
+	if want := []string{prefix + "late.txt", prefix + "late.txt" + metaSuffix}; !slices.Equal(left, want) {
 		t.Fatalf("left %v, want %v", left, want)
 	}
 }

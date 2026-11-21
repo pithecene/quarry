@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 
@@ -25,18 +26,22 @@ const metaSuffix = ".meta.json"
 // as skipped and are never deleted.
 func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition string) (paths, skipped []string, err error) {
 	prefix := qlode.SidecarFilesPrefix(cfg)
+	// The run key was validated before selection. Its recorded prefix may
+	// contain repeated slashes that older Lode stores collapsed.
+	objectPrefix := path.Clean(prefix) + "/"
 	set := map[string]bool{}
 	recorded, err := p.recordedSidecars(ctx, partition)
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, path := range recorded {
-		name := strings.TrimPrefix(path, prefix)
-		if !strings.HasPrefix(path, prefix) || name == "" || strings.Contains(name, "/") {
-			skipped = append(skipped, path)
+	for _, recordedPath := range recorded {
+		name, belongs := strings.CutPrefix(recordedPath, prefix)
+		if !belongs || name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+			skipped = append(skipped, recordedPath)
 			continue
 		}
-		set[path], set[path+metaSuffix] = true, true
+		key := objectPrefix + name
+		set[key], set[key+metaSuffix] = true, true
 	}
 	// A file written after the run's last commit is recorded nowhere, so the
 	// prefix is listed too, but only when its direct children can belong to
@@ -85,13 +90,13 @@ func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]stri
 	if err != nil {
 		return nil, qlode.WrapReadError(err, partition)
 	}
-	seen := map[lode.DatasetSnapshotID]bool{}
+	seen := map[lode.SnapshotID]bool{}
 	var out []string
 	for _, part := range parts {
 		// Manifests skips a manifest that expired after the listing.
-		for loaded, err := range p.ds.Manifests(ctx, part.Path, lode.ManifestListOptions{}) {
+		for loaded, err := range p.ds.Manifests(ctx, part, lode.ManifestListOptions{}) {
 			if err != nil {
-				return nil, qlode.WrapReadError(err, part.Path.String())
+				return nil, qlode.WrapReadError(err, part.String())
 			}
 			ref, m := loaded.Ref, loaded.Manifest
 			if seen[ref.ID] {

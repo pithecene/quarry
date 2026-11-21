@@ -205,10 +205,10 @@ func (r *Reader) indexedCommit(ctx context.Context, run Run, cfg qlode.Config, a
 	if err != nil {
 		return Artifact{}, "", fmt.Errorf("%w: %w", ErrInvalidRun, err)
 	}
-	// The view opens at the entry's snapshot, so it reads neither the
-	// pointer nor the head, and the snapshot read below costs one store
-	// request. An entry whose ID is malformed names no snapshot, as a missing
-	// one does.
+	// The view opens at the entry's snapshot, so it never loads the head
+	// manifest: Lode reads only the latest pointer, for its removal fence.
+	// An entry whose ID is malformed names no snapshot, as a missing one
+	// does.
 	dr, err := qlode.OpenViewAt(ctx, r.dataset, r.store, snapshot)
 	if errors.Is(err, lode.ErrNotFound) || errors.Is(err, lode.ErrSnapshotExpired) || errors.Is(err, lode.ErrInvalidArgument) {
 		return Artifact{}, FallbackSnapshotGone, nil

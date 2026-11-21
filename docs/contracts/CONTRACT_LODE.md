@@ -384,8 +384,8 @@ Lode's [CONTRACT_READ_API.md](https://github.com/pithecene/lode/blob/main/docs/c
   manifests by (partition, ID). A reader must not assume store order and
   must not re-sort.
 - `PartitionListOptions.Prefix` narrows a partition listing to a string
-  prefix of the Hive path. A layout that cannot honour a prefix returns
-  `ErrPartitionPrefixNotSupported`. Quarry's Hive layout supports it.
+  prefix of the Hive path. Lode returns `ErrNotPartitioned` when a listing
+  specifies a prefix for an unpartitioned dataset.
 - `DatasetListOptions.StartAfter`, `PartitionListOptions.StartAfter`, and
   `ManifestListOptions.StartAfter` are exclusive cursors over the full
   sorted key (dataset ID, partition path, or `(partition, ID)`). `Limit`
@@ -412,10 +412,10 @@ Every Quarry writer of a dataset opens it with the same settings: the Hive
 layout over the required partition keys in the recommended order, the JSONL
 codec, no compressor, no checksum, and Lode's default path names.
 
-- Lode records the partition keys and path names in each manifest, under
-  manifest format 1.1.0, and compares a writer's settings with the head's
-  when the writer opens. A writer whose settings differ is rejected with
-  `ErrSettingsMismatch` before it writes anything.
+- Lode writes dataset manifests in format 1.2.0 and records the ordered
+  partition keys and path layout. On open, Lode compares a writer's settings
+  with the dataset's persisted settings and returns `ErrSettingsMismatch`
+  before the writer can write with different settings.
 - Opening a writer reads the dataset's head, so constructing a client
   performs storage reads and takes a context.
 - Readers open read-only views with the writers' Hive layout, passed with
@@ -426,12 +426,17 @@ codec, no compressor, no checksum, and Lode's default path names.
   empty result.
 - Retention (`Expire`, `Sweep`) is available only on writer handles, so
   `quarry prune` opens a writer with the settings above.
+- Quarry reads and extends datasets with manifest formats 1.0.0 and 1.1.0
+  in place under the default path names.
 - A dataset written before v0.12.0 has manifests in format 1.0.0, which
   record no settings, and opens under the default path names. No migration is
   required. Lode v0.10.0, which Quarry v0.13.7 uses, and Lode v0.11.0 read
   and extend datasets that Lode v0.12.0 has written, and Lode v0.11.0 also
-  expires and sweeps them, so a rollback to an earlier Quarry release needs
-  no migration either.
+  expires and sweeps them.
+- Lode v0.17.1 and earlier reject a format 1.2.0 manifest, so Quarry v0.18.0
+  and earlier cannot read a snapshot that a later release wrote. A rollback
+  across that boundary must restore the dataset as it was before the
+  upgrade's first write.
 
 ---
 
@@ -504,7 +509,7 @@ re-deriving keys.
 
 Sidecar files written via `storage.put()` land at Hive-partitioned paths
 under `files/`, bypassing the Dataset segment/manifest machinery. These files
-are **not** tracked by Lode's `Manifest.Files`. They are the caller's
+are **not** tracked by Lode's `Manifest.Objects`. They are the caller's
 responsibility.
 
 Quarry tracks sidecar files in Lode snapshot `Metadata` under the
@@ -512,7 +517,7 @@ Quarry tracks sidecar files in Lode snapshot `Metadata` under the
 
 | Field          | Type   | Description                              |
 |----------------|--------|------------------------------------------|
-| `path`         | string | Full Hive-partitioned storage path       |
+| `path`         | string | Sidecar path formed from the run key     |
 | `filename`     | string | Flat filename (no path separators)       |
 | `content_type` | string | MIME content type                        |
 | `size`         | int64  | File size in bytes                       |
@@ -538,6 +543,9 @@ snapshot.Manifest.Metadata["sidecar_files"]
 File refs may be spread across multiple snapshots within a run. To
 reconstruct the full inventory, union `sidecar_files` from all snapshots
 for the run.
+
+Quarry collapses consecutive slashes in a sidecar prefix when addressing
+the stored object. Inventory paths preserve the original prefix.
 
 ---
 

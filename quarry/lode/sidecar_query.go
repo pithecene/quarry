@@ -52,7 +52,7 @@ func QuerySidecarFiles(ctx context.Context, factory lode.Factory[lode.RangeStore
 				continue
 			}
 			result = append(result, SidecarFileRef{
-				Path:        toString(m["path"]),
+				Path:        collapseSidecarSlashes(toString(m["path"])),
 				Filename:    toString(m["filename"]),
 				ContentType: toString(m["content_type"]),
 				Size:        toInt64Any(m["size"]),

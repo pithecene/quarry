@@ -34,7 +34,7 @@ type pruner struct {
 	store   lode.RangeStore
 	// ds is a writer handle: Lode retains only through writers, and a writer
 	// opens on a dataset without snapshots, where a view would not.
-	ds lode.Records[lode.D]
+	ds *lode.Records[lode.D]
 }
 
 func newPruner(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore], opts Options) (*pruner, error) {
@@ -243,7 +243,7 @@ func (p *pruner) configOf(k reader.Key) qlode.Config {
 // write by them. It also returns the Volume heads by artifact ID, which
 // the removal checks again after its dry run, and a reason to keep the run
 // when a Volume cannot be dated.
-func (p *pruner) writes(ctx context.Context, cfg qlode.Config, snapshots []lode.DatasetSnapshotID) (ids []string, heads map[string]string, kept string, err error) {
+func (p *pruner) writes(ctx context.Context, cfg qlode.Config, snapshots []lode.SnapshotID) (ids []string, heads map[string]string, kept string, err error) {
 	heads, kept, err = p.volumeHeads(ctx, cfg)
 	if kept != "" || err != nil {
 		return nil, nil, kept, err
@@ -281,7 +281,7 @@ func (p *pruner) lastWriteDue(out *Run, ids []string, threshold time.Duration) b
 // they are given. It returns a reason when the run must be kept: Lode
 // retains the head and mixed snapshots, and refuses while the head is
 // uncommitted.
-func (p *pruner) expire(ctx context.Context, partition string, ids []lode.DatasetSnapshotID, dryRun bool) (*lode.ExpireReport, string, error) {
+func (p *pruner) expire(ctx context.Context, partition string, ids []lode.SnapshotID, dryRun bool) (*lode.ExpireReport, string, error) {
 	report, err := p.ds.Expire(ctx, lode.ExpireRequest{IDs: ids, Partition: partition, DryRun: dryRun})
 	if report == nil {
 		report = &lode.ExpireReport{}
@@ -357,11 +357,10 @@ func (p *pruner) hasSnapshots(ctx context.Context, partition string) (bool, erro
 		return false, qlode.WrapReadError(err, partition)
 	}
 	for _, part := range parts {
-		refs, err := p.ds.ListManifests(ctx, part.Path, lode.ManifestListOptions{Limit: 1})
-		if err != nil {
-			return false, qlode.WrapReadError(err, part.Path.String())
-		}
-		if len(refs) > 0 {
+		for _, err := range p.ds.Manifests(ctx, part, lode.ManifestListOptions{Limit: 1}) {
+			if err != nil {
+				return false, qlode.WrapReadError(err, part.String())
+			}
 			return true, nil
 		}
 	}

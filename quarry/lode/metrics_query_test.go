@@ -33,7 +33,7 @@ func sharedFactory(store lode.RangeStore) lode.Factory[lode.RangeStore] {
 
 // metadataOf decodes a snapshot's metadata as a map, so values have the
 // types a JSON round trip gives them.
-func metadataOf(t *testing.T, snap *lode.DatasetSnapshot) map[string]any {
+func metadataOf(t *testing.T, snap *lode.Snapshot) map[string]any {
 	t.Helper()
 	var meta map[string]any
 	if err := snap.Metadata.Decode(&meta); err != nil {
@@ -44,7 +44,7 @@ func metadataOf(t *testing.T, snap *lode.DatasetSnapshot) map[string]any {
 
 // readView opens a view of the quarry dataset behind factory, as the read
 // path does.
-func readView(ctx context.Context, factory lode.Factory[lode.RangeStore]) (lode.RecordView[lode.D], error) {
+func readView(ctx context.Context, factory lode.Factory[lode.RangeStore]) (*lode.RecordView[lode.D], error) {
 	store, err := factory()
 	if err != nil {
 		return nil, err

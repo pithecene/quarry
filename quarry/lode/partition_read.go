@@ -27,7 +27,7 @@ func layout() lode.ComponentOption { return lode.WithLayout(lode.Hive(partitionK
 // settings in each manifest and rejects, with lode.ErrSettingsMismatch, a
 // writer whose settings differ from the head's. Opening reads the head and
 // writes nothing.
-func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (lode.Records[lode.D], error) {
+func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (*lode.Records[lode.D], error) {
 	settings := []lode.DatasetOption{layout(), lode.WithRetry(datasetRetryCount)}
 	return lode.Open(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), append(settings, opts...)...)
 }
@@ -37,20 +37,21 @@ func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...
 // writers use, so it reads only that layout's manifest directory. It returns
 // lode.ErrNotFound when the dataset has no snapshot and
 // lode.ErrSettingsMismatch when the dataset records another layout.
-func OpenView(ctx context.Context, dataset string, store lode.ObjectStore) (lode.RecordView[lode.D], error) {
+func OpenView(ctx context.Context, dataset string, store lode.ObjectStore) (*lode.RecordView[lode.D], error) {
 	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), layout())
 }
 
 // OpenViewAt opens a read-only view of the dataset over store at one
-// snapshot, which it reads in place of the head (Lode's WithPinnedSnapshot).
-// The view expects the Hive layout, so opening reads the snapshot's
-// canonical manifest with one store request, and so does the view's
-// Snapshot of that ID. It returns lode.ErrNotFound when the snapshot does
-// not exist, lode.ErrSnapshotExpired when retention expired it,
+// snapshot, which it reads in place of the head (Lode's WithAnchor). The
+// view expects the Hive layout, so opening reads the snapshot's canonical
+// manifest with one store request after Lode's removal fence check. The
+// view's Snapshot of that ID reuses that manifest after it checks the fence
+// and the manifest's existence again. It returns lode.ErrNotFound when the
+// snapshot does not exist, lode.ErrSnapshotExpired when retention expired it,
 // lode.ErrInvalidArgument when the ID is not one path segment, and
 // lode.ErrSettingsMismatch when the snapshot records another layout.
-func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, snapshot lode.DatasetSnapshotID) (lode.RecordView[lode.D], error) {
-	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), layout(), lode.WithPinnedSnapshot(snapshot))
+func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, snapshot lode.SnapshotID) (*lode.RecordView[lode.D], error) {
+	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), layout(), lode.WithAnchor(snapshot))
 }
 
 // ReadPartitionRecords returns every record stored in one partition (a path
@@ -58,14 +59,14 @@ func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, sna
 // data file read once. Lode's Manifests yields each manifest with the load
 // that its listing made, so no manifest is read twice, and it skips a
 // manifest that expired after the listing.
-func ReadPartitionRecords(ctx context.Context, ds lode.SnapshotReader, partition lode.PartitionPath) ([]lode.D, error) {
+func ReadPartitionRecords(ctx context.Context, ds *lode.RecordView[lode.D], partition lode.PartitionPath) ([]lode.D, error) {
 	seen := map[string]bool{}
 	var out []lode.D
 	for loaded, err := range ds.Manifests(ctx, partition, lode.ManifestListOptions{}) {
 		if err != nil {
 			return nil, WrapReadError(err, partition.String())
 		}
-		recs, err := readManifestRecords(ctx, ds, loaded.Ref, loaded.Manifest, partition, seen)
+		recs, err := readManifestRecords(ctx, ds, loaded.Manifest, partition, seen)
 		if err != nil {
 			return nil, err
 		}
@@ -81,26 +82,26 @@ func ReadPartitionRecords(ctx context.Context, ds lode.SnapshotReader, partition
 // CONTRACT_RETENTION §Expired Snapshot). It returns lode.ErrNotFound or
 // lode.ErrSnapshotExpired, wrapped, when the snapshot is gone, and
 // lode.ErrNotFound when one of its data objects is.
-func ReadSnapshotPartitionRecords(ctx context.Context, ds lode.SnapshotReader, snapshot lode.DatasetSnapshotID, partition lode.PartitionPath) ([]lode.D, error) {
+func ReadSnapshotPartitionRecords(ctx context.Context, ds *lode.RecordView[lode.D], snapshot lode.SnapshotID, partition lode.PartitionPath) ([]lode.D, error) {
 	snap, err := ds.Snapshot(ctx, snapshot)
 	if err != nil {
 		return nil, WrapReadError(err, partition.String())
 	}
-	ref := lode.ManifestRef{ID: snapshot, Partition: partition}
-	return readManifestRecords(ctx, ds, ref, snap.Manifest, partition, map[string]bool{})
+	return readManifestRecords(ctx, ds, snap.Manifest, partition, map[string]bool{})
 }
 
-// readManifestRecords reads the records of the manifest's files in the
-// partition, skipping a file that seen holds and adding each file it reads.
-func readManifestRecords(ctx context.Context, ds lode.SnapshotReader, ref lode.ManifestRef, m *lode.Manifest, partition lode.PartitionPath, seen map[string]bool) ([]lode.D, error) {
+// readManifestRecords reads the records of the manifest's objects in the
+// partition, skipping an object that seen holds and adding each object it
+// reads.
+func readManifestRecords(ctx context.Context, ds *lode.RecordView[lode.D], m *lode.Manifest, partition lode.PartitionPath, seen map[string]bool) ([]lode.D, error) {
 	dir := "/" + partition.String() + "/"
 	var out []lode.D
-	for _, f := range m.Files {
-		if seen[f.Path] || !strings.Contains(f.Path, dir) {
+	for _, obj := range m.Objects {
+		if seen[obj.Path] || !strings.Contains(obj.Path, dir) {
 			continue
 		}
-		seen[f.Path] = true
-		recs, err := readObject(ctx, ds, lode.ObjectRef{Manifest: ref, Path: f.Path})
+		seen[obj.Path] = true
+		recs, err := readObject(ctx, ds, m, obj)
 		if err != nil {
 			return nil, err
 		}
@@ -109,8 +110,10 @@ func readManifestRecords(ctx context.Context, ds lode.SnapshotReader, ref lode.M
 	return out, nil
 }
 
-func readObject(ctx context.Context, ds lode.SnapshotReader, ref lode.ObjectRef) ([]lode.D, error) {
-	rc, err := ds.OpenObject(ctx, ref)
+// readObject decodes one object of manifest m. OpenDecompressed checks that
+// the object belongs to m's snapshot and applies m's compressor and checksum.
+func readObject(ctx context.Context, ds *lode.RecordView[lode.D], m *lode.Manifest, ref lode.ObjectRef) ([]lode.D, error) {
+	rc, err := ds.OpenDecompressed(ctx, m, ref)
 	if err != nil {
 		return nil, WrapReadError(err, ref.Path)
 	}

@@ -55,7 +55,7 @@ func TestReadPartitionRecords_ReadsEachKeyOnce(t *testing.T) {
 	clear(store.gets)
 	store.mu.Unlock()
 
-	recs, err := qlode.ReadPartitionRecords(ctx, view, parts[0].Path)
+	recs, err := qlode.ReadPartitionRecords(ctx, view, parts[0])
 	if err != nil {
 		t.Fatal(err)
 	}

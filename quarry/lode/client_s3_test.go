@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,8 +17,8 @@ import (
 	"github.com/pithecene/quarry/internal/testutil"
 )
 
-// fakeS3 records the request paths it receives and answers every request
-// with an empty ListObjectsV2 result.
+// fakeS3 records request paths, confirms object existence, and returns
+// empty listings.
 type fakeS3 struct {
 	mu    sync.Mutex
 	paths []string
@@ -27,6 +28,10 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.paths = append(f.paths, r.URL.Path)
 	f.mu.Unlock()
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	w.Header().Set("Content-Type", "application/xml")
 	_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>` +
 		`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">` +
@@ -75,6 +80,60 @@ func TestNewStoreFactoryS3_ReadHonorsEndpointAndPathStyle(t *testing.T) {
 		if !strings.HasPrefix(path, "/test-bucket") {
 			t.Errorf("request path %q is not path-style (want /test-bucket/...)", path)
 		}
+	}
+}
+
+func TestNewStoreFactoryS3_PreservesLegacyPrefixes(t *testing.T) {
+	testutil.Serial(t, "calls t.Setenv, which changes the process environment")
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_ENDPOINT_URL", "")
+	t.Setenv("AWS_ENDPOINT_URL_S3", "")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+
+	cases := []struct {
+		name    string
+		prefix  string
+		wantKey string
+		err     error
+	}{
+		{name: "empty", wantKey: "events/one"},
+		{name: "bucket root", prefix: ".", wantKey: "events/one"},
+		{name: "leading slash", prefix: "/data", wantKey: "data/events/one"},
+		{name: "repeated slash", prefix: "data//quarry", wantKey: "data/quarry/events/one"},
+		{name: "relative segments", prefix: "data/./old/../quarry/", wantKey: "data/quarry/events/one"},
+		{name: "relative escape", prefix: "../data", err: lodelib.ErrInvalidPath},
+		{name: "backslash", prefix: "old\\data/../quarry", err: lodelib.ErrInvalidPath},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeS3{}
+			srv := httptest.NewServer(fake)
+			t.Cleanup(srv.Close)
+			factory, err := NewStoreFactory("s3", "test-bucket/"+tc.prefix, S3Config{
+				Region:       "us-east-1",
+				Endpoint:     srv.URL,
+				UsePathStyle: true,
+			})
+			if err != nil {
+				t.Fatalf("NewStoreFactory: %v", err)
+			}
+			store, err := factory()
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("opening a store with prefix %q: got %v, want %v", tc.prefix, err, tc.err)
+			}
+			if err != nil {
+				return
+			}
+			if exists, err := store.Exists(t.Context(), "events/one"); err != nil || !exists {
+				t.Fatalf("Exists: got %t, %v, want true, nil", exists, err)
+			}
+			want := "/test-bucket/" + tc.wantKey
+			if got := fake.requests(); len(got) != 1 || got[0] != want {
+				t.Errorf("request paths = %q, want [%q]", got, want)
+			}
+		})
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -34,9 +35,10 @@ var _ FileWriter = (*LodeClient)(nil)
 // Writes the data file and a companion .meta.json with content type, to the
 // dataset's store.
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
-	path := c.buildFilePath(filename)
-	if err := c.store.Put(ctx, path, bytes.NewReader(data)); err != nil {
-		return WrapWriteError(err, path)
+	prefix := SidecarFilesPrefix(c.config)
+	key := collapseSidecarSlashes(prefix) + filename
+	if err := c.store.Put(ctx, key, bytes.NewReader(data)); err != nil {
+		return WrapWriteError(err, key)
 	}
 
 	// Write companion metadata file preserving content type.
@@ -46,7 +48,7 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	if err != nil {
 		return fmt.Errorf("file write metadata marshal failed: %w", err)
 	}
-	metaPath := path + ".meta.json"
+	metaPath := key + ".meta.json"
 	if err := c.store.Put(ctx, metaPath, bytes.NewReader(meta)); err != nil {
 		return WrapWriteError(err, metaPath)
 	}
@@ -54,7 +56,7 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	// Track the written file for inclusion in snapshot Metadata.
 	c.mu.Lock()
 	c.pendingFiles = append(c.pendingFiles, SidecarFileRef{
-		Path:        path,
+		Path:        prefix + filename,
 		Filename:    filename,
 		ContentType: contentType,
 		Size:        int64(len(data)),
@@ -69,10 +71,13 @@ type fileMetadata struct {
 	ContentType string `json:"content_type"`
 }
 
-// buildFilePath computes the Hive-partitioned path for a sidecar file.
-// Format: datasets/<dataset>/partitions/source=<s>/category=<c>/day=<d>/run_id=<r>/files/<filename>
-func (c *LodeClient) buildFilePath(filename string) string {
-	return SidecarFilesPrefix(c.config) + filename
+// Older Lode stores collapsed repeated slashes. Keep that object location
+// while leaving other key checks to the store.
+func collapseSidecarSlashes(key string) string {
+	for strings.Contains(key, "//") {
+		key = strings.ReplaceAll(key, "//", "/")
+	}
+	return key
 }
 
 // SidecarFilesPrefix is the key prefix of the run's sidecar files. Its

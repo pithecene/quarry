@@ -12,7 +12,7 @@ import (
 // openReadView creates the store and opens a read-only view of the dataset
 // over it. ok is false when the dataset has no snapshot, which a reader
 // reports as an empty result rather than an error.
-func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view lode.RecordView[lode.D], ok bool, err error) {
+func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view *lode.RecordView[lode.D], ok bool, err error) {
 	if factory == nil {
 		return nil, false, errors.New("read: nil store factory")
 	}
@@ -29,8 +29,8 @@ func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode
 
 // isMetricsSnapshot checks if a snapshot contains metrics data
 // by examining file paths for the event_type=metrics partition.
-func isMetricsSnapshot(snap *lode.DatasetSnapshot) bool {
-	for _, f := range snap.Files {
+func isMetricsSnapshot(snap *lode.Snapshot) bool {
+	for _, f := range snap.Objects {
 		if matchesPartitionValue(f.Path, "event_type", "metrics") {
 			return true
 		}
@@ -40,11 +40,11 @@ func isMetricsSnapshot(snap *lode.DatasetSnapshot) bool {
 
 // snapshotMatchesFilter checks if a snapshot's file paths match
 // the given partition key=value filter.
-func snapshotMatchesFilter(snap *lode.DatasetSnapshot, key, value string) bool {
+func snapshotMatchesFilter(snap *lode.Snapshot, key, value string) bool {
 	if value == "" {
 		return true
 	}
-	for _, f := range snap.Files {
+	for _, f := range snap.Objects {
 		if matchesPartitionValue(f.Path, key, value) {
 			return true
 		}

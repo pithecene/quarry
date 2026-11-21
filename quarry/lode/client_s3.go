@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -126,10 +127,20 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 	}
 
 	s3Client := s3.NewFromConfig(awsConfig, s3ClientOptions(s3cfg)...)
-	return lodes3.Factory(s3Client, lodes3.Config{
-		Bucket: s3cfg.Bucket,
-		Prefix: s3cfg.Prefix,
-	}), nil
+	bucket := lodes3.Bucket(s3Client, s3cfg.Bucket)
+	// Keep the key location of configurations that the old S3 adapter
+	// normalized. Lode's prefixed store now requires a canonical prefix.
+	prefix := strings.TrimPrefix(path.Clean(s3cfg.Prefix), "/")
+	switch {
+	case strings.ContainsRune(s3cfg.Prefix, '\\'), prefix == "..", strings.HasPrefix(prefix, "../"):
+		return func() (lode.RangeStore, error) {
+			return nil, fmt.Errorf("s3: invalid prefix %q: %w", s3cfg.Prefix, lode.ErrInvalidPath)
+		}, nil
+	case prefix == "", prefix == ".":
+		return bucket, nil
+	default:
+		return lode.Prefixed(bucket, prefix), nil
+	}
 }
 
 // s3ClientOptions applies the endpoint and path-style overrides for

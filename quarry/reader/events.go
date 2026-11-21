@@ -80,10 +80,10 @@ func (r *Reader) readPartitions(ctx context.Context, prefix string, keep func(lo
 
 	var recs []lode.D
 	for _, part := range parts {
-		if !keep(part.Path) {
+		if !keep(part) {
 			continue
 		}
-		partRecs, err := qlode.ReadPartitionRecords(ctx, dr, part.Path)
+		partRecs, err := qlode.ReadPartitionRecords(ctx, dr, part)
 		if err != nil {
 			return nil, err
 		}
