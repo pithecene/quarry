@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { chromiumArgs } from '../src/browser-args.js'
+import { browserProxyArgs, chromiumArgs } from '../src/browser-args.js'
 
 describe('chromiumArgs', () => {
   afterEach(() => {
@@ -38,5 +38,20 @@ describe('chromiumArgs', () => {
     expect(args.indexOf('--disable-dev-shm-usage')).toBeLessThan(
       args.indexOf('--proxy-server=http://proxy:8080')
     )
+  })
+})
+
+describe('browserProxyArgs', () => {
+  afterEach(() => {
+    delete process.env.QUARRY_BROWSER_PROXY
+  })
+
+  it('is empty without QUARRY_BROWSER_PROXY', () => {
+    expect(browserProxyArgs()).toEqual([])
+  })
+
+  it('routes the browser through QUARRY_BROWSER_PROXY', () => {
+    process.env.QUARRY_BROWSER_PROXY = 'http://proxy.example:8080'
+    expect(browserProxyArgs()).toEqual(['--proxy-server=http://proxy.example:8080'])
   })
 })

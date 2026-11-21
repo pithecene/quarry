@@ -20,6 +20,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **The managed fan-out browser uses the run's proxy**: when a fan-out run launches its own shared browser, the browser now routes its traffic through the run's resolved proxy, like the reusable browser. Before, it launched without a proxy, and the credentials that each child applied to its pages did not route them through one.
 - **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, the library that `puppeteer-extra-plugin-user-preferences` uses to merge static browser preferences, has no patched release, and Quarry passes it no outside input.
 
 ---

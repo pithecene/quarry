@@ -878,7 +878,7 @@ func runAction(c *cli.Context) error {
 		// Use reusable browser if already acquired; otherwise launch a managed
 		// browser for fan-out to avoid N cold startups (one per child run).
 		if browserWSEndpoint == "" && !noBrowser {
-			managedBrowser, err := runtime.LaunchManagedBrowser(ctx, executorPath, c.String("script"))
+			managedBrowser, err := runtime.LaunchManagedBrowser(ctx, executorPath, c.String("script"), resolvedProxy)
 			if err != nil {
 				return cli.Exit(fmt.Sprintf("failed to launch shared browser: %v", err), exitExecutorCrash)
 			}

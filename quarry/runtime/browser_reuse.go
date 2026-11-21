@@ -231,7 +231,7 @@ func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, soc
 	)
 	// Pass proxy URL so the browser server launches Chromium with --proxy-server
 	if cfg.Proxy != nil {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARRY_BROWSER_PROXY=%s://%s:%d", cfg.Proxy.Protocol, cfg.Proxy.Host, cfg.Proxy.Port))
+		cmd.Env = append(cmd.Env, "QUARRY_BROWSER_PROXY="+browserProxyURL(cfg.Proxy))
 	}
 
 	// Diagnostics go to a log file, truncated per launch; the lock held by

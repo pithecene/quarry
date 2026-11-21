@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/types"
 )
 
 // ManagedBrowser represents a Quarry-managed browser process.
@@ -24,9 +26,14 @@ type ManagedBrowser struct {
 // LaunchManagedBrowser starts a shared browser via the executor's --launch-browser mode.
 // The executor resolves puppeteer from the script's directory and launches Chrome.
 // The WS endpoint is read from the executor's stdout (first line).
-// The browser stays alive until Close() is called.
-func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string) (*ManagedBrowser, error) {
+// The browser stays alive until Close() is called. A non-nil proxy is the
+// run's resolved proxy, which the browser routes all traffic through, as the
+// reusable browser server does (AcquireReusableBrowser).
+func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string, proxy *types.ProxyEndpoint) (*ManagedBrowser, error) {
 	cmd := exec.CommandContext(ctx, executorPath, "--launch-browser", scriptPath)
+	if proxy != nil {
+		cmd.Env = append(os.Environ(), "QUARRY_BROWSER_PROXY="+browserProxyURL(proxy))
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -119,4 +126,11 @@ func (mb *ManagedBrowser) Close() error {
 		<-done
 		return nil
 	}
+}
+
+// browserProxyURL is the --proxy-server value of a browser that routes its
+// traffic through proxy. Credentials are not part of it: each run applies
+// them to its own pages.
+func browserProxyURL(proxy *types.ProxyEndpoint) string {
+	return fmt.Sprintf("%s://%s:%d", proxy.Protocol, proxy.Host, proxy.Port)
 }

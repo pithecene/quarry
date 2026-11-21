@@ -25,7 +25,7 @@
  */
 import { join } from 'node:path'
 import type { ProxyEndpoint } from '@pithecene/quarry-sdk'
-import { chromiumArgs } from '../browser-args.js'
+import { browserProxyArgs, chromiumArgs } from '../browser-args.js'
 import { serveLeases } from '../browser-lease-server.js'
 import { closeRecordedBrowsers, probeBrowser, recordBrowsers } from '../browser-record.js'
 import { errorMessage, execute, parseRunMeta } from '../executor.js'
@@ -242,13 +242,10 @@ async function browserServer(scriptPath: string): Promise<never> {
     adblocker: process.env.QUARRY_ADBLOCKER === '1'
   })
 
-  // Build Chromium launch args (proxy applied at the browser level)
-  const proxyUrl = process.env.QUARRY_BROWSER_PROXY
-  const proxyArgs = proxyUrl ? [`--proxy-server=${proxyUrl}`] : []
-
+  // The proxy applies at the browser level, to every run that connects.
   const browser = await puppeteer.launch({
     headless: true,
-    args: chromiumArgs(proxyArgs)
+    args: chromiumArgs(browserProxyArgs())
   })
   // In the same tick as the launch, so that a server killed from here on
   // leaves its browser listed for the next server to close.
@@ -317,7 +314,7 @@ async function launchBrowserServer(scriptPath: string): Promise<never> {
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: chromiumArgs()
+    args: chromiumArgs(browserProxyArgs())
   })
 
   // Print WS endpoint to stdout (Go runtime reads this line)
