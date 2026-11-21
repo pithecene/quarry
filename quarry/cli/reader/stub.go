@@ -14,36 +14,6 @@ func NewStubReader() *StubReader {
 	return &StubReader{}
 }
 
-// InspectRun returns stub run details.
-func (r *StubReader) InspectRun(runID string) *InspectRunResponse {
-	now := time.Now()
-	ended := now.Add(-time.Minute)
-	return &InspectRunResponse{
-		RunID:     runID,
-		JobID:     "stub-job-001",
-		State:     "succeeded",
-		Attempt:   1,
-		ParentRun: nil,
-		Policy:    "strict",
-		StartedAt: now.Add(-5 * time.Minute),
-		EndedAt:   &ended,
-		SidecarFiles: []SidecarFileSummary{
-			{
-				Filename:    "product-image.png",
-				ContentType: "image/png",
-				Size:        14230,
-				Path:        "datasets/quarry/partitions/source=stub-source/category=default/day=2026-03-22/run_id=" + runID + "/files/product-image.png",
-			},
-			{
-				Filename:    "page-snapshot.html",
-				ContentType: "text/html",
-				Size:        85412,
-				Path:        "datasets/quarry/partitions/source=stub-source/category=default/day=2026-03-22/run_id=" + runID + "/files/page-snapshot.html",
-			},
-		},
-	}
-}
-
 // InspectProxy returns stub proxy pool details.
 func (r *StubReader) InspectProxy(poolName string) *InspectProxyPoolResponse {
 	now := time.Now()

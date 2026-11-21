@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,23 +13,33 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// ParityArtifact represents the CLI parity artifact structure.
+// ParityArtifact represents the CLI parity artifact structure. FlagSets
+// declares once each group of flags that several commands share, as the
+// shared flag constructors do in code.
 type ParityArtifact struct {
-	Version     string                   `json:"version"`
-	Description string                   `json:"description"`
-	Commands    map[string]ParityCommand `json:"commands"`
+	Version     string                           `json:"version"`
+	Description string                           `json:"description"`
+	FlagSets    map[string]map[string]ParityFlag `json:"flagSets,omitempty"`
+	Commands    map[string]ParityCommand         `json:"commands"`
 }
 
-// ParityCommand represents a command in the parity artifact.
+// ParityCommand represents a command in the parity artifact. Its flags are
+// its own flags and the flags of the sets it names. Requires names the flags
+// that the command requires, which a set may declare optional.
 type ParityCommand struct {
 	Description string                      `json:"description"`
+	FlagSets    []string                    `json:"flagSets,omitempty"`
+	Requires    []string                    `json:"requires,omitempty"`
 	Flags       map[string]ParityFlag       `json:"flags,omitempty"`
 	Subcommands map[string]ParitySubcommand `json:"subcommands,omitempty"`
 }
 
-// ParitySubcommand represents a subcommand in the parity artifact.
+// ParitySubcommand represents a subcommand in the parity artifact, with flag
+// sets and required flags as on ParityCommand.
 type ParitySubcommand struct {
-	Flags map[string]ParityFlag `json:"flags"`
+	FlagSets []string              `json:"flagSets,omitempty"`
+	Requires []string              `json:"requires,omitempty"`
+	Flags    map[string]ParityFlag `json:"flags"`
 }
 
 // ParityFlag represents a flag in the parity artifact.
@@ -67,6 +79,9 @@ func loadParityArtifact(t *testing.T) *ParityArtifact {
 			if err := json.Unmarshal(data, &artifact); err != nil {
 				t.Fatalf("failed to parse parity artifact: %v", err)
 			}
+			if err := artifact.expandFlagSets(); err != nil {
+				t.Fatalf("invalid parity artifact: %v", err)
+			}
 			return &artifact
 		}
 		dir = filepath.Dir(dir)
@@ -74,6 +89,84 @@ func loadParityArtifact(t *testing.T) *ParityArtifact {
 
 	t.Fatal("could not find docs/maintainers/CLI_PARITY.json - run from repo root")
 	return nil
+}
+
+// expandFlagSets replaces each command's and subcommand's flags with its
+// own flags plus the flags of the sets it names, marked required as its
+// Requires says, so the checks compare complete flag lists.
+func (a *ParityArtifact) expandFlagSets() error {
+	for name, cmd := range a.Commands {
+		flags, err := expandFlags(a.FlagSets, cmd.FlagSets, cmd.Requires, cmd.Flags)
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		cmd.Flags = flags
+		for subName, sub := range cmd.Subcommands {
+			subFlags, err := expandFlags(a.FlagSets, sub.FlagSets, sub.Requires, sub.Flags)
+			if err != nil {
+				return fmt.Errorf("%s %s: %w", name, subName, err)
+			}
+			sub.Flags = subFlags
+			cmd.Subcommands[subName] = sub
+		}
+		a.Commands[name] = cmd
+	}
+	return nil
+}
+
+// expandFlags merges the named sets into own and marks the required flags.
+// A set the artifact does not declare, a flag declared twice, and a required
+// flag that no declaration names are errors.
+func expandFlags(sets map[string]map[string]ParityFlag, names, requires []string, own map[string]ParityFlag) (map[string]ParityFlag, error) {
+	flags := maps.Clone(own)
+	if flags == nil {
+		flags = make(map[string]ParityFlag)
+	}
+	for _, name := range names {
+		set, ok := sets[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown flag set %q", name)
+		}
+		for flag, def := range set {
+			if _, dup := flags[flag]; dup {
+				return nil, fmt.Errorf("flag --%s is declared twice", flag)
+			}
+			flags[flag] = def
+		}
+	}
+	for _, flag := range requires {
+		def, ok := flags[flag]
+		if !ok {
+			return nil, fmt.Errorf("requires names undeclared flag --%s", flag)
+		}
+		def.Required = true
+		flags[flag] = def
+	}
+	return flags, nil
+}
+
+func TestExpandFlags_RejectsInvalidDeclarations(t *testing.T) {
+	t.Parallel()
+	sets := map[string]map[string]ParityFlag{"storage-read": {"storage-path": {Type: "string"}}}
+	cases := []struct {
+		name     string
+		names    []string
+		requires []string
+		own      map[string]ParityFlag
+	}{
+		{"unknown set", []string{"missing"}, nil, nil},
+		{"flag declared twice", []string{"storage-read"}, nil, map[string]ParityFlag{"storage-path": {Type: "string"}}},
+		{"required flag undeclared", []string{"storage-read"}, []string{"source"}, nil},
+	}
+	for _, tc := range cases {
+		if _, err := expandFlags(sets, tc.names, tc.requires, tc.own); err == nil {
+			t.Errorf("%s: expandFlags returned no error", tc.name)
+		}
+	}
+	flags, err := expandFlags(sets, []string{"storage-read"}, []string{"storage-path"}, nil)
+	if err != nil || !flags["storage-path"].Required || sets["storage-read"]["storage-path"].Required {
+		t.Errorf("expandFlags = %v, %v; want --storage-path required without changing its set", flags, err)
+	}
 }
 
 // extractFlags extracts flag names from a cli.Command.

@@ -1,6 +1,116 @@
 {
   "version": "0.18.0",
   "description": "CLI flag/config parity artifact. Machine-checkable source of truth for CLI flags.",
+  "flagSets": {
+    "storage-read": {
+      "storage-dataset": {
+        "type": "string",
+        "required": false,
+        "default": "quarry",
+        "description": "Lode dataset ID (default: \"quarry\")"
+      },
+      "storage-backend": {
+        "type": "string",
+        "required": false,
+        "description": "Storage backend: fs or s3",
+        "validation": "Must be one of: fs, s3"
+      },
+      "storage-path": {
+        "type": "string",
+        "required": false,
+        "description": "Storage path (fs: directory, s3: bucket/prefix)"
+      },
+      "storage-region": {
+        "type": "string",
+        "required": false,
+        "description": "AWS region for S3 backend"
+      },
+      "storage-endpoint": {
+        "type": "string",
+        "required": false,
+        "description": "Custom S3 endpoint URL for S3-compatible providers",
+        "dependsOn": ["storage-backend=s3"]
+      },
+      "storage-s3-path-style": {
+        "type": "bool",
+        "required": false,
+        "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
+        "dependsOn": ["storage-backend=s3"]
+      },
+      "storage-attempt-timeout": {
+        "type": "duration",
+        "required": false,
+        "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
+        "dependsOn": ["storage-backend=s3"]
+      }
+    },
+    "run-selector": {
+      "source": {
+        "type": "string",
+        "required": false,
+        "description": "Source selector (storage only)"
+      },
+      "category": {
+        "type": "string",
+        "required": false,
+        "description": "Category selector (requires --source)",
+        "dependsOn": ["source"]
+      },
+      "day": {
+        "type": "string",
+        "required": false,
+        "description": "Partition day selector, YYYY-MM-DD (requires --category)",
+        "dependsOn": ["category"]
+      }
+    },
+    "read-timeout": {
+      "read-timeout": {
+        "type": "duration",
+        "required": false,
+        "default": "5m",
+        "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
+      }
+    },
+    "list-output": {
+      "format": {
+        "type": "string",
+        "aliases": ["f"],
+        "required": false,
+        "description": "Output format: json, table, yaml"
+      },
+      "no-color": {
+        "type": "bool",
+        "required": false,
+        "default": false,
+        "description": "Disable colored output (table format only)"
+      },
+      "tui": {
+        "type": "bool",
+        "required": false,
+        "default": false,
+        "description": "Enable interactive TUI mode",
+        "notes": "Not supported for list commands - returns error"
+      }
+    },
+    "tui-output": {
+      "format": {
+        "type": "string",
+        "aliases": ["f"],
+        "required": false,
+        "description": "Output format: json, table, yaml"
+      },
+      "no-color": {
+        "type": "bool",
+        "required": false,
+        "description": "Disable colored output (table format only)"
+      },
+      "tui": {
+        "type": "bool",
+        "required": false,
+        "description": "Enable interactive TUI mode"
+      }
+    }
+  },
   "commands": {
     "run": {
       "description": "Execute a script run (the only execution entrypoint)",
@@ -349,9 +459,7 @@
       "flags": {
         "format": {
           "type": "string",
-          "aliases": [
-            "f"
-          ],
+          "aliases": ["f"],
           "required": false,
           "description": "Output format: json, table, yaml"
         },
@@ -366,44 +474,13 @@
       "description": "Deep view of a single entity",
       "subcommands": {
         "run": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "tui-output"],
+          "requires": ["storage-backend", "storage-path", "source", "category", "day"],
+          "flags": {}
         },
         "proxy": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
+          "flagSets": ["tui-output"],
+          "flags": {}
         }
       }
     },
@@ -411,103 +488,16 @@
       "description": "Aggregated facts derived from the read path",
       "subcommands": {
         "runs": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
+          "flagSets": ["tui-output"],
+          "flags": {}
         },
         "proxies": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            }
-          }
+          "flagSets": ["tui-output"],
+          "flags": {}
         },
         "metrics": {
+          "flagSets": ["storage-read", "tui-output"],
           "flags": {
-            "storage-dataset": {
-              "type": "string",
-              "required": false,
-              "default": "quarry",
-              "description": "Lode dataset ID (default: \"quarry\")"
-            },
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "description": "Enable interactive TUI mode"
-            },
-            "storage-backend": {
-              "type": "string",
-              "required": false,
-              "description": "Storage backend: fs or s3",
-              "validation": "Must be one of: fs, s3"
-            },
-            "storage-path": {
-              "type": "string",
-              "required": false,
-              "description": "Storage path (fs: directory, s3: bucket/prefix)"
-            },
-            "storage-region": {
-              "type": "string",
-              "required": false,
-              "description": "AWS region for S3 backend"
-            },
-            "storage-endpoint": {
-              "type": "string",
-              "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-s3-path-style": {
-              "type": "bool",
-              "required": false,
-              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-attempt-timeout": {
-              "type": "duration",
-              "required": false,
-              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-              "dependsOn": ["storage-backend=s3"]
-            },
             "run-id": {
               "type": "string",
               "required": false,
@@ -526,6 +516,7 @@
       "description": "Thin enumerations (not inspect-level detail)",
       "subcommands": {
         "runs": {
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "list-output"],
           "flags": {
             "state": {
               "type": "string",
@@ -544,295 +535,34 @@
               "required": false,
               "description": "Resume after the cursor a previous page returned (with storage)",
               "dependsOn": ["storage-backend"]
-            },
-            "read-timeout": {
-              "type": "duration",
-              "required": false,
-              "default": "5m",
-              "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
-            },
-            "storage-dataset": {
-              "type": "string",
-              "required": false,
-              "default": "quarry",
-              "description": "Lode dataset ID (default: \"quarry\")"
-            },
-            "storage-backend": {
-              "type": "string",
-              "required": false,
-              "description": "Storage backend: fs or s3",
-              "validation": "Must be one of: fs, s3"
-            },
-            "storage-path": {
-              "type": "string",
-              "required": false,
-              "description": "Storage path (fs: directory, s3: bucket/prefix)"
-            },
-            "storage-region": {
-              "type": "string",
-              "required": false,
-              "description": "AWS region for S3 backend"
-            },
-            "storage-endpoint": {
-              "type": "string",
-              "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-s3-path-style": {
-              "type": "bool",
-              "required": false,
-              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-attempt-timeout": {
-              "type": "duration",
-              "required": false,
-              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "source": {
-              "type": "string",
-              "required": false,
-              "description": "Source selector (storage only)"
-            },
-            "category": {
-              "type": "string",
-              "required": false,
-              "description": "Category selector (requires --source)",
-              "dependsOn": ["source"]
-            },
-            "day": {
-              "type": "string",
-              "required": false,
-              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
-              "dependsOn": ["category"]
-            },
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for list commands - returns error"
             }
           }
         },
         "events": {
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "list-output"],
+          "requires": ["storage-backend", "storage-path", "source", "category", "day"],
           "flags": {
             "run-id": {
               "type": "string",
               "required": true,
               "description": "Run whose events to list (required)"
-            },
-            "read-timeout": {
-              "type": "duration",
-              "required": false,
-              "default": "5m",
-              "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
-            },
-            "storage-dataset": {
-              "type": "string",
-              "required": false,
-              "default": "quarry",
-              "description": "Lode dataset ID (default: \"quarry\")"
-            },
-            "storage-backend": {
-              "type": "string",
-              "required": true,
-              "description": "Storage backend: fs or s3",
-              "validation": "Must be one of: fs, s3"
-            },
-            "storage-path": {
-              "type": "string",
-              "required": true,
-              "description": "Storage path (fs: directory, s3: bucket/prefix)"
-            },
-            "storage-region": {
-              "type": "string",
-              "required": false,
-              "description": "AWS region for S3 backend"
-            },
-            "storage-endpoint": {
-              "type": "string",
-              "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-s3-path-style": {
-              "type": "bool",
-              "required": false,
-              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-attempt-timeout": {
-              "type": "duration",
-              "required": false,
-              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "source": {
-              "type": "string",
-              "required": true,
-              "description": "Source selector (storage only)"
-            },
-            "category": {
-              "type": "string",
-              "required": true,
-              "description": "Category selector (requires --source)",
-              "dependsOn": ["source"]
-            },
-            "day": {
-              "type": "string",
-              "required": true,
-              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
-              "dependsOn": ["category"]
-            },
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for list commands - returns error"
             }
           }
         },
         "artifacts": {
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "list-output"],
+          "requires": ["storage-backend", "storage-path", "source", "category", "day"],
           "flags": {
             "run-id": {
               "type": "string",
               "required": true,
               "description": "Run whose artifacts to list (required)"
-            },
-            "read-timeout": {
-              "type": "duration",
-              "required": false,
-              "default": "5m",
-              "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
-            },
-            "storage-dataset": {
-              "type": "string",
-              "required": false,
-              "default": "quarry",
-              "description": "Lode dataset ID (default: \"quarry\")"
-            },
-            "storage-backend": {
-              "type": "string",
-              "required": true,
-              "description": "Storage backend: fs or s3",
-              "validation": "Must be one of: fs, s3"
-            },
-            "storage-path": {
-              "type": "string",
-              "required": true,
-              "description": "Storage path (fs: directory, s3: bucket/prefix)"
-            },
-            "storage-region": {
-              "type": "string",
-              "required": false,
-              "description": "AWS region for S3 backend"
-            },
-            "storage-endpoint": {
-              "type": "string",
-              "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-s3-path-style": {
-              "type": "bool",
-              "required": false,
-              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-attempt-timeout": {
-              "type": "duration",
-              "required": false,
-              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "source": {
-              "type": "string",
-              "required": true,
-              "description": "Source selector (storage only)"
-            },
-            "category": {
-              "type": "string",
-              "required": true,
-              "description": "Category selector (requires --source)",
-              "dependsOn": ["source"]
-            },
-            "day": {
-              "type": "string",
-              "required": true,
-              "description": "Partition day selector, YYYY-MM-DD (requires --category)",
-              "dependsOn": ["category"]
-            },
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for list commands - returns error"
             }
           }
         },
         "pools": {
-          "flags": {
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for list commands - returns error"
-            }
-          }
+          "flagSets": ["list-output"],
+          "flags": {}
         }
       }
     },
@@ -840,90 +570,35 @@
       "description": "Write stored bytes (artifacts)",
       "subcommands": {
         "artifact": {
+          "flagSets": ["storage-read", "run-selector"],
+          "requires": ["storage-backend", "storage-path", "source", "category", "day"],
           "flags": {
-              "run-id": {
-                "type": "string",
-                "required": true,
-                "description": "Run that holds the artifact (required)"
-              },
-              "storage-dataset": {
-                "type": "string",
-                "required": false,
-                "default": "quarry",
-                "description": "Lode dataset ID (default: \"quarry\")"
-              },
-              "storage-backend": {
-                "type": "string",
-                "required": true,
-                "description": "Storage backend: fs or s3",
-                "validation": "Must be one of: fs, s3"
-              },
-              "storage-path": {
-                "type": "string",
-                "required": true,
-                "description": "Storage path (fs: directory, s3: bucket/prefix)"
-              },
-              "storage-region": {
-                "type": "string",
-                "required": false,
-                "description": "AWS region for S3 backend"
-              },
-              "storage-endpoint": {
-                "type": "string",
-                "required": false,
-                "description": "Custom S3 endpoint URL for S3-compatible providers",
-                "dependsOn": ["storage-backend=s3"]
-              },
-              "storage-s3-path-style": {
-                "type": "bool",
-                "required": false,
-                "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-                "dependsOn": ["storage-backend=s3"]
-              },
-              "storage-attempt-timeout": {
-                "type": "duration",
-                "required": false,
-                "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-                "dependsOn": ["storage-backend=s3"]
-              },
-              "source": {
-                "type": "string",
-                "required": true,
-                "description": "Source selector (storage only)"
-              },
-              "category": {
-                "type": "string",
-                "required": true,
-                "description": "Category selector (requires --source)",
-                "dependsOn": ["source"]
-              },
-              "day": {
-                "type": "string",
-                "required": true,
-                "description": "Partition day selector, YYYY-MM-DD (requires --category)",
-                "dependsOn": ["category"]
-              },
-              "artifact-id": {
-                "type": "string",
-                "required": true,
-                "description": "Artifact to read, as list artifacts names it (required)"
-              },
-              "out": {
-                "type": "string",
-                "required": false,
-                "description": "File to create and write; it must not exist (default: stdout, which must not be a terminal)"
-              },
-              "offset": {
-                "type": "int64",
-                "required": false,
-                "default": 0,
-                "description": "First byte of the range to write (default 0)"
-              },
-              "length": {
-                "type": "int64",
-                "required": false,
-                "description": "Bytes to write from --offset (default: to the end of the artifact)"
-              }
+            "run-id": {
+              "type": "string",
+              "required": true,
+              "description": "Run that holds the artifact (required)"
+            },
+            "artifact-id": {
+              "type": "string",
+              "required": true,
+              "description": "Artifact to read, as list artifacts names it (required)"
+            },
+            "out": {
+              "type": "string",
+              "required": false,
+              "description": "File to create and write; it must not exist (default: stdout, which must not be a terminal)"
+            },
+            "offset": {
+              "type": "int64",
+              "required": false,
+              "default": 0,
+              "description": "First byte of the range to write (default 0)"
+            },
+            "length": {
+              "type": "int64",
+              "required": false,
+              "description": "Bytes to write from --offset (default: to the end of the artifact)"
+            }
           }
         }
       }
@@ -932,52 +607,14 @@
       "description": "Maintain run records (rebuild)",
       "subcommands": {
         "rebuild": {
+          "flagSets": ["storage-read"],
+          "requires": ["storage-backend", "storage-path"],
           "flags": {
             "dry-run": {
               "type": "bool",
               "required": false,
               "default": false,
               "description": "Report the records that would be written, without writing them"
-            },
-            "storage-dataset": {
-              "type": "string",
-              "required": false,
-              "default": "quarry",
-              "description": "Lode dataset ID (default: \"quarry\")"
-            },
-            "storage-backend": {
-              "type": "string",
-              "required": true,
-              "description": "Storage backend: fs or s3",
-              "validation": "Must be one of: fs, s3"
-            },
-            "storage-path": {
-              "type": "string",
-              "required": true,
-              "description": "Storage path (fs: directory, s3: bucket/prefix)"
-            },
-            "storage-region": {
-              "type": "string",
-              "required": false,
-              "description": "AWS region for S3 backend"
-            },
-            "storage-endpoint": {
-              "type": "string",
-              "required": false,
-              "description": "Custom S3 endpoint URL for S3-compatible providers",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-s3-path-style": {
-              "type": "bool",
-              "required": false,
-              "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-              "dependsOn": ["storage-backend=s3"]
-            },
-            "storage-attempt-timeout": {
-              "type": "duration",
-              "required": false,
-              "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-              "dependsOn": ["storage-backend=s3"]
             },
             "format": {
               "type": "string",
@@ -996,6 +633,8 @@
     },
     "prune": {
       "description": "Remove whole runs by state and age (writes storage)",
+      "flagSets": ["storage-read", "run-selector"],
+      "requires": ["storage-backend", "storage-path"],
       "flags": {
         "dry-run": {
           "type": "bool",
@@ -1031,61 +670,6 @@
           "required": false,
           "description": "Prune unterminated runs that started and last wrote at least this many days ago (at least 1; must exceed the longest run)",
           "notes": "Unset keeps unterminated runs"
-        },
-        "storage-dataset": {
-          "type": "string",
-          "required": false,
-          "default": "quarry",
-          "description": "Lode dataset ID (default: \"quarry\")"
-        },
-        "storage-backend": {
-          "type": "string",
-          "required": true,
-          "description": "Storage backend: fs or s3",
-          "validation": "Must be one of: fs, s3"
-        },
-        "storage-path": {
-          "type": "string",
-          "required": true,
-          "description": "Storage path (fs: directory, s3: bucket/prefix)"
-        },
-        "storage-region": {
-          "type": "string",
-          "required": false,
-          "description": "AWS region for S3 backend"
-        },
-        "storage-endpoint": {
-          "type": "string",
-          "required": false,
-          "description": "Custom S3 endpoint URL for S3-compatible providers",
-          "dependsOn": ["storage-backend=s3"]
-        },
-        "storage-s3-path-style": {
-          "type": "bool",
-          "required": false,
-          "description": "Force path-style addressing for S3 (required by many S3-compatible providers)",
-          "dependsOn": ["storage-backend=s3"]
-        },
-        "storage-attempt-timeout": {
-          "type": "duration",
-          "required": false,
-          "description": "Longest stall of an S3 request before its attempt fails and the SDK retries it (default 60s)",
-          "dependsOn": ["storage-backend=s3"]
-        },
-        "source": {
-          "type": "string",
-          "required": false,
-          "description": "Source selector (storage only)"
-        },
-        "category": {
-          "type": "string",
-          "required": false,
-          "description": "Category selector (requires --source)"
-        },
-        "day": {
-          "type": "string",
-          "required": false,
-          "description": "Partition day selector, YYYY-MM-DD (requires --category)"
         },
         "format": {
           "type": "string",

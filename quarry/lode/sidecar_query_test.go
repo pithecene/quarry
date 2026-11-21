@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -201,5 +202,53 @@ func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
 	}
 	if files[1].Filename != "batch2.csv" {
 		t.Errorf("files[1].Filename = %q, want batch2.csv", files[1].Filename)
+	}
+}
+
+// A run ID that Lode escapes in partition paths still finds the run's files.
+func TestQuerySidecarFiles_EscapedRunID(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	factory := sharedFactory(store)
+	cfg := Config{Dataset: "quarry", Source: "test-source", Category: "test-category", Day: "2026-03-22", RunID: "run 001", Policy: "strict"}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
+	if err != nil {
+		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
+	}
+	ctx := t.Context()
+	if err := client.PutFile(ctx, "page.html", "text/html", []byte("<html></html>")); err != nil {
+		t.Fatalf("PutFile failed: %v", err)
+	}
+	events := []*types.EventEnvelope{{Type: types.EventTypeItem, Seq: 1, RunID: cfg.RunID, Payload: map[string]any{"key": "value"}}}
+	if err := client.WriteEvents(ctx, cfg.Dataset, cfg.RunID, events); err != nil {
+		t.Fatalf("WriteEvents failed: %v", err)
+	}
+	files, err := QuerySidecarFiles(ctx, factory, "quarry", cfg.RunID)
+	if err != nil {
+		t.Fatalf("QuerySidecarFiles failed: %v", err)
+	}
+	if len(files) != 1 || files[0].Filename != "page.html" {
+		t.Fatalf("files = %+v, want page.html", files)
+	}
+}
+
+// A malformed sidecar inventory fails the query with an error that names
+// its snapshot, rather than being skipped.
+func TestQuerySidecarFiles_MalformedInventoryFails(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	ctx := t.Context()
+	ds, err := OpenDataset(ctx, "quarry", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := lode.D{"source": "src", "category": "cat", "day": "2026-03-22", "run_id": "run-bad", "event_type": "item", "seq": 1}
+	snap, err := ds.Write(ctx, []lode.D{record}, map[string]any{MetadataKeySidecarFiles: "invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = QuerySidecarFiles(ctx, sharedFactory(store), "quarry", "run-bad")
+	if err == nil || !strings.Contains(err.Error(), string(snap.ID)) {
+		t.Fatalf("QuerySidecarFiles = %v, want an error that names snapshot %s", err, snap.ID)
 	}
 }

@@ -7,27 +7,27 @@
 // these will be wired to actual data sources.
 package reader
 
-import "time"
+import (
+	"time"
+
+	runreader "github.com/pithecene/quarry/reader"
+)
 
 // SidecarFileSummary describes a sidecar file discovered from snapshot metadata.
 type SidecarFileSummary struct {
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
-	Size        int64  `json:"size"`
-	Path        string `json:"path"`
+	Filename    string `json:"filename" yaml:"filename"`
+	ContentType string `json:"content_type" yaml:"content_type"`
+	Size        int64  `json:"size" yaml:"size"`
+	Path        string `json:"path" yaml:"path"`
 }
 
-// InspectRunResponse per CONTRACT_CLI.md.
+// InspectRunResponse per CONTRACT_CLI.md §inspect run: the run as its
+// records describe it, the policy that its metrics record names, and its
+// sidecar files. Policy is null when the run persisted no metrics record.
 type InspectRunResponse struct {
-	RunID        string               `json:"run_id"`
-	JobID        string               `json:"job_id"`
-	State        string               `json:"state"`
-	Attempt      int                  `json:"attempt"`
-	ParentRun    *string              `json:"parent_run"`
-	Policy       string               `json:"policy"`
-	StartedAt    time.Time            `json:"started_at"`
-	EndedAt      *time.Time           `json:"ended_at"`
-	SidecarFiles []SidecarFileSummary `json:"sidecar_files,omitempty"`
+	Run          runreader.Run        `json:"run" yaml:"run"`
+	Policy       *string              `json:"policy" yaml:"policy"`
+	SidecarFiles []SidecarFileSummary `json:"sidecar_files,omitempty" yaml:"sidecar_files,omitempty"`
 }
 
 // ProxySticky represents proxy sticky configuration per CONTRACT_PROXY.md.

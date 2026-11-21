@@ -4,32 +4,6 @@ import (
 	"testing"
 )
 
-// TestInspectRunResponse verifies the response shape matches CONTRACT_CLI.md.
-func TestInspectRunResponse(t *testing.T) {
-	t.Parallel()
-
-	resp := InspectRun("test-run")
-
-	if resp.RunID != "test-run" {
-		t.Errorf("RunID = %q, want %q", resp.RunID, "test-run")
-	}
-	if resp.JobID == "" {
-		t.Error("JobID should not be empty")
-	}
-	if resp.State == "" {
-		t.Error("State should not be empty")
-	}
-	if resp.Attempt < 1 {
-		t.Errorf("Attempt = %d, should be >= 1", resp.Attempt)
-	}
-	if resp.Policy == "" {
-		t.Error("Policy should not be empty")
-	}
-	if resp.StartedAt.IsZero() {
-		t.Error("StartedAt should not be zero")
-	}
-}
-
 // TestInspectProxyResponse verifies proxy pool response shape.
 func TestInspectProxyResponse(t *testing.T) {
 	t.Parallel()

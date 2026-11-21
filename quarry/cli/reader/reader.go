@@ -7,12 +7,6 @@
 // between stub and real implementations. Default is StubReader.
 package reader
 
-// InspectRun returns details for a specific run.
-// Delegates to the package-level reader.
-func InspectRun(runID string) *InspectRunResponse {
-	return defaultReader.InspectRun(runID)
-}
-
 // InspectProxy returns details for a specific proxy pool.
 // Delegates to the package-level reader.
 func InspectProxy(poolName string) *InspectProxyPoolResponse {

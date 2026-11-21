@@ -27,6 +27,23 @@ func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode
 	return view, err == nil, err
 }
 
+// readSnapshots returns a read view and its snapshot catalog. A nil view
+// means the dataset has no snapshots.
+func readSnapshots(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (*lode.RecordView[lode.D], []*lode.Snapshot, error) {
+	ds, ok, err := openReadView(ctx, dataset, factory)
+	if err != nil {
+		return nil, nil, WrapReadError(err, "datasets/"+dataset)
+	}
+	if !ok {
+		return nil, nil, nil
+	}
+	snapshots, err := ds.Snapshots(ctx)
+	if err != nil {
+		return nil, nil, WrapReadError(err, "quarry/snapshots")
+	}
+	return ds, snapshots, nil
+}
+
 // isMetricsSnapshot checks if a snapshot contains metrics data
 // by examining file paths for the event_type=metrics partition.
 func isMetricsSnapshot(snap *lode.Snapshot) bool {
@@ -56,5 +73,5 @@ func snapshotMatchesFilter(snap *lode.Snapshot, key, value string) bool {
 // key=value segment. Segments are delimited by "/" in paths. This avoids
 // substring false positives (e.g., run_id=run-1 matching run_id=run-10).
 func matchesPartitionValue(path, key, value string) bool {
-	return slices.Contains(strings.Split(path, "/"), key+"="+value)
+	return slices.Contains(strings.Split(path, "/"), key+"="+encode(value))
 }

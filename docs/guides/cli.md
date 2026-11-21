@@ -21,10 +21,11 @@ quarry run \
   --job '{"url":"https://example.com"}'
 ```
 
-Inspect a run:
+Inspect the run using its UTC start date. For a run started today:
 
 ```
-quarry inspect run run-001
+quarry inspect run --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day "$(date -u +%F)" run-001
 ```
 
 List recent runs (no limit by default):
@@ -42,7 +43,8 @@ quarry stats runs --format json
 Interactive TUI for inspect/stats (opt-in only):
 
 ```
-quarry inspect run run-001 --tui
+quarry inspect run --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day "$(date -u +%F)" --tui run-001
 ```
 
 ---
@@ -331,12 +333,17 @@ Subcommands:
 - `inspect run <run-id>`
 - `inspect proxy <pool-name>`
 
+`inspect run` requires `--storage-backend`, `--storage-path`, `--source`,
+`--category`, and `--day`. Use the run's UTC start date for `--day`.
+
 Examples:
 
 ```
-quarry inspect run run-001
+quarry inspect run --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day 2026-10-22 run-001
 quarry inspect proxy default
-quarry inspect run run-001 --tui
+quarry inspect run --storage-backend fs --storage-path ./quarry-data \
+  --source demo --category default --day 2026-10-22 --tui run-001
 ```
 
 ### `stats`

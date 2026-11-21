@@ -153,26 +153,43 @@ type listEventsResponse struct {
 // --source, --category, --day, and --run-id locate. command names the
 // command in its errors, which are cli exit errors.
 func locatedRun(ctx context.Context, c *cli.Context, command string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, error) {
+	return locatedRunID(ctx, c, command, c.String("run-id"), opts...)
+}
+
+// locatedRunID is locatedRun for a command that takes the run ID as an
+// argument rather than as --run-id.
+func locatedRunID(ctx context.Context, c *cli.Context, command, runID string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, error) {
+	rr, run, _, err := locateRun(ctx, c, command, runID, opts...)
+	return rr, run, err
+}
+
+// locateRun is locatedRunID that also returns the store factory, so a command
+// that reads more of the run's storage builds the store once.
+func locateRun(ctx context.Context, c *cli.Context, command, runID string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, lodelib.Factory[lodelib.RangeStore], error) {
 	ok, err := storageRequested(c)
 	if err != nil {
-		return nil, runreader.Run{}, cli.Exit(err.Error(), 1)
+		return nil, runreader.Run{}, nil, cli.Exit(err.Error(), 1)
 	}
 	if !ok {
-		return nil, runreader.Run{}, cli.Exit(command+" reads storage: --storage-backend and --storage-path are required", 1)
+		return nil, runreader.Run{}, nil, cli.Exit(command+" reads storage: --storage-backend and --storage-path are required", 1)
 	}
 	sel := selectorFrom(c)
 	if sel.Source == "" || sel.Category == "" || sel.Day == "" {
-		return nil, runreader.Run{}, cli.Exit(command+" requires --source, --category, and --day to locate the run", 1)
+		return nil, runreader.Run{}, nil, cli.Exit(command+" requires --source, --category, and --day to locate the run", 1)
 	}
-	rr, err := newRunReader(c, opts...)
+	factory, err := storeFactoryFrom(c)
 	if err != nil {
-		return nil, runreader.Run{}, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
+		return nil, runreader.Run{}, nil, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
 	}
-	run, err := rr.FindRun(ctx, sel, c.String("run-id"))
+	rr, err := runreader.New(c.String("storage-dataset"), factory, opts...)
 	if err != nil {
-		return nil, runreader.Run{}, cli.Exit(fmt.Sprintf("%s: %v", command, err), 1)
+		return nil, runreader.Run{}, nil, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
 	}
-	return rr, run, nil
+	run, err := rr.FindRun(ctx, sel, runID)
+	if err != nil {
+		return nil, runreader.Run{}, nil, cli.Exit(fmt.Sprintf("%s: %v", command, err), 1)
+	}
+	return rr, run, factory, nil
 }
 
 func listEventsAction(c *cli.Context) error {

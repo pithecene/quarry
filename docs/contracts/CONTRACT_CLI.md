@@ -504,35 +504,49 @@ Data is sourced from the runtime’s read path (see [CONTRACT_LODE.md](CONTRACT_
 
 ### `inspect run <run-id>`
 
-Request:
-```
-InspectRunRequest:
-  run_id: string
-```
+Reads one run from storage. It never reports a run that storage does not
+hold: a run that the selector and run ID do not locate exits 1 with
+`run not found` on stderr. A start record whose dataset, source, category, day,
+run ID, or partition differs from the selected key also exits 1, so the
+response never describes a run copied under another key.
+
+Required flags:
+- `--storage-backend`, `--storage-path` (and the other storage flags as on
+  `list runs`)
+- `--source`, `--category`, `--day`: the dataset, these selectors, and the
+  run ID form the keys for the run's start and end records. The command
+  reads those keys directly, as on `list events`.
+
+Optional flags:
+- `--read-timeout=<duration>`, as on `list runs`
 
 Response:
 ```
 InspectRunResponse:
-  run_id: string
-  job_id: string
-  state: string
-  attempt: number
-  parent_run: string | null
-  policy: string
-  started_at: time
-  ended_at: time | null
+  run: Run                    # as on `list runs`
+  policy: strict | buffered | streaming | null
   sidecar_files: SidecarFileSummary[] | null  # omitted when empty
 
 SidecarFileSummary:
   filename: string
   content_type: string
   size: number
-  path: string
+  path: string                # as the inventory records it; the stored key collapses consecutive slashes
 ```
 
+The command discovers the selected run's snapshots through Lode's partition
+manifest index. The response reflects snapshots indexed in at least one
+partition of that run.
+
+The `policy` field comes from the run's latest visible metrics record and
+is null when none is visible. A metrics record without a recognized policy
+name makes the command exit 1 with an error on stderr.
+
 The `sidecar_files` field lists files written via `storage.put()` during the
-run. File refs are collected from Lode snapshot metadata (see [CONTRACT_LODE.md](CONTRACT_LODE.md)
-§ Sidecar File Inventory). The field is omitted when no sidecar files exist.
+run and recorded in the visible snapshots' metadata
+([CONTRACT_LODE.md](CONTRACT_LODE.md) § Sidecar File Inventory). The field is
+omitted when the inventory is empty. A malformed inventory makes the command
+exit 1 with an error on stderr that identifies the snapshot.
 
 ### `inspect proxy <pool-name>`
 
