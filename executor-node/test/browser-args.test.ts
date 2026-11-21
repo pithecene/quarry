@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { browserProxyArgs, chromiumArgs } from '../src/browser-args.js'
 
 describe('chromiumArgs', () => {
@@ -43,15 +43,16 @@ describe('chromiumArgs', () => {
 
 describe('browserProxyArgs', () => {
   afterEach(() => {
-    delete process.env.QUARRY_BROWSER_PROXY
+    vi.unstubAllEnvs()
   })
 
   it('is empty without QUARRY_BROWSER_PROXY', () => {
+    vi.stubEnv('QUARRY_BROWSER_PROXY', undefined)
     expect(browserProxyArgs()).toEqual([])
   })
 
   it('routes the browser through QUARRY_BROWSER_PROXY', () => {
-    process.env.QUARRY_BROWSER_PROXY = 'http://proxy.example:8080'
+    vi.stubEnv('QUARRY_BROWSER_PROXY', 'http://proxy.example:8080')
     expect(browserProxyArgs()).toEqual(['--proxy-server=http://proxy.example:8080'])
   })
 })

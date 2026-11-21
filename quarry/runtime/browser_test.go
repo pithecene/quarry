@@ -42,6 +42,10 @@ func TestLaunchManagedBrowser_PassesTheProxy(t *testing.T) {
 		{"no proxy", nil, "ws://127.0.0.1:1/devtools/browser/proxy=none"},
 		{"resolved proxy", &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: "proxy.example", Port: 8080},
 			"ws://127.0.0.1:1/devtools/browser/proxy=http://proxy.example:8080"},
+		{"IPv6 proxy", &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: "::1", Port: 8080},
+			"ws://127.0.0.1:1/devtools/browser/proxy=http://[::1]:8080"},
+		{"bracketed IPv6 proxy", &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: "[::1]", Port: 8080},
+			"ws://127.0.0.1:1/devtools/browser/proxy=http://[::1]:8080"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

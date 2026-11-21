@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,8 +136,15 @@ func browserProxyEnv(proxy *types.ProxyEndpoint) []string {
 	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, key)
 	})
-	if proxy != nil {
-		env = append(env, fmt.Sprintf("%s%s://%s:%d", key, proxy.Protocol, proxy.Host, proxy.Port))
+	if proxy == nil {
+		return env
 	}
-	return env
+
+	// Existing proxy configurations can already have brackets around IPv6 hosts.
+	host := proxy.Host
+	if strings.Contains(host, ":") && strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
+	authority := net.JoinHostPort(host, strconv.Itoa(proxy.Port))
+	return append(env, key+string(proxy.Protocol)+"://"+authority)
 }
