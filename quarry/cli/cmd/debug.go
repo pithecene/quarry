@@ -66,6 +66,11 @@ func debugResolveProxyAction(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return cli.Exit("pool name required", 1)
 	}
+	// Flag parsing stops at the pool name, so a removed flag after it, such as
+	// --commit, arrives as an argument: refuse it rather than ignore it.
+	if c.NArg() > 1 {
+		return cli.Exit(fmt.Sprintf("debug resolve proxy takes one pool name, got %d arguments: %q", c.NArg(), c.Args().Slice()), 1)
+	}
 	poolName := c.Args().First()
 	configPath := c.String("proxy-config")
 
@@ -111,5 +116,10 @@ func debugResolveProxyAction(c *cli.Context) error {
 		resp.Endpoint.Username = endpoint.Username
 	}
 
+	// The table renders a nested struct as a placeholder, so it shows the
+	// endpoint's fields; json and yaml keep the documented response shape.
+	if r.Format() == render.FormatTable {
+		return r.Render(resp.Endpoint)
+	}
 	return r.Render(resp)
 }

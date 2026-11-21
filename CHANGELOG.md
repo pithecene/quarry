@@ -13,8 +13,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **`quarry inspect run` reads the run from storage**: the command now takes the storage flags and `--source`, `--category`, and `--day`, as `list events` does, and exits 1 when storage holds no such run. Before, it read no storage and printed the same invented run for any ID. The response is the run as `list runs` describes it, the policy from its metrics record, and its sidecar files. `CONTRACT_CLI.md` § `inspect run` states the shape.
 - **Read commands no longer return invented data**: `list runs` and `stats metrics` now require `--storage-backend` and `--storage-path` and exit 1 without them. Before, they printed fixed stub data. `CONTRACT_METRICS.md` § Data Sources states the rule.
-- **The CLI drops the commands that only printed stub data**: Quarry removes `stats runs`, `stats proxies`, `list pools`, `inspect proxy`, and `debug ipc`, because it persists none of their data. `debug resolve proxy` drops `--commit` and the `committed` field and never advances rotation. `CONTRACT_CLI.md` § Command Topology lists the commands.
-- **The CLI removes `--tui`**: the removal includes the interactive view of stored snapshots in `stats metrics`. Use `stats metrics --format table` with the storage flags to view the snapshot in a terminal. Quarry removes Bubble Tea and its supporting dependencies.
+- **The CLI drops the commands that only printed stub data**: Quarry removes `stats runs`, `stats proxies`, `list pools`, `inspect proxy`, and `debug ipc`, whose implementations printed fixed data instead of reading anything Quarry stores. Run outcomes stay available from the run records through `list runs`. `debug resolve proxy` drops `--commit` and the `committed` field and never advances rotation. `CONTRACT_CLI.md` § Command Topology lists the commands.
+- **The CLI removes `--tui`**: the removal includes the interactive views of stored data in `inspect run` and `stats metrics`. Those two views showed the same fields as `--format table`, and keeping a terminal UI for them alone would keep Bubble Tea and its dependencies for no data the table lacks. Use `inspect run --format table` and `stats metrics --format table` with the storage flags. Quarry removes Bubble Tea and its supporting dependencies.
 
 ### Added
 
@@ -24,7 +24,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Quarry adopts Lode's v1.0 API**.
 
-  Quarry requires Lode at commit c3b93ed, ahead of v0.18.3, for `WithRecordedComponents`. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration.
+  Quarry requires Lode at commit 0111fa4, Lode's main after lode#419, lode#420, and lode#421, ahead of v0.18.3, for `WithRecordedComponents`. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration.
 - **New dataset snapshots use manifest format 1.2.0**.
 
   Lode v0.17.1 rejects this format. To roll back to Quarry v0.18.0 or earlier after the first format 1.2.0 write, restore the dataset to its state before that write.
@@ -40,7 +40,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Upgrade Notes
 
 - **Run inspection**: pass `--storage-backend`, `--storage-path`, `--source`, `--category`, and `--day` before the run ID. Use the run's UTC start date for `--day`. In JSON and YAML, read run fields such as `run_id` and `state` under `run`.
-- **Run listings and statistics**: pass `--storage-backend` and `--storage-path` to `list runs` and `stats metrics`. For counts by state, use `list runs --state`. Remove `--tui` from scripts and read the `json` or `table` output.
+- **Run listings and statistics**: pass `--storage-backend` and `--storage-path` to `list runs` and `stats metrics`. For a count by state, list the runs in that state and count them, for example `quarry list runs --storage-backend fs --storage-path ./quarry-data --state failed --format json | jq '.runs | length'`. Remove `--tui` from scripts and read the `json` or `table` output.
 
 ---
 

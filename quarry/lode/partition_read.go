@@ -32,7 +32,7 @@ func layout() lode.ComponentOption { return lode.WithLayout(lode.Hive(partitionK
 // not bundle fails with lode.ErrSettingsMismatch.
 // Opening reads the head and writes nothing.
 func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (*lode.Records[lode.D], error) {
-	settings, err := writerOptions(ctx, dataset, opts)
+	settings, err := writerOptions(opts)
 	if err != nil {
 		return nil, err
 	}

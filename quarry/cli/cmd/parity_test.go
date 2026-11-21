@@ -388,20 +388,24 @@ func checkSubcommandFlags(t *testing.T, name string, cmd *cli.Command) {
 	}
 }
 
-// Every command and subcommand that the parity artifact declares exists in
-// the CLI, so the artifact cannot keep a command that the CLI removed, and
+// The parity artifact declares exactly the commands the binary registers
+// (Commands), so it can neither keep a removed command nor omit a shipped
+// one. Every subcommand it declares exists, and
 // each command's description is the CLI's usage text. A
 // nested debug subcommand is declared by its path, such as "resolve proxy".
-func TestCLIParityArtifactDeclaresOnlyExistingCommands(t *testing.T) {
+func TestCLIParityArtifactDeclaresExactlyTheCommands(t *testing.T) {
 	t.Parallel()
 	commands := map[string]*cli.Command{}
-	for _, cmd := range []*cli.Command{
-		RunCommand(), InitCommand(), InspectCommand(), StatsCommand(), ListCommand(),
-		ReadCommand(), IndexCommand(), PruneCommand(), DebugCommand(), VersionCommand("", "test-commit"),
-	} {
+	for _, cmd := range Commands("test-commit") {
 		commands[cmd.Name] = cmd
 	}
-	for name, parity := range loadParityArtifact(t).Commands {
+	artifact := loadParityArtifact(t).Commands
+	for name := range commands {
+		if _, ok := artifact[name]; !ok {
+			t.Errorf("the CLI registers command %q but the parity artifact does not declare it", name)
+		}
+	}
+	for name, parity := range artifact {
 		cmd, ok := commands[name]
 		if !ok {
 			t.Errorf("parity artifact declares command %q but the CLI has none", name)

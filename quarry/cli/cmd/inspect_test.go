@@ -14,6 +14,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/internal/testutil"
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
@@ -164,7 +165,7 @@ func TestInspectRun_RejectsMalformedSidecarInventory(t *testing.T) {
 		{"backslash in filename", []lode.SidecarFileRef{{Filename: `nested\page.png`, ContentType: valid.ContentType, Path: valid.Path, Size: valid.Size}}, "sidecar_files[0]: expected a flat filename"},
 		{"path belonging to another run", []lode.SidecarFileRef{foreign}, "does not match the selected run's file"},
 		{"path naming another file", []lode.SidecarFileRef{mismatched}, "does not match the selected run's file"},
-		{"parent directory as filename", []lode.SidecarFileRef{{Filename: "..", ContentType: valid.ContentType, Path: prefix + "..", Size: valid.Size}}, "filename that is not a dot segment"},
+		{"parent directory as filename", []lode.SidecarFileRef{{Filename: "..", ContentType: valid.ContentType, Path: prefix + "..", Size: valid.Size}}, `filename that does not contain ".."`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,10 +274,21 @@ func TestInspectRun_RefusesWhatStorageDoesNotHold(t *testing.T) {
 	}
 }
 
-// inspect run builds its store once, so the fs backend's warning about
-// ignored S3 flags appears once, as on the other storage commands.
+// inspect run builds its store factory once, so the fs backend's warning about
+// ignored S3 flags appears once, as on the other storage commands, and the
+// factory builds one store for the run record and details reads.
 func TestInspectRun_BuildsTheStoreOnce(t *testing.T) {
-	testutil.Serial(t, "runCLI and this test swap the process-wide os.Stdout and os.Stderr")
+	testutil.Serial(t, "runCLI and this test swap os.Stdout, os.Stderr, and newStoreFactory")
+	builds := 0
+	origFactory := newStoreFactory
+	newStoreFactory = func(backend, path string, s3cfg lode.S3Config) (lodelib.Factory[lodelib.RangeStore], error) {
+		f, err := origFactory(backend, path, s3cfg)
+		return func() (lodelib.RangeStore, error) {
+			builds++
+			return f()
+		}, err
+	}
+	t.Cleanup(func() { newStoreFactory = origFactory })
 	root := t.TempDir()
 	writeFSRun(t, root, "run-a")
 
@@ -286,9 +298,14 @@ func TestInspectRun_BuildsTheStoreOnce(t *testing.T) {
 		t.Fatalf("pipe: %v", err)
 	}
 	os.Stderr = wr
+	t.Cleanup(func() {
+		os.Stderr = orig
+		iox.DiscardClose(wr)
+		iox.DiscardClose(rd)
+	})
 	args := append([]string{"inspect", "run", "--format", "json", "--storage-endpoint", "http://ignored"}, inspectLocator(root)...)
 	_, runErr := runCLI(t, append(args, "run-a")...)
-	_ = wr.Close()
+	iox.DiscardClose(wr) // ReadAll needs EOF; the cleanup closes it again harmlessly.
 	os.Stderr = orig
 	stderr, _ := io.ReadAll(rd)
 	if runErr != nil {
@@ -296,5 +313,8 @@ func TestInspectRun_BuildsTheStoreOnce(t *testing.T) {
 	}
 	if n := strings.Count(string(stderr), "are ignored for fs backend"); n != 1 {
 		t.Fatalf("warning appears %d times, want once:\n%s", n, stderr)
+	}
+	if builds != 1 {
+		t.Errorf("inspect run built %d stores, want 1", builds)
 	}
 }

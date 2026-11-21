@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	lodelib "github.com/pithecene/lode/lode"
@@ -57,19 +57,6 @@ func runSelectorFlags() []cli.Flag {
 	}
 }
 
-// storageRequested reports whether storage flags were given and returns an
-// error if any was given without the required pair.
-func storageRequested(c *cli.Context) (bool, error) {
-	backend, path := c.String("storage-backend"), c.String("storage-path")
-	if !anyStorageFlagSet(c) {
-		return false, nil
-	}
-	if backend == "" || path == "" {
-		return false, errors.New("both --storage-backend and --storage-path are required for Lode reads")
-	}
-	return true, nil
-}
-
 // storageAccess is what a command does to storage, as its errors name it.
 type storageAccess string
 
@@ -83,14 +70,14 @@ const (
 // storage holds, never from invented data, and index rebuild and prune write
 // it.
 func requireStorage(c *cli.Context, command string, access storageAccess) error {
-	ok, err := storageRequested(c)
-	if err != nil {
-		return cli.Exit(err.Error(), 1)
+	if c.String("storage-backend") != "" && c.String("storage-path") != "" {
+		return nil
 	}
-	if !ok {
-		return cli.Exit(command+" "+string(access)+" storage: --storage-backend and --storage-path are required", 1)
+	prefix := command + " " + string(access) + " storage: "
+	if anyStorageFlagSet(c) {
+		return cli.Exit(prefix+"both --storage-backend and --storage-path are required", 1)
 	}
-	return nil
+	return cli.Exit(prefix+"--storage-backend and --storage-path are required", 1)
 }
 
 func anyStorageFlagSet(c *cli.Context) bool {
@@ -111,6 +98,10 @@ func newRunReader(c *cli.Context, opts ...runreader.Option) (*runreader.Reader, 
 	return runreader.New(c.String("storage-dataset"), factory, opts...)
 }
 
+// newStoreFactory builds a store factory. A test replaces it to count the
+// stores a command builds.
+var newStoreFactory = lode.NewStoreFactory
+
 // storeFactoryFrom builds the store factory the storage flags describe.
 func storeFactoryFrom(c *cli.Context) (lodelib.Factory[lodelib.RangeStore], error) {
 	backend := c.String("storage-backend")
@@ -118,7 +109,7 @@ func storeFactoryFrom(c *cli.Context) (lodelib.Factory[lodelib.RangeStore], erro
 	if backend == "fs" && (endpoint != "" || pathStyle) {
 		fmt.Fprintf(os.Stderr, "Warning: --storage-endpoint and --storage-s3-path-style are ignored for fs backend\n")
 	}
-	return lode.NewStoreFactory(backend, c.String("storage-path"), lode.S3Config{
+	return newStoreFactory(backend, c.String("storage-path"), lode.S3Config{
 		Region:         c.String("storage-region"),
 		Endpoint:       endpoint,
 		UsePathStyle:   pathStyle,
@@ -187,6 +178,13 @@ func locatedRunID(ctx context.Context, c *cli.Context, command, runID string, op
 
 // locateRun is locatedRunID that also returns the store factory, so a command
 // that reads more of the run's storage builds the store once.
+// sharedStore returns a factory that builds the store on its first call and
+// returns that store, or its error, on every later call, so the run reader and
+// a command that reads more of the run's storage share one store.
+func sharedStore(f lodelib.Factory[lodelib.RangeStore]) lodelib.Factory[lodelib.RangeStore] {
+	return sync.OnceValues(f)
+}
+
 func locateRun(ctx context.Context, c *cli.Context, command, runID string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, lodelib.Factory[lodelib.RangeStore], error) {
 	if err := requireStorage(c, command, readsStorage); err != nil {
 		return nil, runreader.Run{}, nil, err
@@ -199,6 +197,7 @@ func locateRun(ctx context.Context, c *cli.Context, command, runID string, opts 
 	if err != nil {
 		return nil, runreader.Run{}, nil, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)
 	}
+	factory = sharedStore(factory)
 	rr, err := runreader.New(c.String("storage-dataset"), factory, opts...)
 	if err != nil {
 		return nil, runreader.Run{}, nil, cli.Exit(fmt.Sprintf("failed to initialize storage reader: %v", err), 1)

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"errors"
 	"bytes"
 	"strings"
 	"testing"
@@ -177,5 +178,68 @@ func TestRenderer_NoColor_DoesNotAffectJSON(t *testing.T) {
 
 	if bufColor.String() != bufNoColor.String() {
 		t.Errorf("--no-color should not affect JSON output")
+	}
+}
+
+// A stored value with a control character prints quoted in a table, so a
+// newline cannot forge a row and an escape sequence cannot restyle the
+// terminal. Plain values print as they are.
+func TestRenderer_Table_QuotesControlCharacters(t *testing.T) {
+	t.Parallel()
+	type file struct {
+		Filename string `json:"filename"`
+	}
+	cases := []struct {
+		name string
+		data any
+		want string
+		bare string
+	}{
+		{"struct field with a newline", file{Filename: "a.txt\nb.txt\t1"}, `"a.txt\nb.txt\t1"`, "a.txt\nb.txt"},
+		{"slice row with an escape sequence", []file{{Filename: "\x1b[31mred"}}, `"\x1b[31mred"`, "\x1b"},
+		{"map value with a carriage return", map[string]string{"k": "x\ry"}, `"x\ry"`, "x\ry"},
+		{"slice-table header with a newline", []map[string]string{{"first\nsecond": "value"}}, "\"first\\nsecond\"\nvalue\n", "first\nsecond"},
+		{"plain value", file{Filename: "page.png"}, "page.png", `"page.png"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := NewRendererWithWriter(FormatTable, false, &buf).Render(tc.data); err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			if got := buf.String(); !strings.Contains(got, tc.want) || strings.Contains(got, tc.bare) {
+				t.Errorf("table %q, want %q and not %q", got, tc.want, tc.bare)
+			}
+		})
+	}
+}
+
+// failingWriter fails every write, as a full or closed output does.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("output closed") }
+
+// A table that cannot be written fails the render, rather than reporting
+// success over truncated output.
+func TestRenderer_Table_ReportsWriteErrors(t *testing.T) {
+	t.Parallel()
+	type item struct {
+		ID string `json:"id"`
+	}
+	cases := []struct {
+		name string
+		data any
+	}{
+		{"struct", item{ID: "1"}},
+		{"slice", []item{{ID: "1"}}},
+		{"empty slice", []item{}},
+		{"map", map[string]string{"k": "v"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := NewRendererWithWriter(FormatTable, false, failingWriter{}).Render(tc.data); err == nil {
+				t.Error("Render succeeded on a failing writer, want its error")
+			}
+		})
 	}
 }

@@ -34,18 +34,7 @@ func main() {
 		Usage:          "Quarry extraction runtime CLI",
 		Version:        fmt.Sprintf("%s (commit: %s)", types.Version, commit),
 		ExitErrHandler: exitErrHandler,
-		Commands: []*cli.Command{
-			cmd.RunCommand(),
-			cmd.InitCommand(),
-			cmd.InspectCommand(),
-			cmd.StatsCommand(),
-			cmd.ListCommand(),
-			cmd.ReadCommand(),
-			cmd.IndexCommand(),
-			cmd.PruneCommand(),
-			cmd.DebugCommand(),
-			cmd.VersionCommand("", commit),
-		},
+		Commands:       cmd.Commands(commit),
 	}
 
 	if err := app.Run(os.Args); err != nil {

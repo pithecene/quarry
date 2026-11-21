@@ -16,14 +16,15 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"text/tabwriter"
+	"unicode"
 
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/pithecene/quarry/cli/reader"
-	"github.com/pithecene/quarry/iox"
 )
 
 // Format represents an output format.
@@ -141,53 +142,55 @@ func (r *Renderer) renderTable(data any) error {
 
 func (r *Renderer) renderSliceTable(v reflect.Value) error {
 	if v.Len() == 0 {
-		_, _ = fmt.Fprintln(r.out, "(no results)")
-		return nil
+		_, err := fmt.Fprintln(r.out, "(no results)")
+		return err
 	}
 
 	w := tabwriter.NewWriter(r.out, 0, 0, 2, ' ', 0)
-	defer iox.DiscardErr(w.Flush)
-
-	// Get headers from first element
-	first := v.Index(0)
-	headers := r.getHeaders(first)
-
-	// Print header row
-	_, _ = fmt.Fprintln(w, strings.Join(headers, "\t"))
-
-	// Print data rows
-	for i := 0; i < v.Len(); i++ {
-		row := r.getRowValues(v.Index(i), headers)
-		_, _ = fmt.Fprintln(w, strings.Join(row, "\t"))
+	headers := r.getHeaders(v.Index(0))
+	// Quote the displayed headers only: rows look up values by the raw keys.
+	display := make([]string, len(headers))
+	for i, header := range headers {
+		display[i] = terminalSafe(header)
 	}
-
-	return nil
+	if _, err := fmt.Fprintln(w, strings.Join(display, "\t")); err != nil {
+		return err
+	}
+	for i := range v.Len() {
+		if _, err := fmt.Fprintln(w, strings.Join(r.getRowValues(v.Index(i), headers), "\t")); err != nil {
+			return err
+		}
+	}
+	return w.Flush()
 }
 
 func (r *Renderer) renderStructTable(data any) error {
 	w := tabwriter.NewWriter(r.out, 0, 0, 2, ' ', 0)
-	defer iox.DiscardErr(w.Flush)
+	if err := r.writeStructTable(w, data); err != nil {
+		return err
+	}
+	return w.Flush()
+}
 
+func (r *Renderer) writeStructTable(w io.Writer, data any) error {
 	v := reflect.ValueOf(data)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
-
 	switch v.Kind() {
 	case reflect.Struct:
 		return r.writeStructRows(w, v)
 	case reflect.Map:
-		iter := v.MapRange()
-		for iter.Next() {
-			key := fmt.Sprintf("%v", iter.Key().Interface())
-			val := r.formatValue(iter.Value())
-			_, _ = fmt.Fprintf(w, "%s:\t%s\n", key, val)
+		for key, val := range v.Seq2() {
+			if _, err := fmt.Fprintf(w, "%s:\t%s\n", terminalSafe(fmt.Sprint(key.Interface())), r.formatValue(val)); err != nil {
+				return err
+			}
 		}
+		return nil
 	default:
-		_, _ = fmt.Fprintf(w, "%v\n", data)
+		_, err := fmt.Fprintf(w, "%s\n", terminalSafe(fmt.Sprint(data)))
+		return err
 	}
-
-	return nil
 }
 
 func (r *Renderer) writeStructRows(w io.Writer, v reflect.Value) error {
@@ -287,8 +290,18 @@ func (r *Renderer) formatValue(v reflect.Value) string {
 		}
 		return "{...}"
 	default:
-		return fmt.Sprintf("%v", v.Interface())
+		return terminalSafe(fmt.Sprint(v.Interface()))
 	}
+}
+
+// terminalSafe quotes a value that holds a control character, such as a
+// newline or an escape sequence from stored data, so a table row cannot forge
+// another row or restyle the terminal. Values without one print as they are.
+func terminalSafe(s string) string {
+	if strings.ContainsFunc(s, unicode.IsControl) {
+		return strconv.Quote(s)
+	}
+	return s
 }
 
 // isTTY returns true if the writer is a TTY.

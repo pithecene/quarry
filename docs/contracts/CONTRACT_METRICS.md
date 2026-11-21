@@ -127,7 +127,7 @@ Optional dimensions:
 The `stats`, `inspect`, `list`, and `read` commands answer only from storage.
 Without `--storage-backend` and `--storage-path`, each exits 1. None of them
 answers for data that Quarry does not persist, such as proxy usage or IPC
-state, and none returns invented data.
+state, and none substitutes a stub response for a read of storage.
 
 - `stats metrics` reads the latest metrics record from storage
   ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).

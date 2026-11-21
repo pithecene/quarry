@@ -478,13 +478,13 @@ run ID, or partition differs from the selected key also exits 1, so the
 response never describes a run copied under another key.
 
 Required flags:
-- `--storage-backend`, `--storage-path` (and the other storage flags as on
-  `list runs`)
+- `--storage-backend`, `--storage-path`
 - `--source`, `--category`, `--day`: the dataset, these selectors, and the
   run ID form the keys for the run's start and end records. The command
   reads those keys directly, as on `list events`.
 
 Optional flags:
+- `--storage-dataset` and the S3 storage flags, as on `list runs`
 - `--read-timeout=<duration>`, as on `list runs`
 
 Response:
@@ -931,6 +931,9 @@ Response:
 ResolveProxyResponse:
   endpoint: ProxyEndpoint
 ```
+
+The `table` format shows the endpoint's fields. The command takes exactly one
+pool name and exits 1 on any further argument.
 
 This command is read-only. It peeks at the selection that the pool's strategy
 would make and never advances rotation state, writes to Lode, or affects runs
