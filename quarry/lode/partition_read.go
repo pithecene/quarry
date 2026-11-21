@@ -2,7 +2,9 @@ package lode
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/pithecene/lode/lode"
@@ -23,13 +25,19 @@ func layout() lode.ComponentOption { return lode.WithLayout(lode.Hive(partitionK
 
 // OpenDataset opens the dataset over store for writing with the settings
 // every Quarry writer shares (CONTRACT_LODE.md §Writer Settings): the Hive
-// layout, the JSONL codec, and bounded commit retry. Lode records the
-// settings in each manifest and rejects, with lode.ErrSettingsMismatch, a
-// writer whose settings differ from the head's. Opening reads the head and
-// writes nothing.
+// layout, the JSONL codec, bounded commit retry, and the head's compressor
+// and checksum, or zstd and SHA-256 for a dataset without snapshots.
+// Before the first snapshot, Quarry's layout, compressor, and checksum
+// take precedence over caller options. For an existing dataset, Lode
+// rejects settings that differ from the head with lode.ErrSettingsMismatch,
+// and the writer uses the bundled implementations named by the head.
+// Opening reads the head and writes nothing.
 func OpenDataset(ctx context.Context, dataset string, store lode.Store, opts ...lode.DatasetOption) (*lode.Records[lode.D], error) {
-	settings := []lode.DatasetOption{layout(), lode.WithRetry(datasetRetryCount)}
-	return lode.Open(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), append(settings, opts...)...)
+	settings, err := writerOptions(ctx, dataset, store, opts)
+	if err != nil {
+		return nil, err
+	}
+	return lode.Open(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), settings...)
 }
 
 // OpenView opens a read-only view of the dataset over store, so reads come
@@ -119,10 +127,17 @@ func readObject(ctx context.Context, ds *lode.RecordView[lode.D], m *lode.Manife
 	}
 	defer iox.DiscardClose(rc)
 	recs, err := recordCodec().Decode(rc)
-	if err != nil {
-		return nil, fmt.Errorf("decode %s: %w", ref.Path, err)
+	if err == nil {
+		return recs, nil
 	}
-	return recs, nil
+	if m.ChecksumAlgorithm != "" && !errors.Is(err, lode.ErrChecksumMismatch) {
+		// A decode error can stop before EOF. Give Lode a chance to verify
+		// the recorded digest, keeping the decode error unless it finds a mismatch.
+		if _, verifyErr := io.Copy(io.Discard, rc); errors.Is(verifyErr, lode.ErrChecksumMismatch) {
+			err = verifyErr
+		}
+	}
+	return nil, fmt.Errorf("decode %s: %w", ref.Path, err)
 }
 
 // datasetRetryCount bounds the commit retries of every Quarry writer, the
