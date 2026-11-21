@@ -13,14 +13,13 @@ import (
 
 // DebugCommand returns the debug command with subcommands.
 // Debug commands are opt-in diagnostic tools per CONTRACT_CLI.md.
-// They are read-only by default; any mutation must be explicitly requested.
+// They are read-only: they start no run and change no runtime state.
 func DebugCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "debug",
-		Usage: "Diagnostic tools (resolve proxy, ipc)",
+		Usage: "Diagnostic tools (resolve proxy)",
 		Subcommands: []*cli.Command{
 			debugResolveCommand(),
-			debugIPCCommand(),
 		},
 	}
 }
@@ -41,10 +40,6 @@ func debugResolveProxyCommand() *cli.Command {
 		Usage:     "Resolve a proxy endpoint from a pool",
 		ArgsUsage: "<pool>",
 		Flags: append(ReadOnlyFlags(),
-			&cli.BoolFlag{
-				Name:  "commit",
-				Usage: "Commit the resolution (advance rotation counters)",
-			},
 			&cli.StringFlag{
 				Name:     "proxy-config",
 				Usage:    "Path to proxy pools config file (JSON)",
@@ -72,17 +67,11 @@ func debugResolveProxyAction(c *cli.Context) error {
 		return cli.Exit("pool name required", 1)
 	}
 	poolName := c.Args().First()
-	commit := c.Bool("commit")
 	configPath := c.String("proxy-config")
 
 	r, err := render.NewRenderer(c)
 	if err != nil {
 		return err
-	}
-
-	// TUI not supported for debug commands
-	if c.Bool("tui") {
-		return cli.Exit("--tui is not supported for debug commands", 1)
 	}
 
 	// Load proxy pools and create selector
@@ -96,7 +85,6 @@ func debugResolveProxyAction(c *cli.Context) error {
 		Pool:      poolName,
 		StickyKey: c.String("sticky-key"),
 		JobID:     c.String("job-id"),
-		Commit:    commit,
 	}
 
 	// Set strategy override if specified
@@ -118,40 +106,10 @@ func debugResolveProxyAction(c *cli.Context) error {
 			Port:     endpoint.Port,
 			Protocol: string(endpoint.Protocol),
 		},
-		Committed: commit,
 	}
 	if endpoint.Username != nil {
 		resp.Endpoint.Username = endpoint.Username
 	}
 
 	return r.Render(resp)
-}
-
-func debugIPCCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "ipc",
-		Usage: "Show IPC debug information",
-		Flags: append(ReadOnlyFlags(),
-			&cli.BoolFlag{
-				Name:  "verbose",
-				Usage: "Include payload details",
-			},
-		),
-		Action: debugIPCAction,
-	}
-}
-
-func debugIPCAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-
-	// TUI not supported for debug commands
-	if c.Bool("tui") {
-		return cli.Exit("--tui is not supported for debug commands", 1)
-	}
-
-	verbose := c.Bool("verbose")
-	return r.Render(reader.DebugIPC(verbose))
 }

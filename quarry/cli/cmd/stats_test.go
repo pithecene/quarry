@@ -1,0 +1,40 @@
+package cmd
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/pithecene/quarry/internal/testutil"
+	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/metrics"
+)
+
+// stats metrics reads the latest metrics record from storage, filtered by
+// --run-id.
+func TestStatsMetrics_ReadsStorage(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
+	root := t.TempDir()
+	for _, runID := range []string{"run-a", "run-b"} {
+		cfg := lode.Config{Dataset: "quarry", Source: "demo", Category: "default", Day: "2026-10-22", RunID: runID}
+		c, err := lode.NewLodeClient(t.Context(), cfg, root)
+		if err != nil {
+			t.Fatalf("client: %v", err)
+		}
+		snap := metrics.Snapshot{RunID: runID, RunsStarted: 1, Policy: "strict", Executor: "executor.mjs", StorageBackend: "fs"}
+		if err := c.WriteMetrics(t.Context(), snap, time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC)); err != nil {
+			t.Fatalf("metrics: %v", err)
+		}
+	}
+	out, err := runCLI(t, "stats", "metrics", "--format", "json", "--storage-backend", "fs", "--storage-path", root, "--run-id", "run-a")
+	if err != nil {
+		t.Fatalf("stats metrics: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("decode %q: %v", out, err)
+	}
+	if got["run_id"] != "run-a" || got["policy"] != "strict" || got["runs_started_total"] != float64(1) {
+		t.Errorf("snapshot = %v, want run-a's strict metrics", got)
+	}
+}

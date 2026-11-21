@@ -124,22 +124,20 @@ Optional dimensions:
 
 ### Data Sources
 
-A read command that has no Lode-backed reader returns stub data.
+The `stats`, `inspect`, `list`, and `read` commands answer only from storage.
+Without `--storage-backend` and `--storage-path`, each exits 1. None of them
+answers for data that Quarry does not persist, such as proxy usage or IPC
+state, and none returns invented data.
 
-- `stats metrics` reads the latest metrics record from storage when
-  `--storage-backend` and `--storage-path` are both given, and returns stub
-  data when no storage flag is given ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
-- `list runs` reads run records from storage in the same way, with the
-  same stub fallback ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`). `list events`
-  requires the storage flags and has no stub ([CONTRACT_CLI.md](CONTRACT_CLI.md)
-  §`list events`).
-- `inspect run` requires the storage flags and has no stub. It reads the
-  selected run's ingestion policy from the latest metrics record visible in
-  the run's indexed partitions. The policy is null when none is visible
-  ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`inspect run`).
-- Every other `stats`, `inspect`, and `list` command returns stub data
-  only. No global reader configuration exists, and the commands read
-  storage only through their own storage flags.
+- `stats metrics` reads the latest metrics record from storage
+  ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
+- `list runs` lists run records ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`), and
+  `list events` reads one run's events ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list events`).
+- `inspect run` reads the selected run's ingestion policy from the latest
+  metrics record visible in the run's indexed partitions. The policy is null
+  when none is visible ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`inspect run`).
+- No global reader configuration exists, and the commands read storage only
+  through their own storage flags.
 
 ---
 

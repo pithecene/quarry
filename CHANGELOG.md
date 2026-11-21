@@ -12,6 +12,9 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Breaking Changes
 
 - **`quarry inspect run` reads the run from storage**: the command now takes the storage flags and `--source`, `--category`, and `--day`, as `list events` does, and exits 1 when storage holds no such run. Before, it read no storage and printed the same invented run for any ID. The response is the run as `list runs` describes it, the policy from its metrics record, and its sidecar files. `CONTRACT_CLI.md` § `inspect run` states the shape.
+- **Read commands no longer return invented data**: `list runs` and `stats metrics` now require `--storage-backend` and `--storage-path` and exit 1 without them. Before, they printed fixed stub data. `CONTRACT_METRICS.md` § Data Sources states the rule.
+- **The CLI drops the commands that only printed stub data**: Quarry removes `stats runs`, `stats proxies`, `list pools`, `inspect proxy`, and `debug ipc`, because it persists none of their data. `debug resolve proxy` drops `--commit` and the `committed` field and never advances rotation. `CONTRACT_CLI.md` § Command Topology lists the commands.
+- **The CLI removes `--tui`**: the removal includes the interactive view of stored snapshots in `stats metrics`. Use `stats metrics --format table` with the storage flags to view the snapshot in a terminal. Quarry removes Bubble Tea and its supporting dependencies.
 
 ### Added
 
@@ -37,6 +40,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Upgrade Notes
 
 - **Run inspection**: pass `--storage-backend`, `--storage-path`, `--source`, `--category`, and `--day` before the run ID. Use the run's UTC start date for `--day`. In JSON and YAML, read run fields such as `run_id` and `state` under `run`.
+- **Run listings and statistics**: pass `--storage-backend` and `--storage-path` to `list runs` and `stats metrics`. For counts by state, use `list runs --state`. Remove `--tui` from scripts and read the `json` or `table` output.
 
 ---
 

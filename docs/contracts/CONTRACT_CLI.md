@@ -33,8 +33,7 @@ Non-goals:
   overwrites a record and never writes or deletes partition data
   (§index rebuild). `prune` only deletes whole runs that its flags select
   (§prune).
-- A small set of `debug` commands may mutate **ephemeral runtime mechanics**
-  only when explicitly requested and documented.
+- `debug` commands are read-only.
 - The CLI talks **only** to the Go runtime.
 - The executor never exposes CLI surfaces.
 - No command starts a long-running background process.
@@ -49,25 +48,20 @@ quarry
 ├─ run
 ├─ init
 ├─ inspect
-│  ├─ run <run-id>
-│  └─ proxy <pool-name>
+│  └─ run <run-id>
 ├─ stats
-│  ├─ runs
-│  ├─ proxies
 │  └─ metrics
 ├─ list
 │  ├─ runs
 │  ├─ events
-│  ├─ artifacts
-│  └─ pools
+│  └─ artifacts
 ├─ read
 │  └─ artifact
 ├─ index
 │  └─ rebuild
 ├─ prune
 ├─ debug
-│  ├─ resolve proxy <pool>
-│  └─ ipc
+│  └─ resolve proxy <pool>
 └─ version
 ```
 
@@ -99,37 +93,10 @@ All `inspect`, `stats`, and `list` commands share the same output contract.
 ### Shared Flags
 
 - `--format=json|table|yaml`
-- `--no-color` (affects table output only, not TUI)
-- `--tui` (inspect and stats commands only)
+- `--no-color` (affects table output only)
 
 Rendering is centralized. Command handlers must not implement custom
 formatting logic.
-
-### TUI Mode
-
-TUI mode (`--tui`) provides interactive views for select read-only commands.
-
-**TUI Policy:**
-
-- **Opt-in only**: TUI is never the default. Users must explicitly request it.
-- **Read-only only**: TUI is only available for `inspect` and `stats` commands.
-- **Same data payloads**: TUI renders the same data structures as non-TUI output.
-  There is no TUI-exclusive data.
-- **Presentation only**: Bubble Tea is a presentation layer. It does not fetch
-  additional data or perform mutations.
-- **Clean exit**: TUI must exit cleanly on `q` or `Ctrl+C`.
-
-Commands that do not support TUI must error if `--tui` is provided.
-
-Supported TUI commands:
-- `inspect run|proxy`
-- `stats runs|proxies|metrics`
-
-Unsupported (must error with `--tui`):
-- `list` commands
-- `debug` commands
-- `version`
-- `run`
 
 ---
 
@@ -548,24 +515,6 @@ run and recorded in the visible snapshots' metadata
 omitted when the inventory is empty. A malformed inventory makes the command
 exit 1 with an error on stderr that identifies the snapshot.
 
-### `inspect proxy <pool-name>`
-
-Response:
-```
-InspectProxyPoolResponse:
-  name: string
-  strategy: string
-  endpoint_cnt: number
-  sticky: ProxySticky | null
-  runtime:
-    round_robin_index: number
-    sticky_entries: number
-    last_used_at: time | null
-```
-
-This response reinforces that **proxy selection is runtime-owned** and
-the executor only applies resolved endpoints (see [CONTRACT_PROXY.md](CONTRACT_PROXY.md)).
-
 ---
 
 ## `stats` (aggregated facts)
@@ -573,36 +522,16 @@ the executor only applies resolved endpoints (see [CONTRACT_PROXY.md](CONTRACT_P
 The `stats` commands return aggregated, derived facts. They must not expose
 internal counters from executors. Stats are derived from Lode.
 
-### `stats runs`
-
-Response:
-```
-RunStats:
-  total: number
-  running: number
-  succeeded: number
-  failed: number
-```
-
-### `stats proxies`
-
-Response:
-```
-ProxyStats:
-  pool: string
-  requests: number
-  failures: number
-  last_used_at: time | null
-```
-
 ### `stats metrics`
 
-Returns the most recent metrics snapshot.
+Returns the most recent metrics snapshot, read from storage.
+
+Required flags:
+- `--storage-backend=fs|s3`: storage backend for Lode reads
+- `--storage-path=<path>`: storage path (fs: directory, s3: bucket/prefix)
 
 Optional flags:
 - `--storage-dataset=<name>`: Lode dataset ID (default: `"quarry"`)
-- `--storage-backend=fs|s3`: storage backend for Lode reads
-- `--storage-path=<path>`: storage path (fs: directory, s3: bucket/prefix)
 - `--storage-region=<region>`: AWS region for S3 backend
 - `--storage-endpoint=<url>`: custom S3 endpoint for S3-compatible providers, with the same meaning as on `run`
 - `--storage-s3-path-style`: force path-style S3 addressing (required by many S3-compatible providers), with the same meaning as on `run`
@@ -610,9 +539,8 @@ Optional flags:
 - `--run-id=<id>`: read metrics for a specific run
 - `--source=<source>`: filter by source partition
 
-Both `--storage-backend` and `--storage-path` must be provided together.
-Any storage flag given without both is an error. With both flags, metrics
-are read from Lode storage. Without a storage flag, stub data is returned (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
+Without both `--storage-backend` and `--storage-path`, the command exits 1
+with an error on stderr (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
 
 Response:
 ```
@@ -652,7 +580,7 @@ quarry stats metrics --storage-backend fs --storage-path /data/quarry
 quarry stats metrics --storage-backend fs --storage-path /data/quarry --run-id run-001
 quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-region us-west-2
 quarry stats metrics --storage-backend s3 --storage-path mybucket/quarry --storage-endpoint https://s3.example.com --storage-s3-path-style
-quarry stats metrics --format json
+quarry stats metrics --storage-backend fs --storage-path /data/quarry --format json
 ```
 
 ---
@@ -663,12 +591,12 @@ The `list` commands return thin slices (not inspect-level detail).
 
 ### `list runs`
 
-With `--storage-backend` and `--storage-path`, runs are listed
-from their run records ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Records, §Reading Run Records).
-Without them, the stub data below is returned. Giving only one of the pair
-is an error.
+Runs are listed from their run records ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Records,
+§Reading Run Records). Without both `--storage-backend` and `--storage-path`,
+the command exits 1 with an error on stderr.
 
-Storage-backed flags:
+Flags:
+- `--storage-backend`, `--storage-path`: required
 - Storage flags as on `stats metrics` (`--storage-dataset`, `--storage-region`,
   `--storage-endpoint`, `--storage-s3-path-style`)
 - `--source`, `--category`, `--day`: leading selectors, in that order
@@ -729,12 +657,6 @@ Selector values are rejected when they are `.`, `..`, or contain a `.` or
 `..` path segment ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Key Encoding): stores normalize such
 segments, which would widen the prefix beyond the selected runs.
 
-Stub flags and response (no storage): `--state=running|failed|succeeded`,
-`--limit=<n>`. Each item includes `run_id`, `state`, and `started_at`. Using a
-storage-only flag (`--source`, `--category`, `--day`, or `--after`)
-without storage is an error, and any storage flag given without both
-`--storage-backend` and `--storage-path` is an error, never a fallback to
-stub data.
 
 ### `list events`
 
@@ -799,18 +721,12 @@ the partition of its chunk records, so the command reads both.
 
 A run with no start record is an error (`run not found`).
 
-### `list pools`
-
-Response must include:
-- `name`
-- `strategy`
-
 ---
 
 ## `read` (bytes)
 
 The `read` commands write stored bytes, not a rendered listing, so they
-take no `--format`, `--no-color`, or `--tui`.
+take no `--format` or `--no-color`.
 
 ### `read artifact`
 
@@ -1000,12 +916,8 @@ with exit code 1 after the partial report is rendered. A rerun resumes it.
 ## `debug` (sharp tools, opt-in)
 
 The `debug` commands are opt-in diagnostic tools and **must not execute work**.
-They are read-only by default. Any mutation must be:
-- explicitly requested by a flag
-- ephemeral and non-persistent
-- non-executing (no runs affected or started)
-- observable in logs and inspection surfaces
-- limited to runtime mechanics (never datasets, runs, or policies)
+They are read-only: they start no run and change no runtime state, dataset,
+run, or policy.
 
 ### `debug resolve proxy <pool>`
 
@@ -1018,42 +930,11 @@ Response:
 ```
 ResolveProxyResponse:
   endpoint: ProxyEndpoint
-  committed: boolean
 ```
 
-The `committed` field indicates whether the resolution was committed (rotation
-counters advanced). It is `false` by default and `true` only when `--commit`
-is provided.
-
-By default this command is read-only and **must not** mutate runtime state.
-
-Optional flag:
-- `--commit`
-
-If `--commit` is provided, the runtime **may** advance in-memory rotation
-counters. This mutation is:
-- ephemeral
-- non-persistent
-- non-executing
-- local to proxy selection mechanics
-
-It must not write to Lode, change datasets, or affect runs or policies.
-This is the only allowed mutation outside `run` and must be observable in
-logs and inspection surfaces.
-
-### `debug ipc`
-
-Response:
-```
-IPCDebugResponse:
-  transport: string
-  encoding: string
-  messages_sent: number
-  errors: number
-  last_error: string | null
-```
-
-No payload dumping unless `--verbose` is provided.
+This command is read-only. It peeks at the selection that the pool's strategy
+would make and never advances rotation state, writes to Lode, or affects runs
+or policies.
 
 ---
 

@@ -28,23 +28,16 @@ quarry inspect run --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day "$(date -u +%F)" run-001
 ```
 
-List recent runs (no limit by default):
+List the runs in storage (no limit by default):
 
 ```
-quarry list runs
+quarry list runs --storage-backend fs --storage-path ./quarry-data
 ```
 
-Show JSON output:
+Show the latest metrics as JSON:
 
 ```
-quarry stats runs --format json
-```
-
-Interactive TUI for inspect/stats (opt-in only):
-
-```
-quarry inspect run --storage-backend fs --storage-path ./quarry-data \
-  --source demo --category default --day "$(date -u +%F)" --tui run-001
+quarry stats metrics --storage-backend fs --storage-path ./quarry-data --format json
 ```
 
 ---
@@ -53,12 +46,12 @@ quarry inspect run --storage-backend fs --storage-path ./quarry-data \
 
 - `run`: execute work (the only command that runs jobs)
 - `init`: create a script project (package manifest, example script, and storage directory)
-- `inspect`: deep view of a single entity (run, proxy)
-- `stats`: aggregated facts (runs, proxies, metrics)
-- `list`: thin enumerations (runs, events, pools)
+- `inspect`: deep view of a single run
+- `stats`: aggregated facts (metrics)
+- `list`: thin enumerations (runs, events, artifacts)
 - `index`: maintain the run records `list runs` reads (`index rebuild`)
 - `prune`: remove whole runs by state and age
-- `debug`: opt-in diagnostics (read-only by default)
+- `debug`: opt-in, read-only diagnostics
 - `version`: CLI and contract versions
 
 ---
@@ -79,15 +72,7 @@ Supported formats:
 
 ### Color
 
-The `--no-color` flag affects **table output only**. It does not disable TUI styling.
-
-### TUI Mode
-
-The `--tui` flag is **opt-in** and **read-only**. It is supported only for:
-- `inspect` subcommands
-- `stats` subcommands
-
-If `--tui` is provided for other commands, the CLI returns an error.
+The `--no-color` flag affects **table output only**.
 
 ---
 
@@ -331,7 +316,6 @@ Deep view of a single entity.
 
 Subcommands:
 - `inspect run <run-id>`
-- `inspect proxy <pool-name>`
 
 `inspect run` requires `--storage-backend`, `--storage-path`, `--source`,
 `--category`, and `--day`. Use the run's UTC start date for `--day`.
@@ -341,26 +325,19 @@ Examples:
 ```
 quarry inspect run --storage-backend fs --storage-path ./quarry-data \
   --source demo --category default --day 2026-10-22 run-001
-quarry inspect proxy default
-quarry inspect run --storage-backend fs --storage-path ./quarry-data \
-  --source demo --category default --day 2026-10-22 --tui run-001
 ```
 
 ### `stats`
 
-Aggregated facts derived from the read path.
+Aggregated facts derived from storage. `stats metrics` requires
+`--storage-backend` and `--storage-path`.
 
 Subcommands:
-- `stats runs`
-- `stats proxies`
 - `stats metrics`
 
 Examples:
 
 ```
-quarry stats runs
-quarry stats proxies --format json
-quarry stats runs --tui
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data
 quarry stats metrics --storage-backend fs --storage-path ./quarry-data --run-id run-001
 quarry stats metrics --storage-backend s3 --storage-path my-bucket/quarry \
@@ -376,19 +353,16 @@ S3-compatible provider is read back from the same provider.
 Thin enumerations (not inspect-level detail).
 
 Subcommands:
-- `list runs [storage flags] [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
+- `list runs <storage flags> [--source <s> [--category <c> [--day <d>]]] [--state succeeded|failed|unterminated] [--limit <n>] [--after <cursor>]`
 - `list events <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
 - `list artifacts <storage flags> --source <s> --category <c> --day <d> --run-id <id>`
-- `list pools`
 
 Notes:
 - `--limit` defaults to `0` (no limit).
-- If output is large, the CLI may warn and suggest `--limit`.
-- With `--storage-backend` and `--storage-path`, `list runs` reads the run
-  records every run writes, `list events` returns a run's
-  events in sequence order, and `list artifacts` returns its artifacts as
-  their commit records describe them. Without storage flags, `list runs`
-  returns stub data.
+- `list runs` reads the run records every run writes, `list events` returns
+  a run's events in sequence order, and `list artifacts` returns its
+  artifacts as their commit records describe them. Each requires
+  `--storage-backend` and `--storage-path`.
 - A run with no end record is `unterminated`: it may still be running, or
   its process was killed. Storage cannot tell which, so it is never shown
   as running.
@@ -470,18 +444,16 @@ quarry prune --storage-backend fs --storage-path ./quarry-data \
 
 ### `debug`
 
-Opt-in diagnostics. Read-only by default.
+Opt-in, read-only diagnostics.
 
 Subcommands:
-- `debug resolve proxy <pool> [--commit]`
-- `debug ipc [--verbose]`
+- `debug resolve proxy <pool>`: the endpoint the pool's strategy would select,
+  without advancing rotation
 
 Examples:
 
 ```
 quarry debug resolve proxy default --proxy-config ./proxies.json
-quarry debug resolve proxy default --proxy-config ./proxies.json --commit
-quarry debug ipc --verbose
 ```
 
 ### `version`

@@ -51,15 +51,14 @@ func storageReadFlags() []cli.Flag {
 // runSelectorFlags select runs by key prefix, in order.
 func runSelectorFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.StringFlag{Name: "source", Usage: "Source selector (storage only)"},
+		&cli.StringFlag{Name: "source", Usage: "Source selector"},
 		&cli.StringFlag{Name: "category", Usage: "Category selector (requires --source)"},
 		&cli.StringFlag{Name: "day", Usage: "Partition day selector, YYYY-MM-DD (requires --category)"},
 	}
 }
 
 // storageRequested reports whether storage flags were given and returns an
-// error if any was given without the required pair: a storage flag never silently
-// falls back to stub data.
+// error if any was given without the required pair.
 func storageRequested(c *cli.Context) (bool, error) {
 	backend, path := c.String("storage-backend"), c.String("storage-path")
 	if !anyStorageFlagSet(c) {
@@ -69,6 +68,21 @@ func storageRequested(c *cli.Context) (bool, error) {
 		return false, errors.New("both --storage-backend and --storage-path are required for Lode reads")
 	}
 	return true, nil
+}
+
+// requireStorage returns a cli exit error unless the storage flags name a
+// store. access is "reads" or "writes", as the command does to storage: the
+// stats, inspect, list, and read commands answer only from what storage holds,
+// never from invented data.
+func requireStorage(c *cli.Context, command, access string) error {
+	ok, err := storageRequested(c)
+	if err != nil {
+		return cli.Exit(err.Error(), 1)
+	}
+	if !ok {
+		return cli.Exit(command+" "+access+" storage: --storage-backend and --storage-path are required", 1)
+	}
+	return nil
 }
 
 func anyStorageFlagSet(c *cli.Context) bool {
@@ -166,12 +180,8 @@ func locatedRunID(ctx context.Context, c *cli.Context, command, runID string, op
 // locateRun is locatedRunID that also returns the store factory, so a command
 // that reads more of the run's storage builds the store once.
 func locateRun(ctx context.Context, c *cli.Context, command, runID string, opts ...runreader.Option) (*runreader.Reader, runreader.Run, lodelib.Factory[lodelib.RangeStore], error) {
-	ok, err := storageRequested(c)
-	if err != nil {
-		return nil, runreader.Run{}, nil, cli.Exit(err.Error(), 1)
-	}
-	if !ok {
-		return nil, runreader.Run{}, nil, cli.Exit(command+" reads storage: --storage-backend and --storage-path are required", 1)
+	if err := requireStorage(c, command, "reads"); err != nil {
+		return nil, runreader.Run{}, nil, err
 	}
 	sel := selectorFrom(c)
 	if sel.Source == "" || sel.Category == "" || sel.Day == "" {
@@ -192,29 +202,46 @@ func locateRun(ctx context.Context, c *cli.Context, command, runID string, opts 
 	return rr, run, factory, nil
 }
 
-func listEventsAction(c *cli.Context) error {
+// runListing is a list command over one located run: read returns the
+// run's records, table gives the rows of `--format table`, and response gives
+// the JSON and YAML shape. list events and list artifacts differ only in these
+// three.
+type runListing[T any] struct {
+	command  string
+	read     func(*runreader.Reader, context.Context, runreader.Run) (T, error)
+	table    func(T) any
+	response func(runreader.Run, T) any
+}
+
+func (l runListing[T]) action(c *cli.Context) error {
 	r, err := render.NewRenderer(c)
 	if err != nil {
 		return err
 	}
-	if c.Bool("tui") {
-		return cli.Exit("--tui is not supported for list commands", 1)
-	}
 	ctx, cancel := readContext(c)
 	defer cancel()
-	rr, run, err := locatedRun(ctx, c, "list events")
+	rr, run, err := locatedRun(ctx, c, l.command)
 	if err != nil {
 		return err
 	}
-	events, err := rr.ReadEvents(ctx, run)
+	records, err := l.read(rr, ctx, run)
 	if err != nil {
-		return cli.Exit(fmt.Sprintf("list events: %v", err), 1)
+		return cli.Exit(fmt.Sprintf("%s: %v", l.command, err), 1)
 	}
 	if r.Format() == render.FormatTable {
-		return r.Render(eventSummaries(events))
+		return r.Render(l.table(records))
 	}
-	return r.Render(listEventsResponse{Run: run, Events: events})
+	return r.Render(l.response(run, records))
 }
+
+var listEventsAction = runListing[[]map[string]any]{
+	command: "list events",
+	read:    (*runreader.Reader).ReadEvents,
+	table:   func(events []map[string]any) any { return eventSummaries(events) },
+	response: func(run runreader.Run, events []map[string]any) any {
+		return listEventsResponse{Run: run, Events: events}
+	},
+}.action
 
 // runLocatorFlags locate one run's records directly: the storage flags,
 // the run's key selectors, and --run-id, whose usage names what the run is
@@ -239,29 +266,14 @@ type listArtifactsResponse struct {
 	Artifacts []runreader.Artifact `json:"artifacts" yaml:"artifacts"`
 }
 
-func listArtifactsAction(c *cli.Context) error {
-	r, err := render.NewRenderer(c)
-	if err != nil {
-		return err
-	}
-	if c.Bool("tui") {
-		return cli.Exit("--tui is not supported for list commands", 1)
-	}
-	ctx, cancel := readContext(c)
-	defer cancel()
-	rr, run, err := locatedRun(ctx, c, "list artifacts")
-	if err != nil {
-		return err
-	}
-	artifacts, err := rr.ListArtifacts(ctx, run)
-	if err != nil {
-		return cli.Exit(fmt.Sprintf("list artifacts: %v", err), 1)
-	}
-	if r.Format() == render.FormatTable {
-		return r.Render(artifacts)
-	}
-	return r.Render(listArtifactsResponse{Run: run, Artifacts: artifacts})
-}
+var listArtifactsAction = runListing[[]runreader.Artifact]{
+	command: "list artifacts",
+	read:    (*runreader.Reader).ListArtifacts,
+	table:   func(artifacts []runreader.Artifact) any { return artifacts },
+	response: func(run runreader.Run, artifacts []runreader.Artifact) any {
+		return listArtifactsResponse{Run: run, Artifacts: artifacts}
+	},
+}.action
 
 // eventSummary is one row of `list events --format table`. Records differ in
 // shape (events, artifact commits), so the table shows the fields every

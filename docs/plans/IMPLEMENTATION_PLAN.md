@@ -927,8 +927,9 @@ Each decision is judged by a number in its PR, not by argument:
       limitation), so the single key builder (B1) is carried forward.
 - [x] [`CONTRACT_CLI.md`](../contracts/CONTRACT_CLI.md): `list runs`, `list events`, `index rebuild`, and
       `prune` specified from the data model, with `unterminated` in place
-      of `running` (E). Removing the stub-backed views and aligning
-      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Sources are carried forward.
+      of `running` (E). The stub-backed views are gone, and
+      [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data Sources
+      describes the storage-only read commands.
 - [x] Runtime: finalization moved into `Execute`, which writes the start
       and end records (A)
 - [x] `quarry/reader` over run records, which the CLI commands use, with
@@ -1120,14 +1121,14 @@ others may follow the freeze.
 
 Split the `quarry/` Go module into independent modules so that hosts
 (`quarry-temporal/`, future integrations) can depend on
-core runtime types without pulling in CLI, TUI, or unrelated dependencies.
+core runtime types without pulling in CLI or unrelated dependencies.
 
 ### Agreed Layout
 
 | Module | Go Module Path | Contains |
 |--------|---------------|----------|
 | `quarry-core/` | `github.com/pithecene/quarry-core` | types, runtime, policy, lode, reader (v0.14.0 layout owner), adapter, proxy, metrics, log |
-| `quarry-cli/` | `github.com/pithecene/quarry-cli` | CLI commands, TUI, config, `cli/reader` (response-shaping adapter over core `reader`) |
+| `quarry-cli/` | `github.com/pithecene/quarry-cli` | CLI commands, config, `cli/reader` (response types and metrics record parsing) |
 | `quarry-temporal/` | `github.com/pithecene/quarry-temporal` | activity, workflow, worker binary |
 | `quarry-sdk/` | (npm: `@aspect/quarry-sdk`) | TypeScript SDK (rename from `sdk/`) |
 | `quarry-executor/` | (npm: `@aspect/quarry-executor`) | Node executor (rename from `executor-node/`) |
@@ -1143,14 +1144,14 @@ quarry-core/      (no quarry-* dependencies)
 ### Prerequisites
 
 - [x] Decouple lode from cli/reader dependency (PR #113)
-- [ ] Zero cli/tui imports from core packages
+- [x] Zero cli/tui imports from core packages (the CLI no longer has a TUI)
 
 ### Sequencing
 
 1. Extract `quarry-core/` — move types, runtime, policy, lode, reader,
    adapter, proxy, metrics, log into standalone module.
-2. Extract `quarry-cli/` — CLI, TUI, config, and the `cli/reader`
-   adapter depend on `quarry-core/` (which owns the layout `reader`).
+2. Extract `quarry-cli/` — CLI, config, and the `cli/reader` response
+   types depend on `quarry-core/` (which owns the layout `reader`).
 3. Create `quarry-temporal/` — new module depending on `quarry-core/`
    and `go.temporal.io/sdk`.
 4. Rename `sdk/` → `quarry-sdk/`, `executor-node/` → `quarry-executor/`

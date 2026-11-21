@@ -2,6 +2,19 @@
   "version": "0.18.0",
   "description": "CLI flag/config parity artifact. Machine-checkable source of truth for CLI flags.",
   "flagSets": {
+    "output": {
+      "format": {
+        "type": "string",
+        "aliases": ["f"],
+        "required": false,
+        "description": "Output format: json, table, yaml"
+      },
+      "no-color": {
+        "type": "bool",
+        "required": false,
+        "description": "Disable colored output (table format only)"
+      }
+    },
     "storage-read": {
       "storage-dataset": {
         "type": "string",
@@ -48,7 +61,7 @@
       "source": {
         "type": "string",
         "required": false,
-        "description": "Source selector (storage only)"
+        "description": "Source selector"
       },
       "category": {
         "type": "string",
@@ -69,45 +82,6 @@
         "required": false,
         "default": "5m",
         "description": "Bound on the whole read of storage, e.g. 5m, 30m (default 5m)"
-      }
-    },
-    "list-output": {
-      "format": {
-        "type": "string",
-        "aliases": ["f"],
-        "required": false,
-        "description": "Output format: json, table, yaml"
-      },
-      "no-color": {
-        "type": "bool",
-        "required": false,
-        "default": false,
-        "description": "Disable colored output (table format only)"
-      },
-      "tui": {
-        "type": "bool",
-        "required": false,
-        "default": false,
-        "description": "Enable interactive TUI mode",
-        "notes": "Not supported for list commands - returns error"
-      }
-    },
-    "tui-output": {
-      "format": {
-        "type": "string",
-        "aliases": ["f"],
-        "required": false,
-        "description": "Output format: json, table, yaml"
-      },
-      "no-color": {
-        "type": "bool",
-        "required": false,
-        "description": "Disable colored output (table format only)"
-      },
-      "tui": {
-        "type": "bool",
-        "required": false,
-        "description": "Enable interactive TUI mode"
       }
     }
   },
@@ -471,32 +445,21 @@
       }
     },
     "inspect": {
-      "description": "Deep view of a single entity",
+      "description": "Inspect a single entity (run)",
       "subcommands": {
         "run": {
-          "flagSets": ["storage-read", "run-selector", "read-timeout", "tui-output"],
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "output"],
           "requires": ["storage-backend", "storage-path", "source", "category", "day"],
-          "flags": {}
-        },
-        "proxy": {
-          "flagSets": ["tui-output"],
           "flags": {}
         }
       }
     },
     "stats": {
-      "description": "Aggregated facts derived from the read path",
+      "description": "Show aggregated statistics (metrics)",
       "subcommands": {
-        "runs": {
-          "flagSets": ["tui-output"],
-          "flags": {}
-        },
-        "proxies": {
-          "flagSets": ["tui-output"],
-          "flags": {}
-        },
         "metrics": {
-          "flagSets": ["storage-read", "tui-output"],
+          "flagSets": ["storage-read", "output"],
+          "requires": ["storage-backend", "storage-path"],
           "flags": {
             "run-id": {
               "type": "string",
@@ -513,16 +476,17 @@
       }
     },
     "list": {
-      "description": "Thin enumerations (not inspect-level detail)",
+      "description": "List entities (runs, events, artifacts)",
       "subcommands": {
         "runs": {
-          "flagSets": ["storage-read", "run-selector", "read-timeout", "list-output"],
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "output"],
+          "requires": ["storage-backend", "storage-path"],
           "flags": {
             "state": {
               "type": "string",
               "required": false,
-              "description": "Filter by state: succeeded, failed, unterminated (with storage); running, failed, succeeded (stub)",
-              "validation": "With storage: succeeded, failed, unterminated. Stub: running, failed, succeeded"
+              "description": "Filter by state: succeeded, failed, unterminated",
+              "validation": "Must be one of: succeeded, failed, unterminated"
             },
             "limit": {
               "type": "int",
@@ -533,13 +497,12 @@
             "after": {
               "type": "string",
               "required": false,
-              "description": "Resume after the cursor a previous page returned (with storage)",
-              "dependsOn": ["storage-backend"]
+              "description": "Resume after the cursor a previous page returned"
             }
           }
         },
         "events": {
-          "flagSets": ["storage-read", "run-selector", "read-timeout", "list-output"],
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "output"],
           "requires": ["storage-backend", "storage-path", "source", "category", "day"],
           "flags": {
             "run-id": {
@@ -550,7 +513,7 @@
           }
         },
         "artifacts": {
-          "flagSets": ["storage-read", "run-selector", "read-timeout", "list-output"],
+          "flagSets": ["storage-read", "run-selector", "read-timeout", "output"],
           "requires": ["storage-backend", "storage-path", "source", "category", "day"],
           "flags": {
             "run-id": {
@@ -559,10 +522,6 @@
               "description": "Run whose artifacts to list (required)"
             }
           }
-        },
-        "pools": {
-          "flagSets": ["list-output"],
-          "flags": {}
         }
       }
     },
@@ -604,7 +563,7 @@
       }
     },
     "index": {
-      "description": "Maintain run records (rebuild)",
+      "description": "Maintain the run records that list runs reads",
       "subcommands": {
         "rebuild": {
           "flagSets": ["storage-read"],
@@ -685,16 +644,11 @@
       }
     },
     "debug": {
-      "description": "Diagnostic tools (resolve proxy, ipc)",
+      "description": "Diagnostic tools (resolve proxy)",
       "subcommands": {
         "resolve proxy": {
+          "flagSets": ["output"],
           "flags": {
-            "commit": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Commit the resolution (advance rotation counters)"
-            },
             "proxy-config": {
               "type": "string",
               "required": true,
@@ -715,80 +669,15 @@
               "type": "string",
               "required": false,
               "description": "Job ID for sticky scope derivation"
-            },
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for debug commands - returns error"
-            }
-          }
-        },
-        "ipc": {
-          "flags": {
-            "verbose": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Include payload details"
-            },
-            "format": {
-              "type": "string",
-              "aliases": ["f"],
-              "required": false,
-              "description": "Output format: json, table, yaml"
-            },
-            "no-color": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Disable colored output (table format only)"
-            },
-            "tui": {
-              "type": "bool",
-              "required": false,
-              "default": false,
-              "description": "Enable interactive TUI mode",
-              "notes": "Not supported for debug commands - returns error"
             }
           }
         }
       }
     },
     "version": {
-      "description": "Reports the canonical project version (lockstep across all components)",
-      "flags": {
-        "format": {
-          "type": "string",
-          "aliases": ["f"],
-          "required": false,
-          "description": "Output format: json, table, yaml"
-        },
-        "no-color": {
-          "type": "bool",
-          "required": false,
-          "description": "Disable colored output (table format only)"
-        },
-        "tui": {
-          "type": "bool",
-          "required": false,
-          "description": "Enable interactive TUI mode",
-          "notes": "Not supported for version command - returns error"
-        }
-      }
+      "description": "Show version information",
+      "flagSets": ["output"],
+      "flags": {}
     }
   }
 }

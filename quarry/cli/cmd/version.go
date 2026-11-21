@@ -34,11 +34,6 @@ func versionAction(commit string) cli.ActionFunc {
 			return err
 		}
 
-		// TUI not supported for version command
-		if c.Bool("tui") {
-			return cli.Exit("--tui is not supported for version command", 1)
-		}
-
 		resp := VersionResponse{
 			Version: types.Version,
 			Commit:  commit,
