@@ -1,11 +1,14 @@
 package runtime
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
 	"testing"
+	"time"
 
+	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -18,7 +21,7 @@ func fakeBrowserServer(t *testing.T) string {
 		t.Skip("the fake executor is a POSIX shell script")
 	}
 	path := filepath.Join(t.TempDir(), "executor")
-	script := "#!/bin/sh\necho \"ws://127.0.0.1:1/devtools/browser/proxy=${QUARRY_BROWSER_PROXY:-none}\"\ncat >/dev/null\n"
+	script := "#!/bin/sh\necho \"ws://127.0.0.1:1/devtools/browser/proxy=${QUARRY_BROWSER_PROXY-none}\"\ncat >/dev/null\n"
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +32,8 @@ func fakeBrowserServer(t *testing.T) string {
 // proxy, as the reusable browser server does, and runs without a proxy when
 // the run resolved none.
 func TestLaunchManagedBrowser_PassesTheProxy(t *testing.T) {
-	t.Parallel()
+	testutil.Serial(t, "sets an inherited proxy in the process environment")
+	t.Setenv("QUARRY_BROWSER_PROXY", "http://ambient.example:3128")
 	cases := []struct {
 		name  string
 		proxy *types.ProxyEndpoint
@@ -41,7 +45,9 @@ func TestLaunchManagedBrowser_PassesTheProxy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			mb, err := LaunchManagedBrowser(t.Context(), fakeBrowserServer(t), "script.js", tc.proxy)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			mb, err := LaunchManagedBrowser(ctx, fakeBrowserServer(t), "script.js", tc.proxy)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -224,16 +224,11 @@ func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, soc
 	cmd := exec.Command(cfg.ExecutorPath, "--browser-server", cfg.ScriptPath)
 	// Detach: new session so the browser server outlives the parent
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(browserProxyEnv(cfg.Proxy),
 		"QUARRY_BROWSER_REUSE_DIR="+dir,
 		"QUARRY_BROWSER_PROXY_HASH="+proxyHash(cfg.Proxy),
 		fmt.Sprintf("QUARRY_BROWSER_IDLE_TIMEOUT=%d", int(idleTimeout.Seconds())),
 	)
-	// Pass proxy URL so the browser server launches Chromium with --proxy-server
-	if cfg.Proxy != nil {
-		cmd.Env = append(cmd.Env, "QUARRY_BROWSER_PROXY="+browserProxyURL(cfg.Proxy))
-	}
-
 	// Diagnostics go to a log file, truncated per launch; the lock held by
 	// the caller means one server writes it at a time.
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)

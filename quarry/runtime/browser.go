@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,9 +32,7 @@ type ManagedBrowser struct {
 // reusable browser server does (AcquireReusableBrowser).
 func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string, proxy *types.ProxyEndpoint) (*ManagedBrowser, error) {
 	cmd := exec.CommandContext(ctx, executorPath, "--launch-browser", scriptPath)
-	if proxy != nil {
-		cmd.Env = append(os.Environ(), "QUARRY_BROWSER_PROXY="+browserProxyURL(proxy))
-	}
+	cmd.Env = browserProxyEnv(proxy)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -128,9 +127,15 @@ func (mb *ManagedBrowser) Close() error {
 	}
 }
 
-// browserProxyURL is the --proxy-server value of a browser that routes its
-// traffic through proxy. Credentials are not part of it: each run applies
-// them to its own pages.
-func browserProxyURL(proxy *types.ProxyEndpoint) string {
-	return fmt.Sprintf("%s://%s:%d", proxy.Protocol, proxy.Host, proxy.Port)
+// browserProxyEnv keeps the runtime's proxy selection authoritative for
+// shared browsers. Each run applies credentials to its own pages.
+func browserProxyEnv(proxy *types.ProxyEndpoint) []string {
+	const key = "QUARRY_BROWSER_PROXY="
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, key)
+	})
+	if proxy != nil {
+		env = append(env, fmt.Sprintf("%s%s://%s:%d", key, proxy.Protocol, proxy.Host, proxy.Port))
+	}
+	return env
 }
