@@ -135,3 +135,86 @@ func BenchmarkQueryLatestMetrics(b *testing.B) {
 		}
 	}
 }
+
+// benchCompressions are the dataset settings that a strict run can meet: an
+// uncompressed dataset from an earlier release, and datasets that a writer
+// created with gzip or with zstd, the default for a new dataset.
+var benchCompressions = []struct {
+	name       string
+	compressor func() lode.Compressor
+	checksum   func() lode.Checksum
+}{
+	{"none", lode.Uncompressed, nil},
+	{"gzip-sha256", lode.Gzip, lode.SHA256},
+	{"zstd-sha256", lode.Zstd, lode.SHA256},
+}
+
+// BenchmarkLodeClient_WriteEvents_Compression measures one strict commit of
+// one event into a dataset whose head records each compressor. The client
+// adopts the head's settings, as every Quarry writer does. Stored data bytes
+// are measured after timing ends.
+func BenchmarkLodeClient_WriteEvents_Compression(b *testing.B) {
+	for _, comp := range benchCompressions {
+		b.Run(comp.name, func(b *testing.B) {
+			store := lode.NewMemory()
+			opts := []lode.DatasetOption{
+				lode.WithLayout(lode.Hive("source", "category", "day", "run_id", "event_type")),
+				lode.WithCompressor(comp.compressor()),
+			}
+			if comp.checksum != nil {
+				opts = append(opts, lode.WithChecksum(comp.checksum()))
+			}
+			seed, err := lode.Open(lode.Use(store)).Records(b.Context(), "quarry", lode.JSONL[lode.D](), opts...)
+			if err != nil {
+				b.Fatal(err)
+			}
+			seedSnapshot, err := seed.Write(b.Context(), []lode.D{{"source": "src", "category": "cat", "day": "2026-10-01", "run_id": "seed", "event_type": "item"}}, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			cfg := benchConfig(0)
+			c, err := qlode.NewLodeClientWithFactory(b.Context(), cfg, lode.Use(store))
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			var seq int64 = 1
+			for b.Loop() {
+				if err := c.WriteEvents(b.Context(), cfg.Dataset, cfg.RunID, benchEvents(cfg, seq, 1)); err != nil {
+					b.Fatal(err)
+				}
+				seq++
+			}
+			reportStoredDataBytes(b, store, cfg.Dataset, seedSnapshot.ID)
+		})
+	}
+}
+
+func reportStoredDataBytes(b *testing.B, store lode.Store, dataset string, seedID lode.SnapshotID) {
+	b.Helper()
+	ctx := b.Context()
+	view, err := qlode.OpenView(ctx, dataset, store)
+	if err != nil {
+		b.Fatal(err)
+	}
+	var storedBytes int64
+	var commits int
+	for loaded, err := range view.Manifests(ctx, lode.PartitionPath{}, lode.ManifestListOptions{}) {
+		if err != nil {
+			b.Fatal(err)
+		}
+		if loaded.Ref.ID == seedID {
+			continue
+		}
+		objects := loaded.Manifest.Objects
+		if len(objects) != 1 {
+			b.Fatalf("snapshot %s has %d data objects, want 1", loaded.Ref.ID, len(objects))
+		}
+		storedBytes += objects[0].SizeBytes
+		commits++
+	}
+	if commits != b.N {
+		b.Fatalf("found %d measured commits, want %d", commits, b.N)
+	}
+	b.ReportMetric(float64(storedBytes)/float64(commits), "stored-B/op")
+}
