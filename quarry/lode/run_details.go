@@ -22,7 +22,7 @@ type RunDetails struct {
 // QueryRunDetails reads metrics and sidecar metadata for the run identified by
 // key from its indexed partitions. A run with no visible metrics has a nil policy.
 func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore], key Config) (RunDetails, error) {
-	ds, ok, err := openReadView(ctx, key.Dataset, factory)
+	ds, store, ok, err := openReadStore(ctx, key.Dataset, factory)
 	if err != nil {
 		return RunDetails{}, WrapReadError(err, "datasets/"+key.Dataset)
 	}
@@ -51,8 +51,7 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 	case !errors.Is(err, ErrNoMetricsFound):
 		return RunDetails{}, fmt.Errorf("read metrics: %w", err)
 	}
-	sidecarPrefix := collapseSidecarSlashes(SidecarFilesPrefix(key))
-	files, err := sidecarFiles(snapshots, "", sidecarPrefix)
+	files, err := sidecarFiles(ctx, snapshots, "", runSidecarOwner(key, store))
 	if err != nil {
 		return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 	}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	lodelib "github.com/pithecene/lode/lode"
 	"github.com/urfave/cli/v2"
 
 	"github.com/pithecene/quarry/internal/testutil"
@@ -250,8 +252,8 @@ func TestStorageCommands_StorageFlags(t *testing.T) {
 		{"list runs with the dataset alone", []string{"list", "runs", "--storage-dataset", "other"}, unpaired},
 		{"list runs with the region alone", []string{"list", "runs", "--storage-region", "us-east-1"}, unpaired},
 		{"list runs with path style alone", []string{"list", "runs", "--storage-s3-path-style"}, unpaired},
-		{"index rebuild with the backend alone", []string{"index", "rebuild", "--storage-backend", "fs"}, unpaired},
-		{"prune with the backend alone", []string{"prune", "--succeeded-days", "1", "--storage-backend", "fs"}, unpaired},
+		{"index rebuild with the backend alone", []string{"index", "rebuild", "--storage-backend", "fs"}, "index rebuild writes storage: both --storage-backend and --storage-path are required"},
+		{"prune with the backend alone", []string{"prune", "--succeeded-days", "1", "--storage-backend", "fs"}, "prune writes storage: both --storage-backend and --storage-path are required"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -261,6 +263,39 @@ func TestStorageCommands_StorageFlags(t *testing.T) {
 			}
 			if out != "" {
 				t.Errorf("wrote output without storage: %q", out)
+			}
+		})
+	}
+}
+
+// sharedStore builds the store once and returns that store, or the error of
+// that one build, on every call.
+func TestSharedStore_BuildsOnce(t *testing.T) {
+	t.Parallel()
+	buildErr := errors.New("no bucket")
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"a store", nil},
+		{"an error", buildErr},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			builds := 0
+			store := lodelib.RangeStore(lodelib.NewMemory())
+			f := sharedStore(func() (lodelib.RangeStore, error) {
+				builds++
+				return store, tc.err
+			})
+			for range 3 {
+				got, err := f()
+				if !errors.Is(err, tc.err) || got != store {
+					t.Fatalf("got %v, %v; want the one build's store and error", got, err)
+				}
+			}
+			if builds != 1 {
+				t.Errorf("factory built %d stores, want 1", builds)
 			}
 		})
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/reader"
@@ -223,7 +224,9 @@ func reportStoredDataBytes(b *testing.B, store lode.Store, dataset string, seedI
 	b.ReportMetric(float64(storedBytes)/float64(commits), "stored-B/op")
 }
 
-// totalStoredBytes sums the size of every object in store.
+// totalStoredBytes sums the size of every object in store. The benchmark takes
+// it before and after the measured commits, so the difference charges neither
+// the seed snapshot nor the latest pointer, which each commit rewrites.
 func totalStoredBytes(b *testing.B, store lode.Store) int64 {
 	b.Helper()
 	keys, err := store.List(b.Context(), "")
@@ -237,7 +240,7 @@ func totalStoredBytes(b *testing.B, store lode.Store) int64 {
 			b.Fatal(err)
 		}
 		n, err := io.Copy(io.Discard, rc)
-		_ = rc.Close()
+		iox.DiscardClose(rc)
 		if err != nil {
 			b.Fatal(err)
 		}

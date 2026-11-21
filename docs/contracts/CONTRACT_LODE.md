@@ -416,13 +416,14 @@ codec, the dataset's compressor and checksum, and Lode's default path names.
   published or staged by an interrupted first commit, and Lode's
   `WithRecordedComponents` resolves either. A dataset without a head is
   created with zstd and SHA-256.
-- A writer opened before the dataset had a head keeps zstd and SHA-256. If
-  another writer first commits other components, each of its commits fails
-  with `ErrSettingsMismatch`, and only a writer opened again takes the head's
-  components.
+- A writer opened before the dataset had a head keeps zstd and SHA-256. If it
+  loses the first commit to a writer with other components, each of its own
+  commits fails with `ErrSettingsMismatch` until the caller opens it again,
+  which takes the head's components. The winning writer continues to commit.
 - A caller of `OpenDataset` cannot set the layout, compressor, or checksum:
-  such an option fails with `ErrInvalidArgument` before Quarry reads the
-  dataset.
+  a `lode.ComponentOption` fails with `ErrInvalidArgument` before Quarry reads
+  the dataset, and Quarry applies its own components after every caller
+  option, so no option changes them.
 - A head that records a compressor or checksum other than Lode's bundled
   ones refuses the writer with `ErrSettingsMismatch`.
 - Every read of a dataset's data object decompresses it with the compressor

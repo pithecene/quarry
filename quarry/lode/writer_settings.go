@@ -1,7 +1,6 @@
 package lode
 
 import (
-	"context"
 	"fmt"
 	"slices"
 
@@ -25,12 +24,9 @@ func writerComponents() []lode.DatasetOption {
 // writerOptions combines the caller options with Quarry's writer settings. A
 // caller cannot set a component: every Quarry writer of a dataset uses the same
 // layout, compressor, and checksum (CONTRACT_LODE.md §Writer Settings).
-func writerOptions(ctx context.Context, dataset string, opts []lode.DatasetOption) ([]lode.DatasetOption, error) {
+func writerOptions(opts []lode.DatasetOption) ([]lode.DatasetOption, error) {
 	if slices.ContainsFunc(opts, isComponentOption) {
 		return nil, fmt.Errorf("%w: Quarry sets the layout, compressor, and checksum of its datasets", lode.ErrInvalidArgument)
-	}
-	if err := validateWriterOptions(ctx, lode.DatasetID(dataset), opts); err != nil {
-		return nil, err
 	}
 	return slices.Concat([]lode.DatasetOption{lode.WithRetry(datasetRetryCount)}, opts, writerComponents()), nil
 }
@@ -38,14 +34,4 @@ func writerOptions(ctx context.Context, dataset string, opts []lode.DatasetOptio
 func isComponentOption(opt lode.DatasetOption) bool {
 	_, ok := opt.(lode.ComponentOption)
 	return ok
-}
-
-func validateWriterOptions(ctx context.Context, dataset lode.DatasetID, opts []lode.DatasetOption) error {
-	if len(opts) == 0 {
-		return nil
-	}
-	// Lode validates its opaque options when opening a writer. Use an empty
-	// store so a head read cannot mask an invalid argument.
-	_, err := lode.Open(lode.Memory()).Records(ctx, dataset, recordCodec(), opts...)
-	return err
 }

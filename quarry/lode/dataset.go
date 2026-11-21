@@ -13,18 +13,25 @@ import (
 // over it. ok is false when the dataset has no snapshot, which a reader
 // reports as an empty result rather than an error.
 func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view *lode.RecordView[lode.D], ok bool, err error) {
+	view, _, ok, err = openReadStore(ctx, dataset, factory)
+	return view, ok, err
+}
+
+// openReadStore is openReadView that also returns the store it built, for a
+// caller that opens another view of the same dataset.
+func openReadStore(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view *lode.RecordView[lode.D], store lode.RangeStore, ok bool, err error) {
 	if factory == nil {
-		return nil, false, errors.New("read: nil store factory")
+		return nil, nil, false, errors.New("read: nil store factory")
 	}
-	store, err := factory()
+	store, err = factory()
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	view, err = OpenView(ctx, dataset, store)
 	if errors.Is(err, lode.ErrNotFound) {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
-	return view, err == nil, err
+	return view, store, err == nil, err
 }
 
 // readSnapshots returns a read view and its snapshot catalog. A nil view

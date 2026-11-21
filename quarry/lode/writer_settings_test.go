@@ -261,25 +261,25 @@ func TestOpenDataset_ExistingHeadKeepsItsComponents(t *testing.T) {
 		pending    bool
 		opts       []lode.DatasetOption
 		compressor string
-		digest     bool
+		checksum   string
 		records    int
 	}{
-		{"uncompressed without a checksum", false, nil, "noop", false, 2},
-		{"zstd without a checksum", false, []lode.DatasetOption{lode.WithCompressor(lode.Zstd())}, "zstd", false, 2},
-		{"gzip with CRC32C", false, []lode.DatasetOption{lode.WithCompressor(lode.Gzip()), lode.WithChecksum(lode.CRC32C())}, "gzip", true, 2},
-		{"a staged first head, uncompressed", true, nil, "noop", false, 1},
+		{"uncompressed without a checksum", false, nil, "noop", "", 2},
+		{"zstd without a checksum", false, []lode.DatasetOption{lode.WithCompressor(lode.Zstd())}, "zstd", "", 2},
+		{"gzip with CRC32C", false, []lode.DatasetOption{lode.WithCompressor(lode.Gzip()), lode.WithChecksum(lode.CRC32C())}, "gzip", "crc32c", 2},
+		{"a staged first head, uncompressed", true, nil, "noop", "", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			store := lode.NewMemory()
 			seedHead(t, store, tc.pending, tc.opts)
 			m, view := writeAndReadHead(t, store)
-			if m.Compressor != tc.compressor {
-				t.Errorf("head records compressor %q, want %q", m.Compressor, tc.compressor)
+			if m.Compressor != tc.compressor || m.ChecksumAlgorithm != tc.checksum {
+				t.Errorf("head records compressor %q and checksum %q, want %q and %q", m.Compressor, m.ChecksumAlgorithm, tc.compressor, tc.checksum)
 			}
 			for _, obj := range m.Objects {
-				if got := obj.Checksum != ""; got != tc.digest {
-					t.Errorf("object %s has a digest: %t, want %t", obj.Path, got, tc.digest)
+				if got, want := obj.Checksum != "", tc.checksum != ""; got != want {
+					t.Errorf("object %s has a digest: %t, want %t", obj.Path, got, want)
 				}
 			}
 			if recs := readFirstPartition(t, view); len(recs) != tc.records {

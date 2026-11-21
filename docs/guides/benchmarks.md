@@ -188,7 +188,8 @@ counts the seed snapshot.
 For commits of one small event, zstd stores 29% fewer data bytes than
 uncompressed JSONL, but the store holds 9% more bytes in total: the
 manifests grow by about 248 bytes per commit, more than the
-92 bytes that compression saves. Larger payloads shift that balance toward compression.
+92 bytes that compression saves. Payloads that compress well shift that balance toward compression, by the
+bytes that compression saves per commit.
 The checksum gives each data object a verified digest at that cost.
 
 Lode v0.18.2 reuses zstd encoders across streams. In this benchmark a zstd

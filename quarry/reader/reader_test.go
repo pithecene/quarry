@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/ipc"
 	qlode "github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
@@ -577,5 +579,33 @@ func TestListRunKeys_DecodesKeysAndSeparatesOthers(t *testing.T) {
 	}
 	if fmt.Sprint(got.OrphanEnds) != fmt.Sprint([]string{orphan}) {
 		t.Fatalf("orphan ends = %v", got.OrphanEnds)
+	}
+}
+
+// An end record copied under another run's key reports that run's outcome
+// as its own unless the reader checks the run ID it names.
+func TestFindRun_RejectsEndRecordOfAnotherRun(t *testing.T) {
+	t.Parallel()
+	f := seedRuns(t)
+	ctx := t.Context()
+	other, err := f.store.Get(ctx, "datasets/quarry/runs/src/cat/2026-10-21/r2/end.json")
+	if err != nil {
+		t.Fatalf("get r2 end record: %v", err)
+	}
+	body, err := io.ReadAll(other)
+	iox.DiscardClose(other)
+	if err != nil {
+		t.Fatalf("read r2 end record: %v", err)
+	}
+	key := "datasets/quarry/runs/src/cat/2026-10-21/r1/end.json"
+	if err := f.store.Delete(ctx, key); err != nil {
+		t.Fatalf("delete r1 end record: %v", err)
+	}
+	if err := f.store.Put(ctx, key, bytes.NewReader(body)); err != nil {
+		t.Fatalf("put r2 end record under r1: %v", err)
+	}
+	run, err := f.reader().FindRun(ctx, Selector{Source: "src", Category: "cat", Day: "2026-10-21"}, "r1")
+	if !errors.Is(err, ErrInvalidRun) {
+		t.Fatalf("FindRun = %+v, %v; want ErrInvalidRun", run, err)
 	}
 }

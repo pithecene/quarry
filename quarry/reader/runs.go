@@ -301,6 +301,11 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 	case err != nil:
 		return Run{}, err
 	}
+	// The end record names its run (CONTRACT_RUN.md §End Record). One that
+	// names another run reports no outcome of this run.
+	if end.RunID != start.RunID {
+		return Run{}, fmt.Errorf("%w: end record %q names run %q, not %q", ErrInvalidRun, endKey, end.RunID, start.RunID)
+	}
 	run.EndedAt = &end.EndedAt
 	run.Outcome = end.Outcome
 	run.Terminal = end.Terminal

@@ -881,8 +881,12 @@ Data is stored in Hive-partitioned layout:
       day=2026-02-03/
         run_id=run-001/
           event_type=item/
-            data.jsonl
+            <data objects>   # zstd-compressed JSONL in new datasets
 ```
+
+Read the data through `quarry list events` or Lode: the reader decompresses
+each data object with the compressor its snapshot's manifest records and
+verifies a digest when the manifest records one.
 
 ### S3 Backend
 

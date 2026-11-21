@@ -3,6 +3,24 @@ package cmd
 
 import "github.com/urfave/cli/v2"
 
+// Commands returns the quarry binary's top-level commands, in help order. The
+// binary registers exactly these, and the parity test checks the artifact
+// against them, so a command cannot leave one without the other.
+func Commands(commit string) []*cli.Command {
+	return []*cli.Command{
+		RunCommand(),
+		InitCommand(),
+		InspectCommand(),
+		StatsCommand(),
+		ListCommand(),
+		ReadCommand(),
+		IndexCommand(),
+		PruneCommand(),
+		DebugCommand(),
+		VersionCommand("", commit),
+	}
+}
+
 // Shared flags for read-only commands per CONTRACT_CLI.md.
 var (
 	// FormatFlag selects output format: json, table, yaml.
