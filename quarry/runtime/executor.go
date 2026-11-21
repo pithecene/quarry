@@ -57,7 +57,7 @@ type ExecutorManager struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
-	stderr io.ReadCloser
+	stderr *stderrCapture
 }
 
 // NewExecutorManager creates a new executor manager.
@@ -135,12 +135,14 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
-	m.stderr = stderr
 
 	// Start process
 	if err := m.cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start executor: %w", err)
 	}
+	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
+	// an executor blocked on a full stderr pipe would never end it.
+	m.stderr = startStderrCapture(stderr)
 
 	// Write run metadata and job to stdin
 	input := executorInput{
@@ -171,11 +173,6 @@ func (m *ExecutorManager) Stdout() io.Reader {
 	return m.stdout
 }
 
-// Stderr returns the stderr reader for diagnostic capture.
-func (m *ExecutorManager) Stderr() io.Reader {
-	return m.stderr
-}
-
 // Stdin returns the stdin writer for sending ack frames to the executor.
 // The caller must close it after ingestion completes to signal EOF.
 func (m *ExecutorManager) Stdin() io.WriteCloser {
@@ -189,8 +186,9 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 		return nil, errors.New("executor not started")
 	}
 
-	// Read stderr (non-blocking capture)
-	stderrBytes, _ := io.ReadAll(m.stderr)
+	// The capture ends when the executor closes stderr, and the pipe must be
+	// drained before cmd.Wait closes it.
+	stderrBytes := m.stderr.wait()
 
 	// Wait for exit
 	err := m.cmd.Wait()
