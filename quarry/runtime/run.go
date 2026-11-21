@@ -577,68 +577,27 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		}, string(execResult.StderrBytes), artifacts, ingestion)
 	}
 
-	// Determine outcome based on exit code and run_result frame.
-	//
-	// IMPORTANT: Exit codes are AUTHORITATIVE for outcome classification.
-	// The run_result frame provides supplementary context (message, error_type, stack)
-	// but does not override the exit code's determination of outcome category.
-	//
-	// Executor exit code mapping (see runtime/outcome.go):
-	//   0 = success (run_complete emitted)
-	//   1 = script_error (run_error emitted)
-	//   2 = executor_crash
-	//   3 = invalid_input (treated as executor_crash)
-	var outcome *types.RunOutcome
+	// One rule classifies the run (reduceOutcome): the exit code decides the
+	// category, the terminal event must agree with it, and a run_result frame
+	// only adds the executor's own context (CONTRACT_IPC.md §Outcome Status
+	// Mapping).
 	runResultFrame := ingestion.GetRunResult()
-
-	// Exit code determines outcome category
-	exitOutcome := outcomeFromExitCode(execResult.ExitCode)
-
-	if runResultFrame != nil {
-		// Check for exit code / run_result consistency
-		runResultOutcome := runResultOutcomeToRunOutcome(runResultFrame)
-
-		if exitOutcome != runResultOutcome.Status {
-			r.logger.Warn("exit code conflicts with run_result", map[string]any{
-				"exit_code":          execResult.ExitCode,
-				"exit_outcome":       exitOutcome,
-				"run_result_status":  runResultFrame.Outcome.Status,
-				"run_result_outcome": runResultOutcome.Status,
-			})
-		}
-
-		// Exit code is authoritative for outcome category
-		// run_result provides supplementary context (message, error_type, stack)
-		outcome = &types.RunOutcome{
-			Status:    exitOutcome,
-			Message:   runResultOutcome.Message,
-			ErrorType: runResultOutcome.ErrorType,
-			Stack:     runResultOutcome.Stack,
-		}
-
-		// If exit code says success but run_result has more specific failure info,
-		// use run_result's message but keep exit code's status
-		if exitOutcome == types.OutcomeSuccess && runResultOutcome.Status != types.OutcomeSuccess {
-			outcome.Message = fmt.Sprintf("exit code 0 but run_result reported %s: %s",
-				runResultFrame.Outcome.Status, runResultOutcome.Message)
-		}
-
-		r.logger.Info("run completed (from run_result)", map[string]any{
-			"outcome":   outcome.Status,
-			"exit_code": execResult.ExitCode,
-			"duration":  time.Since(r.startTime).String(),
-		})
-	} else {
-		// Fall back to exit code + terminal event analysis
-		terminalEvent, hasTerminal := ingestion.GetTerminalEvent()
-		outcome = DetermineOutcome(execResult.ExitCode, hasTerminal, terminalEvent)
-		r.logger.Info("run completed", map[string]any{
-			"outcome":      outcome.Status,
-			"exit_code":    execResult.ExitCode,
-			"duration":     time.Since(r.startTime).String(),
-			"has_terminal": hasTerminal,
+	terminalEvent, hasTerminal := ingestion.GetTerminalEvent()
+	outcome, conflict := reduceOutcome(execResult.ExitCode, hasTerminal, terminalEvent, runResultFrame)
+	if conflict {
+		r.logger.Warn("run_result conflicts with the outcome", map[string]any{
+			"exit_code":         execResult.ExitCode,
+			"outcome":           outcome.Status,
+			"run_result_status": runResultFrame.Outcome.Status,
 		})
 	}
+	r.logger.Info("run completed", map[string]any{
+		"outcome":        outcome.Status,
+		"exit_code":      execResult.ExitCode,
+		"duration":       time.Since(r.startTime).String(),
+		"has_terminal":   hasTerminal,
+		"has_run_result": runResultFrame != nil,
+	})
 
 	return r.buildResult(outcome, string(execResult.StderrBytes), artifacts, ingestion)
 }

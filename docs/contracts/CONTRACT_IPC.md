@@ -126,26 +126,32 @@ ProxyEndpointRedacted:
   after the terminal event.
 - **Duplicate handling**: If multiple run_result frames are received, only the
   first is processed. Subsequent frames are ignored.
-- **Exit code authority**: Exit codes are authoritative for outcome classification.
-  If exit code conflicts with run_result status, exit code wins. The run_result
-  provides supplementary context (message, error_type, stack) but does not
-  override exit code determination.
+- **Outcome context**: The run_result frame supplies context for the outcome
+  determined by the exit code and terminal event (see Outcome Status Mapping).
 
 ### Outcome Status Mapping
 
-Exit codes are authoritative. The table shows how exit code determines
-the final outcome regardless of run_result status:
+After successful ingestion and policy flush, the runtime classifies the
+outcome using the exit code and the terminal event. The same rule applies
+with or without a run_result frame.
 
-| Exit code | Meaning        | Final outcome    | run_result used for |
-|-----------|----------------|------------------|---------------------|
-| 0         | completed      | success          | context only        |
-| 1         | script error   | script_error     | message, stack      |
-| 2         | executor crash | executor_crash   | message, stack      |
-| 3         | invalid input  | executor_crash   | message             |
+| Exit code | Terminal event required | Outcome          |
+|-----------|-------------------------|------------------|
+| 0         | `run_complete`          | `success`        |
+| 1         | `run_error`             | `script_error`   |
+| 2         | none                    | `executor_crash` |
+| 3         | none                    | `executor_crash` |
+| Other     | none                    | `executor_crash` |
 
-If run_result status conflicts with exit code (e.g., run_result says
-"completed" but exit code is 1), exit code wins and a warning is logged.
-The run_result's message, error_type, and stack are still used for context.
+An exit code of 0 or 1 without its required terminal event is
+`executor_crash`. In this case, the runtime keeps its terminal-event
+diagnostic as the outcome message.
+
+The runtime logs a warning when the run_result status conflicts with the
+classified outcome. For exits classified by the table, the outcome message
+also names the conflicting status. When the frame agrees with an outcome
+classified by the table, any `message`, `error_type`, or `stack` supplied
+by the frame replaces the corresponding runtime value.
 
 ---
 
