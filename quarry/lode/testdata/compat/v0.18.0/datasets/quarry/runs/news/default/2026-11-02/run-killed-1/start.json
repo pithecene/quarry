@@ -1,1 +1,0 @@
-{"record_kind":"run_start","schema_version":1,"run_id":"run-killed-1","attempt":1,"dataset":"quarry","source":"news","category":"default","day":"2026-11-02","partition":"source=news/category=default/day=2026-11-02/run_id=run-killed-1/","started_at":"2026-11-02T04:00:00Z","quarry_version":"0.18.0","backfilled":false}

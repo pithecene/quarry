@@ -24,18 +24,7 @@ const fixtureV0137 = "testdata/compat/v0.13.7"
 // Lode format 1.1.0: four runs with their run records, one artifact Volume
 // with its commit index entry, a sidecar file, and metrics.
 // testdata/compat/gen-v0.18.0/main.go regenerates it.
-const fixtureV0180 = "testdata/compat/v0.18.0"
-
-// copyFixture copies a fixture into a temporary directory, so that a test
-// may write to it.
-func copyFixture(t *testing.T, dir string) string {
-	t.Helper()
-	root := t.TempDir()
-	if err := os.CopyFS(root, os.DirFS(dir)); err != nil {
-		t.Fatalf("copy fixture %s: %v", dir, err)
-	}
-	return root
-}
+const fixtureV0180 = "testdata/compat/v0.18.0.zip"
 
 // A dataset that a released Quarry wrote is indexed, read, extended, and
 // pruned by this release without migration (CONTRACT_LODE.md §Writer
@@ -43,7 +32,7 @@ func copyFixture(t *testing.T, dir string) string {
 func TestCompat_v0_13_7_Dataset(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	root := copyFixture(t, fixtureV0137)
+	root := copyFixture(t, os.DirFS(fixtureV0137))
 	factory := lode.FS(root)
 
 	rebuilt, err := qlode.RebuildRunRecords(ctx, "quarry", factory, qlode.RebuildOptions{})
@@ -77,7 +66,7 @@ func TestCompat_v0_13_7_Dataset(t *testing.T) {
 func TestCompat_v0_18_0_Dataset(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	root := copyFixture(t, fixtureV0180)
+	root := unpackFixture(t, fixtureV0180)
 	factory := lode.FS(root)
 
 	rebuilt, err := qlode.RebuildRunRecords(ctx, "quarry", factory, qlode.RebuildOptions{})
