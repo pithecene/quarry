@@ -174,9 +174,10 @@ The table gives medians across five runs of 2,000 commits each on macOS
 arm64 (Apple M5) with Go 1.27.3, `GOMAXPROCS=10`, and Lode v0.18.2.
 After timing ends, the benchmark reports two sizes per measured commit.
 `stored-B/op` sums the data-object sizes that the manifests record.
-`stored-total-B/op` sums every object that the measured commits added to the
-store: data objects, manifests, and the latest pointer. Neither counts the
-seed snapshot.
+`stored-total-B/op` is the growth of the whole store across the measured
+commits: data objects and manifests. The latest pointer existed before
+timing and each commit rewrites it, so it adds almost nothing. Neither size
+counts the seed snapshot.
 
 | Compression | Checksum | Time per commit | Data bytes per commit | Total bytes per commit | Bytes allocated | Allocations |
 |---|---|---:|---:|---:|---:|---:|
@@ -186,7 +187,7 @@ seed snapshot.
 
 For commits of one small event, zstd stores 29% fewer data bytes than
 uncompressed JSONL, but the store holds 9% more bytes in total: the
-manifests and the pointer grow by about 248 bytes per commit, more than the
+manifests grow by about 248 bytes per commit, more than the
 92 bytes that compression saves. Larger payloads shift that balance toward compression.
 The checksum gives each data object a verified digest at that cost.
 

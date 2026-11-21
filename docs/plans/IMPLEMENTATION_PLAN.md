@@ -868,7 +868,7 @@ names and shapes.
 opens writers for `run` and `prune` with the settings in the head manifest.
 Lode refuses a settings mismatch with `ErrSettingsMismatch` and uses the
 settings recorded in each snapshot when reading. Quarry uses zstd and
-SHA-256 for datasets without snapshots, as specified in
+SHA-256 for a dataset without a head, published or staged, as specified in
 [`CONTRACT_LODE.md`](../contracts/CONTRACT_LODE.md#writer-settings).
 
 The [strict-policy comparison](../guides/benchmarks.md#dataset-compression-under-strict)
@@ -976,7 +976,7 @@ land before the v1.0 freeze.
       tasks, executors) removed, and [`CONTRACT_METRICS.md`](../contracts/CONTRACT_METRICS.md) § Data
       Source Progression aligned (E)
 - [x] Writers use the head's compressor and checksum or use zstd and SHA-256
-      for datasets without snapshots. The `strict` comparison is recorded above.
+      for a dataset without a head. The `strict` comparison is recorded above.
 - [ ] Decide whether to expose a compressor option for datasets without snapshots.
 - [ ] `--recompress` once the Lode rewrite primitive exists.
 
