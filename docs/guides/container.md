@@ -15,8 +15,8 @@ Quarry ships two container images via GHCR:
 
 | Image | Tag | Arch | Includes |
 |-------|-----|------|----------|
-| Full | `ghcr.io/pithecene/quarry:0.18.0` | amd64 | Quarry CLI, Node.js, Puppeteer, Chrome for Testing, fonts |
-| Slim | `ghcr.io/pithecene/quarry:0.18.0-slim` | amd64, arm64 | Quarry CLI, Node.js, Puppeteer (no browser) |
+| Full | `ghcr.io/pithecene/quarry:0.19.0` | amd64 | Quarry CLI, Node.js, Puppeteer, Chrome for Testing, fonts |
+| Slim | `ghcr.io/pithecene/quarry:0.19.0-slim` | amd64, arm64 | Quarry CLI, Node.js, Puppeteer (no browser) |
 The **full** image is recommended for standalone usage. The **slim** image is
 for environments where Chromium is provided externally (e.g., via
 `--browser-ws-endpoint` pointing at a sidecar or shared browser service).
@@ -42,7 +42,7 @@ mkdir -p data
 docker run --rm --user "$(id -u):$(id -g)" \
   -v ./scripts:/work/scripts:ro \
   -v ./data:/work/data \
-  ghcr.io/pithecene/quarry:0.18.0 \
+  ghcr.io/pithecene/quarry:0.19.0 \
   run \
     --script ./scripts/my-script.ts \
     --run-id "run-$(date +%s)" \
@@ -58,7 +58,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
 ```yaml
 services:
   quarry:
-    image: ghcr.io/pithecene/quarry:0.18.0
+    image: ghcr.io/pithecene/quarry:0.19.0
     volumes:
       - ./scripts:/work/scripts:ro
       - ./data:/work/data
@@ -79,7 +79,7 @@ services:
 ```yaml
 services:
   quarry:
-    image: ghcr.io/pithecene/quarry:0.18.0
+    image: ghcr.io/pithecene/quarry:0.19.0
     volumes:
       - ./scripts:/work/scripts:ro
     environment:
@@ -107,7 +107,7 @@ services:
       - "6379:6379"
 
   quarry:
-    image: ghcr.io/pithecene/quarry:0.18.0
+    image: ghcr.io/pithecene/quarry:0.19.0
     depends_on:
       - redis
     volumes:
@@ -143,7 +143,7 @@ executor where to find them:
 ```yaml
 services:
   quarry:
-    image: ghcr.io/pithecene/quarry:0.18.0
+    image: ghcr.io/pithecene/quarry:0.19.0
     volumes:
       - ./scripts:/work/scripts:ro
       - ./node_modules:/work/node_modules:ro
@@ -181,7 +181,7 @@ services:
       - "9222:9222"
 
   quarry:
-    image: ghcr.io/pithecene/quarry:0.18.0-slim
+    image: ghcr.io/pithecene/quarry:0.19.0-slim
     depends_on:
       - chrome
     volumes:
@@ -214,6 +214,18 @@ On the same Docker network, the CDP WebSocket stays on the bridge
 (loopback-equivalent), with no external network hop.
 
 ```yaml
+# Both crawlers must reach the same browser pool and mounts, so they share
+# these settings, and each crawler supplies its own command.
+x-crawler: &crawler
+  image: ghcr.io/pithecene/quarry:0.19.0-slim
+  depends_on:
+    - browser-pool
+  volumes:
+    - ./scripts:/work/scripts:ro
+    - ./data:/work/data
+  environment:
+    QUARRY_BROWSER_ENDPOINT: "ws://browser-pool:3000"
+
 services:
   browser-pool:
     image: browserless/chrome
@@ -222,14 +234,7 @@ services:
       MAX_CONCURRENT_SESSIONS: "10"
 
   crawler-products:
-    image: ghcr.io/pithecene/quarry:0.18.0-slim
-    depends_on:
-      - browser-pool
-    volumes:
-      - ./scripts:/work/scripts:ro
-      - ./data:/work/data
-    environment:
-      QUARRY_BROWSER_ENDPOINT: "ws://browser-pool:3000"
+    <<: *crawler
     command:
       - run
       - --script=./scripts/products.ts
@@ -239,14 +244,7 @@ services:
       - --storage-path=./data
 
   crawler-reviews:
-    image: ghcr.io/pithecene/quarry:0.18.0-slim
-    depends_on:
-      - browser-pool
-    volumes:
-      - ./scripts:/work/scripts:ro
-      - ./data:/work/data
-    environment:
-      QUARRY_BROWSER_ENDPOINT: "ws://browser-pool:3000"
+    <<: *crawler
     command:
       - run
       - --script=./scripts/reviews.ts

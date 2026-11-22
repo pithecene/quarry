@@ -454,8 +454,9 @@ codec, the dataset's compressor and checksum, and Lode's default path names.
   expires and sweeps them.
 - Lode v0.17.1 and earlier reject a format 1.2.0 manifest, so Quarry v0.18.0
   and earlier cannot read a snapshot that a later release wrote. A rollback
-  across that boundary must restore the dataset as it was before the
-  upgrade's first write.
+  across that boundary must restore the dataset as it was before the first
+  format 1.2.0 snapshot commit. A run record that `index rebuild` backfills is
+  no snapshot commit.
 
 ---
 

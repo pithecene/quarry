@@ -13,8 +13,8 @@ Quarry’s core principle:
 
 Scripts and executors remain **policy-agnostic**.
 
-## Current Status (as of v0.18.0)
-- Latest release: v0.18.0 (see CHANGELOG.md).
+## Current Status (as of v0.19.0)
+- Latest release: v0.19.0 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
 - Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side and retention) →
@@ -22,6 +22,13 @@ Scripts and executors remain **policy-agnostic**.
   sections below; #245 is the umbrella issue, #239 and #240 the drivers.
 - v0.18.0 ships four of the five embedding seams. The storage key in
   `file_write_ack` (B1) remains, and it does not gate the freeze.
+- v0.19.0 gives `inspect run` a storage reader, makes `list runs` and
+  `stats metrics` require the storage path they already read, removes the
+  stub-only commands and the TUI, and moves to Lode v0.18.3, which writes manifest format 1.2.0 with
+  zstd and SHA-256 for new datasets. The next release targets the v1.0
+  hardening work under #245: lint and container gates, process supervision,
+  run keys with metrics in the end record, artifact acknowledgement modes,
+  and the run reader with completion notifications.
 
 ---
 

@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.19.0] - 2026-11-21
+
 ### Breaking Changes
 
 - **`quarry inspect run` reads the run from storage**: the command now takes the storage flags and `--source`, `--category`, and `--day`, as `list events` does, and exits 1 when storage holds no such run. Before, it read no storage and printed the same invented run for any ID. The response is the run as `list runs` describes it, the policy from its metrics record, and its sidecar files. `CONTRACT_CLI.md` § `inspect run` states the shape.
@@ -39,8 +43,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Upgrade Notes
 
+- **Rollback**: the first snapshot that Quarry v0.19.0 commits to a dataset, including an append to an existing one, has format 1.2.0, which Quarry v0.18.0 cannot read. `index rebuild` backfills run records without committing a snapshot. If you may roll back to v0.18.0, keep a restorable copy of the dataset from before that commit, since an older binary alone does not restore it.
 - **Run inspection**: pass `--storage-backend`, `--storage-path`, `--source`, `--category`, and `--day` before the run ID. Use the run's UTC start date for `--day`. In JSON and YAML, read run fields such as `run_id` and `state` under `run`.
 - **Run listings and statistics**: pass `--storage-backend` and `--storage-path` to `list runs` and `stats metrics`. For a count by state, list the runs in that state and count them, for example `quarry list runs --storage-backend fs --storage-path ./quarry-data --state failed --format json | jq '.runs | length'`. Remove `--tui` from scripts and read the `json` or `table` output.
+- **Run listing output**: a script that called `list runs` without the storage flags read the stub, which returned a top-level array and accepted `--state running`. Such a script now passes the storage flags and filters by `succeeded`, `failed`, or `unterminated`, where `unterminated` means only that the run has no end record. In `json` or `yaml` it reads `.runs[]` from a page object in place of a top-level array, while `table` still prints the runs as rows. A script that already passed the storage flags needs neither change.
 
 ---
 
@@ -821,7 +827,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.18.0...HEAD
+<!-- jscpd:ignore-start -->
+
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/pithecene/quarry/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/pithecene/quarry/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/pithecene/quarry/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/pithecene/quarry/compare/v0.16.0...v0.16.1
