@@ -89,7 +89,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🧹 Lint
         run: task lint
@@ -107,7 +107,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🧪 Test
         run: task test
@@ -125,7 +125,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🏗️ Build
         run: task build
@@ -142,7 +142,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 📦 Run Examples
         run: task examples
@@ -173,7 +173,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 📦 Bundle executor
         run: task executor:bundle
@@ -212,7 +212,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🏗️ Build SDK
         working-directory: sdk
@@ -317,7 +317,7 @@ jobs:
           echo "✅ pnpm version matches pin"
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🏗️ Build SDK
         working-directory: sdk
@@ -353,7 +353,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 📦 Publish
         run: node scripts/release/src/cli.ts publish-jsr sdk "${GITHUB_REF_NAME#v}"

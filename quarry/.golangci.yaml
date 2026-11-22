@@ -1,7 +1,59 @@
 version: "2"
 
+run:
+  timeout: 5m
+  tests: true
+
 linters:
+  default: standard
+  enable:
+    # Note: HTTP response body closing is enforced by Bosun's responseclose
+    # analyzer in .golangci.bosun.yaml, which understands iox.DiscardClose.
+    - contextcheck
+    - depguard
+    - errname
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
   settings:
+    depguard:
+      rules:
+        core-no-cli:
+          files:
+            - $all
+            - "!**/quarry/cli/**"
+            - "!**/quarry/cmd/**"
+          deny:
+            # depguard matches deny entries by import-path prefix, so these
+            # cover every package under cli/ and cmd/.
+            - pkg: github.com/pithecene/quarry/cli
+              desc: core packages must not import CLI packages (CONTRACT_INTEGRATION)
+            - pkg: github.com/pithecene/quarry/cmd
+              desc: core packages must not import cmd entrypoints
+    exhaustive:
+      default-signifies-exhaustive: true
+    gosec:
+      excludes:
+        # Quarry supervises the Node executor subprocess and reads/writes
+        # user-specified CLI config, job, report, and scaffold paths.
+        - G204
+        - G301
+        - G302
+        - G304
+        - G306
+        - G703
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     revive:
       rules:
         # Disable var-naming for "types" package - it's a valid package name
@@ -9,3 +61,26 @@ linters:
           disabled: false
           exclude:
             - types
+        - name: error-return
+        - name: error-strings
+        - name: exported
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - noctx
+          - unparam
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/pithecene/quarry
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

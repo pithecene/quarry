@@ -78,7 +78,8 @@ export function createStorageBatcher(
 
   function drain(): void {
     while (inflight < concurrency && queue.length > 0 && failed === null) {
-      const entry = queue.shift()!
+      const entry = queue.shift()
+      if (entry === undefined) break
       inflight++
       storage
         .put(entry.options)

@@ -283,7 +283,7 @@ func TestSharedStore_BuildsOnce(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			builds := 0
-			store := lodelib.RangeStore(lodelib.NewMemory())
+			store := lodelib.NewMemory()
 			f := sharedStore(func() (lodelib.RangeStore, error) {
 				builds++
 				return store, tc.err

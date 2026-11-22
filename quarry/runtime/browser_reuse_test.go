@@ -3,7 +3,6 @@ package runtime
 import (
 	"errors"
 	"fmt"
-	"github.com/pithecene/quarry/internal/testutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/pithecene/quarry/internal/testutil"
 
 	"github.com/pithecene/quarry/types"
 )
@@ -130,7 +131,7 @@ func TestHealthCheck_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := HealthCheckBrowser(tt.endpoint); err == nil {
+			if err := HealthCheckBrowser(t.Context(), tt.endpoint); err == nil {
 				t.Error("expected error")
 			}
 		})
@@ -248,7 +249,7 @@ func TestHealthy_ReleasesALeaseOnABrowserThatDoesNotAnswer(t *testing.T) {
 		Release:    func() { released++ },
 	}
 
-	if _, err := healthy(lease); err == nil {
+	if _, err := healthy(t.Context(), lease); err == nil {
 		t.Fatal("expected an error for a browser that does not answer")
 	}
 	if released != 1 {

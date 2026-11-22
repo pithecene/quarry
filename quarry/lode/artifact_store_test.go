@@ -284,8 +284,14 @@ func TestArtifactStore_OpenRejectsBadArguments(t *testing.T) {
 		id   string
 		size int64
 	}{
-		{"empty id", "", 1}, {"dot", ".", 1}, {"dot dot", "..", 1}, {"slash", "a/b", 1}, {"backslash", `a\b`, 1},
-		{"lode reserved prefix", ".lode-tmp-a", 1}, {"lode reserved prefix, empty artifact", ".lode-tmp-a", 0}, {"negative size", "a1", -1},
+		{"empty id", "", 1},
+		{"dot", ".", 1},
+		{"dot dot", "..", 1},
+		{"slash", "a/b", 1},
+		{"backslash", `a\b`, 1},
+		{"lode reserved prefix", ".lode-tmp-a", 1},
+		{"lode reserved prefix, empty artifact", ".lode-tmp-a", 0},
+		{"negative size", "a1", -1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

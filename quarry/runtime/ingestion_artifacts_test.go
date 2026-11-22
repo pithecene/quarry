@@ -239,3 +239,69 @@ func TestIngestionEngine_Artifact_RangeAfterTerminal(t *testing.T) {
 		t.Fatalf("OrphanIDs = %v; want a1, still open without an event", ids)
 	}
 }
+
+// An acknowledgement whose error text would not fit in a frame still reaches
+// the executor as a whole failure frame, with its correlation ID and the
+// error's start cut at a UTF-8 boundary, so the executor never waits for a
+// reply that the runtime could not encode.
+func TestIngestionEngine_SendsAnAckForAnOversizedError(t *testing.T) {
+	t.Parallel()
+	// The two-byte é straddles the 64 KiB cut, so the cut must drop it whole.
+	huge := strings.Repeat("x", maxAckErrorBytes-1) + "é" + strings.Repeat("y", 20<<20)
+	type ack struct {
+		Type  string  `msgpack:"type"`
+		ID    uint32  `msgpack:"-"`
+		OK    bool    `msgpack:"ok"`
+		Error *string `msgpack:"error"`
+	}
+	cases := []struct {
+		name   string
+		frame  string
+		send   func(e *IngestionEngine)
+		decode func(payload []byte) (ack, error)
+	}{
+		{"file_write_ack", "file_write_ack", func(e *IngestionEngine) { e.sendFileWriteAck(7, false, huge) }, func(b []byte) (ack, error) {
+			var f types.FileWriteAckFrame
+			err := msgpack.Unmarshal(b, &f)
+			return ack{Type: f.Type, ID: f.WriteID, OK: f.OK, Error: f.Error}, err
+		}},
+		{"artifact_range_ack", "artifact_range_ack", func(e *IngestionEngine) { e.sendArtifactRangeAck(7, false, huge) }, func(b []byte) (ack, error) {
+			var f types.ArtifactRangeAckFrame
+			err := msgpack.Unmarshal(b, &f)
+			return ack{Type: f.Type, ID: f.RangeID, OK: f.OK, Error: f.Error}, err
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runMeta := &types.RunMeta{RunID: "run-123", Attempt: 1}
+			var ackBuf bytes.Buffer
+			engine := NewIngestionEngine(&bytes.Buffer{}, policy.NewNoopPolicy(), nil, nil, log.NewLogger(runMeta), runMeta, nil, nil, &ackBuf)
+			tc.send(engine)
+			frame := ackBuf.Bytes()
+			if len(frame) < 4 || int(binary.BigEndian.Uint32(frame[:4])) != len(frame)-4 {
+				t.Fatalf("frame of %d bytes does not carry its own length prefix", len(frame))
+			}
+			got, err := tc.decode(frame[4:])
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if got.Error == nil {
+				t.Fatal("the acknowledgement carries no error")
+			}
+			msg := *got.Error
+			want := strings.Repeat("x", maxAckErrorBytes-1) + " [truncated; see the runtime log]"
+			if got.Type != tc.frame || got.ID != 7 || got.OK || msg != want {
+				t.Errorf("ack type %q id %d ok %t with a %d-byte error, want %q, 7, false, and the cut error", got.Type, got.ID, got.OK, len(msg), tc.frame)
+			}
+			// The contract requires an explicit ok field, which a Go bool cannot tell
+			// apart from a missing one.
+			var wire map[string]any
+			if err := msgpack.Unmarshal(frame[4:], &wire); err != nil {
+				t.Fatalf("decode as a map: %v", err)
+			}
+			if ok, present := wire["ok"]; !present || ok != false {
+				t.Errorf("wire ok = %v (present %t), want an explicit false", ok, present)
+			}
+		})
+	}
+}

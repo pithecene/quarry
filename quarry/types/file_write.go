@@ -1,4 +1,3 @@
-//nolint:revive // types is a common Go package naming convention
 package types
 
 // FileWriteFrame represents a file_write IPC frame.

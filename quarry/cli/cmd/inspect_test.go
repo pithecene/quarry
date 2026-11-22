@@ -23,8 +23,10 @@ import (
 // inspectLocator is the storage and selector of the run that writeFSRun
 // writes under root.
 func inspectLocator(root string) []string {
-	return []string{"--storage-backend", "fs", "--storage-path", root,
-		"--source", "demo", "--category", "default", "--day", "2026-10-22"}
+	return []string{
+		"--storage-backend", "fs", "--storage-path", root,
+		"--source", "demo", "--category", "default", "--day", "2026-10-22",
+	}
 }
 
 // inspect run reads the run from its records, the policy from its metrics

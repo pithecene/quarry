@@ -1,4 +1,3 @@
-//nolint:revive // types is a common Go package naming convention
 package types
 
 // ArtifactOpenFrame opens an artifact per CONTRACT_IPC.md §Artifact Frames.

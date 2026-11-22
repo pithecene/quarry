@@ -991,3 +991,28 @@ func TestDecodeFrame_MixedWithRunResult(t *testing.T) {
 		}
 	}
 }
+
+// EncodeFrame makes a frame for a payload up to MaxPayloadSize and refuses a
+// larger one, which the decoder would reject as invalid.
+func TestEncodeFrame_BoundsThePayload(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		size    int
+		wantErr bool
+	}{
+		{"the largest payload", MaxPayloadSize, false},
+		{"one byte too large", MaxPayloadSize + 1, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			frame, err := EncodeFrame(make([]byte, tc.size))
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("EncodeFrame(%d bytes) error = %v, want error %t", tc.size, err, tc.wantErr)
+			}
+			if !tc.wantErr && len(frame) != MaxFrameSize {
+				t.Errorf("frame of %d bytes, want %d", len(frame), MaxFrameSize)
+			}
+		})
+	}
+}

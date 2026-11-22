@@ -38,5 +38,7 @@ func (s *InstrumentedSink) Close() error {
 }
 
 // Verify InstrumentedSink implements policy.Sink and policy.EventSink.
-var _ policy.Sink = (*InstrumentedSink)(nil)
-var _ policy.EventSink = (*InstrumentedSink)(nil)
+var (
+	_ policy.Sink      = (*InstrumentedSink)(nil)
+	_ policy.EventSink = (*InstrumentedSink)(nil)
+)

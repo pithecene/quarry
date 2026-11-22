@@ -20,7 +20,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🧪 Race Tests
         run: task test:race
@@ -47,7 +47,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🔌 E2E Tests
         run: task test:e2e

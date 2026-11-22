@@ -2,6 +2,7 @@ package ipc
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
 	"testing/iotest"
@@ -225,7 +226,7 @@ func BenchmarkReadFrame_BufferedReader(b *testing.B) {
 		decoder := NewFrameDecoder(bytes.NewReader(data))
 		for {
 			_, err := decoder.ReadFrame()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
@@ -250,7 +251,7 @@ func BenchmarkReadFrame_OneByteReader(b *testing.B) {
 		decoder := NewFrameDecoder(reader)
 		for {
 			_, err := decoder.ReadFrame()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
@@ -271,7 +272,7 @@ func BenchmarkReadFrame_MixedStream(b *testing.B) {
 		decoder := NewFrameDecoder(bytes.NewReader(data))
 		for {
 			payload, err := decoder.ReadFrame()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {

@@ -1,8 +1,13 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"io"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1687,7 +1692,8 @@ func TestRunAction_DryRun_ExecutorMissing_ExitCode2(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nonexistent executor")
 	}
-	exitErr, ok := err.(cli.ExitCoder)
+	var exitErr cli.ExitCoder
+	ok := errors.As(err, &exitErr)
 	if !ok {
 		t.Fatalf("expected cli.ExitCoder, got %T: %v", err, err)
 	}
@@ -1720,7 +1726,8 @@ func TestRunAction_DryRun_ExecutorSpawnFailure_ExitCode2(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-executable executor")
 	}
-	exitErr, ok := err.(cli.ExitCoder)
+	var exitErr cli.ExitCoder
+	ok := errors.As(err, &exitErr)
 	if !ok {
 		t.Fatalf("expected cli.ExitCoder, got %T: %v", err, err)
 	}
@@ -2045,5 +2052,40 @@ func TestRunAction_NoBrowserConflictsWithEndpoint(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "--no-browser cannot be combined with --browser-ws-endpoint") {
 		t.Fatalf("err = %v, want the conflict between --no-browser and --browser-ws-endpoint", err)
+	}
+}
+
+// A run that its deadline or a signal ended still delivers its completion
+// event: the finalizer publishes on a context without the run's cancellation.
+func TestRunFinalizer_NotifiesAfterTheRunContextIsCancelled(t *testing.T) {
+	t.Parallel()
+	received := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- string(body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	f := &runFinalizer{
+		adapter:   &adapterChoice{adapterType: "webhook", url: srv.URL, timeout: 5 * time.Second},
+		storage:   storageChoice{backend: "fs", path: t.TempDir()},
+		startTime: time.Now(),
+	}
+	result := &runtime.RunResult{
+		RunMeta: &types.RunMeta{RunID: "run-cancelled", Attempt: 1},
+		Outcome: &types.RunOutcome{Status: types.OutcomeSuccess},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	f.notifyAdapter(ctx, result, time.Second)
+
+	select {
+	case body := <-received:
+		if !strings.Contains(body, "run-cancelled") {
+			t.Errorf("completion event %s does not name the run", body)
+		}
+	default:
+		t.Fatal("no completion event reached the adapter after the run context was cancelled")
 	}
 }

@@ -342,7 +342,6 @@ func TestPrune_KeepsARunWhoseVolumesChangeBeforeTheRemoval(t *testing.T) {
 	}
 }
 
-
 // On the filesystem store a pointer swap leaves a lock companion beside the
 // pointer. Retention never reads below a Volume's name, so the Volume is
 // removed there as on any store, and the sweep removes an orphan's.

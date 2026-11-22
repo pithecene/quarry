@@ -240,15 +240,15 @@ func (r *Reader) indexedCommit(ctx context.Context, run Run, cfg qlode.Config, a
 type IndexFallback string
 
 const (
-	// FallbackNoEntry: the run has no usable entry for the artifact, as a
+	// FallbackNoEntry means the run has no usable entry for the artifact, as a
 	// run written before the index has none, or the entry does not decode.
 	FallbackNoEntry IndexFallback = "no usable commit index entry"
-	// FallbackSnapshotGone: the snapshot the entry names has no manifest in
+	// FallbackSnapshotGone means the snapshot that the entry names has no manifest in
 	// the artifact partition, as after retention expires it.
 	FallbackSnapshotGone IndexFallback = "the entry's snapshot is gone"
-	// FallbackNoRecord: the snapshot holds no commit record of the artifact.
+	// FallbackNoRecord means the snapshot holds no commit record of the artifact.
 	FallbackNoRecord IndexFallback = "the entry's snapshot holds no record of the artifact"
-	// FallbackChunkStorage: the record names chunk storage, whose chunk
+	// FallbackChunkStorage means the record names chunk storage, whose chunk
 	// records can lie in other snapshots.
 	FallbackChunkStorage IndexFallback = "the artifact is stored as chunk records"
 )

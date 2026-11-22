@@ -30,9 +30,9 @@ func ParseMetricsRecord(record map[string]any) (*MetricsSnapshot, error) {
 		IPCDecodeErrors:       toInt64(record["ipc_decode_errors_total"]),
 
 		// Lode / Storage
-		LodeWriteSuccess: toInt64(record["lode_write_success_total"]),
-		LodeWriteFailure: toInt64(record["lode_write_failure_total"]),
-		LodeWriteRetry:   toInt64(record["lode_write_retry_total"]),
+		LodeWriteSuccess:          toInt64(record["lode_write_success_total"]),
+		LodeWriteFailure:          toInt64(record["lode_write_failure_total"]),
+		LodeWriteRetry:            toInt64(record["lode_write_retry_total"]),
 		ArtifactIndexWriteFailure: toInt64(record["artifact_index_write_failure_total"]),
 
 		// Dimensions

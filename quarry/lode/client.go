@@ -134,6 +134,13 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 			if e.Storage == nil {
 				return fmt.Errorf("%w: %s", ErrCommitWithoutStorage, artifactID)
 			}
+			// A size that is present must be an int64, or the record would store
+			// a size the artifact does not have.
+			if v, present := e.Payload["size_bytes"]; present {
+				if _, ok := int64Of(v); !ok {
+					return fmt.Errorf("artifact %s: size_bytes %v (%T) is not an int64", artifactID, v, v)
+				}
+			}
 			record = toArtifactCommitRecordMap(e, c.config)
 		} else {
 			record = toEventRecordMap(e, c.config)

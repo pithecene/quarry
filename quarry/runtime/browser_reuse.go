@@ -63,7 +63,7 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 
 	lease, err := requestLease(ctx, socketPath, hash)
 	if !errors.Is(err, errNoServer) {
-		return reused(lease, err)
+		return reused(ctx, lease, err)
 	}
 
 	unlock, err := lockDiscovery(dir)
@@ -75,7 +75,7 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 	// Another run may have started a server while this one waited for the lock.
 	lease, err = requestLease(ctx, socketPath, hash)
 	if !errors.Is(err, errNoServer) {
-		return reused(lease, err)
+		return reused(ctx, lease, err)
 	}
 
 	logPath := filepath.Join(dir, browserServerLogName)
@@ -89,11 +89,11 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 	if err != nil {
 		return "", fmt.Errorf("browser reuse: lease on the new server: %w", err)
 	}
-	return healthy(lease)
+	return healthy(ctx, lease)
 }
 
 // reused reports the outcome of a lease request on an existing server.
-func reused(lease browserLease, err error) (string, error) {
+func reused(ctx context.Context, lease browserLease, err error) (string, error) {
 	switch {
 	case errors.Is(err, errProxyMismatch):
 		fmt.Fprintf(os.Stderr, "Proxy mismatch, skipping browser reuse for this run\n")
@@ -102,15 +102,15 @@ func reused(lease browserLease, err error) (string, error) {
 		return "", fmt.Errorf("browser reuse: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "Reusing browser server (pid=%d)\n", lease.ServerPID)
-	return healthy(lease)
+	return healthy(ctx, lease)
 }
 
 // healthy returns the lease's endpoint once the browser answers on it. A
 // server can hold a browser that is connected but no longer answers; such a
 // lease is released at once, so the run launches its own browser and the
 // server, held by no run, stops at its idle timeout.
-func healthy(lease browserLease) (string, error) {
-	if err := HealthCheckBrowser(lease.WSEndpoint); err != nil {
+func healthy(ctx context.Context, lease browserLease) (string, error) {
+	if err := HealthCheckBrowser(ctx, lease.WSEndpoint); err != nil {
 		lease.Release()
 		return "", fmt.Errorf("browser reuse: server's browser does not answer (pid=%d): %w", lease.ServerPID, err)
 	}
@@ -120,7 +120,7 @@ func healthy(lease browserLease) (string, error) {
 // lockDiscovery takes the exclusive lock that serializes starting a server.
 // The operating system releases it if this process ends while holding it.
 func lockDiscovery(dir string) (unlock func(), err error) {
-	lockFile, err := os.OpenFile(filepath.Join(dir, "browser.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	lockFile, err := os.OpenFile(filepath.Join(dir, "browser.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open lock: %w", err)
 	}
@@ -145,7 +145,7 @@ func discoveryDir() (string, error) {
 	}
 	dir := filepath.Join(base, "browser-reuse")
 
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create discovery dir %s: %w", dir, err)
 	}
 	return dir, nil
@@ -160,7 +160,7 @@ func discoveryDir() (string, error) {
 //
 // Port is taken from the URL if present; no default is assumed (the standard
 // library will use 80/443 based on scheme).
-func HealthCheckBrowser(wsEndpoint string) error {
+func HealthCheckBrowser(ctx context.Context, wsEndpoint string) error {
 	u, err := url.Parse(wsEndpoint)
 	if err != nil {
 		return fmt.Errorf("parse ws endpoint: %w", err)
@@ -172,8 +172,14 @@ func HealthCheckBrowser(wsEndpoint string) error {
 	}
 	healthURL := fmt.Sprintf("%s://%s/json/version", scheme, u.Host)
 
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(healthURL)
+	// The probe is a quick reachability check, so it bounds itself within ctx.
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return fmt.Errorf("health check request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("health check failed: %w", err)
 	}
@@ -221,7 +227,7 @@ func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, soc
 		idleTimeout = defaultIdleTimeout
 	}
 
-	cmd := exec.Command(cfg.ExecutorPath, "--browser-server", cfg.ScriptPath)
+	cmd := exec.Command(cfg.ExecutorPath, "--browser-server", cfg.ScriptPath) //nolint:noctx // the server must outlive the run, as startBrowserServer's doc explains
 	// Detach: new session so the browser server outlives the parent
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Env = append(browserProxyEnv(cfg.Proxy),
@@ -231,7 +237,7 @@ func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, soc
 	)
 	// Diagnostics go to a log file, truncated per launch; the lock held by
 	// the caller means one server writes it at a time.
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return 0, fmt.Errorf("open browser server log: %w", err)
 	}

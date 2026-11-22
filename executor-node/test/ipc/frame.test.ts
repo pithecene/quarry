@@ -12,7 +12,6 @@ import {
   encodeFileWriteFrame,
   encodeFrame,
   encodeRunResultFrame,
-  type FileWriteAckFrame,
   type FileWriteFrame,
   FrameSizeError,
   LENGTH_PREFIX_SIZE,

@@ -32,7 +32,7 @@ await registerResolveFromHook(resolveFrom)
 try {
   const mod = await import('@test/greet')
   // Write the resolved value so the parent can verify
-  process.stdout.write(JSON.stringify({ greeting: mod.greet() }) + '\n')
+  process.stdout.write(`${JSON.stringify({ greeting: mod.greet() })}\n`)
   process.exit(0)
 } catch (err: unknown) {
   const message = err instanceof Error ? err.message : String(err)

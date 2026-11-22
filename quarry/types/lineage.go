@@ -1,7 +1,7 @@
 // Package types defines core domain types for the Quarry runtime.
 // Types are designed to match the TypeScript SDK and conform to CONTRACT_*.md.
 //
-//nolint:revive // types is a common Go package naming convention
+
 package types
 
 import (

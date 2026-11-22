@@ -22,9 +22,11 @@ import (
 var embeddedExecutor []byte
 
 // extractOnce ensures extraction happens only once per process.
-var extractOnce sync.Once
-var extractedPath string
-var extractErr error
+var (
+	extractOnce   sync.Once
+	extractedPath string
+	errExtract    error
+)
 
 // EmbeddedVersion returns the version of the embedded executor.
 // This should match types.Version for lockstep validation.
@@ -53,9 +55,9 @@ func IsEmbedded() bool {
 // Returns error if extraction fails.
 func ExtractedPath() (string, error) {
 	extractOnce.Do(func() {
-		extractedPath, extractErr = extractExecutor()
+		extractedPath, errExtract = extractExecutor()
 	})
-	return extractedPath, extractErr
+	return extractedPath, errExtract
 }
 
 // extractExecutor extracts the embedded executor to a temp directory.

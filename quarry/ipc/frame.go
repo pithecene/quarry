@@ -305,12 +305,18 @@ func DecodeFileWriteAck(payload []byte) (*types.FileWriteAckFrame, error) {
 }
 
 // EncodeFrame encodes a payload with a 4-byte big-endian length prefix.
-// This is the public encoder counterpart to FrameDecoder.ReadFrame.
-func EncodeFrame(payload []byte) []byte {
-	buf := make([]byte, LengthPrefixSize+len(payload))
-	binary.BigEndian.PutUint32(buf[:LengthPrefixSize], uint32(len(payload)))
+// This is the public encoder counterpart to FrameDecoder.ReadFrame. A payload
+// larger than MaxPayloadSize makes an invalid frame (CONTRACT_IPC.md §Maximum
+// Frame Size), so EncodeFrame refuses it.
+func EncodeFrame(payload []byte) ([]byte, error) {
+	n := len(payload)
+	if n > MaxPayloadSize {
+		return nil, fmt.Errorf("frame payload of %d bytes exceeds %d", n, MaxPayloadSize)
+	}
+	buf := make([]byte, LengthPrefixSize+n)
+	binary.BigEndian.PutUint32(buf[:LengthPrefixSize], uint32(n))
 	copy(buf[LengthPrefixSize:], payload)
-	return buf
+	return buf, nil
 }
 
 // EncodeFileWriteAck encodes a FileWriteAckFrame as a length-prefixed msgpack frame.
@@ -319,7 +325,7 @@ func EncodeFileWriteAck(ack *types.FileWriteAckFrame) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode file write ack: %w", err)
 	}
-	return EncodeFrame(payload), nil
+	return EncodeFrame(payload)
 }
 
 // EncodeArtifactRangeAck encodes an ArtifactRangeAckFrame as a
@@ -329,7 +335,7 @@ func EncodeArtifactRangeAck(ack *types.ArtifactRangeAckFrame) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode artifact range ack: %w", err)
 	}
-	return EncodeFrame(payload), nil
+	return EncodeFrame(payload)
 }
 
 // decodeAs decodes a payload as one frame type, naming it in the error.

@@ -21,7 +21,6 @@ import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import type { Writable } from 'node:stream'
 import {
-  type CreateContextOptions,
   createAPIs,
   createContext,
   type JobId,
@@ -751,7 +750,7 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
     if (isConnected && browser) {
       // In connect mode, disconnect without closing the shared browser
       try {
-        browser.disconnect()
+        await browser.disconnect()
       } catch {
         // Ignore disconnect errors
       }

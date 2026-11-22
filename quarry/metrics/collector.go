@@ -66,9 +66,9 @@ type Collector struct {
 	ipcDecodeErrors       int64
 
 	// Lode / Storage
-	lodeWriteSuccess int64
-	lodeWriteFailure int64
-	lodeWriteRetry   int64
+	lodeWriteSuccess          int64
+	lodeWriteFailure          int64
+	lodeWriteRetry            int64
 	artifactIndexWriteFailure int64
 
 	// Ingestion (set once via AbsorbPolicyStats)
@@ -297,9 +297,9 @@ func (c *Collector) Snapshot() Snapshot {
 		ExecutorCrash:         c.executorCrash,
 		IPCDecodeErrors:       c.ipcDecodeErrors,
 
-		LodeWriteSuccess: c.lodeWriteSuccess,
-		LodeWriteFailure: c.lodeWriteFailure,
-		LodeWriteRetry:   c.lodeWriteRetry,
+		LodeWriteSuccess:          c.lodeWriteSuccess,
+		LodeWriteFailure:          c.lodeWriteFailure,
+		LodeWriteRetry:            c.lodeWriteRetry,
 		ArtifactIndexWriteFailure: c.artifactIndexWriteFailure,
 
 		Policy:         c.policy,

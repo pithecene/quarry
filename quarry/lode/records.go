@@ -2,6 +2,7 @@ package lode
 
 import (
 	"maps"
+	"math"
 	"time"
 
 	"github.com/pithecene/quarry/metrics"
@@ -102,6 +103,11 @@ func extractArtifactPayload(payload map[string]any) artifactPayload {
 func int64Of(v any) (int64, bool) {
 	switch n := v.(type) {
 	case float64:
+		// A size is a whole number of bytes within int64. -2^63 and 2^63 are exact
+		// in float64, so the bounds compare without rounding.
+		if n != math.Trunc(n) || n < -(1<<63) || n >= 1<<63 {
+			return 0, false
+		}
 		return int64(n), true
 	case int:
 		return int64(n), true
@@ -114,6 +120,9 @@ func int64Of(v any) (int64, bool) {
 	case int64:
 		return n, true
 	case uint:
+		if n > math.MaxInt64 {
+			return 0, false
+		}
 		return int64(n), true
 	case uint8:
 		return int64(n), true
@@ -122,6 +131,9 @@ func int64Of(v any) (int64, bool) {
 	case uint32:
 		return int64(n), true
 	case uint64:
+		if n > math.MaxInt64 {
+			return 0, false
+		}
 		return int64(n), true
 	}
 	return 0, false
@@ -227,9 +239,9 @@ func toMetricsRecordMap(snap metrics.Snapshot, cfg Config, completedAt time.Time
 		"ipc_decode_errors_total":       snap.IPCDecodeErrors,
 
 		// Lode / Storage
-		"lode_write_success_total": snap.LodeWriteSuccess,
-		"lode_write_failure_total": snap.LodeWriteFailure,
-		"lode_write_retry_total":   snap.LodeWriteRetry,
+		"lode_write_success_total":           snap.LodeWriteSuccess,
+		"lode_write_failure_total":           snap.LodeWriteFailure,
+		"lode_write_retry_total":             snap.LodeWriteRetry,
 		"artifact_index_write_failure_total": snap.ArtifactIndexWriteFailure,
 
 		// Dimensions

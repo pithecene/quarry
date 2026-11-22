@@ -24,7 +24,6 @@ func TestOpenView_EmptyDataset(t *testing.T) {
 	}
 }
 
-
 func TestOpenView_WriteReadRoundTrip(t *testing.T) {
 	t.Parallel()
 

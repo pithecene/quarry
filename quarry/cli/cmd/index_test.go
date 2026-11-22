@@ -69,7 +69,6 @@ func TestIndexRebuild_DryRunThenWrite(t *testing.T) {
 	}
 }
 
-
 // YAML uses the documented field names.
 func TestIndexRebuild_YAMLFieldNames(t *testing.T) {
 	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")

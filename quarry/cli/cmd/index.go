@@ -20,7 +20,8 @@ func IndexCommand() *cli.Command {
 			{
 				Name:  "rebuild",
 				Usage: "Backfill run records for runs written before v0.14.0",
-				Flags: append([]cli.Flag{FormatFlag, NoColorFlag,
+				Flags: append([]cli.Flag{
+					FormatFlag, NoColorFlag,
 					&cli.BoolFlag{Name: "dry-run", Usage: "Report the records that would be written, without writing them"},
 				}, storageReadFlags()...),
 				Action: indexRebuildAction,

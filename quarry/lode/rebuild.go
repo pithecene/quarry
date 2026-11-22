@@ -242,7 +242,7 @@ func (b *rebuilder) rebuild(ctx context.Context, run legacyRun) (out RebuiltRun,
 	out = RebuiltRun{Source: cfg.Source, Category: cfg.Category, Day: cfg.Day, RunID: cfg.RunID, Partition: run.prefix}
 	if err := validateRecordKey(cfg); err != nil {
 		out.Skipped = err.Error()
-		return out, false, nil
+		return out, false, nil //nolint:nilerr // an invalid run key is reported as a skipped run in out.Skipped, not as a failure of the rebuild
 	}
 	if PartitionPrefix(cfg) != run.prefix {
 		out.Skipped = skipNonCanonical

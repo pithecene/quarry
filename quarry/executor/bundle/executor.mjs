@@ -3234,7 +3234,7 @@ async function execute(config) {
     await safeClose(browserContext);
     if (isConnected && browser) {
       try {
-        browser.disconnect();
+        await browser.disconnect();
       } catch {
       }
     } else {
@@ -3788,7 +3788,8 @@ async function validateScript(scriptPath) {
   } catch (err) {
     const message = err instanceof ScriptLoadError ? err.message : errorMessage(err);
     const result2 = { valid: false, error: message };
-    process.stdout.write(JSON.stringify(result2) + "\n");
+    process.stdout.write(`${JSON.stringify(result2)}
+`);
     process.exit(1);
   }
   const hooks = [];
@@ -3804,7 +3805,8 @@ async function validateScript(scriptPath) {
       hooks
     }
   };
-  process.stdout.write(JSON.stringify(result) + "\n");
+  process.stdout.write(`${JSON.stringify(result)}
+`);
   process.exit(0);
 }
 function parseProxy(input) {
@@ -3842,8 +3844,7 @@ async function readStdinMetadata() {
   return new Promise((resolve3, reject) => {
     const chunks = [];
     function onReadable() {
-      let chunk;
-      while ((chunk = process.stdin.read()) !== null) {
+      for (let chunk = process.stdin.read(); chunk !== null; chunk = process.stdin.read()) {
         const nlIndex = chunk.indexOf(10);
         if (nlIndex !== -1) {
           chunks.push(chunk.subarray(0, nlIndex));
