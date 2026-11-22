@@ -24,7 +24,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Quarry adopts Lode's v1.0 API**.
 
-  Quarry requires Lode at commit 0111fa4, Lode's main after lode#419, lode#420, and lode#421, ahead of v0.18.3, for `WithRecordedComponents`. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration.
+  Quarry requires Lode v0.18.3 for `WithRecordedComponents`. Quarry reads datasets with manifest formats 1.0.0 and 1.1.0 in place, so an upgrade needs no migration.
 - **New dataset snapshots use manifest format 1.2.0**.
 
   Lode v0.17.1 rejects this format. To roll back to Quarry v0.18.0 or earlier after the first format 1.2.0 write, restore the dataset to its state before that write.
