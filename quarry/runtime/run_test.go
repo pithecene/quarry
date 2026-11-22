@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -1526,7 +1527,7 @@ func TestRunOrchestrator_SinkWriteFailureOutcome(t *testing.T) {
 	}{
 		{"store timeout", fmt.Errorf("%w: %w", policy.ErrSinkWrite, context.DeadlineExceeded), types.OutcomeStorageError},
 		{"store refusal", fmt.Errorf("%w: %w", policy.ErrSinkWrite, errors.New("put object: 503")), types.OutcomeStorageError},
-		{"run canceled", fmt.Errorf("%w: %w", policy.ErrSinkWrite, context.Canceled), types.OutcomePolicyFailure},
+		{"run canceled", fmt.Errorf("%w: %w", policy.ErrWriteCanceled, context.Canceled), types.OutcomePolicyFailure},
 		{"policy refusal", policy.ErrBufferFull, types.OutcomePolicyFailure},
 	}
 	for _, tt := range tests {
@@ -1560,7 +1561,7 @@ type deadlineSinkPolicy struct {
 
 func (p *deadlineSinkPolicy) IngestEvent(ctx context.Context, _ *types.EventEnvelope) error {
 	<-ctx.Done()
-	return fmt.Errorf("%w: %w", policy.ErrSinkWrite, ctx.Err())
+	return fmt.Errorf("%w: %w", policy.ErrWriteCanceled, ctx.Err())
 }
 
 // A sink write that fails because the host's deadline for the run expired
@@ -1592,4 +1593,246 @@ func TestRunOrchestrator_HostDeadlineDuringSinkWrite(t *testing.T) {
 	if result.Outcome.Status == types.OutcomeStorageError {
 		t.Fatalf("outcome = %s, want the outcome of the run's own deadline", result.Outcome.Status)
 	}
+}
+
+// endableContext is a context that a test ends at a chosen moment with a
+// chosen error, a deadline among them, so the end cannot race the run.
+type endableContext struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+	err  error
+}
+
+func newEndableContext(parent context.Context, err error) *endableContext {
+	return &endableContext{Context: parent, done: make(chan struct{}), err: err}
+}
+
+func (c *endableContext) Done() <-chan struct{} { return c.done }
+
+func (c *endableContext) Err() error {
+	select {
+	case <-c.done:
+		return c.err
+	default:
+		return nil
+	}
+}
+
+func (c *endableContext) end() { c.once.Do(func() { close(c.done) }) }
+
+// endingSinkPolicy ends the run's context once its sink write has started,
+// waits for the end, then fails with the error that fail builds from it. With
+// endInFlush it fails at once and ends the context in the termination flush
+// instead, as a deadline that passes during cleanup does.
+type endingSinkPolicy struct {
+	*flushTrackingPolicy
+	end        func()
+	fail       func(ctx context.Context) error
+	endInFlush bool
+}
+
+func (p *endingSinkPolicy) IngestEvent(ctx context.Context, _ *types.EventEnvelope) error {
+	if !p.endInFlush {
+		p.end()
+		<-ctx.Done()
+	}
+	return p.fail(ctx)
+}
+
+func (p *endingSinkPolicy) Flush(ctx context.Context) error {
+	if p.endInFlush {
+		p.end()
+	}
+	return p.flushTrackingPolicy.Flush(ctx)
+}
+
+// A sink's refusal beside the host's cancellation or deadline still ends the
+// run as storage_error, which a retry may resolve. A write that fails only
+// with the host's own reason for stopping, wrapped or not, is the run's
+// cancellation and keeps that reason. The policy's marker decides: a bare
+// refusal marker is a refusal.
+func TestRunOrchestrator_RefusalBesideTheRunsCancellation(t *testing.T) {
+	t.Parallel()
+	refusal := errors.New("put object: 503")
+	shutdown := errors.New("operator requested shutdown")
+	mixed := func(ctx context.Context) error {
+		// As a fan-out marks it: one sink saw the run end, another refused.
+		return errors.Join(fmt.Errorf("a: %w: %w", policy.ErrWriteCanceled, ctx.Err()), fmt.Errorf("b: %w: %w", policy.ErrSinkWrite, refusal))
+	}
+	endable := func(err error) func(parent context.Context) (context.Context, func()) {
+		return func(parent context.Context) (context.Context, func()) {
+			c := newEndableContext(parent, err)
+			return c, c.end
+		}
+	}
+	withCause := func(cause error) func(parent context.Context) (context.Context, func()) {
+		return func(parent context.Context) (context.Context, func()) {
+			ctx, cancel := context.WithCancelCause(parent)
+			return ctx, func() { cancel(cause) }
+		}
+	}
+	causeOnly := func(ctx context.Context) error {
+		return fmt.Errorf("%w: %w", policy.ErrWriteCanceled, context.Cause(ctx))
+	}
+	cases := []struct {
+		name        string
+		start       func(parent context.Context) (ctx context.Context, end func())
+		fail        func(ctx context.Context) error
+		endInFlush  bool
+		wantStatus  types.OutcomeStatus
+		wantMessage string
+	}{
+		{"a refusal beside host cancellation", endable(context.Canceled), mixed, false, types.OutcomeStorageError, refusal.Error()},
+		{"a refusal beside a host deadline", endable(context.DeadlineExceeded), mixed, false, types.OutcomeStorageError, refusal.Error()},
+		{"a store timeout before a deadline that passes in cleanup", endable(context.DeadlineExceeded), func(context.Context) error {
+			return fmt.Errorf("%w: %w", policy.ErrSinkWrite, context.DeadlineExceeded)
+		}, true, types.OutcomeStorageError, context.DeadlineExceeded.Error()},
+		{"only the host's cause", withCause(shutdown), causeOnly, false, types.OutcomeExecutorCrash, shutdown.Error()},
+		{"a wrapped host cause", withCause(fmt.Errorf("host: %w", shutdown)), causeOnly, false, types.OutcomeExecutorCrash, "host: " + shutdown.Error()},
+		{"a bare refusal marker beside host cancellation", endable(context.Canceled), func(context.Context) error {
+			return policy.ErrSinkWrite
+		}, false, types.OutcomeStorageError, policy.ErrSinkWrite.Error()},
+		{"the host's cause behind a bare context error", withCause(shutdown), func(ctx context.Context) error {
+			return ctx.Err()
+		}, false, types.OutcomeExecutorCrash, shutdown.Error()},
+		{"an uncomparable host cause", withCause(uncomparableCauseError{detail: []string{"drain"}}), causeOnly, false, types.OutcomeExecutorCrash, "drain"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, end := tc.start(t.Context())
+			defer end()
+			runMeta := &types.RunMeta{RunID: "run-mixed-" + strings.ReplaceAll(tc.name, " ", "-"), Attempt: 1}
+			mockExec := newMockExecutor(makeValidEventStream(runMeta), 0)
+			orchestrator, err := NewRunOrchestrator(&RunConfig{
+				ExecutorPath: "/fake/executor",
+				ScriptPath:   "/fake/script.js",
+				Job:          map[string]any{},
+				RunMeta:      runMeta,
+				Policy:       &endingSinkPolicy{flushTrackingPolicy: newFlushTrackingPolicy(), end: end, fail: tc.fail, endInFlush: tc.endInFlush},
+				ExecutorFactory: func(_ *ExecutorConfig) Executor {
+					return mockExec
+				},
+			})
+			if err != nil {
+				t.Fatalf("failed to create orchestrator: %v", err)
+			}
+			result, err := orchestrator.Execute(ctx)
+			if err != nil {
+				t.Fatalf("Execute returned error: %v", err)
+			}
+			if result.Outcome.Status != tc.wantStatus || !strings.Contains(result.Outcome.Message, tc.wantMessage) {
+				t.Errorf("outcome %s %q, want %s containing %q", result.Outcome.Status, result.Outcome.Message, tc.wantStatus, tc.wantMessage)
+			}
+		})
+	}
+}
+
+// uncomparableCauseError is a host cause whose type is comparable but whose value, holding
+// a slice, is not: comparing it with == panics.
+type uncomparableCauseError struct{ detail any }
+
+func (c uncomparableCauseError) Error() string { return fmt.Sprint("host stopped: ", c.detail) }
+
+func (c uncomparableCauseError) Unwrap() error { return context.Canceled }
+
+// endingSink stops the run when its write starts, waits for the end, and fails
+// as a store that honours its context does.
+type endingSink struct {
+	*policy.StubSink
+	end func()
+}
+
+func (s *endingSink) WriteEvents(ctx context.Context, _ []*types.EventEnvelope) error {
+	s.end()
+	// Bounded, so a context that never ends reports as a wrong outcome rather
+	// than hanging the test.
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("put: %w", ctx.Err())
+	case <-time.After(5 * time.Second):
+		return errors.New("the sink's context never saw the run end")
+	}
+}
+
+// Through a real policy, a write that the host's cancellation stopped is the
+// run's cancellation, because Execute records its context as the run's; the
+// policy marks it without the runtime reading the error after the fact.
+func TestRunOrchestrator_RecordsTheRunContextForPolicies(t *testing.T) {
+	t.Parallel()
+	ctx := newEndableContext(t.Context(), context.Canceled)
+	defer ctx.end()
+	runMeta := &types.RunMeta{RunID: "run-recorded", Attempt: 1}
+	mockExec := newMockExecutor(makeValidEventStream(runMeta), 0)
+	orchestrator, err := NewRunOrchestrator(&RunConfig{
+		ExecutorPath: "/fake/executor",
+		ScriptPath:   "/fake/script.js",
+		Job:          map[string]any{},
+		RunMeta:      runMeta,
+		Policy:       policy.NewStrictPolicy(&endingSink{StubSink: policy.NewStubSink(), end: ctx.end}),
+		ExecutorFactory: func(_ *ExecutorConfig) Executor {
+			return mockExec
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+	result, err := orchestrator.Execute(ctx)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.Outcome.Status != types.OutcomeExecutorCrash {
+		t.Errorf("outcome %s %q, want %s for the host's cancellation", result.Outcome.Status, result.Outcome.Message, types.OutcomeExecutorCrash)
+	}
+}
+
+// flushEndingSink stops the run when the termination flush writes, then waits
+// for the write's own context and fails as a store that honours it does.
+type flushEndingSink struct {
+	*policy.StubSink
+	end func()
+}
+
+func (s *flushEndingSink) WriteEvents(ctx context.Context, _ []*types.EventEnvelope) error {
+	s.end()
+	<-ctx.Done()
+	return fmt.Errorf("put: %w", ctx.Err())
+}
+
+// The normal termination flush records no run: when the host's deadline passes
+// while the flush waits (both then end with context.DeadlineExceeded), the flush's write ends only at the flush's own
+// deadline, and that timeout is the store's, so the run is storage_error. In
+// synctest the 30-second deadline passes once everything else is blocked.
+func TestRunOrchestrator_TerminationFlushTimeoutIsTheStores(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := newEndableContext(t.Context(), context.DeadlineExceeded)
+		defer ctx.end()
+		runMeta := &types.RunMeta{RunID: "run-flush-timeout", Attempt: 1}
+		pol, err := policy.NewBufferedPolicy(&flushEndingSink{StubSink: policy.NewStubSink(), end: ctx.end}, policy.BufferedConfig{MaxBufferEvents: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mockExec := newMockExecutor(makeValidEventStream(runMeta), 0)
+		orchestrator, err := NewRunOrchestrator(&RunConfig{
+			ExecutorPath: "/fake/executor",
+			ScriptPath:   "/fake/script.js",
+			Job:          map[string]any{},
+			RunMeta:      runMeta,
+			Policy:       pol,
+			ExecutorFactory: func(_ *ExecutorConfig) Executor {
+				return mockExec
+			},
+		})
+		if err != nil {
+			t.Fatalf("failed to create orchestrator: %v", err)
+		}
+		result, err := orchestrator.Execute(ctx)
+		if err != nil {
+			t.Fatalf("Execute returned error: %v", err)
+		}
+		if result.Outcome.Status != types.OutcomeStorageError {
+			t.Errorf("outcome %s %q, want %s for the flush's own timeout", result.Outcome.Status, result.Outcome.Message, types.OutcomeStorageError)
+		}
+	})
 }

@@ -2,9 +2,9 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 
 	"github.com/pithecene/quarry/types"
@@ -54,7 +54,8 @@ func NewFanoutEventSink(sinks []SinkEntry) *FanoutEventSink {
 }
 
 // WriteEvents dispatches events to all sinks concurrently.
-// Returns the first mandatory sink error, if any. Best-effort failures are logged.
+// Every mandatory sink failure stays matchable with errors.Is in the returned
+// error. Best-effort failures are logged.
 func (f *FanoutEventSink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) error {
 	if len(f.sinks) == 1 {
 		return f.writeSingle(ctx, events)
@@ -62,10 +63,25 @@ func (f *FanoutEventSink) WriteEvents(ctx context.Context, events []*types.Event
 	return f.writeFanout(ctx, events)
 }
 
+// eventWriter is what markedWrite writes to: a policy's Sink or an EventSink.
+type eventWriter interface {
+	WriteEvents(ctx context.Context, events []*types.EventEnvelope) error
+}
+
+// markedWrite writes events to sink and marks a failure as soon as the write
+// returns, before the fan-out waits for its other sinks, while ctx still says
+// what ended this write.
+func markedWrite(ctx context.Context, sink eventWriter, events []*types.EventEnvelope) error {
+	if err := sink.WriteEvents(ctx, events); err != nil {
+		return writeFailure(ctx, err)
+	}
+	return nil
+}
+
 // writeSingle is the fast path for a single sink — no goroutines.
 func (f *FanoutEventSink) writeSingle(ctx context.Context, events []*types.EventEnvelope) error {
 	entry := f.sinks[0]
-	return entry.classifyError(entry.Sink.WriteEvents(ctx, events))
+	return entry.classifyError(markedWrite(ctx, entry.Sink, events))
 }
 
 // writeFanout dispatches to multiple sinks concurrently.
@@ -82,36 +98,40 @@ func (f *FanoutEventSink) writeFanout(ctx context.Context, events []*types.Event
 		wg.Add(1)
 		go func(idx int, e SinkEntry) {
 			defer wg.Done()
-			results[idx] = result{idx: idx, err: e.Sink.WriteEvents(ctx, events)}
+			results[idx] = result{idx: idx, err: markedWrite(ctx, e.Sink, events)}
 		}(i, entry)
 	}
 	wg.Wait()
 
-	var mandatoryErrs []string
+	// Each mandatory error stays in the chain, so errors.Is finds a sentinel
+	// such as a Lode conflict behind the fan-out, and each is marked on its own,
+	// so one sink's refusal stays a refusal beside another's cancellation.
+	var mandatoryErrs []error
 	for i, r := range results {
 		if classified := f.sinks[i].classifyError(r.err); classified != nil {
-			mandatoryErrs = append(mandatoryErrs, fmt.Sprintf("%s: %v", f.sinks[i].Label, classified))
+			mandatoryErrs = append(mandatoryErrs, fmt.Errorf("%s: %w", f.sinks[i].Label, classified))
 		}
 	}
 
-	if len(mandatoryErrs) == 0 {
+	switch len(mandatoryErrs) {
+	case 0:
 		return nil
+	case 1:
+		return fmt.Errorf("event sink write failed: %w", mandatoryErrs[0])
+	default:
+		return fmt.Errorf("event sink writes failed: %w", errors.Join(mandatoryErrs...))
 	}
-	if len(mandatoryErrs) == 1 {
-		return fmt.Errorf("event sink write failed: %s", mandatoryErrs[0])
-	}
-	return fmt.Errorf("event sink writes failed: %s", strings.Join(mandatoryErrs, "; "))
 }
 
-// Close closes all sinks. Returns the first error encountered.
+// Close closes all sinks and returns every close error, joined.
 func (f *FanoutEventSink) Close() error {
-	var firstErr error
+	var errs []error
 	for _, entry := range f.sinks {
-		if err := entry.Sink.Close(); err != nil && firstErr == nil {
-			firstErr = err
+		if err := entry.Sink.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", entry.Label, err))
 		}
 	}
-	return firstErr
+	return errors.Join(errs...)
 }
 
 // Verify FanoutEventSink implements EventSink.

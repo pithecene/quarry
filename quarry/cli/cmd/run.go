@@ -25,6 +25,7 @@ import (
 	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/log"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/proxy"
@@ -474,7 +475,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 	childStartTime := time.Now()
 	childPol, childLodeClient, childFileWriter, err := buildPolicy(ctx,
 		cf.policyChoice, cf.storage, cf.storageDataset,
-		childSource, childCategory, item.RunID,
+		childSource, childCategory, childMeta,
 		childStartTime, childCollector, cf.eventSinks,
 	)
 	if err != nil {
@@ -762,7 +763,7 @@ func runAction(c *cli.Context) error {
 	// Build policy with storage sink and optional event sinks
 	// Start time is "now" - used to derive partition day
 	startTime := time.Now()
-	pol, lodeClient, fileWriter, err := buildPolicy(c.Context, choice, storageConfig, storageDataset, source, category, runMeta.RunID, startTime, collector, eventSinks)
+	pol, lodeClient, fileWriter, err := buildPolicy(c.Context, choice, storageConfig, storageDataset, source, category, runMeta, startTime, collector, eventSinks)
 	if err != nil {
 		return fmt.Errorf("failed to create policy: %w", err)
 	}
@@ -1445,8 +1446,8 @@ Quarry could not locate the executor. To fix:
   3. Or add quarry-executor to your PATH`)
 }
 
-func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storageChoice, dataset, source, category, runID string, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
-	lodeSink, client, fw, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runID, choice.name, startTime, collector)
+func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
+	lodeSink, client, fw, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runMeta.RunID, choice.name, startTime, collector)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create storage sink: %w", err)
 	}
@@ -1464,6 +1465,7 @@ func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storage
 		config := policy.BufferedConfig{
 			MaxBufferEvents: choice.maxEvents,
 			MaxBufferBytes:  choice.maxBytes,
+			Logger:          log.NewLogger(runMeta),
 		}
 		p, err := policy.NewBufferedPolicy(sink, config)
 		return p, client, fw, err
@@ -1472,6 +1474,7 @@ func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storage
 		config := policy.StreamingConfig{
 			FlushCount:    choice.flushCount,
 			FlushInterval: choice.flushInterval,
+			Logger:        log.NewLogger(runMeta),
 		}
 		p, err := policy.NewStreamingPolicy(sink, config)
 		return p, client, fw, err

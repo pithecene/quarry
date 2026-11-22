@@ -79,7 +79,7 @@ When `policy=streaming`, the runtime tracks per-trigger-type flush counts:
 | Count threshold | `count` | Flush fired when `--flush-count` events accumulated |
 | Time interval | `interval` | Flush fired on `--flush-interval` tick |
 | Run termination | `termination` | Flush fired on `run_complete`, `run_error`, or runtime exit |
-| Buffer capacity | `capacity` | Emergency flush when internal buffer bounds reached |
+| Buffer capacity | `capacity` | Flush when the internal buffer reaches its bounds, or before an event that would exceed them |
 
 These are additive to the base policy counters. `flush_triggers` is `nil` for
 strict and buffered policies.

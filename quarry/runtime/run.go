@@ -215,6 +215,10 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		runCtx, cancel = context.WithDeadlineCause(ctx, *deadlineAt, ErrRunDeadline)
 		defer cancel()
 	}
+	// Recorded as the run's context, so a policy marks a write that the run's
+	// end stopped as such, and a write under a detached flush context as the
+	// store's refusal.
+	runCtx = policy.WithRunContext(runCtx)
 	r.runCtx = runCtx
 
 	// The deadline bounds the start record's write too: a run whose deadline
@@ -418,7 +422,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 			"error": err.Error(),
 		})
 		// Best-effort flush even on start failure for strict termination semantics
-		flushCtx, flushCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		flushCtx, flushCancel := terminationFlushContext(ctx)
 		if flushErr := r.config.Policy.Flush(flushCtx); flushErr != nil {
 			r.logger.Warn("policy flush failed (best effort)", map[string]any{
 				"error": flushErr.Error(),
@@ -488,8 +492,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 
 	// Always attempt policy flush (best effort) on all termination paths
 	// Per CONTRACT_POLICY.md: "Buffered events must be flushed on run_complete, run_error, runtime termination (best effort)"
-	// Use WithoutCancel to preserve context values (tracing) while ignoring parent cancellation
-	flushCtx, flushCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	flushCtx, flushCancel := terminationFlushContext(ctx)
 	flushErr := r.config.Policy.Flush(flushCtx)
 	flushCancel()
 	if flushErr != nil {
@@ -530,9 +533,9 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		// Classify the error
 		var outcome *types.RunOutcome
 		switch {
-		// A refusal after the run's context has ended comes from the run's own
-		// cancellation or deadline, not from a fault of the store.
-		case IsPolicyError(ingErr) && isStorageFault(ingErr) && ctx.Err() == nil:
+		// The policy marked the write when it failed, so a deadline that passes
+		// during the termination flush or Close changes nothing here.
+		case IsPolicyError(ingErr) && isStorageFault(ingErr):
 			outcome = &types.RunOutcome{
 				Status:  types.OutcomeStorageError,
 				Message: fmt.Sprintf("storage error: %v", ingErr),
@@ -720,4 +723,15 @@ func (r *RunOrchestrator) buildResult(
 	r.absorbPolicyStats(result.PolicyStats)
 
 	return result
+}
+
+const terminationFlushTimeout = 30 * time.Second
+
+// terminationFlushContext returns the context of a termination flush. It keeps
+// ctx's values (tracing) but not its cancellation, so the flush runs after the
+// run has ended, and it records no run: the flush has a deadline of its own,
+// and a write that this deadline ends is the store's refusal, not the run's
+// end.
+func terminationFlushContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(policy.WithoutRunContext(context.WithoutCancel(ctx)), terminationFlushTimeout)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/pithecene/quarry/log"
@@ -60,8 +61,16 @@ type BufferedPolicy struct {
 	closer onceCloser
 	closed bool // set under mu when Close begins; ingestion is refused afterward
 
+	// flushSem serializes flushes (capacity 1), so two never write the same
+	// events; a flush waiting for it gives up when its context ends.
+	flushSem chan struct{}
+
 	mu          sync.Mutex // guards buffer state only
 	eventBuffer []*types.EventEnvelope
+	// inFlight is how many leading eventBuffer entries a flush is writing.
+	// Eviction skips them and appends follow them, so on success the flush
+	// removes exactly that prefix.
+	inFlight    int
 	bufferBytes int64
 	stats       *statsRecorder
 }
@@ -77,6 +86,7 @@ func NewBufferedPolicy(sink Sink, config BufferedConfig) (*BufferedPolicy, error
 		sink:        sink,
 		config:      config,
 		logger:      config.Logger,
+		flushSem:    make(chan struct{}, 1),
 		eventBuffer: make([]*types.EventEnvelope, 0, max(config.MaxBufferEvents, 100)),
 		stats:       newStatsRecorder(),
 	}, nil
@@ -135,37 +145,54 @@ func (p *BufferedPolicy) appendEvent(envelope *types.EventEnvelope, eventSize in
 // Flush writes the buffered events to the sink at least once. On failure
 // the buffer is kept whole, so a retry prefers a duplicate over a loss.
 func (p *BufferedPolicy) Flush(ctx context.Context) error {
+	// A canceled context never starts a flush; select alone would pick the
+	// free semaphore at random even when the context is already done.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case p.flushSem <- struct{}{}:
+	case <-ctx.Done():
+		// Another flush still holds the sink: this one never started.
+		p.mu.Lock()
+		p.stats.incErrorsLocked()
+		p.mu.Unlock()
+		p.logFlushFailure(ctx.Err())
+		return ctx.Err()
+	}
+	defer func() { <-p.flushSem }()
+
+	// The flush writes a copy of the buffer and marks it in flight, so eviction
+	// leaves it alone and events that arrive during the write stay buffered.
 	p.mu.Lock()
 	p.stats.incFlushLocked()
-	events := p.eventBuffer
+	events := slices.Clone(p.eventBuffer)
+	p.inFlight = len(events)
 	p.mu.Unlock()
 
 	if len(events) > 0 {
-		if err := p.sink.WriteEvents(ctx, events); err != nil {
+		if err := markedWrite(ctx, p.sink, events); err != nil {
 			p.mu.Lock()
+			p.inFlight = 0
 			p.stats.incErrorsLocked()
 			p.mu.Unlock()
 			p.logFlushFailure(err)
-			return fmt.Errorf("%w: %w", ErrSinkWrite, err)
+			return err
 		}
 		p.mu.Lock()
 		p.stats.incEventsPersistedLocked(int64(len(events)))
 		p.mu.Unlock()
 	}
 
-	// Clear the buffer only after success
+	// Remove only the written prefix, after success. slices.Delete zeroes the
+	// vacated slots, so the backing array keeps no written payload.
 	p.mu.Lock()
-	p.clearEventBuffer()
+	p.eventBuffer = slices.Delete(p.eventBuffer, 0, p.inFlight)
+	p.inFlight = 0
 	p.recalculateBufferBytes()
 	p.mu.Unlock()
 
 	return nil
-}
-
-// clearEventBuffer resets the event buffer. Caller must hold mu.
-// Call recalculateBufferBytes after the buffer clear.
-func (p *BufferedPolicy) clearEventBuffer() {
-	p.eventBuffer = make([]*types.EventEnvelope, 0, max(p.config.MaxBufferEvents, 100))
 }
 
 // recalculateBufferBytes recalculates bufferBytes from the buffer. Caller must hold mu.
@@ -231,15 +258,15 @@ func (p *BufferedPolicy) hasRoomForBytes(size int64) bool {
 	return true
 }
 
-// dropOldestDroppable removes the oldest droppable event from the buffer.
-// Returns true if an event was dropped, false if no droppable events exist.
+// dropOldestDroppable removes the oldest droppable event that no flush is
+// writing. Returns true if an event was dropped, false if none can be.
 // Caller must hold mu.
 func (p *BufferedPolicy) dropOldestDroppable() bool {
-	for i, event := range p.eventBuffer {
-		if IsDroppable(event.Type) {
+	for i := p.inFlight; i < len(p.eventBuffer); i++ {
+		if event := p.eventBuffer[i]; IsDroppable(event.Type) {
 			eventType := event.Type
 			eventSize := p.estimateEventSize(event)
-			p.eventBuffer = append(p.eventBuffer[:i], p.eventBuffer[i+1:]...)
+			p.eventBuffer = slices.Delete(p.eventBuffer, i, i+1)
 			p.bufferBytes -= eventSize
 			p.stats.setBufferSizeLocked(p.bufferBytes)
 			p.stats.incEventsDroppedLocked(eventType)

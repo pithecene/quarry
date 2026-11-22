@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"syscall"
 	"testing"
+
+	lodelib "github.com/pithecene/lode/lode"
 )
 
 func TestClassifyError(t *testing.T) {
@@ -232,6 +234,8 @@ func TestClassifyError_TypedBeforeMessage(t *testing.T) {
 		{"ENOSPC under a path containing 401", pathErr("write", "/data/run-401/file", syscall.ENOSPC), ErrDiskFull},
 		{"HTTP 403 whose message says not found", statusError{403, "get runs/404/x: not found"}, ErrAccessDenied},
 		{"HTTP 404 whose key contains 403", statusError{404, "get runs/403/x: api error"}, ErrNotFound},
+		{"Lode not-found whose key contains 403", fmt.Errorf("get runs/403/x: %w", lodelib.ErrNotFound), ErrNotFound},
+		{"Lode path-exists whose key contains 403", fmt.Errorf("put runs/403/x: %w", lodelib.ErrPathExists), ErrPathExists},
 		{"unmapped HTTP status falls back to the message", statusError{503, "SlowDown: please reduce request rate"}, ErrThrottled},
 	}
 	for _, tt := range tests {

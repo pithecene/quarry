@@ -71,6 +71,9 @@ func TestFrameDecoder_SingleEvent(t *testing.T) {
 	if decoded.Seq != envelope.Seq {
 		t.Errorf("Seq = %d, want %d", decoded.Seq, envelope.Seq)
 	}
+	if decoded.RawFrameBytes != int64(len(frame)) {
+		t.Errorf("RawFrameBytes = %d, want the frame's %d bytes", decoded.RawFrameBytes, len(frame))
+	}
 }
 
 func TestFrameDecoder_MultipleEvents(t *testing.T) {

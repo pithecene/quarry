@@ -262,6 +262,7 @@ func DecodeEventEnvelope(payload []byte) (*types.EventEnvelope, error) {
 			Err:  err,
 		}
 	}
+	envelope.RawFrameBytes = int64(len(payload)) + LengthPrefixSize
 	return &envelope, nil
 }
 

@@ -79,9 +79,13 @@ func IsDroppable(eventType types.EventType) bool {
 	return droppableTypes[eventType]
 }
 
-// estimateEventSize returns an estimated size in bytes for an event envelope.
-// Used by buffered and streaming policies for buffer management.
+// estimateEventSize returns the size in bytes that buffered and streaming
+// policies count for an event: the length of the frame it arrived in, or, for
+// an envelope built in process, an estimate from its payload's field count.
 func estimateEventSize(envelope *types.EventEnvelope) int64 {
+	if envelope.RawFrameBytes > 0 {
+		return envelope.RawFrameBytes
+	}
 	// Base size for envelope structure
 	size := int64(200)
 	if envelope.Payload != nil {

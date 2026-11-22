@@ -1,8 +1,13 @@
 package policy_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/types"
@@ -675,4 +680,175 @@ func TestBufferedPolicy_AllEventsWrittenTogether(t *testing.T) {
 			t.Errorf("event at index %d: expected seq %d, got %d", i, expectedSeqs[i], ev.Seq)
 		}
 	}
+}
+
+// pausingSink blocks its first WriteEvents until released, recording every
+// batch it writes, so a test can ingest while a flush is in flight. A non-nil firstErr
+// fails that first write, which then records nothing.
+type pausingSink struct {
+	mu       sync.Mutex
+	started  chan struct{}
+	release  chan struct{}
+	firstErr error
+	paused   bool
+	batches  [][]string
+}
+
+func (s *pausingSink) WriteEvents(_ context.Context, events []*types.EventEnvelope) error {
+	ids := make([]string, 0, len(events))
+	for _, e := range events {
+		ids = append(ids, e.EventID)
+	}
+	s.mu.Lock()
+	pause := !s.paused
+	s.paused = true
+	s.mu.Unlock()
+	if pause {
+		close(s.started)
+		<-s.release
+		if s.firstErr != nil {
+			return s.firstErr
+		}
+	}
+	s.mu.Lock()
+	s.batches = append(s.batches, ids)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *pausingSink) Close() error { return nil }
+
+// A decoded event counts the bytes of the frame it arrived in, so a large
+// payload with few fields still fills the byte limit.
+func TestBufferedPolicy_CountsTheFrameBytes(t *testing.T) {
+	t.Parallel()
+	pol := mustNewBufferedPolicy(t, policy.NewStubSink(), policy.BufferedConfig{MaxBufferBytes: 1 << 20})
+	big := &types.EventEnvelope{EventID: "e1", Type: types.EventTypeLog, Seq: 1, Payload: map[string]any{"message": "…"}, RawFrameBytes: 600 << 10}
+	if err := pol.IngestEvent(t.Context(), big); err != nil {
+		t.Fatal(err)
+	}
+	if got := pol.Stats().BufferSize; got != 600<<10 {
+		t.Fatalf("BufferSize = %d, want the frame's %d bytes", got, 600<<10)
+	}
+	// A second frame of that size does not fit, so the droppable log is dropped.
+	next := *big
+	next.EventID, next.Seq = "e2", 2
+	if err := pol.IngestEvent(t.Context(), &next); err != nil {
+		t.Fatal(err)
+	}
+	if stats := pol.Stats(); stats.BufferSize != 600<<10 || stats.EventsDropped != 1 {
+		t.Errorf("BufferSize %d, dropped %d; want %d and 1", stats.BufferSize, stats.EventsDropped, 600<<10)
+	}
+}
+
+// startPausedFlush starts a flush that the sink holds until release runs, and
+// returns release and the flush's result. Cleanup releases the sink before
+// the policy's own cleanup closes it, so a failing test never hangs.
+func startPausedFlush(t *testing.T, pol *policy.BufferedPolicy, sink *pausingSink) (release func(), flushed <-chan error) {
+	t.Helper()
+	release = sync.OnceFunc(func() { close(sink.release) })
+	t.Cleanup(release)
+	result := make(chan error, 1)
+	go func() { result <- pol.Flush(t.Context()) }()
+	<-sink.started
+	return release, result
+}
+
+// Eviction never takes an event that a flush is writing, so each event is
+// counted once, as persisted or as dropped.
+func TestBufferedPolicy_NeverEvictsAnEventInFlight(t *testing.T) {
+	t.Parallel()
+	sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{})}
+	pol := mustNewBufferedPolicy(t, sink, policy.BufferedConfig{MaxBufferEvents: 2})
+	event := func(id string, seq int64, typ types.EventType) *types.EventEnvelope {
+		return &types.EventEnvelope{EventID: id, Type: typ, Seq: seq}
+	}
+	if err := pol.IngestEvent(t.Context(), event("log-1", 1, types.EventTypeLog)); err != nil {
+		t.Fatal(err)
+	}
+	release, flushed := startPausedFlush(t, pol, sink)
+	for _, e := range []*types.EventEnvelope{event("log-2", 2, types.EventTypeLog), event("item-3", 3, types.EventTypeItem)} {
+		if err := pol.IngestEvent(t.Context(), e); err != nil {
+			t.Fatalf("ingest %s: %v", e.EventID, err)
+		}
+	}
+	release()
+	if err := <-flushed; err != nil {
+		t.Fatalf("first flush: %v", err)
+	}
+	if err := pol.Flush(t.Context()); err != nil {
+		t.Fatalf("second flush: %v", err)
+	}
+	stats := pol.Stats()
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if fmt.Sprint(sink.batches) != "[[log-1] [item-3]]" || stats.TotalEvents != 3 || stats.EventsPersisted != 2 || stats.EventsDropped != 1 {
+		t.Errorf("batches %v, received %d, persisted %d, dropped %d; want [[log-1] [item-3]], 3, 2, 1",
+			sink.batches, stats.TotalEvents, stats.EventsPersisted, stats.EventsDropped)
+	}
+}
+
+// An event ingested while a flush writes is kept for the next flush: the
+// flush removes the entries it wrote, so neither a new envelope nor the same
+// envelope ingested again is lost with them.
+func TestBufferedPolicy_KeepsEventsIngestedDuringAFlush(t *testing.T) {
+	t.Parallel()
+	first := &types.EventEnvelope{EventID: "e1", Type: types.EventTypeItem, Seq: 1}
+	cases := []struct {
+		name string
+		late *types.EventEnvelope
+		want string
+	}{
+		{"a new envelope", &types.EventEnvelope{EventID: "e2", Type: types.EventTypeItem, Seq: 2}, "[[e1] [e2]]"},
+		{"the same envelope again", first, "[[e1] [e1]]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{})}
+			pol := mustNewBufferedPolicy(t, sink, policy.BufferedConfig{MaxBufferEvents: 10})
+			if err := pol.IngestEvent(t.Context(), first); err != nil {
+				t.Fatal(err)
+			}
+			release, flushed := startPausedFlush(t, pol, sink)
+			if err := pol.IngestEvent(t.Context(), tc.late); err != nil {
+				t.Fatal(err)
+			}
+			release()
+			if err := <-flushed; err != nil {
+				t.Fatalf("first flush: %v", err)
+			}
+			if err := pol.Flush(t.Context()); err != nil {
+				t.Fatalf("second flush: %v", err)
+			}
+			sink.mu.Lock()
+			defer sink.mu.Unlock()
+			if got := fmt.Sprint(sink.batches); got != tc.want {
+				t.Errorf("batches %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// A flush waiting for another flush returns when its own context ends, and
+// counts the failure. In synctest the deadline fires only once the flush is
+// blocked on the other, and a flush that ignored it would be reported as a
+// deadlock.
+func TestBufferedPolicy_FlushWaitHonorsCancellation(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{})}
+		pol := mustNewBufferedPolicy(t, sink, policy.BufferedConfig{MaxBufferEvents: 10})
+		if err := pol.IngestEvent(t.Context(), &types.EventEnvelope{EventID: "e1", Type: types.EventTypeItem, Seq: 1}); err != nil {
+			t.Fatal(err)
+		}
+		startPausedFlush(t, pol, sink)
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+		if err := pol.Flush(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Flush = %v, want context.DeadlineExceeded", err)
+		}
+		if errs := pol.Stats().Errors; errs != 1 {
+			t.Errorf("Stats.Errors = %d, want 1 for the abandoned flush", errs)
+		}
+	})
 }

@@ -62,6 +62,10 @@ type EventEnvelope struct {
 	// artifact event before policy dispatch and never on the wire. The
 	// storage client writes its fields into the commit record.
 	Storage *ArtifactStorage `msgpack:"-" json:"-"`
+	// RawFrameBytes is the length of the IPC frame this envelope was decoded
+	// from, length prefix included, set by the decoder and never on the wire.
+	// Zero means the envelope was built in process.
+	RawFrameBytes int64 `msgpack:"-" json:"-"`
 }
 
 // ItemPayload represents an item event payload per CONTRACT_EMIT.md.

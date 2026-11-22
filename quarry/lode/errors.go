@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"strings"
 	"syscall"
+
+	"github.com/pithecene/lode/lode"
 )
 
 // Sentinel errors for storage failure classification.
@@ -129,6 +131,10 @@ var typedClassifierTable = []struct {
 	target error
 	kind   error
 }{
+	// The Lode library's ErrNotFound and ErrPathExists, so either is classified
+	// by type even when its message embeds a key that matches a pattern.
+	{lode.ErrNotFound, ErrNotFound},
+	{lode.ErrPathExists, ErrPathExists},
 	{fs.ErrPermission, ErrPermissionDenied},
 	{fs.ErrNotExist, ErrNotFound},
 	{fs.ErrExist, ErrPathExists},

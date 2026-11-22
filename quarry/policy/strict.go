@@ -2,7 +2,6 @@ package policy
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 
 	"github.com/pithecene/quarry/types"
@@ -41,9 +40,9 @@ func (p *StrictPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnv
 	p.stats.incTotalEvents()
 
 	// Write immediately (batch of 1)
-	if err := p.sink.WriteEvents(ctx, []*types.EventEnvelope{envelope}); err != nil {
+	if err := markedWrite(ctx, p.sink, []*types.EventEnvelope{envelope}); err != nil {
 		p.stats.incErrors()
-		return fmt.Errorf("%w: %w", ErrSinkWrite, err)
+		return err
 	}
 
 	p.stats.incEventsPersisted(1)

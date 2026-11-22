@@ -61,8 +61,8 @@ var ErrStreamingInvalidConfig = errors.New("invalid streaming config: at least o
 //   - No drops: all event types are persisted (same guarantee as strict)
 //   - Bounded buffer: events accumulate in a bounded in-memory buffer
 //   - Periodic flush: buffer flushed to storage when any trigger fires
-//   - Blocking on full: if buffer full and no trigger fired, ingestion blocks
-//     until next flush completes — events are never dropped
+//   - Blocking on full: when the next event would exceed the bounds, ingestion
+//     flushes and blocks until the flush completes — events are never dropped
 //
 // On flush failure, the buffer is preserved and retried on the next trigger.
 //
@@ -82,7 +82,6 @@ type StreamingPolicy struct {
 	closer onceCloser
 
 	mu          sync.Mutex // guards buffer state and stats
-	bufferCond  *sync.Cond // signaled after flush drains buffer; uses mu as locker
 	eventBuffer []*types.EventEnvelope
 	bufferBytes int64
 	stats       *statsRecorder
@@ -126,7 +125,6 @@ func NewStreamingPolicy(sink Sink, config StreamingConfig) (*StreamingPolicy, er
 		flushSem:    make(chan struct{}, 1),
 		loopDone:    make(chan struct{}),
 	}
-	p.bufferCond = sync.NewCond(&p.mu)
 	p.loopCtx, p.loopCancel = context.WithCancel(context.Background())
 
 	// Start interval flush goroutine if configured
@@ -140,23 +138,25 @@ func NewStreamingPolicy(sink Sink, config StreamingConfig) (*StreamingPolicy, er
 }
 
 // IngestEvent adds the event to the buffer.
-// Never drops events. Blocks if buffer is at capacity until a flush drains it.
+// Never drops events. While the buffer has no room it flushes, so ingestion
+// blocks on the flush (backpressure per CONTRACT_POLICY.md). A call whose
+// context ends before its event is admitted does not buffer it and returns
+// an error: the context's, or the flush's when a flush it started fails.
 // If count threshold is reached after append, triggers a flush.
 func (p *StreamingPolicy) IngestEvent(ctx context.Context, envelope *types.EventEnvelope) error {
+	// A closed policy refuses before it inspects the envelope, and the envelope
+	// is sized outside the lock, so an invalid one cannot leave mu held.
 	p.mu.Lock()
-	if p.stopped {
-		p.mu.Unlock()
+	stopped := p.stopped
+	p.mu.Unlock()
+	if stopped {
 		return ErrPolicyClosed
 	}
-
 	eventSize := p.estimateEventSize(envelope)
-
-	// Block until buffer has room for this item (backpressure per CONTRACT_POLICY.md).
-	// Allow single-item overflow when buffer is empty to prevent deadlock for oversized entries.
-	p.waitForRoomLocked(eventSize)
-	if p.stopped { // Close began while this call waited for room
+	p.mu.Lock()
+	if err := p.admitLocked(ctx, eventSize); err != nil {
 		p.mu.Unlock()
-		return ErrPolicyClosed
+		return err
 	}
 
 	p.stats.incTotalEventsLocked()
@@ -240,12 +240,9 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 	p.eventBuffer = make([]*types.EventEnvelope, 0, 128)
 	p.recalculateBufferBytes()
 
-	// Wake blocked ingestors — buffer has room now
-	p.bufferCond.Broadcast()
-
 	p.mu.Unlock()
 
-	if err := p.sink.WriteEvents(ctx, events); err != nil {
+	if err := markedWrite(ctx, p.sink, events); err != nil {
 		// Restore the buffer: prepend old data before any new data
 		p.mu.Lock()
 		p.stats.incErrorsLocked()
@@ -253,7 +250,7 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 		p.recalculateBufferBytes()
 		p.mu.Unlock()
 		p.logFlushFailure(trigger, err)
-		return fmt.Errorf("%w: %w", ErrSinkWrite, err)
+		return err
 	}
 	p.mu.Lock()
 	p.stats.incEventsPersistedLocked(int64(len(events)))
@@ -276,8 +273,6 @@ func (p *StreamingPolicy) Close() error {
 			p.stopped = true
 			close(p.stopCh)
 		}
-		// Wake ingestion waiting for buffer room: it now refuses the data.
-		p.bufferCond.Broadcast()
 		p.mu.Unlock()
 		p.loopCancel()
 
@@ -375,15 +370,29 @@ func (p *StreamingPolicy) recalculateBufferBytes() {
 	p.stats.setBufferSizeLocked(p.bufferBytes)
 }
 
-// waitForRoomLocked blocks until the buffer can accept an item of additionalBytes.
-// If the buffer is non-empty and would exceed capacity with the new item, blocks
-// on bufferCond until a flush drains enough space.
-// If the buffer is empty, always proceeds — a single oversized item is accepted
-// rather than deadlocking (it will be flushed on the next trigger).
-// Caller must hold mu.
-func (p *StreamingPolicy) waitForRoomLocked(additionalBytes int64) {
-	for !p.stopped && p.bufferBytes > 0 && p.wouldExceedCapacityLocked(additionalBytes) {
-		p.bufferCond.Wait()
+// admitLocked returns once the buffer has room for an event of eventSize, with
+// mu held, or the reason the event is refused. While there is no room it
+// flushes the partial batch and checks again: the capacity trigger after an
+// append never fires for an event that does not fit, and one flush need not
+// make room, since other calls can refill the buffer while it writes. An
+// empty buffer always has room, so an oversized event is admitted alone.
+func (p *StreamingPolicy) admitLocked(ctx context.Context, eventSize int64) error {
+	for {
+		if p.stopped {
+			return ErrPolicyClosed
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if p.bufferBytes == 0 || !p.wouldExceedCapacityLocked(eventSize) {
+			return nil
+		}
+		p.mu.Unlock()
+		err := p.triggerFlush(ctx, FlushTriggerCapacity)
+		p.mu.Lock()
+		if err != nil {
+			return err
+		}
 	}
 }
 
