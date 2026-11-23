@@ -2186,23 +2186,28 @@ func TestResolveExecutor_LaunchesTheCheckedFile(t *testing.T) {
 	}
 	for path, says := range map[string]string{
 		filepath.Join(onPath, "runner"): "path",
-		"runner":                        "local",
-		executor.Embedded:               "local",
+		"runner":                        "bare",
+		executor.Embedded:               "reserved",
 	} {
 		if err := os.WriteFile(path, []byte("#!/bin/sh\necho "+says+"\n"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"runner", executor.Embedded} {
-		path, err := resolveExecutor(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-		out, err := executor.Command(ctx, path).Output()
-		cancel()
-		if err != nil || string(out) != "local\n" {
-			t.Errorf("%s ran %q, %v, want the local file", name, out, err)
-		}
+	for _, tc := range []struct{ name, explicit, says string }{
+		{"bare name", "runner", "bare"},
+		{"embedded executor's name", executor.Embedded, "reserved"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path, err := resolveExecutor(tc.explicit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			out, err := executor.Command(ctx, path).Output()
+			if err != nil || string(out) != tc.says+"\n" {
+				t.Errorf("ran %q, %v, want %q", out, err, tc.says)
+			}
+		})
 	}
 }
