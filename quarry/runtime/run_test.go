@@ -1836,3 +1836,74 @@ func TestRunOrchestrator_TerminationFlushTimeoutIsTheStores(t *testing.T) {
 		}
 	})
 }
+
+// slowReapExecutor takes reap to be reaped, as a process that is slow to die.
+type slowReapExecutor struct {
+	*mockExecutor
+	reap time.Duration
+}
+
+func (e *slowReapExecutor) Wait() (*ExecutorResult, error) {
+	time.Sleep(e.reap)
+	return e.mockExecutor.Wait()
+}
+
+// deadlineWaitingPolicy refuses an event once the run's context has ended.
+type deadlineWaitingPolicy struct {
+	*flushTrackingPolicy
+	err error
+}
+
+func (p *deadlineWaitingPolicy) IngestEvent(ctx context.Context, _ *types.EventEnvelope) error {
+	<-ctx.Done()
+	return p.err
+}
+
+// The max duration takes the outcome only of a run whose execution stopped
+// after it: an ingestion failure before the deadline keeps its own outcome
+// although the executor is reaped after the deadline.
+func TestRunOrchestrator_DeadlineDuringReapKeepsTheOutcome(t *testing.T) {
+	t.Parallel()
+	refusal := fmt.Errorf("%w: put object: 503", policy.ErrSinkWrite)
+	valid := makeValidEventStream(&types.RunMeta{RunID: "run-reap", Attempt: 1})
+	cases := []struct {
+		name   string
+		pol    policy.Policy
+		stdout []byte
+		exit   int
+		want   types.OutcomeStatus
+	}{
+		{"a refusal before the deadline", &sinkErrPolicy{newFlushTrackingPolicy(), refusal}, valid, 0, types.OutcomeStorageError},
+		{"a policy failure before the deadline", &sinkErrPolicy{newFlushTrackingPolicy(), policy.ErrBufferFull}, valid, 0, types.OutcomePolicyFailure},
+		{"a refusal after the deadline", &deadlineWaitingPolicy{newFlushTrackingPolicy(), refusal}, valid, 0, types.OutcomeDeadlineExceeded},
+		{"a truncated frame before the deadline", newFlushTrackingPolicy(), []byte{0, 0, 1}, 1, types.OutcomeExecutorCrash},
+		{"a clean end of stream, the process exiting after the deadline", newFlushTrackingPolicy(), nil, 2, types.OutcomeDeadlineExceeded},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				runMeta := &types.RunMeta{RunID: "run-reap", Attempt: 1}
+				exec := &slowReapExecutor{newMockExecutor(tc.stdout, tc.exit), 2 * time.Minute}
+				o, err := NewRunOrchestrator(&RunConfig{
+					ExecutorPath:    "/fake/executor",
+					ScriptPath:      "/fake/script.js",
+					Job:             map[string]any{},
+					RunMeta:         runMeta,
+					Policy:          tc.pol,
+					MaxDuration:     time.Minute,
+					ExecutorFactory: func(_ *ExecutorConfig) Executor { return exec },
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := o.Execute(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.Outcome.Status != tc.want {
+					t.Errorf("outcome %s %q, want %s", result.Outcome.Status, result.Outcome.Message, tc.want)
+				}
+			})
+		})
+	}
+}

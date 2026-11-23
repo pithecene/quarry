@@ -11,6 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A max duration no longer hides an earlier failure**: a run whose ingestion failed before its deadline keeps that outcome, such as `storage_error`. Before, a deadline that passed while the runtime reaped the executor replaced it with `deadline_exceeded`.
 - **The buffered policy keeps events that arrive during a flush**: a flush now removes only the events it wrote. Before, it cleared the whole buffer after the write, so the policy lost an event ingested while the sink wrote, and two flushes could write the same events. Eviction no longer takes an event that a flush is writing.
 - **The streaming policy no longer stalls on a large frame**: when the next event would exceed the buffer's bounds, ingestion flushes the buffered events itself. Before, a stream with only `--flush-count` waited forever once a frame crossed the 128 MiB cap. A call whose context ends before the policy admits its event now returns instead of waiting.
 - **Buffer limits count each event's real size**: the buffered and streaming policies count the length of the frame an event arrived in. Before, they counted 200 bytes plus 50 per payload field, so a 10 MiB payload counted as about 250 bytes and `--buffer-bytes` did not bound memory.
