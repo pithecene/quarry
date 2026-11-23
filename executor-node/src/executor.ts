@@ -52,7 +52,7 @@ export type PluginConfig = {
 /**
  * Resolve a package from the node_modules of the script's directory and its
  * ancestors, then NODE_PATH. Node's global folders ($HOME/.node_modules and the
- * like) are not searched: nothing in the run's configuration names them.
+ * like) are refused: nothing in the run's configuration names them.
  */
 export function resolvePeer(name: string, scriptPath: string): string {
   const require = createRequire(resolve(scriptPath))
@@ -67,7 +67,7 @@ export function resolvePeer(name: string, scriptPath: string): string {
   return found
 }
 
-/** Reports whether file is inside the package at dir, which may be a link. */
+// holds reports whether file is inside the package at dir, which may be a link.
 function holds(dir: string, file: string): boolean {
   try {
     return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep)

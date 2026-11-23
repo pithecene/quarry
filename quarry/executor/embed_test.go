@@ -167,7 +167,7 @@ func TestCommand_HonorsTheModuleRoot(t *testing.T) {
 }
 
 // Workers and forked processes start as they would from an executor file, and
-// the globals that Node adds for -e are gone.
+// the CommonJS globals that Node adds for -e are gone.
 func TestCommand_LeavesChildLaunchesOrdinary(t *testing.T) {
 	t.Parallel()
 	p := embeddedProcess(t, `import { Worker } from 'node:worker_threads'
@@ -177,7 +177,7 @@ import { pathToFileURL } from 'node:url'
 const child = process.cwd() + '/child.mjs'
 const [worker] = await once(new Worker(pathToFileURL(child)), 'exit')
 const [forked] = await once(fork(child), 'exit')
-console.log(worker, forked, typeof globalThis.require, typeof globalThis.module, typeof globalThis.fs)`)
+console.log(worker, forked, typeof globalThis.require, typeof globalThis.exports, typeof globalThis.__filename)`)
 	if err := os.WriteFile(filepath.Join(p.Dir, "child.mjs"), []byte("export {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -196,6 +196,23 @@ func TestProcess_StartMethodsDeliverTheBundle(t *testing.T) {
 	out, err := embeddedProcess(t, "console.log('a'); console.error('b')").CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "a") || !strings.Contains(string(out), "b") {
 		t.Errorf("CombinedOutput = %q, %v", out, err)
+	}
+	for name, run := range map[string]func(*Process) ([]byte, error){
+		"Output":         (*Process).Output,
+		"CombinedOutput": (*Process).CombinedOutput,
+	} {
+		p := embeddedProcess(t, "process.exit(0)")
+		var set strings.Builder
+		p.Stdout = &set
+		if _, err := run(p); err == nil || p.Process != nil || p.Stdout != &set {
+			t.Errorf("%s with Stdout set: %v, want a refusal before the start", name, err)
+		}
+	}
+	p := embeddedProcess(t, "process.exit(0)")
+	var set strings.Builder
+	p.Stderr = &set
+	if _, err := p.CombinedOutput(); err == nil || p.Process != nil || p.Stderr != &set {
+		t.Errorf("CombinedOutput with Stderr set: %v, want a refusal before the start", err)
 	}
 	_, err = embeddedProcess(t, "console.error('why'); process.exit(3)").Output()
 	var exit *exec.ExitError
@@ -260,46 +277,62 @@ func TestCommand_PeerLookupSkipsGlobalFolders(t *testing.T) {
 	}
 }
 
-// The executor's own fallback stays inside the module root: a package above
-// the root does not load.
+// The executor's own fallback stays inside the module root, while a script's
+// import keeps Node's search of the root's ancestors.
 func TestCommand_PeerFallbackStaysInTheModuleRoot(t *testing.T) {
 	t.Parallel()
-	for _, inRoot := range []bool{true, false} {
-		above, dir := t.TempDir(), t.TempDir()
-		root := filepath.Join(above, "inner", "node_modules")
-		if err := os.MkdirAll(root, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		holder := above
-		if inRoot {
-			holder = filepath.Join(above, "inner")
-		}
-		writePackage(t, holder, "puppeteer")
-		body := []byte("throw new Error('peer loaded')\n")
-		if err := os.WriteFile(filepath.Join(holder, "node_modules", "puppeteer", "index.js"), body, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		p := embeddedProcess(t, string(embeddedExecutor), "--launch-browser", filepath.Join(dir, "script.mjs"))
-		p.Env = append(os.Environ(), "NODE_PATH=", "QUARRY_RESOLVE_FROM="+root)
-		out, err := p.CombinedOutput()
-		if got := strings.Contains(string(out), "peer loaded"); err == nil || got != inRoot {
-			t.Errorf("package in the root %t: loaded %t (%v)\n%s", inRoot, got, err, out)
-		}
+	for _, tc := range []struct {
+		name, mode string
+		inRoot     bool
+		loads      bool
+	}{
+		{"executor peer in the root", "--launch-browser", true, true},
+		{"executor peer above the root", "--launch-browser", false, false},
+		{"script import above the root", "--validate", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			above, dir := t.TempDir(), t.TempDir()
+			root := filepath.Join(above, "inner", "node_modules")
+			holder := above
+			if tc.inRoot {
+				holder = filepath.Dir(root)
+			}
+			script := filepath.Join(dir, "script.mjs")
+			writePackage(t, holder, "puppeteer")
+			if err := os.MkdirAll(root, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for path, body := range map[string]string{
+				filepath.Join(holder, "node_modules", "puppeteer", "index.js"): "throw new Error('package loaded')\n",
+				script: "import 'puppeteer'\nexport default async function run() {}\n",
+			} {
+				if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := embeddedProcess(t, string(embeddedExecutor), tc.mode, script)
+			p.Env = append(os.Environ(), "NODE_PATH=", "QUARRY_RESOLVE_FROM="+root)
+			out, err := p.CombinedOutput()
+			if got := strings.Contains(string(out), "package loaded"); err == nil || got != tc.loads {
+				t.Errorf("loaded %t, want %t (%v)\n%s", got, tc.loads, err, out)
+			}
+		})
 	}
 }
 
-// A preload's globals survive the cleanup, and Node's default module type does
+// A preload's globals survive, and Node's default module type does
 // not decide whether the bootstrap starts.
 func TestCommand_HonorsNodeOptions(t *testing.T) {
 	t.Parallel()
-	p := embeddedProcess(t, "console.log(globalThis.fs, typeof globalThis.path)")
+	p := embeddedProcess(t, "console.log(globalThis.fs, globalThis.path, globalThis.os === process.getBuiltinModule('os'))")
 	preload := filepath.Join(p.Dir, "preload.cjs")
-	if err := os.WriteFile(preload, []byte("globalThis.fs = 'kept'\n"), 0o600); err != nil {
+	if err := os.WriteFile(preload, []byte("globalThis.fs = 'value'\nglobalThis.os = require('node:os')\nObject.defineProperty(globalThis, 'path', { get: () => 'getter', configurable: true })\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p.Env = append(os.Environ(), "NODE_OPTIONS=--require="+preload)
-	if got := output(t, p); got != "kept undefined" {
-		t.Errorf("output %q, want the preload's fs and no path", got)
+	p.Env = append(os.Environ(), "NODE_OPTIONS=--require=./preload.cjs")
+	if got := output(t, p); got != "value getter true" {
+		t.Errorf("output %q, want every preload global", got)
 	}
 	p = embeddedProcess(t, "console.log('ran')")
 	p.Args = append([]string{p.Args[0], "--input-type=module"}, p.Args[1:]...)

@@ -2173,3 +2173,22 @@ func hasLogLine(logged, message, runID string, attempt int) bool {
 	}
 	return false
 }
+
+// The file that resolveExecutor checks is the file a launch runs: a bare name
+// stays out of PATH lookup, and no file is taken for the embedded executor.
+func TestResolveExecutor_NamesTheCheckedFile(t *testing.T) {
+	testutil.Serial(t, "calls t.Chdir, which changes the working directory")
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("embedded:", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"runner", executor.Embedded} {
+		if err := os.WriteFile(name, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := resolveExecutor(name)
+		if err != nil || got != "./"+name {
+			t.Errorf("resolveExecutor(%q) = %q, %v, want it under ./", name, got, err)
+		}
+	}
+}

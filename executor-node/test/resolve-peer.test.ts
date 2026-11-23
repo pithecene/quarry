@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -35,7 +35,9 @@ describe('resolvePeer', () => {
       join(dir, 'store', 'peer-under-test'),
       join(dir, 'project', 'node_modules', 'peer-under-test')
     )
-    expect(resolvePeer('peer-under-test', script())).toContain(join('store', 'peer-under-test'))
+    expect(realpathSync(resolvePeer('peer-under-test', script()))).toBe(
+      realpathSync(join(dir, 'store', 'peer-under-test', 'index.js'))
+    )
   })
 
   it('refuses a package that no searched directory holds', () => {
