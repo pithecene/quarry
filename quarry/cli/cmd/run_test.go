@@ -2174,21 +2174,35 @@ func hasLogLine(logged, message, runID string, attempt int) bool {
 	return false
 }
 
-// The file that resolveExecutor checks is the file a launch runs: a bare name
-// stays out of PATH lookup, and no file is taken for the embedded executor.
-func TestResolveExecutor_NamesTheCheckedFile(t *testing.T) {
-	testutil.Serial(t, "calls t.Chdir, which changes the working directory")
+// The file that resolveExecutor checks is the file that launches: not one of
+// the same name on PATH, and not the embedded executor.
+func TestResolveExecutor_LaunchesTheCheckedFile(t *testing.T) {
+	testutil.Serial(t, "calls t.Chdir and t.Setenv, which change the process")
+	onPath := t.TempDir()
 	t.Chdir(t.TempDir())
+	t.Setenv("PATH", onPath+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if err := os.Mkdir("embedded:", 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"runner", executor.Embedded} {
-		if err := os.WriteFile(name, nil, 0o600); err != nil {
+	for path, says := range map[string]string{
+		filepath.Join(onPath, "runner"): "path",
+		"runner":                        "local",
+		executor.Embedded:               "local",
+	} {
+		if err := os.WriteFile(path, []byte("#!/bin/sh\necho "+says+"\n"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		got, err := resolveExecutor(name)
-		if err != nil || got != "./"+name {
-			t.Errorf("resolveExecutor(%q) = %q, %v, want it under ./", name, got, err)
+	}
+	for _, name := range []string{"runner", executor.Embedded} {
+		path, err := resolveExecutor(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+		out, err := executor.Command(ctx, path).Output()
+		cancel()
+		if err != nil || string(out) != "local\n" {
+			t.Errorf("%s ran %q, %v, want the local file", name, out, err)
 		}
 	}
 }
