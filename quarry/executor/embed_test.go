@@ -291,7 +291,6 @@ func TestCommand_PeerFallbackStaysInTheModuleRoot(t *testing.T) {
 		{"script import above the root", "--validate", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			above, dir := t.TempDir(), t.TempDir()
 			root := filepath.Join(above, "inner", "node_modules")
 			holder := above
