@@ -320,8 +320,8 @@ func TestCommand_PeerFallbackStaysInTheModuleRoot(t *testing.T) {
 	}
 }
 
-// A preload's globals survive, and Node's default module type does
-// not decide whether the bootstrap starts.
+// The bootstrap leaves builtin globals that a preload defines, and Node's
+// default module type does not decide whether the bootstrap starts.
 func TestCommand_HonorsNodeOptions(t *testing.T) {
 	t.Parallel()
 	p := embeddedProcess(t, "console.log(globalThis.fs, globalThis.path, globalThis.os === process.getBuiltinModule('os'))")
