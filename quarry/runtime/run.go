@@ -457,8 +457,11 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 
 	// Run ingestion in goroutine
 	ingestionDone := make(chan error, 1)
+	var ingestionStoppedByDeadline bool // read after ingestionDone
 	go func() {
-		ingestionDone <- ingestion.Run(ctx)
+		err := ingestion.Run(ctx)
+		ingestionStoppedByDeadline = r.pastDeadline()
+		ingestionDone <- err
 	}()
 
 	// Wait for ingestion to complete FIRST
@@ -489,6 +492,11 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	// This is safe because ingestion has already read all data from the pipe
 	execResult, execErr := executor.Wait()
 	r.stoppedByDeadline = r.pastDeadline()
+	if ingErr != nil {
+		// The ingestion error ended the run. A deadline that passes while the
+		// killed executor is reaped did not.
+		r.stoppedByDeadline = ingestionStoppedByDeadline
+	}
 
 	// Always attempt policy flush (best effort) on all termination paths
 	// Per CONTRACT_POLICY.md: "Buffered events must be flushed on run_complete, run_error, runtime termination (best effort)"
