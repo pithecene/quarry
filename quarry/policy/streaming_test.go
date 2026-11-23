@@ -3,7 +3,10 @@ package policy_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/pithecene/quarry/iox"
@@ -662,4 +665,198 @@ type streamingSlowSink struct {
 func (s *streamingSlowSink) WriteEvents(ctx context.Context, events []*types.EventEnvelope) error {
 	time.Sleep(s.writeDelay)
 	return s.StubSink.WriteEvents(ctx, events)
+}
+
+// A call that is blocked on a full buffer returns when its context is
+// cancelled, rather than waiting until a flush drains the buffer.
+func TestStreamingPolicy_IngestWaitingForRoomHonorsCancellation(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		const capacity = 50_000 // streamingMaxBufferEvents
+		sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{})}
+		// A count far above capacity leaves the capacity trigger to flush.
+		pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 10 * capacity})
+		// Registered after the policy, so it runs before the policy's Close.
+		release := sync.OnceFunc(func() { close(sink.release) })
+		t.Cleanup(release)
+		item := func(seq int) *types.EventEnvelope {
+			return &types.EventEnvelope{EventID: fmt.Sprint("e", seq), Type: types.EventTypeItem, Seq: int64(seq)}
+		}
+
+		// The first full buffer flushes, and the sink holds that flush.
+		go func() {
+			for i := range capacity {
+				_ = pol.IngestEvent(t.Context(), item(i))
+			}
+		}()
+		<-sink.started
+		// The second fills the buffer again, and its flush waits for the first.
+		for i := range capacity - 1 {
+			if err := pol.IngestEvent(t.Context(), item(capacity+i)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		go func() { _ = pol.IngestEvent(t.Context(), item(2*capacity)) }()
+		synctest.Wait()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- pol.IngestEvent(ctx, item(2*capacity+1)) }()
+		synctest.Wait() // the call is now blocked
+		select {
+		case err := <-done:
+			t.Fatalf("IngestEvent returned %v before its context was cancelled", err)
+		default:
+		}
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Errorf("IngestEvent = %v, want context.Canceled", err)
+		}
+		release()
+	})
+}
+
+// A stream with only a count trigger flushes its partial batch when the next
+// frame would cross the byte cap, instead of waiting for a flush that only
+// that ingest could start.
+func TestStreamingPolicy_FlushesBeforeAFrameCrossesTheByteCap(t *testing.T) {
+	t.Parallel()
+	sink := policy.NewStubSink()
+	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	for seq := range 13 { // 13 frames of 10 MiB cross the 128 MiB cap
+		e := &types.EventEnvelope{EventID: fmt.Sprint("e", seq), Type: types.EventTypeItem, Seq: int64(seq), RawFrameBytes: 10 << 20}
+		if err := pol.IngestEvent(ctx, e); err != nil {
+			t.Fatalf("ingest %d: %v", seq, err)
+		}
+	}
+	if stats := pol.Stats(); stats.FlushCount < 1 || stats.EventsPersisted != 12 {
+		t.Errorf("flushes %d, persisted %d; want a flush of the first 12 frames", stats.FlushCount, stats.EventsPersisted)
+	}
+}
+
+// bigFrame returns an item envelope that counts as a 10 MiB frame.
+func bigFrame(seq int) *types.EventEnvelope {
+	return &types.EventEnvelope{EventID: fmt.Sprint("e", seq), Type: types.EventTypeItem, Seq: int64(seq), RawFrameBytes: 10 << 20}
+}
+
+// startHeldCapacityFlush fills a count-only stream with 12 frames of 10 MiB,
+// then ingests a 13th with ctx in the background; that call starts a capacity
+// flush, which the sink holds until release runs and then fails with flushErr
+// when it is not nil. It returns once the flush
+// is writing, with the policy, release, and the 13th call's result.
+func startHeldCapacityFlush(t *testing.T, ctx context.Context, flushErr error) (*policy.StreamingPolicy, func(), <-chan error) {
+	t.Helper()
+	sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{}), firstErr: flushErr}
+	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
+	release := sync.OnceFunc(func() { close(sink.release) })
+	t.Cleanup(release)
+	for seq := range 12 {
+		if err := pol.IngestEvent(ctx, bigFrame(seq)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	admitted := make(chan error, 1)
+	go func() { admitted <- pol.IngestEvent(ctx, bigFrame(12)) }()
+	<-sink.started
+	return pol, release, admitted
+}
+
+// When other calls refill the buffer while the pre-append flush writes, the
+// waiting call flushes again rather than waiting for a flush nobody starts.
+// synctest reports a deadlock if it waits.
+func TestStreamingPolicy_FlushesAgainWhenTheBufferRefills(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		pol, release, admitted := startHeldCapacityFlush(t, t.Context(), nil)
+		for seq := 13; seq < 25; seq++ {
+			if err := pol.IngestEvent(t.Context(), bigFrame(seq)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		release()
+		if err := <-admitted; err != nil {
+			t.Fatalf("ingest after the refill: %v", err)
+		}
+		if stats := pol.Stats(); stats.EventsPersisted != 24 || stats.TotalEvents != 25 {
+			t.Errorf("persisted %d of %d, want 24 of 25", stats.EventsPersisted, stats.TotalEvents)
+		}
+	})
+}
+
+// A call whose context ends while its pre-append flush finishes is not
+// admitted. When the flush succeeds the call returns the context's error; when
+// it fails, the call returns the sink's refusal and the batch stays buffered.
+func TestStreamingPolicy_RefusesAnEventWhoseContextEndedDuringItsFlush(t *testing.T) {
+	t.Parallel()
+	refusal := errors.New("bucket refused the write")
+	cases := []struct {
+		name     string
+		flushErr error
+		want     []error
+		buffered int64
+	}{
+		{"the flush succeeds", nil, []error{context.Canceled}, 0},
+		{"the flush fails", refusal, []error{policy.ErrSinkWrite, refusal}, 12 * (10 << 20)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				pol, release, admitted := startHeldCapacityFlush(t, ctx, tc.flushErr)
+				cancel()
+				release()
+				err := <-admitted
+				for _, want := range tc.want {
+					if !errors.Is(err, want) {
+						t.Errorf("IngestEvent = %v, want it to match %v", err, want)
+					}
+				}
+				if stats := pol.Stats(); stats.TotalEvents != 12 || stats.BufferSize != tc.buffered {
+					t.Errorf("received %d, buffered %d bytes; want 12 and %d", stats.TotalEvents, stats.BufferSize, tc.buffered)
+				}
+			})
+		})
+	}
+}
+
+// A closed policy refuses an ingest before it inspects the envelope, so even a
+// nil envelope gets ErrPolicyClosed.
+func TestStreamingPolicy_ClosedRefusesBeforeInspecting(t *testing.T) {
+	t.Parallel()
+	pol, err := policy.NewStreamingPolicy(policy.NewStubSink(), policy.StreamingConfig{FlushCount: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pol.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := pol.IngestEvent(t.Context(), nil); !errors.Is(err, policy.ErrPolicyClosed) {
+		t.Errorf("IngestEvent after Close = %v, want ErrPolicyClosed", err)
+	}
+}
+
+// An invalid envelope on an open policy fails outside the lock, so the
+// policy can still close.
+func TestStreamingPolicy_NilEnvelopeLeavesThePolicyUsable(t *testing.T) {
+	t.Parallel()
+	pol, err := policy.NewStreamingPolicy(policy.NewStubSink(), policy.StreamingConfig{FlushCount: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer func() { _ = recover() }()
+		_ = pol.IngestEvent(t.Context(), nil)
+	}()
+	closed := make(chan struct{})
+	go func() {
+		_ = pol.Close() // only its return matters here, not its error
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close blocked after a nil envelope: the policy lock is still held")
+	}
 }

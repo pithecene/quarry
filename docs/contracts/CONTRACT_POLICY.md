@@ -51,6 +51,11 @@ If a policy cannot accept non-droppable events, it must fail the run.
 ## Buffering Rules
 
 - Buffers must be **bounded** and observable.
+- A byte bound counts each event at the length of the IPC frame it arrived
+  in, length prefix included.
+- Completing a flush removes only the events it wrote. An event ingested
+  while a flush writes stays buffered for a later flush, subject to the
+  drop rules.
 - Buffered events must be flushed on:
   - `run_complete`
   - `run_error`
@@ -68,6 +73,18 @@ the runtime commits them to storage as they arrive
 ([CONTRACT_IPC.md](CONTRACT_IPC.md) §Artifact Frames), and the artifact
 event is an event like any other.
 
+A policy marks each failed sink write as soon as the write returns. It is
+marked as ended with the run when the write ran under the run's recorded
+context or one derived from it, the run had ended, and every branch of the
+sink's error shows that end: the context's error, or a cause whose value can
+be compared. Every other failure is a store's refusal, including a write
+under a termination or close-time flush context, which records no run and
+has a deadline of its own. A fan-out marks each mandatory sink on its
+own, so a refusal beside another sink's cancellation stays a refusal. A
+refusal that decides the run's outcome makes it `storage_error`; a refusal
+after the run has already failed changes no outcome (CONTRACT_RUN.md §Run
+Finalization).
+
 All modes must satisfy the no-silent-loss invariant.
 
 ---
@@ -84,8 +101,13 @@ write overhead of `strict`.
 - **No drops**: all event types are persisted. Same guarantee as `strict`.
 - **Bounded buffer**: events accumulate in a bounded in-memory buffer.
 - **Periodic flush**: buffer is flushed to storage when any trigger fires.
-- **Blocking on full**: if the buffer is full and no flush trigger has fired,
-  ingestion blocks until the next flush completes. Events are never dropped.
+- **Blocking on full**: if the next event would exceed the buffer's bounds,
+  ingestion flushes the buffered events and blocks until the flush
+  completes, then checks again. A call whose context ends before its event
+  is admitted does not buffer the event and returns an error: the
+  context's, or the flush's when a flush that the call started fails. An
+  event already admitted stays buffered for persistence even if its call
+  then returns an error. Events are never dropped.
 
 ### Flush Triggers
 
@@ -96,6 +118,7 @@ The buffer is flushed when **any** of the following conditions is met:
 | **Count threshold** | `--flush-count` | Flush after N events accumulate. |
 | **Time interval** | `--flush-interval` | Flush every T duration (e.g. `5s`, `30s`). |
 | **Run termination** | — | Flush on `run_complete`, `run_error`, or runtime termination (best effort). |
+| **Buffer capacity** | — | Flush when the buffer reaches its bounds, or before an event that would exceed them. |
 
 At least one of `--flush-count` or `--flush-interval` must be specified.
 Both may be specified. The first trigger to fire wins.
@@ -118,7 +141,7 @@ at least one flush trigger, the CLI must reject the configuration.
 In addition to the base policy counters, streaming policy must surface:
 
 - `flush_count`: number of flush cycles completed (already in `Stats`)
-- `flush_trigger`: counter per trigger type (`count`, `interval`, `termination`)
+- `flush_triggers`: counter per trigger type (`count`, `interval`, `termination`, `capacity`)
 
 These are additive to [CONTRACT_METRICS.md](CONTRACT_METRICS.md) and do not rename existing metrics.
 
@@ -135,6 +158,7 @@ Policies must surface:
 - Logs
   - drop reasons (if any)
   - buffer overflows or flush failures
+  - written through the run's logger
 - Events
   - optional policy-level stats event
 

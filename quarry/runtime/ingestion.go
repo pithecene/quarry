@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/pithecene/quarry/ipc"
@@ -22,6 +24,39 @@ type IngestionError struct {
 	Kind IngestionErrorKind
 	// Err is the underlying error.
 	Err error
+}
+
+// endedCauses returns ctx's error and its cause once ctx has ended, else nil.
+func endedCauses(ctx context.Context) []error {
+	if ctx.Err() == nil {
+		return nil
+	}
+	return []error{ctx.Err(), context.Cause(ctx)}
+}
+
+// canceledError reports a cancellation that err shows: ctx's error, then err
+// when it says more, then the host's cause when it differs from ctx's error
+// and err does not already carry it, as when a policy returns only ctx.Err().
+func canceledError(ctx context.Context, err error) error {
+	if ctx.Err() == nil {
+		return err
+	}
+	reported := []error{ctx.Err()}
+	if !sameError(err, ctx.Err()) {
+		reported = append(reported, err)
+	}
+	if cause := context.Cause(ctx); !sameError(cause, ctx.Err()) && !isError(err, cause) {
+		reported = append(reported, cause)
+	}
+	if len(reported) == 1 {
+		return ctx.Err()
+	}
+	verbs := strings.TrimPrefix(strings.Repeat(": %w", len(reported)), ": ")
+	args := make([]any, len(reported))
+	for i, e := range reported {
+		args[i] = e
+	}
+	return fmt.Errorf(verbs, args...)
 }
 
 // IngestionErrorKind classifies ingestion errors.
@@ -62,11 +97,38 @@ func IsCanceledError(err error) bool {
 	return false
 }
 
-// isStorageFault reports whether err carries a sink's refusal to persist
-// events (policy.ErrSinkWrite). A refusal caused by the run's own
-// cancellation is not a fault of the store.
+// sameError reports whether a and b are the same error value, as errors.Is
+// compares them, without panicking on an uncomparable type.
+func sameError(a, b error) bool {
+	return comparableValue(a) && comparableValue(b) && reflect.TypeOf(a) == reflect.TypeOf(b) && a == b //nolint:errorlint // identity is the point: a wrapper must not match its leaves here
+}
+
+// comparableValue reports whether err's value can be compared with ==. A host can
+// cancel with an error of a comparable type whose value holds a slice, which
+// == and errors.Is would panic on.
+func comparableValue(err error) bool {
+	return err != nil && reflect.ValueOf(err).Comparable()
+}
+
+// isError reports errors.Is(err, target), and false for a target that cannot
+// be compared, rather than panicking.
+func isError(err, target error) bool {
+	return comparableValue(target) && errors.Is(err, target)
+}
+
+// matchesAny reports whether err matches one of targets.
+func matchesAny(err error, targets []error) bool {
+	return slices.ContainsFunc(targets, func(target error) bool { return isError(err, target) })
+}
+
+// isStorageFault reports whether err carries a store's refusal to persist
+// events. The policy that saw the write fail marked it while the run's
+// context still said whether the run had ended (policy.ErrSinkWrite for a
+// refusal, policy.ErrWriteCanceled for the run's own end), so a refusal
+// beside another sink's cancellation stays a fault, and a marker wrapped
+// around the write, such as policy.ErrCloseUnflushed, changes nothing.
 func isStorageFault(err error) bool {
-	return errors.Is(err, policy.ErrSinkWrite) && !errors.Is(err, context.Canceled)
+	return errors.Is(err, policy.ErrSinkWrite)
 }
 
 // IsVersionMismatchError returns true if the error is a contract version mismatch.
@@ -330,6 +392,16 @@ func (e *IngestionEngine) processEvent(ctx context.Context, envelope *types.Even
 
 	// Delegate to policy
 	if err := e.policy.IngestEvent(ctx, envelope); err != nil {
+		// An error caused only by the run's own context ending, as while the
+		// policy waited for room, is the cancellation the loop reports. An error
+		// with any other cause, such as one sink's refusal, stays a policy error.
+		// The positive match matters: an error that shows neither the write's
+		// cancellation marker nor the host's own error is no evidence that the
+		// run's end caused it.
+		ranOut := ctx.Err() != nil && (errors.Is(err, policy.ErrWriteCanceled) || matchesAny(err, endedCauses(ctx)))
+		if ranOut && !isStorageFault(err) {
+			return &IngestionError{Kind: IngestionErrorCanceled, Err: canceledError(ctx, err)}
+		}
 		// Policy failure terminates run per CONTRACT_POLICY.md
 		e.logger.Error("policy ingestion failed", map[string]any{
 			"event_type": envelope.Type,

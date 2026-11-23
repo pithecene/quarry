@@ -114,6 +114,23 @@ times with jittered exponential backoff (10ms base, 2s max).
 
 ---
 
+## Error Classification
+
+Quarry classifies a storage failure as one kind: not found, path exists,
+permission denied, access denied, disk full, timeout, throttled,
+authentication, or network, or an unclassified storage error. The
+classified error keeps the original in its chain, so `errors.Is` matches
+both the kind and the original error.
+
+- A typed error decides the kind before any message: the Lode library's
+  `ErrNotFound` and `ErrPathExists`, the `io/fs` permission, not-exist, and
+  exist errors, `ENOSPC`, and an error reporting a timeout. An HTTP status
+  of 401, 403, 404, or 429 decides it too, read from the first error in the
+  chain that carries a status; an unmapped status there leaves the kind to
+  the message.
+- The message decides only when no typed error is recognized, because a
+  message embeds keys and paths whose text can match a pattern.
+
 ## Record Types
 
 All stored records MUST include a `record_kind` discriminator field.

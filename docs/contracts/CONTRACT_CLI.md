@@ -181,8 +181,10 @@ specified when `--policy=streaming`.
 
 Semantics:
 - Both may be specified. The first trigger to fire wins.
-- Buffer is bounded internally. If full before a trigger fires, ingestion
-  blocks until the next flush (events are never dropped).
+- Buffer is bounded internally. When the next event would exceed the
+  bounds, ingestion flushes the buffered events itself and blocks until
+  that flush completes. No count or interval trigger needs to fire: the
+  flush counts as a `capacity` trigger (events are never dropped).
 - On run termination, a final flush is always attempted (best effort).
 - Flush trigger counts are surfaced in `stats metrics` (see [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).
 

@@ -9,6 +9,15 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The buffered policy keeps events that arrive during a flush**: a flush now removes only the events it wrote. Before, it cleared the whole buffer after the write, so the policy lost an event ingested while the sink wrote, and two flushes could write the same events. Eviction no longer takes an event that a flush is writing.
+- **The streaming policy no longer stalls on a large frame**: when the next event would exceed the buffer's bounds, ingestion flushes the buffered events itself. Before, a stream with only `--flush-count` waited forever once a frame crossed the 128 MiB cap. A call whose context ends before the policy admits its event now returns instead of waiting.
+- **Buffer limits count each event's real size**: the buffered and streaming policies count the length of the frame an event arrived in. Before, they counted 200 bytes plus 50 per payload field, so a 10 MiB payload counted as about 250 bytes and `--buffer-bytes` did not bound memory.
+- **The buffered and streaming policies log through the run's logger**: their drop, overflow, and flush-failure logs now reach stderr with the run's identity. Before, the run gave them no logger, so these logs went nowhere.
+- **A fan-out sink's refusal stays a storage error**: each mandatory sink's error now stays matchable through a fan-out. A refusal beside a host's cancellation or deadline ends the run as `storage_error`, which a retry may resolve. Before, the fan-out kept only the error text, and a cancellation made the whole failure a `policy_failure`.
+- **Quarry classifies Lode's not-found and path-exists errors by type**: before, Quarry read them from the message, so a key containing `403` made a missing object read as access denied. `CONTRACT_LODE.md` § Error Classification states the order.
+
 ---
 
 ## [0.19.0] - 2026-11-21

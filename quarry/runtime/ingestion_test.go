@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"testing"
 
 	lodepkg "github.com/pithecene/lode/lode"
@@ -1307,5 +1308,84 @@ func TestIngestionEngine_FileWrite_MetadataInventory_EndToEnd(t *testing.T) {
 	}
 	if metadataCount > 1 {
 		t.Errorf("sidecar_files metadata found on %d snapshots, want exactly 1 (should only appear on item event flush)", metadataCount)
+	}
+}
+
+// cancelingPolicy cancels the run while it ingests and returns the error that
+// fail builds from the run's context.
+type cancelingPolicy struct {
+	policy.Policy
+	cancel context.CancelFunc
+	fail   func(ctx context.Context) error
+}
+
+func (p *cancelingPolicy) IngestEvent(ctx context.Context, _ *types.EventEnvelope) error {
+	p.cancel()
+	return p.fail(ctx)
+}
+
+// An ingest error caused only by the run's cancellation, as while the policy
+// waits for room, is a cancellation, as it is at the top of the ingestion
+// loop. One that also carries a sink's refusal stays a policy error and a
+// storage fault.
+func TestIngestionEngine_ClassifiesCancellationDuringIngest(t *testing.T) {
+	t.Parallel()
+	refusal := errors.New("bucket refused the write")
+	cases := []struct {
+		name         string
+		fail         func(ctx context.Context) error
+		wantCanceled bool
+	}{
+		{"only the cancellation", func(ctx context.Context) error { return ctx.Err() }, true},
+		{"a cancelled sink write", func(ctx context.Context) error { return fmt.Errorf("%w: %w", policy.ErrWriteCanceled, ctx.Err()) }, true},
+		{"a cancellation joined with a refusal", func(ctx context.Context) error {
+			return errors.Join(fmt.Errorf("a: %w: %w", policy.ErrWriteCanceled, ctx.Err()), fmt.Errorf("b: %w: %w", policy.ErrSinkWrite, refusal))
+		}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			runMeta := &types.RunMeta{RunID: "run-123", Attempt: 1}
+			pol := &cancelingPolicy{Policy: policy.NewNoopPolicy(), cancel: cancel, fail: tc.fail}
+			engine := NewIngestionEngine(bytes.NewReader(encodeEventFrame(terminalEvent(1))), pol, nil, nil, log.NewLogger(runMeta), runMeta, nil, nil, nil)
+			err := engine.Run(ctx)
+			if IsCanceledError(err) != tc.wantCanceled || IsPolicyError(err) == tc.wantCanceled {
+				t.Errorf("Run = %v, want canceled %t", err, tc.wantCanceled)
+			}
+			if !tc.wantCanceled && !isStorageFault(err) {
+				t.Errorf("Run = %v, want a storage fault for the refusal", err)
+			}
+		})
+	}
+}
+
+// A write that the policy marked as refused is a storage fault, and one it
+// marked as ended with the run is not, also when a fan-out joins one sink's
+// cancellation with another sink's refusal, or a close marker wraps either.
+func TestIsStorageFault(t *testing.T) {
+	t.Parallel()
+	refusal := errors.New("bucket refused the write")
+	sinkWrite := func(err error) error { return fmt.Errorf("%w: %w", policy.ErrSinkWrite, err) }
+	canceled := func(err error) error { return fmt.Errorf("%w: %w", policy.ErrWriteCanceled, err) }
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"a refusal", sinkWrite(refusal), true},
+		{"the run's cancellation", canceled(fmt.Errorf("put: %w", context.Canceled)), false},
+		{"a cancellation joined with a refusal", errors.Join(canceled(context.Canceled), sinkWrite(refusal)), true},
+		{"only cancellations joined", errors.Join(canceled(context.Canceled), canceled(context.DeadlineExceeded)), false},
+		{"a close marker around a cancelled write", fmt.Errorf("%w: close-time flush failed: %w", policy.ErrCloseUnflushed, canceled(context.Canceled)), false},
+		{"a close marker around a refusal", fmt.Errorf("%w: close-time flush failed: %w", policy.ErrCloseUnflushed, sinkWrite(refusal)), true},
+		{"no sink write", refusal, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isStorageFault(tc.err); got != tc.want {
+				t.Errorf("isStorageFault(%v) = %t, want %t", tc.err, got, tc.want)
+			}
+		})
 	}
 }

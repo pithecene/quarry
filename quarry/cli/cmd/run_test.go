@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1789,7 +1792,7 @@ func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
 
 	// Call buildPolicy with the captured timestamp — this is exactly what
 	// childFactory.Run() does at run.go:386-389
-	childPol, _, childFileWriter, err := buildPolicy(t.Context(), pol, storage, "quarry", "src", "cat", "run-001", childStartTime, collector, nil)
+	childPol, _, childFileWriter, err := buildPolicy(t.Context(), pol, storage, "quarry", "src", "cat", &types.RunMeta{RunID: "run-001", Attempt: 1}, childStartTime, collector, nil)
 	if err != nil {
 		t.Fatalf("buildPolicy: %v", err)
 	}
@@ -2088,4 +2091,84 @@ func TestRunFinalizer_NotifiesAfterTheRunContextIsCancelled(t *testing.T) {
 	default:
 		t.Fatal("no completion event reached the adapter after the run context was cancelled")
 	}
+}
+
+// The policies that run builds log through the run's logger, so a dropped
+// event or a flush reaches stderr with the run's identity, as CONTRACT_POLICY
+// and CONTRACT_RUN's observability rules require.
+func TestBuildPolicy_GivesThePolicyARunLogger(t *testing.T) {
+	testutil.Serial(t, "the test swaps the process-wide os.Stderr")
+	cases := []struct {
+		name    string
+		choice  policyChoice
+		events  []types.EventType
+		message string
+	}{
+		{"buffered drop", policyChoice{name: "buffered", maxEvents: 1}, []types.EventType{types.EventTypeLog, types.EventTypeLog}, "event dropped"},
+		{"streaming flush", policyChoice{name: "streaming", flushCount: 1}, []types.EventType{types.EventTypeItem}, "streaming flush"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logged := captureStderr(t, func() {
+				collector := metrics.NewCollector(tc.choice.name, "executor.mjs", "fs", "run-log", "")
+				runMeta := &types.RunMeta{RunID: "run-log", Attempt: 3}
+				pol, _, _, err := buildPolicy(t.Context(), tc.choice, storageChoice{backend: "fs", path: t.TempDir()}, "quarry", "src", "cat", runMeta, time.Now(), collector, nil)
+				if err != nil {
+					t.Fatalf("buildPolicy: %v", err)
+				}
+				for i, typ := range tc.events {
+					seq := int64(i + 1)
+					if err := pol.IngestEvent(t.Context(), &types.EventEnvelope{EventID: fmt.Sprint("e", seq), Type: typ, Seq: seq, Payload: map[string]any{}}); err != nil {
+						t.Fatalf("ingest: %v", err)
+					}
+				}
+			})
+			if !hasLogLine(logged, tc.message, "run-log", 3) {
+				t.Errorf("stderr %q, want %q logged with run_id run-log and attempt 3", logged, tc.message)
+			}
+		})
+	}
+}
+
+// captureStderr returns what fn writes to os.Stderr. A cleanup restores
+// os.Stderr and closes the pipe even when fn fails the test.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stderr
+	rd, wr, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = wr
+	restore := sync.OnceFunc(func() {
+		os.Stderr = orig
+		iox.DiscardClose(wr)
+	})
+	t.Cleanup(func() {
+		restore()
+		iox.DiscardClose(rd)
+	})
+	read := make(chan []byte, 1)
+	go func() {
+		b, _ := io.ReadAll(rd)
+		read <- b
+	}()
+	fn()
+	restore()
+	return string(<-read)
+}
+
+// hasLogLine reports whether a JSON log line carries message, runID, and attempt.
+func hasLogLine(logged, message, runID string, attempt int) bool {
+	for line := range strings.Lines(logged) {
+		var entry struct {
+			Message string `json:"message"`
+			RunID   string `json:"run_id"`
+			Attempt int    `json:"attempt"`
+		}
+		if json.Unmarshal([]byte(line), &entry) == nil && entry.Message == message && entry.RunID == runID && entry.Attempt == attempt {
+			return true
+		}
+	}
+	return false
 }

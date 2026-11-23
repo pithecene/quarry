@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/pithecene/quarry/internal/testutil"
@@ -242,6 +243,9 @@ func TestStreamingPolicy_BlockedIngestRefusedOnClose(t *testing.T) {
 	}
 	pol.bufferBytes = 1
 	pol.mu.Unlock()
+	// A flush in flight holds the semaphore, so the ingest cannot flush its way
+	// to room either.
+	pol.flushSem <- struct{}{}
 
 	blocked := make(chan error, 1)
 	go func() {
@@ -253,7 +257,13 @@ func TestStreamingPolicy_BlockedIngestRefusedOnClose(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	_ = pol.Close()
+	closed := make(chan struct{})
+	go func() {
+		_ = pol.Close()
+		close(closed)
+	}()
+	<-pol.stopCh   // Close has marked the policy stopped
+	<-pol.flushSem // then the flush in flight finishes
 	select {
 	case err := <-blocked:
 		if !errors.Is(err, ErrPolicyClosed) {
@@ -261,5 +271,38 @@ func TestStreamingPolicy_BlockedIngestRefusedOnClose(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("blocked IngestEvent never returned after Close")
+	}
+	<-closed
+}
+
+// A close-time flush that runs out of Close's own deadline is a store's
+// refusal: no run context took part, so the error carries no run mark. In
+// synctest, Close's deadline expires only once the sink's write is blocked.
+func TestClose_FlushTimeoutIsARefusal(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		open func(Sink) (Policy, error)
+	}{
+		{"buffered", func(s Sink) (Policy, error) { return NewBufferedPolicy(s, BufferedConfig{MaxBufferEvents: 10}) }},
+		{"streaming", func(s Sink) (Policy, error) { return NewStreamingPolicy(s, StreamingConfig{FlushCount: 100}) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				sink := &blockingSink{StubSink: NewStubSink(), honorCtx: true, entered: make(chan struct{}), release: make(chan struct{})}
+				pol, err := tc.open(sink)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := pol.IngestEvent(t.Context(), &types.EventEnvelope{RunID: "r", Seq: 1, Type: types.EventTypeItem}); err != nil {
+					t.Fatal(err)
+				}
+				err = pol.Close()
+				if !errors.Is(err, ErrCloseUnflushed) || !errors.Is(err, ErrSinkWrite) || errors.Is(err, ErrWriteCanceled) {
+					t.Errorf("Close = %v, want an unflushed close marked as a refusal and not as the run's end", err)
+				}
+			})
+		})
 	}
 }
