@@ -29,11 +29,13 @@ const Embedded = "embedded:/executor.mjs"
 // bundle resolves through --resolve-from alone, never a nearby node_modules.
 //
 // It runs as CommonJS or ESM, whichever Node defaults to, because workers
-// inherit --input-type and then refuse a file. It removes the globals that Node
-// adds for -e and keeps a preload's, which are plain values. It clears execArgv for forks, and
-// inserts the argument that stands where Node puts a script's path. The import
-// waits a turn because Node restores one such global when -e returns. Node before
-// 22.15 has no registerHooks, and Node 26 warns about register.
+// inherit --input-type and then refuse a file. It removes the CommonJS
+// bindings that Node makes global for -e, which module-format checks read. The
+// lazy builtin globals stay, because a preload's look the same. It clears
+// execArgv for forks, and inserts the argument that stands where Node puts a
+// script's path. The import waits a turn because Node restores its module global
+// when -e returns. Node before 22.15 has no registerHooks, and Node 26 warns
+// about register.
 const bootstrap = "const b=process.getBuiltinModule,{readFileSync,closeSync}=b('node:fs'),m=b('node:module');" +
 	"const source=readFileSync(3,'utf8');closeSync(3);" +
 	"if(m.registerHooks)m.registerHooks({" +
@@ -44,10 +46,8 @@ const bootstrap = "const b=process.getBuiltinModule,{readFileSync,closeSync}=b('
 	"export function load(u,c,n){return u==='quarry:executor'?{format:'module',source,shortCircuit:true}:n(u,c)}`;" +
 	"m.register('data:text/javascript,'+encodeURIComponent(hook),{data:{source}})}" +
 	"process.execArgv=[];process.argv.splice(1,0,'quarry-executor');setImmediate(()=>{" +
-	"const g=globalThis,own=k=>Object.getOwnPropertyDescriptor(g,k);" +
+	"const g=globalThis;" +
 	"if(g.__filename==='[eval]')for(const k of['require','exports','__filename','__dirname'])delete g[k];" +
-	"for(const k of m.builtinModules){const d=own(k);" +
-	"if(d&&!['console','process','crypto'].includes(k)&&(d.get||d.value===b(k)))delete g[k]}" +
 	"import('quarry:executor')})"
 
 // IsEmbedded returns true if an executor is embedded in this binary.

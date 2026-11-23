@@ -1394,9 +1394,11 @@ func resolveExecutor(explicit string) (string, error) {
 		if _, err := os.Stat(explicit); err != nil {
 			return "", fmt.Errorf("executor not found at %s (check the path and try again)", explicit)
 		}
-		// A file of that name is not the embedded executor.
-		if explicit == executor.Embedded {
-			return "./" + explicit, nil
+		// The prefix keeps a bare name out of PATH lookup, and a file named as
+		// the embedded executor distinct from it. Cleaning the path instead
+		// could change which file a symlink in it selects.
+		if explicit == executor.Embedded || filepath.Base(explicit) == explicit {
+			return "." + string(filepath.Separator) + explicit, nil
 		}
 		return explicit, nil
 	}
