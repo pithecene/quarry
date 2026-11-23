@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/internal/testutil"
 
 	"github.com/urfave/cli/v2"
@@ -276,7 +277,7 @@ func TestResolveExecutor(t *testing.T) {
 			}
 		} else {
 			// Verify returned path exists
-			if _, statErr := os.Stat(path); statErr != nil {
+			if _, statErr := os.Stat(path); path != executor.Embedded && statErr != nil {
 				t.Errorf("resolved path %q does not exist: %v", path, statErr)
 			}
 		}

@@ -57,7 +57,7 @@ func TestLaunchManagedBrowser_PassesTheProxy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
-			mb, err := LaunchManagedBrowser(ctx, fakeBrowserServer(t), "script.js", tc.proxy)
+			mb, err := LaunchManagedBrowser(ctx, fakeBrowserServer(t), "script.js", "", tc.proxy)
 			if err != nil {
 				t.Fatal(err)
 			}

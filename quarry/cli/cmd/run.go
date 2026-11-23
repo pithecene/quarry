@@ -831,6 +831,7 @@ func runAction(c *cli.Context) error {
 			ExecutorPath: executorPath,
 			ScriptPath:   c.String("script"),
 			Proxy:        resolvedProxy,
+			ResolveFrom:  resolveFrom,
 			IdleTimeout:  idleTimeout,
 		}
 		if ws, err := runtime.AcquireReusableBrowser(ctx, reuseCfg); err == nil {
@@ -882,7 +883,7 @@ func runAction(c *cli.Context) error {
 		// Use reusable browser if already acquired; otherwise launch a managed
 		// browser for fan-out to avoid N cold startups (one per child run).
 		if browserWSEndpoint == "" && !noBrowser {
-			managedBrowser, err := runtime.LaunchManagedBrowser(ctx, executorPath, c.String("script"), resolvedProxy)
+			managedBrowser, err := runtime.LaunchManagedBrowser(ctx, executorPath, c.String("script"), resolveFrom, resolvedProxy)
 			if err != nil {
 				return cli.Exit(fmt.Sprintf("failed to launch shared browser: %v", err), exitExecutorCrash)
 			}
@@ -1384,7 +1385,7 @@ func describeJSONType(v any) string {
 // resolveExecutor finds the executor binary path.
 // Resolution order:
 //  1. Explicit --executor flag (if provided)
-//  2. Embedded executor (extracted to temp dir)
+//  2. Embedded executor (run from memory)
 //  3. Bundled path relative to quarry binary (development layout)
 //  4. "quarry-executor" in PATH
 func resolveExecutor(explicit string) (string, error) {
@@ -1393,17 +1394,16 @@ func resolveExecutor(explicit string) (string, error) {
 		if _, err := os.Stat(explicit); err != nil {
 			return "", fmt.Errorf("executor not found at %s (check the path and try again)", explicit)
 		}
+		// A file of that name is not the embedded executor.
+		if explicit == executor.Embedded {
+			return "./" + explicit, nil
+		}
 		return explicit, nil
 	}
 
 	// 2. Try embedded executor (primary method for distributed binary)
 	if executor.IsEmbedded() {
-		path, err := executor.ExtractedPath()
-		if err == nil {
-			return path, nil
-		}
-		// Log extraction failure but continue to fallbacks
-		fmt.Fprintf(os.Stderr, "Warning: failed to extract embedded executor: %v\n", err)
+		return executor.Embedded, nil
 	}
 
 	// 3. Try bundled path relative to this binary (development layout)

@@ -2847,19 +2847,44 @@ __export(executor_exports, {
   execute: () => execute,
   getPuppeteer: () => getPuppeteer,
   getVanillaPuppeteer: () => getVanillaPuppeteer,
-  parseRunMeta: () => parseRunMeta
+  parseRunMeta: () => parseRunMeta,
+  resolvePeer: () => resolvePeer
 });
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, resolve as resolve2 } from "node:path";
-async function resolveModule(name, scriptPath) {
-  const absoluteScriptPath = resolve2(scriptPath);
-  try {
-    const require2 = createRequire(absoluteScriptPath);
-    const resolved = require2.resolve(name);
-    return await import(resolved);
-  } catch {
+import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
+import { pathToFileURL as pathToFileURL2 } from "node:url";
+function resolvePeer(name, scriptPath) {
+  const require2 = createRequire(resolve2(scriptPath));
+  const nodePath = (process.env.NODE_PATH ?? "").split(delimiter);
+  const found = require2.resolve(name);
+  const permitted = (require2.resolve.paths(name) ?? []).filter((dir) => basename(dir) === "node_modules" || nodePath.includes(dir)).some((dir) => holds(join(dir, name), found));
+  if (!permitted) {
+    throw new Error(`Cannot find package '${name}' from ${resolve2(scriptPath)}: refused ${found}`);
   }
-  return await import(name);
+  return found;
+}
+function holds(dir, file) {
+  try {
+    return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep);
+  } catch {
+    return false;
+  }
+}
+async function resolveModule(name, scriptPath) {
+  let scriptError;
+  try {
+    return await import(pathToFileURL2(resolvePeer(name, scriptPath)).href);
+  } catch (err) {
+    scriptError = err;
+  }
+  try {
+    return await import(name);
+  } catch (err) {
+    throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
+      cause: err
+    });
+  }
 }
 function errorMessage(err) {
   return err instanceof Error ? err.message : String(err);
@@ -3271,14 +3296,32 @@ var init_resolve_from = __esm({
   "src/resolve-from.ts"() {
     "use strict";
     resolveFromHookCode = `
-  import { pathToFileURL } from 'node:url';
+  import { realpathSync } from 'node:fs';
+  import { join, sep } from 'node:path';
+  import { fileURLToPath, pathToFileURL } from 'node:url';
 
   let fallbackParentURL;
+  let root;
+
+  // Node searches the ancestors of the root too. The embedded executor's own
+  // imports stay inside it; a script's keep Node's search.
+  function outsideRoot(specifier, url) {
+    if (!url.startsWith('file:')) return false;
+    const file = fileURLToPath(url);
+    return ![join(root, specifier), join(root, 'node_modules', specifier)].some((dir) => {
+      try {
+        return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep);
+      } catch {
+        return false;
+      }
+    });
+  }
 
   export function initialize(data) {
     // Construct a file:// URL pointing into the resolve-from directory.
     // nextResolve uses parentURL as the resolution base, so ESM
     // "imports" conditions are applied (not CJS "require" conditions).
+    root = data.resolveFrom;
     fallbackParentURL = pathToFileURL(data.resolveFrom + '/noop.js').href;
   }
 
@@ -3287,6 +3330,9 @@ var init_resolve_from = __esm({
     if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('file:')) {
       return nextResolve(specifier, context);
     }
+
+    // Read first: nextResolve writes the parentURL it is given into context.
+    const fromExecutor = context.parentURL === 'quarry:executor';
 
     // Try default resolution first
     try {
@@ -3300,6 +3346,9 @@ var init_resolve_from = __esm({
           ...context,
           parentURL: fallbackParentURL,
         });
+        if (fromExecutor && outsideRoot(specifier, result.url)) {
+          throw defaultErr;
+        }
         process.stderr.write(
           'quarry: resolved "' + specifier + '" via --resolve-from fallback\\n'
         );
@@ -3315,7 +3364,7 @@ var init_resolve_from = __esm({
 });
 
 // src/bin/executor.ts
-import { join } from "node:path";
+import { join as join2 } from "node:path";
 
 // src/browser-args.ts
 function chromiumArgs(extra = []) {
@@ -3777,11 +3826,6 @@ var HOOK_NAMES = [
   "cleanup"
 ];
 async function validateScript(scriptPath) {
-  const resolveFrom = process.env.QUARRY_RESOLVE_FROM;
-  if (resolveFrom) {
-    const { registerResolveFromHook: registerResolveFromHook2 } = await Promise.resolve().then(() => (init_resolve_from(), resolve_from_exports));
-    await registerResolveFromHook2(resolveFrom);
-  }
   let loaded;
   try {
     loaded = await loadScript(scriptPath);
@@ -3880,7 +3924,7 @@ async function readStdinMetadata() {
 async function browserServer(scriptPath) {
   const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer: getVanillaPuppeteer2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
   const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? ".";
-  const recordPath = join(reuseDir, "browser.json");
+  const recordPath = join2(reuseDir, "browser.json");
   const log = (message) => void process.stderr.write(`${message}
 `);
   const vanilla = await getVanillaPuppeteer2(scriptPath);
@@ -3915,7 +3959,7 @@ async function browserServer(scriptPath) {
     )
   ]);
   const leases = await serveLeases({
-    socketPath: join(reuseDir, "server.sock"),
+    socketPath: join2(reuseDir, "server.sock"),
     wsEndpoint: browser.wsEndpoint(),
     proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
     idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
@@ -3958,31 +4002,30 @@ async function launchBrowserServer(scriptPath) {
   await browser.close();
   process.exit(0);
 }
+var MODES = /* @__PURE__ */ new Map([
+  // Reusable browser server: self-managing lifetime with idle timeout
+  ["--browser-server", browserServer],
+  // Load the script and check its shape without executing
+  ["--validate", validateScript],
+  // Fan-out browser server: stdin-managed lifetime
+  ["--launch-browser", launchBrowserServer]
+]);
 async function main() {
   const args = process.argv.slice(2);
-  if (args[0] === "--browser-server") {
-    const scriptPath2 = args[1];
-    if (!scriptPath2) {
-      process.stderr.write("Usage: quarry-executor --browser-server <script-path>\n");
-      process.exit(3);
-    }
-    return browserServer(scriptPath2);
+  const resolveFrom = process.env.QUARRY_RESOLVE_FROM;
+  if (resolveFrom) {
+    const { registerResolveFromHook: registerResolveFromHook2 } = await Promise.resolve().then(() => (init_resolve_from(), resolve_from_exports));
+    await registerResolveFromHook2(resolveFrom);
   }
-  if (args[0] === "--validate") {
-    const scriptPath2 = args[1];
-    if (!scriptPath2) {
-      process.stderr.write("Usage: quarry-executor --validate <script-path>\n");
+  const mode = MODES.get(args[0] ?? "");
+  if (mode) {
+    const modeScript = args[1];
+    if (!modeScript) {
+      process.stderr.write(`Usage: quarry-executor ${args[0]} <script-path>
+`);
       process.exit(3);
     }
-    return validateScript(scriptPath2);
-  }
-  if (args[0] === "--launch-browser") {
-    const scriptPath2 = args[1];
-    if (!scriptPath2) {
-      process.stderr.write("Usage: quarry-executor --launch-browser <script-path>\n");
-      process.exit(3);
-    }
-    return launchBrowserServer(scriptPath2);
+    return mode(modeScript);
   }
   if (args.length < 1) {
     process.stderr.write("Usage: quarry-executor <script-path>\n");
@@ -3990,11 +4033,6 @@ async function main() {
     process.exit(3);
   }
   const { ipcOutput, ipcWrite } = installStdoutGuard();
-  const resolveFrom = process.env.QUARRY_RESOLVE_FROM;
-  if (resolveFrom) {
-    const { registerResolveFromHook: registerResolveFromHook2 } = await Promise.resolve().then(() => (init_resolve_from(), resolve_from_exports));
-    await registerResolveFromHook2(resolveFrom);
-  }
   const scriptPath = args[0];
   let input;
   try {

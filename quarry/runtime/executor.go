@@ -8,9 +8,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"syscall"
 
+	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -54,7 +56,7 @@ type ExecutorResult struct {
 // ExecutorManager manages executor process lifecycle.
 type ExecutorManager struct {
 	config *ExecutorConfig
-	cmd    *exec.Cmd
+	cmd    *executor.Process
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	stderr *stderrCapture
@@ -97,27 +99,10 @@ type executorInput struct {
 // Stderr is captured for diagnostics.
 func (m *ExecutorManager) Start(ctx context.Context) error {
 	// Build command: quarry-executor <script-path>
-	m.cmd = exec.CommandContext(ctx, m.config.ExecutorPath, m.config.ScriptPath)
+	m.cmd = executor.Command(ctx, m.config.ExecutorPath, m.config.ScriptPath)
 	m.stderr = nil
 
-	// Set module resolution env vars when --resolve-from is configured.
-	// QUARRY_RESOLVE_FROM tells the executor's ESM hook where to look.
-	// NODE_PATH provides CJS require() compat (ESM ignores NODE_PATH).
-	if m.config.ResolveFrom != "" {
-		m.cmd.Env = os.Environ()
-		m.cmd.Env = append(m.cmd.Env, "QUARRY_RESOLVE_FROM="+m.config.ResolveFrom)
-
-		// Prepend to NODE_PATH for CJS fallback
-		existing := os.Getenv("NODE_PATH")
-		if existing != "" {
-			m.cmd.Env = append(m.cmd.Env, "NODE_PATH="+m.config.ResolveFrom+string(os.PathListSeparator)+existing)
-		} else {
-			m.cmd.Env = append(m.cmd.Env, "NODE_PATH="+m.config.ResolveFrom)
-		}
-
-		// Remove duplicate NODE_PATH entries from inherited env
-		m.cmd.Env = deduplicateEnv(m.cmd.Env)
-	}
+	m.cmd.Env = withResolveFrom(os.Environ(), m.config.ResolveFrom)
 
 	// Set up pipes
 	stdin, err := m.cmd.StdinPipe()
@@ -252,21 +237,9 @@ type ScriptValidation struct {
 // script validation result. This loads the script module and checks its
 // shape without launching a browser or setting up IPC.
 func ValidateScript(ctx context.Context, executorPath, scriptPath, resolveFrom string) (*ScriptValidation, error) {
-	cmd := exec.CommandContext(ctx, executorPath, "--validate", scriptPath)
+	cmd := executor.Command(ctx, executorPath, "--validate", scriptPath)
 
-	// Set module resolution env vars when --resolve-from is configured
-	if resolveFrom != "" {
-		cmd.Env = os.Environ()
-		cmd.Env = append(cmd.Env, "QUARRY_RESOLVE_FROM="+resolveFrom)
-
-		existing := os.Getenv("NODE_PATH")
-		if existing != "" {
-			cmd.Env = append(cmd.Env, "NODE_PATH="+resolveFrom+string(os.PathListSeparator)+existing)
-		} else {
-			cmd.Env = append(cmd.Env, "NODE_PATH="+resolveFrom)
-		}
-		cmd.Env = deduplicateEnv(cmd.Env)
-	}
+	cmd.Env = withResolveFrom(os.Environ(), resolveFrom)
 
 	stdout, err := cmd.Output()
 	if err != nil {
@@ -291,6 +264,22 @@ func ValidateScript(ctx context.Context, executorPath, scriptPath, resolveFrom s
 	}
 
 	return &result, nil
+}
+
+// withResolveFrom returns env with the settings that make the executor load
+// modules from resolveFrom: QUARRY_RESOLVE_FROM for its ESM hook, and the same
+// directory ahead of any inherited NODE_PATH for require. Every executor launch
+// uses it, so a shared browser loads Puppeteer as its runs do. An empty
+// resolveFrom returns env unchanged.
+func withResolveFrom(env []string, resolveFrom string) []string {
+	if resolveFrom == "" {
+		return env
+	}
+	nodePath := resolveFrom
+	if existing := os.Getenv("NODE_PATH"); existing != "" {
+		nodePath += string(os.PathListSeparator) + existing
+	}
+	return deduplicateEnv(append(slices.Clone(env), "QUARRY_RESOLVE_FROM="+resolveFrom, "NODE_PATH="+nodePath))
 }
 
 // deduplicateEnv keeps the last occurrence of each env var key.

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
@@ -32,9 +33,10 @@ type ManagedBrowser struct {
 // The browser stays alive until Close() is called. A non-nil proxy is the
 // run's resolved proxy, which the browser routes all traffic through, as the
 // reusable browser server does (AcquireReusableBrowser).
-func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string, proxy *types.ProxyEndpoint) (*ManagedBrowser, error) {
-	cmd := exec.CommandContext(ctx, executorPath, "--launch-browser", scriptPath)
-	cmd.Env = browserProxyEnv(proxy)
+// resolveFrom is the run's module root, empty when it has none.
+func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath, resolveFrom string, proxy *types.ProxyEndpoint) (*ManagedBrowser, error) {
+	cmd := executor.Command(ctx, executorPath, "--launch-browser", scriptPath)
+	cmd.Env = withResolveFrom(browserProxyEnv(proxy), resolveFrom)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -77,7 +79,7 @@ func LaunchManagedBrowser(ctx context.Context, executorPath, scriptPath string, 
 	select {
 	case wsURL := <-wsURLCh:
 		return &ManagedBrowser{
-			cmd:        cmd,
+			cmd:        cmd.Cmd,
 			stdin:      stdin,
 			WSEndpoint: wsURL,
 		}, nil

@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
@@ -27,6 +27,7 @@ type ReusableBrowserConfig struct {
 	ExecutorPath string
 	ScriptPath   string
 	Proxy        *types.ProxyEndpoint
+	ResolveFrom  string        // the run's module root, empty when it has none
 	IdleTimeout  time.Duration // 0 means default (60s)
 }
 
@@ -211,7 +212,7 @@ func proxyHash(proxy *types.ProxyEndpoint) string {
 // detached process and waits until it listens on socketPath. The caller
 // holds the discovery lock. Returns the server's PID.
 //
-// Uses exec.Command (not CommandContext) because the browser server must
+// Uses a context without cancellation because the browser server must
 // outlive the run that starts it: that is the point of reuse. A server that
 // fails to start is this process's unreaped child, so signaling its PID
 // cannot reach another process; it is the only server the runtime stops.
@@ -227,10 +228,10 @@ func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, soc
 		idleTimeout = defaultIdleTimeout
 	}
 
-	cmd := exec.Command(cfg.ExecutorPath, "--browser-server", cfg.ScriptPath) //nolint:noctx // the server must outlive the run, as startBrowserServer's doc explains
+	cmd := executor.Command(context.WithoutCancel(ctx), cfg.ExecutorPath, "--browser-server", cfg.ScriptPath)
 	// Detach: new session so the browser server outlives the parent
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Env = append(browserProxyEnv(cfg.Proxy),
+	cmd.Env = append(withResolveFrom(browserProxyEnv(cfg.Proxy), cfg.ResolveFrom),
 		"QUARRY_BROWSER_REUSE_DIR="+dir,
 		"QUARRY_BROWSER_PROXY_HASH="+proxyHash(cfg.Proxy),
 		fmt.Sprintf("QUARRY_BROWSER_IDLE_TIMEOUT=%d", int(idleTimeout.Seconds())),

@@ -15,14 +15,32 @@
  * preventing copy drift.
  */
 export const resolveFromHookCode = `
-  import { pathToFileURL } from 'node:url';
+  import { realpathSync } from 'node:fs';
+  import { join, sep } from 'node:path';
+  import { fileURLToPath, pathToFileURL } from 'node:url';
 
   let fallbackParentURL;
+  let root;
+
+  // Node searches the ancestors of the root too. The embedded executor's own
+  // imports stay inside it; a script's keep Node's search.
+  function outsideRoot(specifier, url) {
+    if (!url.startsWith('file:')) return false;
+    const file = fileURLToPath(url);
+    return ![join(root, specifier), join(root, 'node_modules', specifier)].some((dir) => {
+      try {
+        return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep);
+      } catch {
+        return false;
+      }
+    });
+  }
 
   export function initialize(data) {
     // Construct a file:// URL pointing into the resolve-from directory.
     // nextResolve uses parentURL as the resolution base, so ESM
     // "imports" conditions are applied (not CJS "require" conditions).
+    root = data.resolveFrom;
     fallbackParentURL = pathToFileURL(data.resolveFrom + '/noop.js').href;
   }
 
@@ -31,6 +49,9 @@ export const resolveFromHookCode = `
     if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('file:')) {
       return nextResolve(specifier, context);
     }
+
+    // Read first: nextResolve writes the parentURL it is given into context.
+    const fromExecutor = context.parentURL === 'quarry:executor';
 
     // Try default resolution first
     try {
@@ -44,6 +65,9 @@ export const resolveFromHookCode = `
           ...context,
           parentURL: fallbackParentURL,
         });
+        if (fromExecutor && outsideRoot(specifier, result.url)) {
+          throw defaultErr;
+        }
         process.stderr.write(
           'quarry: resolved "' + specifier + '" via --resolve-from fallback\\n'
         );
