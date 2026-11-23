@@ -209,16 +209,17 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 	r.config.Collector.IncRunStarted()
 
 	deadlineAt := r.deadlineAt()
-	r.runCtx = ctx
+	runCtx := ctx
 	if deadlineAt != nil {
 		var cancel context.CancelFunc
-		r.runCtx, cancel = context.WithDeadlineCause(ctx, *deadlineAt, ErrRunDeadline)
+		runCtx, cancel = context.WithDeadlineCause(ctx, *deadlineAt, ErrRunDeadline)
 		defer cancel()
 	}
+	r.runCtx = runCtx
 
 	// The deadline bounds the start record's write too: a run whose deadline
 	// passes first never starts.
-	if err := r.writeStartRecord(r.runCtx, deadlineAt); err != nil {
+	if err := r.writeStartRecord(runCtx, deadlineAt); err != nil {
 		// The run never starts: no executor is launched and no run data is
 		// written. Retrying is safe, as for an executor that fails to launch.
 		r.stoppedByDeadline = r.pastDeadline()
@@ -239,7 +240,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		return result, nil
 	}
 
-	result := r.execute(r.runCtx)
+	result := r.execute(runCtx)
 	r.closePolicy(result)
 	r.finalize(ctx, result)
 	return result, nil
@@ -367,7 +368,7 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 	// because the health probe assumes /json/version at the host root, which is
 	// not guaranteed for tokenized or path-prefixed external browser services.
 	if r.config.BrowserWSEndpoint != "" {
-		if err := HealthCheckBrowser(r.config.BrowserWSEndpoint); err != nil {
+		if err := HealthCheckBrowser(ctx, r.config.BrowserWSEndpoint); err != nil {
 			r.logger.Warn("external browser health check failed (continuing anyway)", map[string]any{
 				"endpoint": r.config.BrowserWSEndpoint,
 				"error":    err.Error(),

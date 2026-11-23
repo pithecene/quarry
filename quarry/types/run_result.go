@@ -1,6 +1,6 @@
 // Package types defines core domain types for the Quarry runtime.
 //
-//nolint:revive // types is a common Go package naming convention
+
 package types
 
 // RunResultType is the type discriminant for run result control frames.

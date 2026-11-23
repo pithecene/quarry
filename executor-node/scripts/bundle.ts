@@ -77,7 +77,7 @@ async function bundle() {
   // Remove any shebangs that might be in the middle (from source)
   bundleContent = bundleContent.replace(/^#!.*\n/gm, '')
   // Add shebang at the very start
-  bundleContent = '#!/usr/bin/env node\n' + bundleContent
+  bundleContent = `#!/usr/bin/env node\n${bundleContent}`
   writeFileSync(bundlePath, bundleContent)
 
   // Get bundle size

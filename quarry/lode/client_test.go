@@ -2,6 +2,7 @@ package lode
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -524,7 +525,7 @@ func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
 }
 
 // An artifact event commits with the storage result the runtime attached,
-// and is refused without one.
+// and is refused without one, or with a size that is not an int64.
 func TestLodeClient_WriteArtifactEvent(t *testing.T) {
 	t.Parallel()
 
@@ -544,6 +545,22 @@ func TestLodeClient_WriteArtifactEvent(t *testing.T) {
 		t.Fatalf("WriteEvents without storage = %v; want ErrCommitWithoutStorage", err)
 	}
 	storage := &types.ArtifactStorage{Kind: types.ArtifactStorageVolume, VolumeSnapshotID: "snap-1", SHA256: "ab"}
+	for _, tc := range []struct {
+		name string
+		size any
+	}{
+		{"unsigned overflow", uint64(1) << 63},
+		{"fractional float", 1.5},
+		{"float overflow", float64(1 << 63)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := event(storage)
+			bad.Payload["size_bytes"] = tc.size
+			if err := client.WriteEvents(t.Context(), cfg.Dataset, cfg.RunID, []*types.EventEnvelope{bad}); err == nil || !strings.Contains(err.Error(), "size_bytes") {
+				t.Errorf("WriteEvents with size_bytes %v = %v; want a size_bytes error", tc.size, err)
+			}
+		})
+	}
 	if err := client.WriteEvents(t.Context(), cfg.Dataset, cfg.RunID, []*types.EventEnvelope{event(storage)}); err != nil {
 		t.Fatalf("WriteEvents with storage: %v", err)
 	}

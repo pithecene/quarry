@@ -22,7 +22,7 @@ need to detect when runs complete and process the emitted data.
 ### Polling Pattern
 
 - [`polling-fs.sh`](polling-fs.sh) — Filesystem polling with checkpoint
-- [`polling-s3.py`](polling-s3.py) — S3 polling with timestamp filtering
+- [`polling-runs.ts`](polling-runs.ts) — Filesystem polling with `listRuns` and `readRun`, which a one-line change adapts to S3 (see the file's header)
 
 ## Usage Notes
 

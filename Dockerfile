@@ -5,8 +5,11 @@
 # =============================================================================
 FROM node:24.13.0-bookworm-slim AS build
 
-# Pin Go version to match go.mod
+# Pin the Go toolchain to mise.toml. The digests come from
+# https://go.dev/dl/?mode=json&include=all for this exact version.
 ARG GO_VERSION=1.27.3
+ARG GO_SHA256_AMD64=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
+ARG GO_SHA256_ARM64=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
 # TARGETARCH is injected by BuildKit for multi-platform builds (e.g. amd64, arm64).
 ARG TARGETARCH
 # Commit SHA for version embedding (.git is excluded from Docker context).
@@ -16,9 +19,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git \
   && rm -rf /var/lib/apt/lists/*
 
-# Install Go from official tarball
-RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
-  | tar -C /usr/local -xz
+# Install Go from the official tarball after checking its SHA-256.
+RUN case "$TARGETARCH" in \
+      amd64) GO_SHA256="$GO_SHA256_AMD64" ;; \
+      arm64) GO_SHA256="$GO_SHA256_ARM64" ;; \
+      *) echo "ERROR: no pinned Go digest for ${TARGETARCH:-unknown}" >&2; exit 1 ;; \
+    esac \
+  && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" -o /tmp/go.tar.gz \
+  && echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c - \
+  && tar -C /usr/local -xzf /tmp/go.tar.gz \
+  && rm /tmp/go.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Enable corepack for pnpm
@@ -94,6 +104,12 @@ LABEL org.opencontainers.image.title="quarry" \
       org.opencontainers.image.vendor="Pithecene" \
       org.opencontainers.image.authors="contact@pithecene.sh"
 
+# tini runs as PID 1 so signals reach quarry and zombie Chrome processes
+# are reaped.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tini \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -r quarry && useradd -r -g quarry -m quarry
 
 COPY --from=build /usr/local/bin/quarry /usr/local/bin/quarry
@@ -102,6 +118,9 @@ COPY --from=deps /opt/quarry/node_modules /opt/quarry/node_modules
 # Let Node resolve puppeteer and friends from the shared location.
 # User scripts that ship their own node_modules resolve those first.
 ENV NODE_PATH=/opt/quarry/node_modules
+# The executor's ESM resolve hook reads this, so ESM user scripts resolve
+# puppeteer and friends from /opt/quarry/node_modules too.
+ENV QUARRY_RESOLVE_FROM=/opt/quarry
 
 # Chromium cannot use its sandbox inside containers without extra capabilities.
 ENV QUARRY_NO_SANDBOX=1
@@ -109,7 +128,7 @@ ENV QUARRY_NO_SANDBOX=1
 USER quarry
 WORKDIR /work
 
-ENTRYPOINT ["quarry"]
+ENTRYPOINT ["/usr/bin/tini", "--", "quarry"]
 
 # =============================================================================
 # Stage 4: full — runtime image with Chrome for Testing + fonts (amd64 only)
@@ -131,6 +150,8 @@ RUN if [ "$TARGETARCH" != "amd64" ]; then \
 
 # Pin Chrome for Testing version matching puppeteer@25.14.0 (see deps stage).
 # Look up the mapping at: https://pptr.dev/supported-browsers
+# Chrome for Testing publishes no SHA-256 for its archives, only URLs in its
+# known-good-versions list, so this download is pinned by version alone.
 ARG CHROME_VERSION=155.0.8059.79
 
 RUN apt-get update \

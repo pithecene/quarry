@@ -541,17 +541,20 @@ type runFinalizer struct {
 //
 // Note: run_completed events reach all configured event sinks (including Redis Streams)
 // through the normal policy path — no separate terminal publish is needed.
-func (f *runFinalizer) Finalize(result *runtime.RunResult) {
+func (f *runFinalizer) Finalize(ctx context.Context, result *runtime.RunResult) {
 	duration := time.Since(f.startTime)
 	if result.RunRecordError != "" {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", result.RunRecordError)
 	}
-	f.notifyAdapter(result, duration)
+	f.notifyAdapter(ctx, result, duration)
 	f.writeReport(result)
 	f.printResults(result, duration)
 }
 
-func (f *runFinalizer) notifyAdapter(result *runtime.RunResult, duration time.Duration) {
+// notifyAdapter publishes the completion event on a context that keeps ctx's
+// values but not its cancellation, so a run that its deadline or a signal ended
+// still reports that it completed.
+func (f *runFinalizer) notifyAdapter(ctx context.Context, result *runtime.RunResult, duration time.Duration) {
 	if f.adapter == nil {
 		return
 	}
@@ -563,9 +566,9 @@ func (f *runFinalizer) notifyAdapter(result *runtime.RunResult, duration time.Du
 	defer iox.DiscardClose(adpt)
 
 	event := buildRunCompletedEvent(result, f.storage, f.storageDataset, f.source, f.category, lode.DeriveDay(f.startTime), duration)
-	ctx, cancel := context.WithTimeout(context.Background(), f.adapter.timeout)
+	publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), f.adapter.timeout)
 	defer cancel()
-	if err := adpt.Publish(ctx, event); err != nil {
+	if err := adpt.Publish(publishCtx, event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: adapter notification failed: %v\n", err)
 	}
 }
@@ -916,7 +919,7 @@ func runAction(c *cli.Context) error {
 		return fmt.Errorf("execution failed: %w", err)
 	}
 
-	finalizer.Finalize(result)
+	finalizer.Finalize(ctx, result)
 	return cli.Exit("", outcomeToExitCode(result.Outcome.Status))
 }
 
@@ -964,7 +967,7 @@ func runWithFanOut(
 		return fmt.Errorf("execution failed: %w", rootErr)
 	}
 
-	finalizer.Finalize(rootResult)
+	finalizer.Finalize(ctx, rootResult)
 
 	// Print fan-out summary
 	if !finalizer.quiet {
@@ -1112,11 +1115,12 @@ func parseAdapterConfigWithPrecedence(c *cli.Context, cfg *quarryconfig.Config, 
 	}
 
 	// Retries: CLI > config > urfave default
-	if c.IsSet("adapter-retries") {
+	switch {
+	case c.IsSet("adapter-retries"):
 		ac.retries = c.Int("adapter-retries")
-	} else if cfg != nil && cfg.Adapter.Retries != nil {
+	case cfg != nil && cfg.Adapter.Retries != nil:
 		ac.retries = *cfg.Adapter.Retries
-	} else {
+	default:
 		ac.retries = c.Int("adapter-retries")
 	}
 
@@ -1231,7 +1235,7 @@ Create the directory first:
   mkdir -p %s`, config.path, config.path)
 		}
 		if err != nil {
-			return fmt.Errorf("cannot access storage path %q: %v (ensure the path exists and is readable)", config.path, err)
+			return fmt.Errorf("cannot access storage path %q: %w (ensure the path exists and is readable)", config.path, err)
 		}
 		if !info.IsDir() {
 			return fmt.Errorf("storage path is not a directory: %s (--storage-path for fs backend must be a directory, not a file)", config.path)
@@ -1285,12 +1289,12 @@ Provide job payload via ONE of:
 Ensure the file exists:
   ls -la %s`, jobFile, jobFile)
 			}
-			return nil, fmt.Errorf("cannot read job file %q: %v", jobFile, err)
+			return nil, fmt.Errorf("cannot read job file %q: %w", jobFile, err)
 		}
 
 		var raw any
 		if err := json.Unmarshal(data, &raw); err != nil {
-			return nil, fmt.Errorf(`malformed JSON in job file %s: %v
+			return nil, fmt.Errorf(`malformed JSON in job file %s: %w
 
 The file must contain valid JSON. Example:
   {"url": "https://example.com", "page": 1}`, jobFile, err)
@@ -1321,7 +1325,7 @@ Received: %s`, jobFile, describeJSONType(raw))
 	if hasInline {
 		var raw any
 		if err := json.Unmarshal([]byte(jobInline), &raw); err != nil {
-			return nil, fmt.Errorf(`malformed --job JSON: %v
+			return nil, fmt.Errorf(`malformed --job JSON: %w
 
 The --job flag must contain valid JSON. Examples:
   --job '{}'
@@ -1493,7 +1497,7 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 		Policy:   policy,
 		// Collector increments are nil-receiver safe, so this is harmless
 		// when metrics are disabled.
-		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
+		RetryObserver:        func(int) { collector.IncLodeWriteRetry() },
 		IndexFailureObserver: func(string, error) { collector.IncArtifactIndexWriteFailure() },
 	}
 
@@ -1511,10 +1515,10 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 	case "s3":
 		bucket, prefix := lode.ParseS3Path(storageConfig.path)
 		s3cfg := lode.S3Config{
-			Bucket:       bucket,
-			Prefix:       prefix,
-			Region:       storageConfig.region,
-			Endpoint:     storageConfig.endpoint,
+			Bucket:         bucket,
+			Prefix:         prefix,
+			Region:         storageConfig.region,
+			Endpoint:       storageConfig.endpoint,
 			UsePathStyle:   storageConfig.usePathStyle,
 			AttemptTimeout: storageConfig.attemptTimeout,
 		}
@@ -1858,7 +1862,8 @@ func selectProxy(config proxyChoice, runMeta *types.RunMeta, configPools []types
 	var selector *proxy.Selector
 	var pools []types.ProxyPool
 
-	if len(configPools) > 0 {
+	switch {
+	case len(configPools) > 0:
 		// Use inline pools from config file
 		pools = configPools
 		selector = proxy.NewSelector()
@@ -1868,7 +1873,7 @@ func selectProxy(config proxyChoice, runMeta *types.RunMeta, configPools []types
 				return nil, fmt.Errorf("failed to register pool %q: %w", p.Name, err)
 			}
 		}
-	} else if config.configPath != "" {
+	case config.configPath != "":
 		// Use legacy --proxy-config JSON file
 		var err error
 		selector, err = loadAndRegisterPools(config.configPath)
@@ -1876,7 +1881,7 @@ func selectProxy(config proxyChoice, runMeta *types.RunMeta, configPools []types
 			return nil, err
 		}
 		pools, _ = loadProxyPools(config.configPath)
-	} else {
+	default:
 		return nil, errors.New("--proxy-config or config file proxies: required when --proxy-pool is specified")
 	}
 
@@ -1894,6 +1899,8 @@ func selectProxy(config proxyChoice, runMeta *types.RunMeta, configPools []types
 				if config.stickyKey == "" && config.origin == "" {
 					fmt.Fprintf(os.Stderr, "Warning: pool %q uses origin sticky scope but no --proxy-sticky-key or --proxy-origin provided\n", pool.Name)
 				}
+			case types.ProxyStickyJob:
+				// The job scope keys on the job ID, which comes with the run, not a flag.
 			}
 		}
 	}

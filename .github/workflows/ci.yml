@@ -58,7 +58,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🧹 Lint
         run: task lint
@@ -74,10 +74,10 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🧪 Test
-        run: task test
+        run: task test:race
 
   bundle-freshness:
     name: 📦 Bundle Freshness
@@ -90,7 +90,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 📦 Regenerate bundle
         run: task executor:bundle
@@ -114,7 +114,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🏗️ Build SDK
         run: pnpm -C sdk run build
@@ -143,7 +143,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 🏗️ Build
         run: task build
@@ -159,7 +159,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: 📦 Run Examples
         run: task examples

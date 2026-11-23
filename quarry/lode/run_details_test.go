@@ -1,8 +1,8 @@
 package lode
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"io"
 	"slices"
 	"strings"
@@ -163,8 +163,10 @@ func TestQueryRunDetails_SelectsTheRunsInventory(t *testing.T) {
 		return SidecarFileRef{Filename: name, ContentType: "text/plain", Path: SidecarFilesPrefix(cfg) + name}
 	}
 	metricsOf := func(cfg Config) lode.D {
-		return lode.D{"source": cfg.Source, "category": cfg.Category, "day": cfg.Day, "run_id": cfg.RunID,
-			"event_type": "metrics", "record_kind": RecordKindMetrics, "policy": "buffered"}
+		return lode.D{
+			"source": cfg.Source, "category": cfg.Category, "day": cfg.Day, "run_id": cfg.RunID,
+			"event_type": "metrics", "record_kind": RecordKindMetrics, "policy": "buffered",
+		}
 	}
 	// snapshot is one write: its records and the inventory its metadata records.
 	type snapshot struct {
@@ -183,22 +185,46 @@ func TestQueryRunDetails_SelectsTheRunsInventory(t *testing.T) {
 		want      []SidecarFileRef
 		wantErr   string
 	}{
-		{"another run's file in a shared snapshot", []snapshot{{[]lode.D{metricsOf(base), metricsOf(other)}, []SidecarFileRef{file(base, "a.txt")}}},
-			other, nil, ""},
-		{"a file of no run in a shared snapshot", []snapshot{{[]lode.D{metricsOf(base), metricsOf(other)}, []SidecarFileRef{bogus}}},
-			other, nil, "does not match the selected run's file"},
-		{"a file under a record with a numeric run ID", []snapshot{{[]lode.D{metricsOf(base), numericRunID}, []SidecarFileRef{file(noRunID, "a.txt")}}},
-		base, nil, "expected string source, category, day, and run_id"},
-	{"a file under a record with an empty run ID", []snapshot{{[]lode.D{metricsOf(base), metricsOf(noRunID)}, []SidecarFileRef{file(noRunID, "a.txt")}}},
-		base, nil, "invalid run key"},
-	{"the same file recorded by two snapshots", []snapshot{
-			{[]lode.D{metricsOf(base)}, []SidecarFileRef{file(base, "a.txt")}},
-			{[]lode.D{metricsOf(base)}, []SidecarFileRef{file(base, "a.txt")}}},
-			base, []SidecarFileRef{file(base, "a.txt")}, ""},
-		{"a file of a run whose key collapses to the selected run's", []snapshot{{[]lode.D{metricsOf(collapsed)}, []SidecarFileRef{file(base, "a.txt")}}},
-			collapsed, nil, "does not match the selected run's file"},
-		{"a filename containing two dots", []snapshot{{[]lode.D{metricsOf(base)}, []SidecarFileRef{file(base, "page..png")}}},
-			base, nil, `filename that does not contain ".."`},
+		{
+			"another run's file in a shared snapshot",
+			[]snapshot{{[]lode.D{metricsOf(base), metricsOf(other)}, []SidecarFileRef{file(base, "a.txt")}}},
+			other, nil, "",
+		},
+		{
+			"a file of no run in a shared snapshot",
+			[]snapshot{{[]lode.D{metricsOf(base), metricsOf(other)}, []SidecarFileRef{bogus}}},
+			other, nil, "does not match the selected run's file",
+		},
+		{
+			"a file under a record with a numeric run ID",
+			[]snapshot{{[]lode.D{metricsOf(base), numericRunID}, []SidecarFileRef{file(noRunID, "a.txt")}}},
+			base, nil, "expected string source, category, day, and run_id",
+		},
+		{
+			"a file under a record with an empty run ID",
+			[]snapshot{{[]lode.D{metricsOf(base), metricsOf(noRunID)}, []SidecarFileRef{file(noRunID, "a.txt")}}},
+			base, nil, "invalid run key",
+		},
+		{
+			"the same file recorded by two snapshots",
+			[]snapshot{
+				{[]lode.D{metricsOf(base)}, []SidecarFileRef{file(base, "a.txt")}},
+				{[]lode.D{metricsOf(base)}, []SidecarFileRef{file(base, "a.txt")}},
+			},
+			base,
+			[]SidecarFileRef{file(base, "a.txt")},
+			"",
+		},
+		{
+			"a file of a run whose key collapses to the selected run's",
+			[]snapshot{{[]lode.D{metricsOf(collapsed)}, []SidecarFileRef{file(base, "a.txt")}}},
+			collapsed, nil, "does not match the selected run's file",
+		},
+		{
+			"a filename containing two dots",
+			[]snapshot{{[]lode.D{metricsOf(base)}, []SidecarFileRef{file(base, "page..png")}}},
+			base, nil, `filename that does not contain ".."`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

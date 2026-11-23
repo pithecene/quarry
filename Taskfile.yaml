@@ -30,7 +30,7 @@ tasks:
 
   test:race:
     desc: Run all tests with race detector
-    deps: [go:test:race, ts:test]
+    deps: [go:test:race, ts:test, scripts:test]
 
   test:e2e:
     desc: Run E2E integration tests (requires Node + Chromium)
@@ -188,11 +188,11 @@ tasks:
   # ==================
 
   scripts:lint:
-    desc: Lint shell scripts (shellcheck) and the release tool (tsc, biome)
+    desc: Lint shell scripts (shellcheck), examples, and the release tool (tsc, biome)
     cmds:
       - shellcheck -x scripts/*.sh
       - pnpm exec tsc -p scripts/release
-      - pnpm exec biome check scripts/release
+      - pnpm exec biome check --error-on-warnings scripts/release examples
 
   scripts:test:
     desc: Test the release tool against a fake world of registries

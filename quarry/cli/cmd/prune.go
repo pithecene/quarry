@@ -25,7 +25,8 @@ var pruneAgeFlags = []struct{ name, usage string }{
 // PruneCommand returns the prune command, which removes whole runs by state
 // and age (CONTRACT_CLI.md §prune).
 func PruneCommand() *cli.Command {
-	flags := []cli.Flag{FormatFlag, NoColorFlag,
+	flags := []cli.Flag{
+		FormatFlag, NoColorFlag,
 		&cli.BoolFlag{Name: "dry-run", Usage: "Report the runs that would be removed, without removing anything"},
 		&cli.StringFlag{Name: "run-id", Usage: "Prune only this run (requires --source, --category, and --day)"},
 		&cli.DurationFlag{Name: "sweep-grace", Usage: "Then sweep the whole dataset, reclaiming uncommitted data older than this, such as 24h; 0 skips the sweep"},

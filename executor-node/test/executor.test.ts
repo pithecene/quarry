@@ -1,25 +1,16 @@
 import { PassThrough } from 'node:stream'
 import { decode as msgpackDecode } from '@msgpack/msgpack'
-import type {
-  ArtifactId,
-  EmitSink,
-  EventEnvelope,
-  EventId,
-  JobId,
-  ProxyEndpoint,
-  RunId
-} from '@pithecene/quarry-sdk'
+import type { JobId, ProxyEndpoint, RunId } from '@pithecene/quarry-sdk'
 import { NoBrowserError } from '@pithecene/quarry-sdk'
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import {
   _resetPuppeteerForTesting,
   type ExecutorConfig,
-  type ExecutorResult,
   execute,
   parseRunMeta
 } from '../src/executor.js'
 import type { RunResultFrame } from '../src/ipc/frame.js'
-import { ObservingSink, SinkAlreadyFailedError } from '../src/ipc/observing-sink.js'
+import { SinkAlreadyFailedError } from '../src/ipc/observing-sink.js'
 import type { LoadedScript } from '../src/loader.js'
 
 // Mock dependencies
@@ -880,8 +871,7 @@ describe('SinkAlreadyFailedError', () => {
  */
 function extractRunResultFrame(output: PassThrough): RunResultFrame | null {
   const chunks: Buffer[] = []
-  let chunk: Buffer | null
-  while ((chunk = output.read()) !== null) {
+  for (let chunk: Buffer | null = output.read(); chunk !== null; chunk = output.read()) {
     chunks.push(chunk)
   }
   if (chunks.length === 0) return null
@@ -1185,8 +1175,7 @@ describe('puppeteer-extra plugin setup', () => {
 /** Every frame the executor wrote, decoded, with volatile fields removed. */
 function stableFrames(output: PassThrough): Record<string, unknown>[] {
   const chunks: Buffer[] = []
-  let chunk: Buffer | null
-  while ((chunk = output.read()) !== null) {
+  for (let chunk: Buffer | null = output.read(); chunk !== null; chunk = output.read()) {
     chunks.push(chunk)
   }
   const data = Buffer.concat(chunks)

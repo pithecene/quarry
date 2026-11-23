@@ -157,10 +157,14 @@ var classifierTable = []errorPattern{
 	{[]string{"no space left", "disk full", "ENOSPC", "quota exceeded"}, ErrDiskFull},
 	{[]string{"timeout", "timed out", "deadline exceeded"}, ErrTimeout},
 	{[]string{"SlowDown", "rate exceeded", "throttl", "429", "TooManyRequests"}, ErrThrottled},
-	{[]string{"NoCredentialProviders", "credentials", "InvalidAccessKeyId",
-		"SignatureDoesNotMatch", "ExpiredToken", "401", "Unauthorized"}, ErrAuth},
-	{[]string{"connection refused", "no route to host", "network unreachable",
-		"DNS", "dial tcp", "i/o timeout"}, ErrNetwork},
+	{[]string{
+		"NoCredentialProviders", "credentials", "InvalidAccessKeyId",
+		"SignatureDoesNotMatch", "ExpiredToken", "401", "Unauthorized",
+	}, ErrAuth},
+	{[]string{
+		"connection refused", "no route to host", "network unreachable",
+		"DNS", "dial tcp", "i/o timeout",
+	}, ErrNetwork},
 }
 
 // classifyError determines the appropriate sentinel error for the given error.

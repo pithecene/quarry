@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -156,62 +157,66 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	// The measurement is bounded as read artifact is, and Ctrl-C cancels it,
-	// so a stalled backend ends the run rather than hanging it.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	ctx, cancel := context.WithTimeout(ctx, readTimeout)
-	defer cancel()
-	n := 0
+	// The measured reads run in a function that returns its error, so their
+	// deferred cancels run before main exits.
+	if err := func() error {
+		// The measurement is bounded as read artifact is, and Ctrl-C cancels it,
+		// so a stalled backend ends the run rather than hanging it.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		ctx, cancel := context.WithTimeout(ctx, readTimeout)
+		defer cancel()
+		n := 0
 
-	t := time.Now()
-	run, err := rr.FindRun(ctx, reader.Selector{Source: source, Category: category, Day: day}, runID)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "FindRun:", err)
-		os.Exit(1)
-	}
-	n = c.phase("FindRun", n, time.Since(t))
-
-	// read artifact goes from the run straight to OpenArtifact; the
-	// listing below is list artifacts, measured apart.
-	t = time.Now()
-	a, rd, err := rr.OpenArtifact(ctx, run, artifactID)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "OpenArtifact:", err)
-		os.Exit(1)
-	}
-	n = c.phase("OpenArtifact", n, time.Since(t))
-
-	t = time.Now()
-	buf := make([]byte, 8<<20)
-	got, err := rd.ReadAt(buf, 0)
-	if err != nil && err != io.EOF {
-		fmt.Fprintln(os.Stderr, "ReadAt:", err)
-		os.Exit(1)
-	}
-	n = c.phase(fmt.Sprintf("ReadAt(%d/%d)", got, a.SizeBytes), n, time.Since(t))
-	readRequests := n
-
-	t = time.Now()
-	arts, err := rr.ListArtifacts(ctx, run)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "ListArtifacts:", err)
-		os.Exit(1)
-	}
-	c.phase(fmt.Sprintf("ListArtifacts(%d)", len(arts)), n, time.Since(t))
-
-	// The slowest single requests, to see whether one call dominates.
-	c.mu.Lock()
-	calls := append([]call(nil), c.calls...)
-	c.mu.Unlock()
-	fmt.Printf("read artifact: %d requests; with list artifacts: %d\n", readRequests, len(calls))
-	var slow []call
-	for _, k := range calls {
-		if k.took > 500*time.Millisecond {
-			slow = append(slow, k)
+		t := time.Now()
+		run, err := rr.FindRun(ctx, reader.Selector{Source: source, Category: category, Day: day}, runID)
+		if err != nil {
+			return fmt.Errorf("FindRun: %w", err)
 		}
-	}
-	for _, k := range slow {
-		fmt.Printf("  slow %-9s %6.2fs %s\n", k.op, k.took.Seconds(), k.key)
+		n = c.phase("FindRun", n, time.Since(t))
+
+		// read artifact goes from the run straight to OpenArtifact; the
+		// listing below is list artifacts, measured apart.
+		t = time.Now()
+		a, rd, err := rr.OpenArtifact(ctx, run, artifactID)
+		if err != nil {
+			return fmt.Errorf("OpenArtifact: %w", err)
+		}
+		n = c.phase("OpenArtifact", n, time.Since(t))
+
+		t = time.Now()
+		buf := make([]byte, 8<<20)
+		got, err := rd.ReadAt(buf, 0)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("ReadAt: %w", err)
+		}
+		n = c.phase(fmt.Sprintf("ReadAt(%d/%d)", got, a.SizeBytes), n, time.Since(t))
+		readRequests := n
+
+		t = time.Now()
+		arts, err := rr.ListArtifacts(ctx, run)
+		if err != nil {
+			return fmt.Errorf("ListArtifacts: %w", err)
+		}
+		c.phase(fmt.Sprintf("ListArtifacts(%d)", len(arts)), n, time.Since(t))
+
+		// The slowest single requests, to see whether one call dominates.
+		c.mu.Lock()
+		calls := append([]call(nil), c.calls...)
+		c.mu.Unlock()
+		fmt.Printf("read artifact: %d requests; with list artifacts: %d\n", readRequests, len(calls))
+		var slow []call
+		for _, k := range calls {
+			if k.took > 500*time.Millisecond {
+				slow = append(slow, k)
+			}
+		}
+		for _, k := range slow {
+			fmt.Printf("  slow %-9s %6.2fs %s\n", k.op, k.took.Seconds(), k.key)
+		}
+		return nil
+	}(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

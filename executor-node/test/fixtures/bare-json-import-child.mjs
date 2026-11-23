@@ -33,6 +33,6 @@ try {
   // process.stdout.write() does not reliably flush to a pipe before
   // the process exits — even when awaiting the callback or setting
   // process.exitCode. writeSync bypasses the stream layer entirely.
-  writeSync(1, message + '\n')
+  writeSync(1, `${message}\n`)
   process.exitCode = 0
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/pithecene/quarry/ipc"
@@ -391,6 +392,9 @@ func (e *IngestionEngine) handleArtifactCommit(ctx context.Context, envelope *ty
 	case int32:
 		sizeBytes = int64(v)
 	case uint:
+		if v > math.MaxInt64 {
+			return types.ArtifactStorage{}, fmt.Errorf("artifact event size_bytes %d exceeds int64", v)
+		}
 		sizeBytes = int64(v)
 	case uint8:
 		sizeBytes = int64(v)
@@ -399,6 +403,9 @@ func (e *IngestionEngine) handleArtifactCommit(ctx context.Context, envelope *ty
 	case uint32:
 		sizeBytes = int64(v)
 	case uint64:
+		if v > math.MaxInt64 {
+			return types.ArtifactStorage{}, fmt.Errorf("artifact event size_bytes %d exceeds int64", v)
+		}
 		sizeBytes = int64(v)
 	case float64:
 		sizeBytes = int64(v)
@@ -490,33 +497,62 @@ func (e *IngestionEngine) processArtifactRange(ctx context.Context, frame *types
 	return nil
 }
 
+// maxAckErrorBytes bounds the error text of an acknowledgement, so the frame
+// stays far below ipc.MaxPayloadSize and the executor always gets its reply.
+const maxAckErrorBytes = 64 << 10
+
+// boundAckError returns msg, or its start with a note when it is longer than
+// maxAckErrorBytes. Only the error of a failed range or file write can be that
+// long, and its caller logs it in full with the correlation ID, so the note
+// can send a reader to the runtime log.
+func boundAckError(msg string) string {
+	if len(msg) <= maxAckErrorBytes {
+		return msg
+	}
+	return strings.ToValidUTF8(msg[:maxAckErrorBytes], "") + " [truncated; see the runtime log]"
+}
+
 // sendArtifactRangeAck writes an artifact_range_ack frame to the executor's
 // stdin, as sendFileWriteAck does. No-op if ackWriter is nil.
 func (e *IngestionEngine) sendArtifactRangeAck(rangeID uint32, ok bool, errMsg string) {
 	if e.ackWriter == nil {
 		return
 	}
-	ack := &types.ArtifactRangeAckFrame{
+	frame, err := ipc.EncodeArtifactRangeAck(&types.ArtifactRangeAckFrame{
 		Type:    ipc.ArtifactRangeAckType,
 		RangeID: rangeID,
 		OK:      ok,
+		Error:   ackError(errMsg),
+	})
+	e.writeAck("artifact_range_ack", "range_id", rangeID, frame, err)
+}
+
+// ackError returns the bounded text for an acknowledgement's error field, or
+// nil for an empty message so the field is left off the wire. It does not
+// decide success: a failure with no message still sends OK false.
+func ackError(errMsg string) *string {
+	if errMsg == "" {
+		return nil
 	}
-	if errMsg != "" {
-		ack.Error = &errMsg
-	}
-	frame, err := ipc.EncodeArtifactRangeAck(ack)
-	if err != nil {
-		e.logger.Warn("failed to encode artifact_range_ack", map[string]any{
-			"range_id": rangeID,
-			"error":    err.Error(),
+	bounded := boundAckError(errMsg)
+	return &bounded
+}
+
+// writeAck writes an encoded acknowledgement frame to the executor's stdin.
+// An encoding or write failure is logged with the correlation ID and does not
+// fail the run: a failed write usually means the executor has exited.
+func (e *IngestionEngine) writeAck(kind, idKey string, id uint32, frame []byte, encodeErr error) {
+	if encodeErr != nil {
+		e.logger.Warn("failed to encode "+kind, map[string]any{
+			idKey:   id,
+			"error": encodeErr.Error(),
 		})
 		return
 	}
 	if _, err := e.ackWriter.Write(frame); err != nil {
-		// EPIPE or similar — executor may have exited. Non-fatal.
-		e.logger.Warn("failed to write artifact_range_ack (executor may have exited)", map[string]any{
-			"range_id": rangeID,
-			"error":    err.Error(),
+		e.logger.Warn("failed to write "+kind+" (executor may have exited)", map[string]any{
+			idKey:   id,
+			"error": err.Error(),
 		})
 	}
 }
@@ -643,32 +679,13 @@ func (e *IngestionEngine) sendFileWriteAck(writeID uint32, ok bool, errMsg strin
 	if e.ackWriter == nil || writeID == 0 {
 		return
 	}
-
-	ack := &types.FileWriteAckFrame{
+	frame, err := ipc.EncodeFileWriteAck(&types.FileWriteAckFrame{
 		Type:    ipc.FileWriteAckType,
 		WriteID: writeID,
 		OK:      ok,
-	}
-	if errMsg != "" {
-		ack.Error = &errMsg
-	}
-
-	frame, err := ipc.EncodeFileWriteAck(ack)
-	if err != nil {
-		e.logger.Warn("failed to encode file_write_ack", map[string]any{
-			"write_id": writeID,
-			"error":    err.Error(),
-		})
-		return
-	}
-
-	if _, err := e.ackWriter.Write(frame); err != nil {
-		// EPIPE or similar — executor may have exited. Non-fatal.
-		e.logger.Warn("failed to write file_write_ack (executor may have exited)", map[string]any{
-			"write_id": writeID,
-			"error":    err.Error(),
-		})
-	}
+		Error:   ackError(errMsg),
+	})
+	e.writeAck("file_write_ack", "write_id", writeID, frame, err)
 }
 
 // GetRunResult returns the run result frame if received.

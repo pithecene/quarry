@@ -10,7 +10,6 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createEmitAPI } from '../../../src/emit-impl'
-import { CONTRACT_VERSION } from '../../../src/types/events'
 import { createRunMeta, FakeSink, validateEnvelope } from '../_harness'
 
 describe('emit.log() envelope correctness', () => {
@@ -22,44 +21,34 @@ describe('emit.log() envelope correctness', () => {
     run = createRunMeta()
   })
 
-  it('creates envelope with type === "log"', async () => {
+  // Each case also checks the envelope type, which every log emit sets.
+  it.each([
+    {
+      name: 'level',
+      entry: { level: 'warn', message: 'warning' } as const,
+      payload: { level: 'warn' }
+    },
+    {
+      name: 'message',
+      entry: { level: 'info', message: 'hello world' } as const,
+      payload: { message: 'hello world' }
+    },
+    {
+      name: 'optional fields',
+      entry: {
+        level: 'debug',
+        message: 'debugging',
+        fields: { user_id: 123, action: 'click' }
+      } as const,
+      payload: { level: 'debug', message: 'debugging', fields: { user_id: 123, action: 'click' } }
+    }
+  ])('creates a log envelope with $name in payload', async ({ entry, payload }) => {
     const emit = createEmitAPI(run, sink)
 
-    await emit.log({ level: 'info', message: 'test message' })
+    await emit.log(entry)
 
     expect(sink.envelopes[0].type).toBe('log')
-  })
-
-  it('creates envelope with level in payload', async () => {
-    const emit = createEmitAPI(run, sink)
-
-    await emit.log({ level: 'warn', message: 'warning' })
-
-    expect(sink.envelopes[0].payload).toMatchObject({ level: 'warn' })
-  })
-
-  it('creates envelope with message in payload', async () => {
-    const emit = createEmitAPI(run, sink)
-
-    await emit.log({ level: 'info', message: 'hello world' })
-
-    expect(sink.envelopes[0].payload).toMatchObject({ message: 'hello world' })
-  })
-
-  it('creates envelope with optional fields in payload', async () => {
-    const emit = createEmitAPI(run, sink)
-
-    await emit.log({
-      level: 'debug',
-      message: 'debugging',
-      fields: { user_id: 123, action: 'click' }
-    })
-
-    expect(sink.envelopes[0].payload).toMatchObject({
-      level: 'debug',
-      message: 'debugging',
-      fields: { user_id: 123, action: 'click' }
-    })
+    expect(sink.envelopes[0].payload).toMatchObject(payload)
   })
 
   it('creates envelope without fields when not provided', async () => {

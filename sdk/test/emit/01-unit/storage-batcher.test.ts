@@ -4,7 +4,7 @@
  * Goal: Validate bounded-concurrency dispatch, pending counter,
  * flush semantics, fail-fast, and edge cases.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { StorageAPI, StoragePutOptions, StoragePutResult } from '../../../src/emit'
 import { createStorageBatcher } from '../../../src/storage-batcher'
 

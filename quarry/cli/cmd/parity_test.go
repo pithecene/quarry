@@ -260,16 +260,16 @@ func TestCLIParityJobPayloadContract(t *testing.T) {
 	}
 
 	// Validate --job-json flag documentation
-	jobJsonFlag, ok := parityRun.Flags["job-json"]
+	jobJSONFlag, ok := parityRun.Flags["job-json"]
 	if !ok {
 		t.Fatal("parity artifact missing 'job-json' flag")
 	}
 
-	if !strings.Contains(strings.ToLower(jobJsonFlag.Validation), "object") {
+	if !strings.Contains(strings.ToLower(jobJSONFlag.Validation), "object") {
 		t.Error("--job-json flag validation should mention 'object' requirement")
 	}
 
-	if len(jobJsonFlag.ExclusiveWith) == 0 || jobJsonFlag.ExclusiveWith[0] != "job" {
+	if len(jobJSONFlag.ExclusiveWith) == 0 || jobJSONFlag.ExclusiveWith[0] != "job" {
 		t.Error("--job-json flag should be exclusive with --job")
 	}
 }

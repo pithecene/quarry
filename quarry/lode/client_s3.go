@@ -93,7 +93,7 @@ func ParseS3Path(path string) (bucket, prefix string) {
 // newS3StoreFactory builds the Lode S3 store factory used by both the write
 // and read paths, so they reach the same endpoint with the same addressing.
 // Uses AWS SDK default credential chain (env vars, shared config, IAM role).
-func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
+func newS3StoreFactory(ctx context.Context, s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 	if err := s3cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func newS3StoreFactory(s3cfg S3Config) (lode.Factory[lode.RangeStore], error) {
 		opts = append(opts, config.WithRegion(s3cfg.Region))
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(context.Background(), opts...)
+	awsConfig, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -172,7 +172,7 @@ func s3ClientOptions(s3cfg S3Config) []func(*s3.Options) {
 // Uses AWS SDK default credential chain (env vars, shared config, IAM role).
 // Opening reads the dataset's head under ctx.
 func NewLodeS3Client(ctx context.Context, cfg Config, s3cfg S3Config) (*LodeClient, error) {
-	s3Factory, err := newS3StoreFactory(s3cfg)
+	s3Factory, err := newS3StoreFactory(ctx, s3cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,10 @@ func NewStoreFactory(backend, path string, s3cfg S3Config) (lode.Factory[lode.Ra
 		return lode.FS(path), nil
 	case "s3":
 		s3cfg.Bucket, s3cfg.Prefix = ParseS3Path(path)
-		return newS3StoreFactory(s3cfg)
+		// NewStoreFactory takes no context, so the AWS configuration loads
+		// without one. With AWS_DEFAULTS_MODE=auto that load queries EC2 instance
+		// metadata, which no caller of NewStoreFactory can cancel.
+		return newS3StoreFactory(context.Background(), s3cfg)
 	default:
 		return nil, fmt.Errorf("unsupported storage-backend: %s (must be fs or s3)", backend)
 	}

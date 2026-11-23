@@ -11,7 +11,7 @@ contracts under [`docs/contracts/`](docs/contracts/) state the rules.
 
 | Tool | Version | Source |
 |------|---------|--------|
-| Go | 1.27.3 | [`quarry/go.mod`](quarry/go.mod) |
+| Go | 1.27.0 or later (CI and the container build with 1.27.3) | [`quarry/go.mod`](quarry/go.mod), [`mise.toml`](mise.toml) |
 | Node.js | 22.18+ (22.6+ with a flag) | Native TS support (see note) |
 | pnpm | 10.28.2 | `package.json#packageManager` |
 

@@ -194,8 +194,10 @@ func TestArtifacts_ChunksWithZeroStatedSizeReadBack(t *testing.T) {
 	}{
 		{"one copy", []chunkRecord{{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]}}, data},
 		{"a second copy after a complete one", []chunkRecord{
-			{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
-			{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+			{artifactID: "a1", seq: 1, data: data[:10]},
+			{artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+			{artifactID: "a1", seq: 1, data: data[:10]},
+			{artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
 		}, data},
 		// An empty artifact was written as one zero-length last chunk.
 		{"an empty artifact", []chunkRecord{{artifactID: "a1", seq: 1, isLast: true, data: []byte{}}}, []byte{}},
@@ -232,8 +234,10 @@ func TestArtifacts_RetriedWritesReadBackOnce(t *testing.T) {
 	data := []byte("0123456789abcdef")
 	run := spec("r1")
 	chunks := []chunkRecord{
-		{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
-		{artifactID: "a1", seq: 1, data: data[:10]}, {artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+		{artifactID: "a1", seq: 1, data: data[:10]},
+		{artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
+		{artifactID: "a1", seq: 1, data: data[:10]},
+		{artifactID: "a1", seq: 2, isLast: true, data: data[10:]},
 	}
 	commit := &types.EventEnvelope{
 		ContractVersion: types.ContractVersion, EventID: "a-a1", RunID: run.runID, Seq: 2, Type: types.EventTypeArtifact, Ts: testArtifactTs, Attempt: 1,

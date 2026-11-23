@@ -88,8 +88,10 @@ func (s *Sink) Close() error {
 }
 
 // Verify Sink implements policy.Sink and policy.EventSink.
-var _ policy.Sink = (*Sink)(nil)
-var _ policy.EventSink = (*Sink)(nil)
+var (
+	_ policy.Sink      = (*Sink)(nil)
+	_ policy.EventSink = (*Sink)(nil)
+)
 
 // StubClient is a test client that accepts writes without persisting.
 // Use for integration testing before real Lode is available.

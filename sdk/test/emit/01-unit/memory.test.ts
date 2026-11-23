@@ -66,7 +66,7 @@ describe('createMemoryAPI', () => {
       const snap = await api.snapshot()
 
       expect(snap.browser).not.toBeNull()
-      expect(snap.browser!.ratio).toBeCloseTo(0.6, 1)
+      expect(snap.browser?.ratio).toBeCloseTo(0.6, 1)
     })
 
     it('returns browser: null when opted out', async () => {
@@ -125,7 +125,7 @@ describe('createMemoryAPI', () => {
       const snap = await api.snapshot()
 
       expect(snap.cgroup).not.toBeNull()
-      expect(snap.cgroup!.ratio).toBeCloseTo(0.75, 2)
+      expect(snap.cgroup?.ratio).toBeCloseTo(0.75, 2)
     })
 
     it('returns cgroup: null when not available', async () => {
@@ -195,7 +195,7 @@ describe('createMemoryAPI', () => {
       const snap = await api.snapshot()
 
       expect(snap.cgroup).not.toBeNull()
-      expect(snap.cgroup!.ratio).toBeCloseTo(0.5, 2)
+      expect(snap.cgroup?.ratio).toBeCloseTo(0.5, 2)
     })
   })
 

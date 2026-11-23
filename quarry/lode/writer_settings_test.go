@@ -109,7 +109,6 @@ func TestOpenDataset_NewDatasetUsesZstdAndSHA256(t *testing.T) {
 	}
 }
 
-
 type namedCompressor struct {
 	lode.Compressor
 	name string
@@ -123,7 +122,6 @@ type namedChecksum struct {
 }
 
 func (c namedChecksum) Name() string { return c.name }
-
 
 // A stored-byte mismatch takes precedence even when the JSONL decoder
 // stops before Lode reaches the end of the stream.
@@ -196,7 +194,6 @@ func (s manifestFailingStore) Put(ctx context.Context, key string, r io.Reader) 
 	}
 	return s.Store.Put(ctx, key, r)
 }
-
 
 // A head that records a compressor or checksum without a bundled match
 // cannot be extended, so the writer is refused when it opens.

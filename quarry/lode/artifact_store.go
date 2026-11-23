@@ -130,7 +130,7 @@ type artifactWriter struct {
 	factory  lode.Factory[lode.RangeStore]
 	vol      volume.Volume // nil for an empty artifact
 	snapshot volume.SnapshotID
-	blocks   []volume.BlockRef      // committed, sorted by offset
+	blocks   []volume.BlockRef     // committed, sorted by offset
 	staged   map[int64]stagedBlock // staged blocks whose commit failed, by offset
 
 	hasher hash.Hash

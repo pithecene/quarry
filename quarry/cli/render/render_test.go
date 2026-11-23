@@ -1,8 +1,8 @@
 package render
 
 import (
-	"errors"
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )

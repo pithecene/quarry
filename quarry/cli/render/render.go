@@ -219,6 +219,8 @@ func (r *Renderer) getHeaders(v reflect.Value) []string {
 		for _, key := range v.MapKeys() {
 			headers = append(headers, fmt.Sprintf("%v", key.Interface()))
 		}
+	default:
+		// A value of another kind has no named columns.
 	}
 	return headers
 }
@@ -243,6 +245,8 @@ func (r *Renderer) getRowValues(v reflect.Value, headers []string) []string {
 				values = append(values, "")
 			}
 		}
+	default:
+		// A value of another kind has no named columns.
 	}
 	return values
 }

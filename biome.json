@@ -26,9 +26,12 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": false,
+      "recommended": true,
       "correctness": {
-        "noUnusedVariables": "warn"
+        "noUnusedVariables": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error"
       },
       "suspicious": {
         "noConsole": "warn"
@@ -37,7 +40,18 @@
   },
   "overrides": [
     {
+      "includes": ["**/test/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": [
+        "examples/**",
         "scripts/**",
         "testdata/**",
         "executor-node/scripts/**",

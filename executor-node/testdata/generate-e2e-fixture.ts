@@ -156,7 +156,7 @@ async function generateFixture(): Promise<void> {
   }
 
   const manifestPath = join(OUTPUT_DIR, 'e2e_fixture.manifest.json')
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Written: ${manifestPath}`)
 
   console.log('\nFixture generation complete!')

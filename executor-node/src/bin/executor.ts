@@ -77,7 +77,7 @@ async function validateScript(scriptPath: string): Promise<never> {
   } catch (err) {
     const message = err instanceof ScriptLoadError ? err.message : errorMessage(err)
     const result = { valid: false, error: message }
-    process.stdout.write(JSON.stringify(result) + '\n')
+    process.stdout.write(`${JSON.stringify(result)}\n`)
     process.exit(1)
   }
 
@@ -96,7 +96,7 @@ async function validateScript(scriptPath: string): Promise<never> {
       hooks
     }
   }
-  process.stdout.write(JSON.stringify(result) + '\n')
+  process.stdout.write(`${JSON.stringify(result)}\n`)
   process.exit(0)
 }
 
@@ -163,8 +163,11 @@ async function readStdinMetadata(): Promise<string> {
     const chunks: Buffer[] = []
 
     function onReadable(): void {
-      let chunk: Buffer | null
-      while ((chunk = process.stdin.read() as Buffer | null) !== null) {
+      for (
+        let chunk = process.stdin.read() as Buffer | null;
+        chunk !== null;
+        chunk = process.stdin.read() as Buffer | null
+      ) {
         // Scan for newline in this chunk
         const nlIndex = chunk.indexOf(0x0a) // '\n'
         if (nlIndex !== -1) {

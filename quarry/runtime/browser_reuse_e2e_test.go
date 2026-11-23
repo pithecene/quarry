@@ -167,7 +167,7 @@ func waitFor(t *testing.T, limit time.Duration, cond func() bool) {
 }
 
 // browserAlive reports whether the browser at ws answers.
-func browserAlive(ws string) bool { return HealthCheckBrowser(ws) == nil }
+func browserAlive(ctx context.Context, ws string) bool { return HealthCheckBrowser(ctx, ws) == nil }
 
 // wsPort extracts the port from a WebSocket endpoint URL.
 func wsPort(t *testing.T, endpoint string) string {
@@ -243,7 +243,9 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 	// Should the test stop before the new server closes the killed server's
 	// browser, close it here, so that no browser outlives the test.
 	t.Cleanup(func() {
-		if browserAlive(ws1) {
+		// Go cancels t.Context before cleanups run, so the probe keeps its values
+		// without that cancellation. HealthCheckBrowser bounds it.
+		if browserAlive(context.WithoutCancel(t.Context()), ws1) {
 			closeBrowser(t, ws1)
 		}
 	})
@@ -259,7 +261,7 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 	if ws2 == ws1 {
 		t.Error("expected a new server's endpoint after the kill")
 	}
-	if browserAlive(ws1) {
+	if browserAlive(t.Context(), ws1) {
 		t.Error("the new server left the killed server's browser running")
 	}
 }
@@ -301,7 +303,7 @@ func TestE2E_BrowserReuse_HealthCheck(t *testing.T) {
 		t.Fatalf("acquire: %v", err)
 	}
 
-	if err := HealthCheckBrowser(ws); err != nil {
+	if err := HealthCheckBrowser(t.Context(), ws); err != nil {
 		t.Fatalf("health check failed: %v", err)
 	}
 
@@ -335,7 +337,7 @@ func TestE2E_BrowserReuse_IdleShutdown(t *testing.T) {
 	}
 	endRun()
 
-	waitFor(t, 15*time.Second, func() bool { return !browserAlive(ws) })
+	waitFor(t, 15*time.Second, func() bool { return !browserAlive(t.Context(), ws) })
 	if _, err := os.Stat(h.socketPath); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("socket after idle shutdown: stat err = %v, want not exist", err)
 	}
@@ -358,12 +360,12 @@ func TestE2E_BrowserReuse_LeaseKeepsServerAlive(t *testing.T) {
 	}
 
 	time.Sleep(3 * h.cfg.IdleTimeout)
-	if !browserAlive(ws) {
+	if !browserAlive(t.Context(), ws) {
 		t.Fatal("server shut down under a run that held its lease")
 	}
 
 	endRun()
-	waitFor(t, 15*time.Second, func() bool { return !browserAlive(ws) })
+	waitFor(t, 15*time.Second, func() bool { return !browserAlive(t.Context(), ws) })
 }
 
 // A server whose browser closes, by a user or a crash, shuts down, and the

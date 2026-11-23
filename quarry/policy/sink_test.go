@@ -46,7 +46,6 @@ func TestStubSink_ErrorOnWrite(t *testing.T) {
 	if !errors.Is(err, expectedErr) {
 		t.Errorf("expected error %v, got %v", expectedErr, err)
 	}
-
 }
 
 func TestStubSink_Close(t *testing.T) {

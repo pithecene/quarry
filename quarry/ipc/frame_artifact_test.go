@@ -17,7 +17,11 @@ func decodeOne(t *testing.T, frame any) any {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	decoder := NewFrameDecoder(bytes.NewReader(EncodeFrame(payload)))
+	encoded, err := EncodeFrame(payload)
+	if err != nil {
+		t.Fatalf("EncodeFrame: %v", err)
+	}
+	decoder := NewFrameDecoder(bytes.NewReader(encoded))
 	read, err := decoder.ReadFrame()
 	if err != nil {
 		t.Fatalf("ReadFrame: %v", err)
