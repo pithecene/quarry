@@ -9,24 +9,9 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed
-
-- **Shared browsers load Puppeteer from `--resolve-from`**: the reusable and fan-out browsers now receive the run's module root. Before, they ignored it.
-- **A max duration no longer hides an earlier failure**: a run whose ingestion failed before its deadline keeps that outcome, such as `storage_error`. Before, a deadline that passed while the runtime reaped the executor replaced it with `deadline_exceeded`.
-- **The buffered policy keeps events that arrive during a flush**: a flush now removes only the events it wrote. Before, it cleared the whole buffer after the write, so the policy lost an event ingested while the sink wrote, and two flushes could write the same events. Eviction no longer takes an event that a flush is writing.
-- **The streaming policy no longer stalls on a large frame**: when the next event would exceed the buffer's bounds, ingestion flushes the buffered events itself. Before, a stream with only `--flush-count` waited forever once a frame crossed the 128 MiB cap. A call whose context ends before the policy admits its event now returns instead of waiting.
-- **Buffer limits count each event's real size**: the buffered and streaming policies count the length of the frame an event arrived in. Before, they counted 200 bytes plus 50 per payload field, so a 10 MiB payload counted as about 250 bytes and `--buffer-bytes` did not bound memory.
-- **The buffered and streaming policies log through the run's logger**: their drop, overflow, and flush-failure logs now reach stderr with the run's identity. Before, the run gave them no logger, so these logs went nowhere.
-- **A fan-out sink's refusal stays a storage error**: each mandatory sink's error now stays matchable through a fan-out. A refusal beside a host's cancellation or deadline ends the run as `storage_error`, which a retry may resolve. Before, the fan-out kept only the error text, and a cancellation made the whole failure a `policy_failure`.
-- **Quarry classifies Lode's not-found and path-exists errors by type**: before, Quarry read them from the message, so a key containing `403` made a missing object read as access denied. `CONTRACT_LODE.md` § Error Classification states the order.
-
-### Security
-
-- **The embedded executor runs from memory**: Quarry passes it to Node over a pipe and writes no file. It loads Puppeteer and its plugins only from the script's directory and its ancestors, `NODE_PATH`, and `--resolve-from`, and never from Node's global folders. Before, Quarry extracted it to a predictable path in the shared temp directory and trusted any file of the right size there, so another local user could plant code that Quarry would run.
-
 ---
 
-## [0.19.0] - 2026-11-21
+## [0.19.0] - 2026-11-23
 
 ### Breaking Changes
 
@@ -55,9 +40,22 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **An executor's stderr no longer stalls its run**: the runtime now drains the executor's stderr while it reads stdout. Before, it read stderr only after stdout ended, so an executor that wrote more stderr than the pipe holds blocked, and its run never ended. A run keeps the last 1 MiB of stderr, after a note of the bytes it dropped.
 - **The managed fan-out browser uses the run's proxy**: when a fan-out run launches its own shared browser, the browser now routes its traffic through the run's resolved proxy, like the reusable browser. Before, it launched without a proxy, and the credentials that each child applied to its pages did not route them through one.
 - **Deps**: `pnpm.overrides` and the image's npm overrides now pin `basic-ftp` at 6.2.4. That release fixes a crash that a crafted MLSD directory listing causes in `Client.list()`. `deepmerge` 4.3.1, the library that `puppeteer-extra-plugin-user-preferences` uses to merge static browser preferences, has no patched release, and Quarry passes it no outside input.
+- **Shared browsers load Puppeteer from `--resolve-from`**: the reusable and fan-out browsers now receive the run's module root. Before, they ignored it.
+- **A max duration no longer hides an earlier failure**: a run whose ingestion failed before its deadline keeps that outcome, such as `storage_error`. Before, a deadline that passed while the runtime reaped the executor replaced it with `deadline_exceeded`.
+- **The buffered policy keeps events that arrive during a flush**: a flush now removes only the events it wrote. Before, it cleared the whole buffer after the write, so the policy lost an event ingested while the sink wrote, and two flushes could write the same events. Eviction no longer takes an event that a flush is writing.
+- **The streaming policy no longer stalls on a large frame**: when the next event would exceed the buffer's bounds, ingestion flushes the buffered events itself. Before, a stream with only `--flush-count` waited forever once a frame crossed the 128 MiB cap. A call whose context ends before the policy admits its event now returns instead of waiting.
+- **Buffer limits count each event's real size**: the buffered and streaming policies count the length of the frame an event arrived in. Before, they counted 200 bytes plus 50 per payload field, so a 10 MiB payload counted as about 250 bytes and `--buffer-bytes` did not bound memory.
+- **The buffered and streaming policies log through the run's logger**: their drop, overflow, and flush-failure logs now reach stderr with the run's identity. Before, the run gave them no logger, so these logs went nowhere.
+- **A fan-out sink's refusal stays a storage error**: each mandatory sink's error now stays matchable through a fan-out. A refusal beside a host's cancellation or deadline ends the run as `storage_error`, which a retry may resolve. Before, the fan-out kept only the error text, and a cancellation made the whole failure a `policy_failure`.
+- **Quarry classifies Lode's not-found and path-exists errors by type**: before, Quarry read them from the message, so a key containing `403` made a missing object read as access denied. `CONTRACT_LODE.md` § Error Classification states the order.
+
+### Security
+
+- **The embedded executor runs from memory**: Quarry passes it to Node over a pipe and writes no file. It loads Puppeteer and its plugins only from the script's directory and its ancestors, `NODE_PATH`, and `--resolve-from`. A package no longer loads solely because it is in one of Node's global folders. Before, Quarry extracted it to a predictable path in the shared temp directory and trusted any file of the right size there, so another local user could plant code that Quarry would run.
 
 ### Upgrade Notes
 
+- **Puppeteer location**: for browser runs with the embedded executor, make Puppeteer reachable from the script's directory or its ancestors, `NODE_PATH`, or `--resolve-from`. A browser that Quarry launches also needs each enabled plugin's packages there. Stealth, which is on by default, needs `puppeteer-extra` and `puppeteer-extra-plugin-stealth`. Runs without a browser need no change. A copy that loaded only because it sat near the extracted executor, or in Node's global folders, no longer loads.
 - **Rollback**: the first snapshot that Quarry v0.19.0 commits to a dataset, including an append to an existing one, has format 1.2.0, which Quarry v0.18.0 cannot read. `index rebuild` backfills run records without committing a snapshot. If you may roll back to v0.18.0, keep a restorable copy of the dataset from before that commit, since an older binary alone does not restore it.
 - **Run inspection**: pass `--storage-backend`, `--storage-path`, `--source`, `--category`, and `--day` before the run ID. Use the run's UTC start date for `--day`. In JSON and YAML, read run fields such as `run_id` and `state` under `run`.
 - **Run listings and statistics**: pass `--storage-backend` and `--storage-path` to `list runs` and `stats metrics`. For a count by state, list the runs in that state and count them, for example `quarry list runs --storage-backend fs --storage-path ./quarry-data --state failed --format json | jq '.runs | length'`. Remove `--tui` from scripts and read the `json` or `table` output.
