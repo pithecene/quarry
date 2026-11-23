@@ -190,3 +190,32 @@ jobs:
           context: .
           target: full
           call: check
+
+      - name: 🐳 Build Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: full
+          load: true
+          tags: quarry:ci
+
+      # A numeric UID has no account, home, or cache in the image. The browser
+      # run proves that the embedded executor needs none of them.
+      - name: 🧪 Run as an Unmapped UID
+        run: |
+          mkdir -p smoke/scripts smoke/data
+          chmod 777 smoke/data
+          cat > smoke/scripts/page.mjs <<'SCRIPT'
+          export default async function run(ctx) {
+            await ctx.page.goto('data:text/html,<title>container</title>')
+            await ctx.emit.item({ item_type: 'title', data: { title: await ctx.page.title() } })
+          }
+          SCRIPT
+          docker run --rm --user 54321:54321 --read-only \
+            --tmpfs /tmp:mode=1777 --shm-size 1g -e HOME=/tmp \
+            -v "$PWD/smoke/scripts:/work/scripts:ro" \
+            -v "$PWD/smoke/data:/work/data" \
+            quarry:ci run --script ./scripts/page.mjs --run-id smoke \
+            --source ci --category smoke --no-browser-reuse \
+            --storage-backend fs --storage-path ./data
+          find smoke/data -name end.json -exec jq -e '.outcome == "success"' {} + | grep -qx true

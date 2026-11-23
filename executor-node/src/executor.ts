@@ -17,9 +17,11 @@
  *
  * @module
  */
+import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
 import type { Writable } from 'node:stream'
+import { pathToFileURL } from 'node:url'
 import {
   createAPIs,
   createContext,
@@ -48,25 +50,56 @@ export type PluginConfig = {
 }
 
 /**
+ * Resolve a package from the node_modules of the script's directory and its
+ * ancestors, then NODE_PATH. Node's global folders ($HOME/.node_modules and the
+ * like) are refused: nothing in the run's configuration names them.
+ */
+export function resolvePeer(name: string, scriptPath: string): string {
+  const require = createRequire(resolve(scriptPath))
+  const nodePath = (process.env.NODE_PATH ?? '').split(delimiter)
+  const found = require.resolve(name)
+  const permitted = (require.resolve.paths(name) ?? [])
+    .filter((dir) => basename(dir) === 'node_modules' || nodePath.includes(dir))
+    .some((dir) => holds(join(dir, name), found))
+  if (!permitted) {
+    throw new Error(`Cannot find package '${name}' from ${resolve(scriptPath)}: refused ${found}`)
+  }
+  return found
+}
+
+// holds reports whether file is inside the package at dir, which may be a link.
+function holds(dir: string, file: string): boolean {
+  try {
+    return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Resolve a module from the script's directory, falling back to standard import.
  *
- * When the executor runs from a temp directory (embedded bundle), dependencies
- * must be resolved from the user's script location or global installation.
+ * The embedded bundle runs from memory, so dependencies must be resolved from
+ * the user's script location or the configured module root.
  */
 async function resolveModule(name: string, scriptPath: string): Promise<Record<string, unknown>> {
-  const absoluteScriptPath = resolve(scriptPath)
-
-  // Strategy 1: Use createRequire to resolve from script's directory
+  // Strategy 1: resolve from script's directory. The URL
+  // form loads from a bundle that has no directory of its own.
+  let scriptError: unknown
   try {
-    const require = createRequire(absoluteScriptPath)
-    const resolved = require.resolve(name)
-    return await import(resolved)
-  } catch {
-    // Fall through to strategy 2
+    return await import(pathToFileURL(resolvePeer(name, scriptPath)).href)
+  } catch (err) {
+    scriptError = err
   }
 
-  // Strategy 2: Standard import (may work if globally installed)
-  return await import(name)
+  // Strategy 2: Standard import, through --resolve-from for the embedded bundle
+  try {
+    return await import(name)
+  } catch (err) {
+    throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
+      cause: err
+    })
+  }
 }
 
 /**
@@ -106,7 +139,7 @@ async function resolveModuleOrThrow(
  *
  * Uses addExtra() rather than puppeteer-extra's default export to avoid
  * a top-level require('puppeteer') that would fail in the bundled executor
- * model (Go binary extracts executor.mjs to a temp dir).
+ * model (the Go binary runs executor.mjs from memory).
  */
 let puppeteerModule: { launch: (options?: LaunchOptions) => Promise<Browser> } | null = null
 let cachedPluginConfig: PluginConfig | null = null

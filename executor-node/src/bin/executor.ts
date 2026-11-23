@@ -56,21 +56,13 @@ const HOOK_NAMES = [
 /**
  * Validate a script module without executing it.
  *
- * Registers the --resolve-from ESM hook if configured, loads the script,
- * validates its shape, and prints a JSON result to stdout.
+ * Loads the script, validates its shape, and prints a JSON result to stdout.
  *
  * Exit codes:
  * - 0: Script is valid
  * - 1: Script load or validation failed
  */
 async function validateScript(scriptPath: string): Promise<never> {
-  // Register ESM resolve hook if configured (same as normal execution path)
-  const resolveFrom = process.env.QUARRY_RESOLVE_FROM
-  if (resolveFrom) {
-    const { registerResolveFromHook } = await import('../resolve-from.js')
-    await registerResolveFromHook(resolveFrom)
-  }
-
   let loaded: LoadedScript
   try {
     loaded = await loadScript(scriptPath)
@@ -337,40 +329,40 @@ async function launchBrowserServer(scriptPath: string): Promise<never> {
   process.exit(0)
 }
 
+/** The modes that replace a run, by flag. */
+const MODES = new Map<string, (scriptPath: string) => Promise<never>>([
+  // Reusable browser server: self-managing lifetime with idle timeout
+  ['--browser-server', browserServer],
+  // Load the script and check its shape without executing
+  ['--validate', validateScript],
+  // Fan-out browser server: stdin-managed lifetime
+  ['--launch-browser', launchBrowserServer]
+])
+
 /**
  * Main entry point.
  */
 async function main(): Promise<never> {
   const args = process.argv.slice(2)
 
-  // Reusable browser server mode: self-managing lifetime with idle timeout
-  if (args[0] === '--browser-server') {
-    const scriptPath = args[1]
-    if (!scriptPath) {
-      process.stderr.write('Usage: quarry-executor --browser-server <script-path>\n')
-      process.exit(3)
-    }
-    return browserServer(scriptPath)
+  // Register the ESM resolve hook for --resolve-from before any mode loads a
+  // module, so a shared browser loads what its runs load. NODE_PATH only works
+  // for CJS require(); ESM needs module.register(). The hook retries with a
+  // fallback parentURL, which preserves ESM import conditions.
+  const resolveFrom = process.env.QUARRY_RESOLVE_FROM
+  if (resolveFrom) {
+    const { registerResolveFromHook } = await import('../resolve-from.js')
+    await registerResolveFromHook(resolveFrom)
   }
 
-  // Validate mode: load script and check shape without executing
-  if (args[0] === '--validate') {
-    const scriptPath = args[1]
-    if (!scriptPath) {
-      process.stderr.write('Usage: quarry-executor --validate <script-path>\n')
+  const mode = MODES.get(args[0] ?? '')
+  if (mode) {
+    const modeScript = args[1]
+    if (!modeScript) {
+      process.stderr.write(`Usage: quarry-executor ${args[0]} <script-path>\n`)
       process.exit(3)
     }
-    return validateScript(scriptPath)
-  }
-
-  // Legacy browser server mode: stdin-managed lifetime for fan-out
-  if (args[0] === '--launch-browser') {
-    const scriptPath = args[1]
-    if (!scriptPath) {
-      process.stderr.write('Usage: quarry-executor --launch-browser <script-path>\n')
-      process.exit(3)
-    }
-    return launchBrowserServer(scriptPath)
+    return mode(modeScript)
   }
 
   if (args.length < 1) {
@@ -383,16 +375,6 @@ async function main(): Promise<never> {
   // Must be installed after browser-mode early returns (which legitimately
   // write text to stdout) but before any IPC framing begins.
   const { ipcOutput, ipcWrite } = installStdoutGuard()
-
-  // Register ESM resolve hook for --resolve-from support.
-  // NODE_PATH only works for CJS require(); ESM needs module.register().
-  // The hook retries bare-specifier resolution with a fallback parentURL
-  // so ESM import conditions (not CJS require conditions) are preserved.
-  const resolveFrom = process.env.QUARRY_RESOLVE_FROM
-  if (resolveFrom) {
-    const { registerResolveFromHook } = await import('../resolve-from.js')
-    await registerResolveFromHook(resolveFrom)
-  }
 
   const scriptPath = args[0]
 

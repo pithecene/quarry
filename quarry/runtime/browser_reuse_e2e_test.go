@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
@@ -56,11 +57,6 @@ func setupE2E(t *testing.T) e2eHarness {
 		t.Skip("node not available")
 	}
 
-	executorBin := filepath.Join(executorNodeDir(t), "dist", "bin", "executor.js")
-	if _, err := os.Stat(executorBin); os.IsNotExist(err) {
-		t.Skipf("executor not built at %s", executorBin)
-	}
-
 	scriptPath := filepath.Join(filepath.Dir(executorNodeDir(t)), "examples", "demo.ts")
 	if _, err := os.Stat(scriptPath); err != nil {
 		t.Fatalf("example script not found: %s", scriptPath)
@@ -74,6 +70,8 @@ func setupE2E(t *testing.T) e2eHarness {
 	}
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("QUARRY_NO_SANDBOX", "1")
+	// The embedded executor finds Puppeteer only where it is told to look.
+	t.Setenv("NODE_PATH", filepath.Join(executorNodeDir(t), "node_modules"))
 
 	socketPath := filepath.Join(dir, "quarry", "browser-reuse", leaseSocketName)
 	// Cleanups run after t.Context is done, so every lease has been released.
@@ -84,7 +82,7 @@ func setupE2E(t *testing.T) e2eHarness {
 
 	return e2eHarness{
 		cfg: ReusableBrowserConfig{
-			ExecutorPath: executorBin,
+			ExecutorPath: executor.Embedded,
 			ScriptPath:   scriptPath,
 			IdleTimeout:  30 * time.Second,
 		},
@@ -387,5 +385,25 @@ func TestE2E_BrowserReuse_ClosedBrowserStopsServer(t *testing.T) {
 	}
 	if ws2 == ws1 {
 		t.Error("expected a new server after the browser closed")
+	}
+}
+
+// The managed fan-out browser, launched from the embedded executor, answers
+// until it is closed.
+func TestE2E_ManagedBrowser_Embedded(t *testing.T) {
+	testutil.Serial(t, "setupE2E calls t.Setenv")
+	h := setupE2E(t)
+	mb, err := LaunchManagedBrowser(h.ctx, h.cfg.ExecutorPath, h.cfg.ScriptPath, "", nil)
+	if err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	if err := HealthCheckBrowser(h.ctx, mb.WSEndpoint); err != nil {
+		t.Errorf("health check: %v", err)
+	}
+	if err := mb.Close(); err != nil {
+		t.Errorf("close: %v", err)
+	}
+	if HealthCheckBrowser(h.ctx, mb.WSEndpoint) == nil {
+		t.Error("the browser still answers after Close")
 	}
 }

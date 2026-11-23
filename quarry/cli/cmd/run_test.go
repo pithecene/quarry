@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/internal/testutil"
 
 	"github.com/urfave/cli/v2"
@@ -276,7 +277,7 @@ func TestResolveExecutor(t *testing.T) {
 			}
 		} else {
 			// Verify returned path exists
-			if _, statErr := os.Stat(path); statErr != nil {
+			if _, statErr := os.Stat(path); path != executor.Embedded && statErr != nil {
 				t.Errorf("resolved path %q does not exist: %v", path, statErr)
 			}
 		}
@@ -2171,4 +2172,42 @@ func hasLogLine(logged, message, runID string, attempt int) bool {
 		}
 	}
 	return false
+}
+
+// The file that resolveExecutor checks is the file that launches: not one of
+// the same name on PATH, and not the embedded executor.
+func TestResolveExecutor_LaunchesTheCheckedFile(t *testing.T) {
+	testutil.Serial(t, "calls t.Chdir and t.Setenv, which change the process")
+	onPath := t.TempDir()
+	t.Chdir(t.TempDir())
+	t.Setenv("PATH", onPath+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := os.Mkdir("embedded:", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for path, says := range map[string]string{
+		filepath.Join(onPath, "runner"): "path",
+		"runner":                        "bare",
+		executor.Embedded:               "reserved",
+	} {
+		if err := os.WriteFile(path, []byte("#!/bin/sh\necho "+says+"\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ name, explicit, says string }{
+		{"bare name", "runner", "bare"},
+		{"embedded executor's name", executor.Embedded, "reserved"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path, err := resolveExecutor(tc.explicit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			out, err := executor.Command(ctx, path).Output()
+			if err != nil || string(out) != tc.says+"\n" {
+				t.Errorf("ran %q, %v, want %q", out, err, tc.says)
+			}
+		})
+	}
 }

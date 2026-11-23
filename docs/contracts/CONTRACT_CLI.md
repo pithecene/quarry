@@ -407,7 +407,8 @@ that cannot be resolved from the script's directory.
 - The flag value must be an existing directory. It is absolutized at parse time.
 - The Go runtime sets `QUARRY_RESOLVE_FROM` and prepends to `NODE_PATH` (CJS
   fallback) on the executor's environment.
-- The Node executor registers an ESM resolve hook via `module.register()`.
+- The Node executor registers an ESM resolve hook via `module.register()` in
+  every mode, including validation and the shared browsers.
   The hook tries default resolution first, then falls back to
   `createRequire(resolveFrom)` for bare specifiers only.
 - Relative and absolute specifiers are never intercepted by the hook.

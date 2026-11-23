@@ -158,7 +158,7 @@ Go module root. Contains runtime, CLI, and core types.
 
 ### quarry/executor/
 
-- `executor/` — embedded executor lifecycle: extraction, SHA256 checksumming, temp directory management
+- `executor/` — executor launch: runs the embedded bundle from memory, or an executor file
 - `executor/bundle/` — embedded executor.mjs JavaScript bundle (non-Go asset)
 
 ### quarry/policy/

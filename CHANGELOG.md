@@ -11,6 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Shared browsers load Puppeteer from `--resolve-from`**: the reusable and fan-out browsers now receive the run's module root. Before, they ignored it.
 - **A max duration no longer hides an earlier failure**: a run whose ingestion failed before its deadline keeps that outcome, such as `storage_error`. Before, a deadline that passed while the runtime reaped the executor replaced it with `deadline_exceeded`.
 - **The buffered policy keeps events that arrive during a flush**: a flush now removes only the events it wrote. Before, it cleared the whole buffer after the write, so the policy lost an event ingested while the sink wrote, and two flushes could write the same events. Eviction no longer takes an event that a flush is writing.
 - **The streaming policy no longer stalls on a large frame**: when the next event would exceed the buffer's bounds, ingestion flushes the buffered events itself. Before, a stream with only `--flush-count` waited forever once a frame crossed the 128 MiB cap. A call whose context ends before the policy admits its event now returns instead of waiting.
@@ -18,6 +19,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **The buffered and streaming policies log through the run's logger**: their drop, overflow, and flush-failure logs now reach stderr with the run's identity. Before, the run gave them no logger, so these logs went nowhere.
 - **A fan-out sink's refusal stays a storage error**: each mandatory sink's error now stays matchable through a fan-out. A refusal beside a host's cancellation or deadline ends the run as `storage_error`, which a retry may resolve. Before, the fan-out kept only the error text, and a cancellation made the whole failure a `policy_failure`.
 - **Quarry classifies Lode's not-found and path-exists errors by type**: before, Quarry read them from the message, so a key containing `403` made a missing object read as access denied. `CONTRACT_LODE.md` § Error Classification states the order.
+
+### Security
+
+- **The embedded executor runs from memory**: Quarry passes it to Node over a pipe and writes no file. It loads Puppeteer and its plugins only from the script's directory and its ancestors, `NODE_PATH`, and `--resolve-from`, and never from Node's global folders. Before, Quarry extracted it to a predictable path in the shared temp directory and trusted any file of the right size there, so another local user could plant code that Quarry would run.
 
 ---
 
