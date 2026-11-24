@@ -35,6 +35,7 @@ type LodeClient struct { //nolint:revive // intentional naming for clarity
 
 	mu           sync.Mutex       // guards pendingFiles
 	pendingFiles []SidecarFileRef // sidecar files written since last snapshot flush
+	files        []SidecarFileRef // every sidecar file the run wrote
 
 	retryGate *retryGate // suppresses the retry observer during WriteMetrics
 }

@@ -250,6 +250,7 @@ existed receive backfilled records (§Backfilled Run Records).
 | `metrics_persisted` | bool           | yes      | Whether the metrics record was written |
 | `metrics`           | object         | no       | The run's final counters and dimensions, under the names of [CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record Schema, `run_id` among the dimensions, and `flush_triggers` ([CONTRACT_METRICS.md](CONTRACT_METRICS.md)) when the policy counts them. It carries no `record_kind`, `event_type`, `ts`, `source`, `category`, or `day`. It can be absent, as on a backfilled record or a run that collects no metrics |
 | `terminal_summary`  | object         | no       | Payload of the terminal event, as the exit report gives it, `{}` when it is empty. It can be absent, as on a backfilled record, without a terminal event, or when JSON cannot represent the payload |
+| `sidecar_files`     | array          | no       | Every sidecar file the run wrote, as the `SidecarFileRef` of [CONTRACT_LODE.md](CONTRACT_LODE.md) §Sidecar File Inventory. Absent when the run wrote none and on a backfilled record |
 | `backfilled`        | bool           | yes      | As on the start record |
 
 ### Backfilled Run Records

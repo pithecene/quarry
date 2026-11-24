@@ -128,7 +128,11 @@ func sidecarFiles(ctx context.Context, snapshots []*lode.Snapshot, runID string,
 // run. It skips another run's file and rejects an entry that belongs to no
 // run of snap.
 func (o sidecarOwner) ownedFiles(ctx context.Context, snap *lode.Snapshot) ([]SidecarFileRef, error) {
-	files, err := decodeSidecarFiles(snap.Metadata)
+	var meta map[string]json.RawMessage
+	if err := snap.Metadata.Decode(&meta); err != nil {
+		return nil, err
+	}
+	files, err := decodeSidecarFiles(meta)
 	if err != nil || o.prefix == "" {
 		return files, err
 	}
@@ -155,11 +159,9 @@ func (o sidecarOwner) ownedFiles(ctx context.Context, snap *lode.Snapshot) ([]Si
 	return owned, nil
 }
 
-func decodeSidecarFiles(metadata lode.Metadata) ([]SidecarFileRef, error) {
-	var meta map[string]json.RawMessage
-	if err := metadata.Decode(&meta); err != nil {
-		return nil, err
-	}
+// decodeSidecarFiles reads the inventory of a snapshot's metadata or of an end
+// record.
+func decodeSidecarFiles(meta map[string]json.RawMessage) ([]SidecarFileRef, error) {
 	raw, found := meta[MetadataKeySidecarFiles]
 	if !found {
 		return nil, nil

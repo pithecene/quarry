@@ -225,6 +225,61 @@ func TestNewEndRecord_TerminalSummary(t *testing.T) {
 	}
 }
 
+// The end record names every sidecar file of the run, whether or not a snapshot
+// names it too, and run details report each once. A record that names another
+// run's file is malformed.
+func TestEndRecord_SidecarFiles(t *testing.T) {
+	t.Parallel()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1", Policy: "strict"}
+	factory := sharedMemoryFactory()
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(name string) {
+		if err := client.PutFile(t.Context(), name, "text/plain", []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("a.txt")
+	if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: cfg.RunID, Policy: "strict"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	put("late.txt")
+	if err := client.WriteEndRecord(t.Context(), RunEnd{EndedAt: time.Now(), Outcome: types.OutcomeSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := factory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func(files []SidecarFileRef) string {
+		var out []string
+		for _, f := range files {
+			out = append(out, f.Filename)
+		}
+		return strings.Join(out, ",")
+	}
+	recorded, err := ReadEndSidecars(t.Context(), store, cfg)
+	if err != nil || names(recorded) != "a.txt,late.txt" {
+		t.Errorf("end record files %s, %v, want a.txt,late.txt", names(recorded), err)
+	}
+	details, err := QueryRunDetails(t.Context(), factory, cfg)
+	if err != nil || names(details.SidecarFiles) != "a.txt,late.txt" {
+		t.Errorf("details files %s, %v, want each file once", names(details.SidecarFiles), err)
+	}
+
+	other := cfg
+	other.RunID = "run-2"
+	foreign := EndRecord{RunID: other.RunID, SidecarFiles: recorded}
+	if err := putRunRecord(t.Context(), store, other, EndRecordName, foreign); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadEndSidecars(t.Context(), store, other); !errors.Is(err, ErrMalformedSidecars) {
+		t.Errorf("a foreign path gave %v, want ErrMalformedSidecars", err)
+	}
+}
+
 func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {
 	t.Parallel()
 

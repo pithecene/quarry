@@ -301,7 +301,7 @@ func TestPrune_RecordForAnotherKeyIsKept(t *testing.T) {
 	}
 }
 
-func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
+func TestPrune_EncodedKeyUsesRecordedSidecars(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, lateFile: true})
@@ -317,18 +317,17 @@ func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
 	if got, want := outcomes(report), "[r1:pruned]"; got != want {
 		t.Fatalf("runs = %s, want %s", got, want)
 	}
-	// Only the recorded page.html and its companion: the prefix of an
-	// encoded key is not listed, so the unrecorded late file remains.
-	if report.SidecarObjects != 2 {
-		t.Fatalf("sidecar objects = %d, want 2", report.SidecarObjects)
+	// The prefix of an encoded key is not listed: the snapshots name page.html,
+	// and the end record names the late file too. Each has a companion.
+	if report.SidecarObjects != 4 {
+		t.Fatalf("sidecar objects = %d, want 4", report.SidecarObjects)
 	}
 	left, err := f.store.List(t.Context(), prefix)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	slices.Sort(left)
-	if want := []string{prefix + "late.txt", prefix + "late.txt" + metaSuffix}; !slices.Equal(left, want) {
-		t.Fatalf("left %v, want %v", left, want)
+	if len(left) != 0 {
+		t.Fatalf("left %v, want none", left)
 	}
 }
 

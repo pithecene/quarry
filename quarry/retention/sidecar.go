@@ -19,7 +19,7 @@ import (
 const metaSuffix = ".meta.json"
 
 // sidecarPaths returns the run's sidecar objects, sorted: every file its
-// snapshots record, with its companion, and, when the sidecar prefix is
+// snapshots and end record name, with its companion, and, when the sidecar prefix is
 // unambiguous, every object listed under it. Sidecar files are caller-owned,
 // so Lode's expiry never deletes them (CONTRACT_LODE.md §Sidecar File
 // Inventory). Recorded paths outside the run's sidecar prefix are returned
@@ -34,6 +34,16 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 	if err != nil {
 		return nil, nil, err
 	}
+	ended, err := qlode.ReadEndSidecars(ctx, p.store, cfg)
+	if err != nil {
+		if errors.Is(err, qlode.ErrMalformedSidecars) {
+			err = fmt.Errorf("%w: %w", errMalformedInventory, err)
+		}
+		return nil, nil, err
+	}
+	for _, file := range ended {
+		recorded = append(recorded, file.Path)
+	}
 	for _, recordedPath := range recorded {
 		name, belongs := strings.CutPrefix(recordedPath, prefix)
 		if !belongs || name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
@@ -43,7 +53,7 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 		key := objectPrefix + name
 		set[key], set[key+metaSuffix] = true, true
 	}
-	// A file written after the run's last commit is recorded nowhere, so the
+	// A file of a run without an end record can be recorded nowhere, so the
 	// prefix is listed too, but only when its direct children can belong to
 	// no other run: sidecar paths are built from unencoded values.
 	if unambiguous(cfg) {

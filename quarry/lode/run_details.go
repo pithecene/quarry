@@ -55,6 +55,16 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 	if err != nil {
 		return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 	}
+	recorded, err := ReadEndSidecars(ctx, store, key)
+	if err != nil {
+		return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
+	}
+	// Snapshots and the end record can each name a file.
+	for _, file := range recorded {
+		if !slices.Contains(files, file) {
+			files = append(files, file)
+		}
+	}
 	details.SidecarFiles = files
 	return details, nil
 }

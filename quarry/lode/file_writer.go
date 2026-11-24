@@ -55,12 +55,14 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 
 	// Track the written file for inclusion in snapshot Metadata.
 	c.mu.Lock()
-	c.pendingFiles = append(c.pendingFiles, SidecarFileRef{
+	ref := SidecarFileRef{
 		Path:        prefix + filename,
 		Filename:    filename,
 		ContentType: contentType,
 		Size:        int64(len(data)),
-	})
+	}
+	c.pendingFiles = append(c.pendingFiles, ref)
+	c.files = append(c.files, ref)
 	c.mu.Unlock()
 
 	return nil

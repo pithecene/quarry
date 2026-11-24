@@ -577,9 +577,10 @@ Downstream consumers enumerate sidecar files via:
 snapshot.Manifest.Metadata["sidecar_files"]
 ```
 
-File refs may be spread across multiple snapshots within a run. To
-reconstruct the full inventory, union `sidecar_files` from all snapshots
-for the run.
+A run's end record ([CONTRACT_RUN.md](CONTRACT_RUN.md) §End Record) names every sidecar file
+the run wrote. File refs may also be spread across multiple snapshots within
+a run. To reconstruct the inventory of a run whose end record names none,
+union `sidecar_files` from all snapshots for the run.
 
 Quarry collapses consecutive slashes in a sidecar prefix when addressing
 the stored object. Inventory paths preserve the original prefix.
@@ -658,15 +659,16 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    and step 5 allows only that swap. A dry run reports what the preview
    found.
 2. Gather the run's sidecar files and their `.meta.json` companions
-   (§Sidecar File Inventory): every path that the run's snapshots record,
-   and, when Hive encoding leaves the run's source, category, day, and
+   (§Sidecar File Inventory): every path that the run's snapshots
+   and end record name, and, when Hive encoding leaves the run's source, category, day, and
    run ID unchanged, every direct child of its sidecar prefix. A path
    more than one level down can belong to a run whose ID continues the prefix, such as
    `r/files/x` beneath run `r`, so it is never listed. Without that
    condition, a direct child could also belong to another run, so the
-   prefix is not listed, and a file written after the run's last commit
-   remains. A recorded path outside the run's sidecar prefix is reported
-   and left in place. A recorded inventory in any other form names files
+   prefix is not listed, and a file that neither a snapshot nor an end
+   record names remains. A path that a snapshot records outside the run's sidecar prefix is reported
+   and left in place. A recorded inventory in any other form, or an end
+   record that names a path outside the prefix, names files
    that cannot be found, so the prune keeps the run, deletes nothing of it,
    and the report gives the reason. The paths are gathered first because
    the recorded ones are in the manifests that step 3 deletes.
@@ -703,8 +705,9 @@ the report counts them.
 Each step is idempotent, and a run is listed until step 6. A prune that is
 interrupted, or that fails with a store error, is therefore completed by
 the next prune that selects the run, with one exception: if it stops
-after step 3 for a run whose key Hive encoding changes, the recorded
-sidecar paths are gone with the manifests, and those files remain. If step 3 is interrupted after Lode
+after step 3 for a run whose key Hive encoding changes and whose end
+record does not name its files, the recorded sidecar paths are gone with
+the manifests, and those files remain. If step 3 is interrupted after Lode
 deleted the run's last manifest, the next prune no longer finds the
 snapshot's residual data, and `Dataset.Sweep` removes it.
 

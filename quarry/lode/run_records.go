@@ -6,13 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
@@ -201,7 +204,9 @@ type EndRecord struct {
 	// TerminalSummary is omitted without a terminal event, and when JSON cannot
 	// represent the payload.
 	TerminalSummary json.RawMessage `json:"terminal_summary,omitempty"`
-	Backfilled      bool            `json:"backfilled"`
+	// SidecarFiles is every sidecar file the run wrote.
+	SidecarFiles []SidecarFileRef `json:"sidecar_files,omitempty"`
+	Backfilled   bool             `json:"backfilled"`
 }
 
 // NewStartRecord builds the start record for the run cfg describes.
@@ -288,11 +293,51 @@ func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, 
 
 // WriteEndRecord writes the run's end record.
 func (c *LodeClient) WriteEndRecord(ctx context.Context, end RunEnd) error {
-	return c.putRecord(ctx, EndRecordName, NewEndRecord(c.config, end))
+	rec := NewEndRecord(c.config, end)
+	c.mu.Lock()
+	rec.SidecarFiles = slices.Clone(c.files)
+	c.mu.Unlock()
+	return c.putRecord(ctx, EndRecordName, rec)
 }
 
 func (c *LodeClient) putRecord(ctx context.Context, name string, record any) error {
 	return putRunRecord(ctx, c.store, c.config, name, record)
+}
+
+// ErrMalformedSidecars marks an end record whose sidecar files cannot be read as
+// the run's, as against a record that could not be fetched.
+var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
+
+// ReadEndSidecars returns the sidecar files that the run's end record holds, or
+// none when the run has no end record or its record holds none.
+func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]SidecarFileRef, error) {
+	key := RunRecordDir(cfg) + EndRecordName
+	rc, err := store.Get(ctx, key)
+	if errors.Is(err, lode.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, WrapReadError(err, key)
+	}
+	defer iox.DiscardClose(rc)
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, WrapReadError(err, key)
+	}
+	var rec map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)
+	}
+	files, err := decodeSidecarFiles(rec)
+	if err != nil {
+		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)
+	}
+	for i, file := range files {
+		if file.Path != SidecarFilesPrefix(cfg)+file.Filename {
+			return nil, fmt.Errorf("%w %s: entry %d: path %q is not the run's", ErrMalformedSidecars, key, i, file.Path)
+		}
+	}
+	return files, nil
 }
 
 // validateRecordKey rejects a run whose components cannot form a safe
