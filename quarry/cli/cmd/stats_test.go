@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,5 +36,9 @@ func TestStatsMetrics_ReadsStorage(t *testing.T) {
 	}
 	if got["run_id"] != "run-a" || got["policy"] != "strict" || got["runs_started_total"] != float64(1) {
 		t.Errorf("snapshot = %v, want run-a's strict metrics", got)
+	}
+	out, err = runCLI(t, "stats", "metrics", "--format", "yaml", "--storage-backend", "fs", "--storage-path", root, "--run-id", "run-a")
+	if err != nil || !strings.Contains(out, "runs_started_total: 1\n") || strings.Contains(out, "job_id") || strings.Contains(out, "dropped_by_type") {
+		t.Errorf("YAML = %s, %v, want the documented names without empty fields", out, err)
 	}
 }
