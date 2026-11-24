@@ -97,7 +97,7 @@ quarry run \
   --adapter-header "Authorization=Bearer $TOKEN"
 ```
 
-The adapter publishes once the run's end record is confirmed in storage. If the
+The adapter publishes once Quarry has confirmed both of the run's records in storage. If the
 webhook fails (after retries), the warning is logged to stderr but the
 run exits with its normal outcome code.
 
@@ -158,7 +158,7 @@ quarry run \
   --adapter-channel quarry:run_completed
 ```
 
-The adapter publishes once the run's end record is confirmed in storage. If the
+The adapter publishes once Quarry has confirmed both of the run's records in storage. If the
 publish fails (after retries), the warning is logged to stderr but the
 run exits with its normal outcome code.
 

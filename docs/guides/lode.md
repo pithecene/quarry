@@ -50,10 +50,10 @@ This allows queries to filter by record type without parsing payloads.
 
 ## Artifact Storage
 
-The bytes of an artifact are stored in a Lode Volume of the run, and its commit record
-names that Volume. The commit record is the durability boundary: a Volume without one is
-an orphan. The runtime removes its run's orphans, and `quarry prune` removes the rest.
-The [storage contract](../contracts/CONTRACT_LODE.md) § Artifact Storage states the rules.
+The bytes of a nonempty artifact are stored in a Lode Volume of the run, and its commit
+record names that Volume. The commit record is the durability boundary.
+The [storage contract](../contracts/CONTRACT_LODE.md) § Artifact Storage states which
+Volumes without a record are removed, and when.
 Older data holds artifact bytes in chunk records, which readers still read.
 
 ---
@@ -87,11 +87,11 @@ when present.
 
 **Error Handling:**
 - Storage errors are classified and wrapped with context (operation, path).
-- A failed event write, such as disk full (`ENOSPC`) or permission denied (`EACCES`), ends
-  the run as `storage_error`, unless its sink is best effort.
+- An event write that fails, such as disk full (`ENOSPC`) or permission denied (`EACCES`),
+  and decides the run's outcome ends the run as `storage_error`.
 - Not-found errors (missing directories) are surfaced at initialization or write time.
-- Quarry does **not** retry failed data writes. It retries only a commit that conflicts with
-  another writer, and the end record.
+- A failed write of a data object is not retried within its commit. A policy can write a
+  preserved batch again ([policy contract](../contracts/CONTRACT_POLICY.md) § Flush Semantics).
 - The ingestion policy determines whether partial data is preserved on failure.
 - Error messages include actionable context (what operation failed, where).
 
@@ -107,15 +107,16 @@ when present.
 
 **Error Handling:**
 - Storage errors are classified and wrapped with context (operation, path).
-- A failed event write, such as an authentication, access, throttling, or timeout error, ends
-  the run as `storage_error`, unless its sink is best effort.
+- An event write that fails, such as on authentication, access, throttling, or a timeout,
+  and decides the run's outcome ends the run as `storage_error`.
 - Error messages include actionable context (what operation failed, where).
 
 **Consistency Caveats:**
 - S3 provides **strong read-after-write consistency** for PUTs (since Dec 2020).
 - However, Quarry does **not** guarantee transactional semantics across multiple writes.
 - If a run fails mid-stream, partial data may exist in S3.
-- `quarry prune` removes the data that a failed run left.
+- `quarry prune` removes whole runs by state and age. Its `--sweep-grace` also removes old
+  objects of writes that never committed.
 
 **Required IAM Permissions:**
 ```json
@@ -171,7 +172,7 @@ entry in `Manifest.Metadata` containing an array of file references:
 The following behaviors are explicitly **out of scope**:
 
 **No Automatic Retries:**
-- Quarry does not retry failed data writes.
+- Quarry does not retry a failed data write within its commit.
 - If a write fails, the error propagates to the policy and run outcome.
 - Callers are responsible for implementing retry logic at the job/orchestration level.
 
