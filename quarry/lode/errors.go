@@ -1,8 +1,3 @@
-// Package lode provides storage error classification for Quarry.
-//
-// This file defines sentinel errors and error wrappers for classifying
-// storage failures. These enable callers to use errors.Is/errors.As
-// for typed assertions rather than string matching.
 package lode
 
 import (
@@ -76,44 +71,23 @@ func (e *StorageError) Is(target error) bool {
 	return errors.Is(e.Kind, target)
 }
 
-// NewStorageError creates a classified storage error.
-func NewStorageError(kind error, op, path string, err error) *StorageError {
-	return &StorageError{
-		Kind: kind,
-		Op:   op,
-		Path: path,
-		Err:  err,
-	}
-}
-
 // WrapWriteError classifies and wraps a write operation error.
 // Returns nil if err is nil.
-func WrapWriteError(err error, path string) error {
-	if err == nil {
-		return nil
-	}
-	kind := classifyError(err)
-	return NewStorageError(kind, "write", path, err)
-}
+func WrapWriteError(err error, path string) error { return wrapError("write", err, path) }
 
 // WrapReadError classifies and wraps a read operation error.
 // Returns nil if err is nil.
-func WrapReadError(err error, path string) error {
-	if err == nil {
-		return nil
-	}
-	kind := classifyError(err)
-	return NewStorageError(kind, "read", path, err)
-}
+func WrapReadError(err error, path string) error { return wrapError("read", err, path) }
 
 // WrapInitError classifies and wraps a client initialization error.
 // Returns nil if err is nil.
-func WrapInitError(err error, dataset string) error {
+func WrapInitError(err error, dataset string) error { return wrapError("init", err, dataset) }
+
+func wrapError(op string, err error, path string) error {
 	if err == nil {
 		return nil
 	}
-	kind := classifyError(err)
-	return NewStorageError(kind, "init", dataset, err)
+	return &StorageError{Kind: classifyError(err), Op: op, Path: path, Err: err}
 }
 
 // errorPattern pairs a set of message substrings with a sentinel error.

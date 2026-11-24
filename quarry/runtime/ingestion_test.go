@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	lodepkg "github.com/pithecene/lode/lode"
@@ -690,6 +691,25 @@ func TestIngestionEngine_PipeCloseAfterTerminal(t *testing.T) {
 	}
 }
 
+// recordingFileWriter is a FileWriter that records each PutFile.
+type recordingFileWriter struct {
+	mu    sync.Mutex
+	Files []recordedFile
+}
+
+type recordedFile struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
+func (w *recordingFileWriter) PutFile(_ context.Context, filename, contentType string, data []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.Files = append(w.Files, recordedFile{filename, contentType, data})
+	return nil
+}
+
 // failingFileWriter is a FileWriter that always fails PutFile.
 type failingFileWriter struct {
 	err error
@@ -747,7 +767,7 @@ func TestIngestionEngine_FileWrite_SuccessAck(t *testing.T) {
 
 	var ackBuf bytes.Buffer
 	logger := log.NewLogger(runMeta)
-	fw := lode.NewStubFileWriter()
+	fw := &recordingFileWriter{}
 	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, &ackBuf)
 
 	err := engine.Run(t.Context())
@@ -918,7 +938,7 @@ func TestIngestionEngine_FileWrite_NilAckWriter_BackwardCompat(t *testing.T) {
 	buf.Write(encodeEventFrame(terminal))
 
 	logger := log.NewLogger(runMeta)
-	fw := lode.NewStubFileWriter()
+	fw := &recordingFileWriter{}
 	// nil ackWriter — backward compat, no panic
 	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, nil)
 
@@ -979,7 +999,7 @@ func TestIngestionEngine_FileWrite_AckWriteEPIPE_NonFatal(t *testing.T) {
 	buf.Write(encodeEventFrame(terminal))
 
 	logger := log.NewLogger(runMeta)
-	fw := lode.NewStubFileWriter()
+	fw := &recordingFileWriter{}
 	// EPIPE ack writer — should not cause stream error
 	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, &epipeWriter{})
 
@@ -1027,7 +1047,7 @@ func TestIngestionEngine_FileWrite_PostTerminal_ErrorAck(t *testing.T) {
 
 	var ackBuf bytes.Buffer
 	logger := log.NewLogger(runMeta)
-	fw := lode.NewStubFileWriter()
+	fw := &recordingFileWriter{}
 	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, &ackBuf)
 
 	err := engine.Run(t.Context())
@@ -1094,7 +1114,7 @@ func TestIngestionEngine_FileWrite_PostTerminal_NoAckWriter(t *testing.T) {
 	buf.Write(encodeFileWriteFrame(fileWrite))
 
 	logger := log.NewLogger(runMeta)
-	fw := lode.NewStubFileWriter()
+	fw := &recordingFileWriter{}
 	// nil ackWriter — should not panic
 	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, nil)
 
