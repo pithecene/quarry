@@ -11,7 +11,7 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
+func TestQueryRunDetails_SidecarsRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	store := lode.NewMemory()
@@ -51,10 +51,7 @@ func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
 
 	// Query sidecar files
 
-	files, err := QuerySidecarFiles(ctx, factory, "quarry", "run-query")
-	if err != nil {
-		t.Fatalf("QuerySidecarFiles failed: %v", err)
-	}
+	files := sidecarsOf(t, factory, cfg)
 
 	if len(files) != 2 {
 		t.Fatalf("got %d files, want 2", len(files))
@@ -80,22 +77,19 @@ func TestQuerySidecarFiles_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestQuerySidecarFiles_NoFiles(t *testing.T) {
+func TestQueryRunDetails_SidecarsNoFiles(t *testing.T) {
 	t.Parallel()
 
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
 
-	files, err := QuerySidecarFiles(t.Context(), factory, "quarry", "run-nonexistent")
-	if err != nil {
-		t.Fatalf("QuerySidecarFiles failed: %v", err)
-	}
+	files := sidecarsOf(t, factory, Config{Dataset: "quarry", Source: "test-source", Category: "test-category", Day: "2026-03-22", RunID: "run-nonexistent"})
 	if files != nil {
 		t.Errorf("expected nil for no files, got %d entries", len(files))
 	}
 }
 
-func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
+func TestQueryRunDetails_SidecarsFiltersByRunID(t *testing.T) {
 	t.Parallel()
 
 	store := lode.NewMemory()
@@ -132,10 +126,7 @@ func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
 	}
 
 	// Query for run-A only
-	files, err := QuerySidecarFiles(ctx, factory, "quarry", "run-A")
-	if err != nil {
-		t.Fatalf("QuerySidecarFiles failed: %v", err)
-	}
+	files := sidecarsOf(t, factory, Config{Dataset: "quarry", Source: "test-source", Category: "test-category", Day: "2026-03-22", RunID: "run-A"})
 
 	if len(files) != 1 {
 		t.Fatalf("got %d files, want 1", len(files))
@@ -145,7 +136,7 @@ func TestQuerySidecarFiles_FiltersByRunID(t *testing.T) {
 	}
 }
 
-func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
+func TestQueryRunDetails_SidecarsAcrossMultipleSnapshots(t *testing.T) {
 	t.Parallel()
 
 	store := lode.NewMemory()
@@ -183,16 +174,13 @@ func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
 		t.Fatalf("PutFile 2 failed: %v", err)
 	}
 	snap := metrics.Snapshot{RunID: "run-multi", Policy: "strict", Executor: "e", StorageBackend: "mem"}
-	if err := client.WriteMetrics(ctx, snap, time.Now()); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(ctx, client, snap, time.Now()); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 
 	// Query should union across both snapshots
 
-	files, err := QuerySidecarFiles(ctx, factory, "quarry", "run-multi")
-	if err != nil {
-		t.Fatalf("QuerySidecarFiles failed: %v", err)
-	}
+	files := sidecarsOf(t, factory, cfg)
 
 	if len(files) != 2 {
 		t.Fatalf("got %d files, want 2 (unioned across snapshots)", len(files))
@@ -206,7 +194,7 @@ func TestQuerySidecarFiles_AcrossMultipleSnapshots(t *testing.T) {
 }
 
 // A run ID that Lode escapes in partition paths still finds the run's files.
-func TestQuerySidecarFiles_EscapedRunID(t *testing.T) {
+func TestQueryRunDetails_SidecarsEscapedRunID(t *testing.T) {
 	t.Parallel()
 	store := lode.NewMemory()
 	factory := sharedFactory(store)
@@ -223,10 +211,7 @@ func TestQuerySidecarFiles_EscapedRunID(t *testing.T) {
 	if err := client.WriteEvents(ctx, cfg.Dataset, cfg.RunID, events); err != nil {
 		t.Fatalf("WriteEvents failed: %v", err)
 	}
-	files, err := QuerySidecarFiles(ctx, factory, "quarry", cfg.RunID)
-	if err != nil {
-		t.Fatalf("QuerySidecarFiles failed: %v", err)
-	}
+	files := sidecarsOf(t, factory, cfg)
 	if len(files) != 1 || files[0].Filename != "page.html" {
 		t.Fatalf("files = %+v, want page.html", files)
 	}
@@ -234,7 +219,7 @@ func TestQuerySidecarFiles_EscapedRunID(t *testing.T) {
 
 // A malformed sidecar inventory fails the query with an error that names
 // its snapshot, rather than being skipped.
-func TestQuerySidecarFiles_MalformedInventoryFails(t *testing.T) {
+func TestQueryRunDetails_SidecarsMalformedInventoryFails(t *testing.T) {
 	t.Parallel()
 	store := lode.NewMemory()
 	ctx := t.Context()
@@ -247,8 +232,8 @@ func TestQuerySidecarFiles_MalformedInventoryFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = QuerySidecarFiles(ctx, sharedFactory(store), "quarry", "run-bad")
+	_, err = QueryRunDetails(ctx, sharedFactory(store), Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-03-22", RunID: "run-bad"})
 	if err == nil || !strings.Contains(err.Error(), string(snap.ID)) {
-		t.Fatalf("QuerySidecarFiles = %v, want an error that names snapshot %s", err, snap.ID)
+		t.Fatalf("QueryRunDetails = %v, want an error that names snapshot %s", err, snap.ID)
 	}
 }

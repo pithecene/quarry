@@ -314,9 +314,8 @@ func TestPrune_EncodedKeyUsesRecordedSidecars(t *testing.T) {
 	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
 
 	prefix := "datasets/quarry/partitions/source=a/b/category=cat/day=" + oldDay + "/run_id=r1/files/"
-	files, err := qlode.QuerySidecarFiles(t.Context(), f.factory, "quarry", "r1")
-	if err != nil || len(files) != 1 || files[0].Path != prefix+"page.html" {
-		t.Fatalf("sidecar files = %+v, %v; want recorded page.html at %s", files, err, prefix)
+	if written, err := f.store.List(t.Context(), prefix); err != nil || !slices.Contains(written, prefix+"page.html") {
+		t.Fatalf("stored files = %v, %v; want page.html at %s", written, err, prefix)
 	}
 
 	report := f.prune(Options{Policy: Policy{Failed: days(7)}})

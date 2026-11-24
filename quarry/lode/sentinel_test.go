@@ -154,8 +154,8 @@ func TestQueryLatestMetrics_ErrNotFound_StaleSnapshotID(t *testing.T) {
 	}
 
 	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-	if err := client.WriteMetrics(t.Context(), snap, completedAt); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(t.Context(), client, snap, completedAt); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 
 	// Read dataset directly to exercise ds.Read with a bad snapshot ID
@@ -393,87 +393,5 @@ func TestPutFile_MetadataInventory_PreservedOnWriteFailure(t *testing.T) {
 	client.mu.Unlock()
 	if pending != 1 {
 		t.Errorf("pendingFiles after failed write = %d, want 1 (preserved)", pending)
-	}
-}
-
-// TestPutFile_MetadataInventory_IncludedInWriteMetrics verifies that sidecar
-// files are also flushed when WriteMetrics is called (run completion path).
-func TestPutFile_MetadataInventory_IncludedInWriteMetrics(t *testing.T) {
-	t.Parallel()
-
-	store := lode.NewMemory()
-	factory := sharedFactory(store)
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-001",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	ctx := t.Context()
-
-	// Write a sidecar file
-	if err := client.PutFile(ctx, "final-report.pdf", "application/pdf", []byte("pdf-data")); err != nil {
-		t.Fatalf("PutFile failed: %v", err)
-	}
-
-	// Flush via WriteMetrics (run completion)
-	snap := metrics.Snapshot{
-		RunsStarted:    1,
-		RunID:          "run-001",
-		Policy:         "strict",
-		Executor:       "executor.js",
-		StorageBackend: "memory",
-	}
-	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-	if err := client.WriteMetrics(ctx, snap, completedAt); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
-	}
-
-	// Verify pending files are drained
-	client.mu.Lock()
-	pending := len(client.pendingFiles)
-	client.mu.Unlock()
-	if pending != 0 {
-		t.Errorf("pendingFiles after WriteMetrics = %d, want 0", pending)
-	}
-
-	// Verify metadata in snapshot
-	ds, err := readView(t.Context(), factory)
-	if err != nil {
-		t.Fatalf("readView failed: %v", err)
-	}
-
-	snapshots, err := ds.Snapshots(ctx)
-	if err != nil {
-		t.Fatalf("Snapshots failed: %v", err)
-	}
-
-	var found bool
-	for _, s := range snapshots {
-		if raw, ok := metadataOf(t, s)[MetadataKeySidecarFiles]; ok {
-			files, ok := raw.([]any)
-			if !ok || len(files) == 0 {
-				continue
-			}
-			found = true
-			ref, ok := files[0].(map[string]any)
-			if !ok {
-				t.Fatalf("file ref is %T, want map[string]any", files[0])
-			}
-			if ref["filename"] != "final-report.pdf" {
-				t.Errorf("filename = %v, want final-report.pdf", ref["filename"])
-			}
-		}
-	}
-	if !found {
-		t.Fatal("no snapshot contains sidecar_files metadata after WriteMetrics")
 	}
 }

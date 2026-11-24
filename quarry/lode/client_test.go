@@ -100,50 +100,6 @@ func TestLodeClient_CommitRejectsMissingArtifactID(t *testing.T) {
 	}
 }
 
-func TestToEventRecord(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "my-source",
-		Category: "my-category",
-		Day:      "2026-02-03",
-		RunID:    "run-abc",
-		Policy:   "strict",
-	}
-
-	jobID := "job-xyz"
-	e := &types.EventEnvelope{
-		ContractVersion: "1.0.0",
-		EventID:         "evt-1",
-		RunID:           "run-abc",
-		Seq:             1,
-		Type:            types.EventTypeItem,
-		Ts:              "2026-02-03T12:00:00Z",
-		Payload:         map[string]any{"foo": "bar"},
-		JobID:           &jobID,
-		Attempt:         1,
-	}
-
-	record := toEventRecord(e, cfg)
-
-	if record.RecordKind != RecordKindEvent {
-		t.Errorf("RecordKind = %q, want %q", record.RecordKind, RecordKindEvent)
-	}
-	if record.Source != cfg.Source {
-		t.Errorf("Source = %q, want %q", record.Source, cfg.Source)
-	}
-	if record.Category != cfg.Category {
-		t.Errorf("Category = %q, want %q", record.Category, cfg.Category)
-	}
-	if record.Day != cfg.Day {
-		t.Errorf("Day = %q, want %q", record.Day, cfg.Day)
-	}
-	if record.EventID != e.EventID {
-		t.Errorf("EventID = %q, want %q", record.EventID, e.EventID)
-	}
-}
-
 func TestS3Config_Validate(t *testing.T) {
 	t.Parallel()
 
@@ -208,46 +164,6 @@ func TestParseS3Path(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestLodeClient_WriteMetrics(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "test-source",
-		Category: "test-category",
-		Day:      "2026-02-03",
-		RunID:    "run-123",
-		Policy:   "strict",
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-
-	snap := metrics.Snapshot{
-		RunsStarted:           1,
-		RunsCompleted:         1,
-		EventsReceived:        10,
-		EventsPersisted:       10,
-		DroppedByType:         map[string]int64{"log": 2},
-		ExecutorLaunchSuccess: 1,
-		LodeWriteSuccess:      5,
-		Policy:                "strict",
-		Executor:              "executor.js",
-		StorageBackend:        "fs",
-		RunID:                 "run-123",
-	}
-
-	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-
-	err = client.WriteMetrics(t.Context(), snap, completedAt)
-	if err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
-	}
-	// Success: metrics record written without error
 }
 
 func TestToMetricsRecordMap(t *testing.T) {
@@ -325,53 +241,6 @@ func TestToMetricsRecordMap(t *testing.T) {
 	}
 }
 
-func TestToArtifactCommitRecord(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Dataset:  "quarry",
-		Source:   "my-source",
-		Category: "my-category",
-		Day:      "2026-02-03",
-		RunID:    "run-abc",
-		Policy:   "strict",
-	}
-
-	e := &types.EventEnvelope{
-		ContractVersion: "1.0.0",
-		EventID:         "evt-2",
-		RunID:           "run-abc",
-		Seq:             2,
-		Type:            types.EventTypeArtifact,
-		Ts:              "2026-02-03T12:00:01Z",
-		Payload: map[string]any{
-			"artifact_id":  "art-123",
-			"name":         "report.pdf",
-			"content_type": "application/pdf",
-			"size_bytes":   float64(2048),
-		},
-		Attempt: 1,
-	}
-
-	record := toArtifactCommitRecord(e, cfg)
-
-	if record.RecordKind != RecordKindArtifactEvent {
-		t.Errorf("RecordKind = %q, want %q", record.RecordKind, RecordKindArtifactEvent)
-	}
-	if record.ArtifactID != "art-123" {
-		t.Errorf("ArtifactID = %q, want %q", record.ArtifactID, "art-123")
-	}
-	if record.Name != "report.pdf" {
-		t.Errorf("Name = %q, want %q", record.Name, "report.pdf")
-	}
-	if record.ContentType != "application/pdf" {
-		t.Errorf("ContentType = %q, want %q", record.ContentType, "application/pdf")
-	}
-	if record.SizeBytes != 2048 {
-		t.Errorf("SizeBytes = %d, want %d", record.SizeBytes, 2048)
-	}
-}
-
 // TestLodeClient_RetryObserver_CountsCASRetries proves the end-to-end path
 // from a Lode snapshot conflict to lode_write_retry_total: a competing
 // writer advances the dataset pointer, the client's next write conflicts
@@ -441,86 +310,6 @@ func TestLodeClient_RetryObserver_CountsCASRetries(t *testing.T) {
 	}
 	if got := collector.Snapshot().LodeWriteRetry; got != 1 {
 		t.Fatalf("LodeWriteRetry after one conflict = %d, want 1", got)
-	}
-}
-
-// TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics proves the
-// contract rule that retries incurred persisting the metrics record are not
-// observed: a competing writer makes the client's cached snapshot stale, the
-// metrics write still succeeds (only possible via CAS retry), and the
-// collector's retry counter is unchanged.
-func TestLodeClient_RetryObserver_NotCountedDuringWriteMetrics(t *testing.T) {
-	t.Parallel()
-
-	mem := lode.NewMemory()
-	factory := func() (lode.RangeStore, error) { return mem, nil }
-
-	collector := metrics.NewCollector("strict", "test", "memory", "run-123", "")
-	cfg := Config{
-		Dataset:       "quarry",
-		Source:        "test-source",
-		Category:      "test-category",
-		Day:           "2026-02-03",
-		RunID:         "run-123",
-		Policy:        "strict",
-		RetryObserver: func(int) { collector.IncLodeWriteRetry() },
-	}
-
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
-	}
-	competitor, err := NewLodeClientWithFactory(t.Context(), Config{
-		Dataset:  cfg.Dataset,
-		Source:   cfg.Source,
-		Category: cfg.Category,
-		Day:      cfg.Day,
-		RunID:    "run-other",
-		Policy:   cfg.Policy,
-	}, factory)
-	if err != nil {
-		t.Fatalf("NewLodeClientWithFactory (competitor) failed: %v", err)
-	}
-
-	event := func(runID, id string) []*types.EventEnvelope {
-		return []*types.EventEnvelope{{
-			ContractVersion: "1.0.0",
-			EventID:         id,
-			RunID:           runID,
-			Seq:             1,
-			Type:            types.EventTypeItem,
-			Ts:              "2026-02-03T12:00:00Z",
-			Payload:         map[string]any{"key": "value"},
-			Attempt:         1,
-		}}
-	}
-
-	// Seed the client's cached snapshot, then let the competitor advance the pointer.
-	if err := client.WriteEvents(t.Context(), "run-123", "", event("run-123", "evt-1")); err != nil {
-		t.Fatalf("client WriteEvents failed: %v", err)
-	}
-	if err := competitor.WriteEvents(t.Context(), "run-other", "", event("run-other", "evt-2")); err != nil {
-		t.Fatalf("competitor WriteEvents failed: %v", err)
-	}
-
-	before := collector.Snapshot().LodeWriteRetry
-	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-	if err := client.WriteMetrics(t.Context(), collector.Snapshot(), completedAt); err != nil {
-		t.Fatalf("contended WriteMetrics failed: %v", err)
-	}
-	if got := collector.Snapshot().LodeWriteRetry; got != before {
-		t.Fatalf("LodeWriteRetry changed during WriteMetrics: %d -> %d, want unchanged", before, got)
-	}
-
-	// Observation resumes for subsequent event writes.
-	if err := competitor.WriteEvents(t.Context(), "run-other", "", event("run-other", "evt-3")); err != nil {
-		t.Fatalf("competitor WriteEvents failed: %v", err)
-	}
-	if err := client.WriteEvents(t.Context(), "run-123", "", event("run-123", "evt-4")); err != nil {
-		t.Fatalf("client WriteEvents after metrics failed: %v", err)
-	}
-	if got := collector.Snapshot().LodeWriteRetry; got != before+1 {
-		t.Fatalf("LodeWriteRetry after post-metrics conflict = %d, want %d", got, before+1)
 	}
 }
 

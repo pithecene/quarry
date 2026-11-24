@@ -245,7 +245,7 @@ func TestEndRecord_SidecarFiles(t *testing.T) {
 		}
 	}
 	put("a.txt")
-	if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: cfg.RunID, Policy: "strict"}, time.Now()); err != nil {
+	if err := writeLegacyMetrics(t.Context(), client, metrics.Snapshot{RunID: cfg.RunID, Policy: "strict"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	put("late.txt")
