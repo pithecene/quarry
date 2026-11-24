@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/pithecene/quarry/internal/testutil"
@@ -30,6 +31,9 @@ type recordingStorage struct {
 	calls      []string
 	startErr   error
 	endErr     error
+	endErrs    []error // of the first writes of the end record, before endErr
+	ends       []lode.RunEnd
+	onEnd      func() // called by each write of the end record
 	end        *lode.RunEnd
 	startedAt  time.Time
 	deadlineAt *time.Time
@@ -55,6 +59,15 @@ func (s *recordingStorage) WriteStartRecord(ctx context.Context, _ *types.RunMet
 func (s *recordingStorage) WriteEndRecord(_ context.Context, end lode.RunEnd) error {
 	s.record("end")
 	s.end = &end
+	s.ends = append(s.ends, end)
+	if s.onEnd != nil {
+		s.onEnd()
+	}
+	if len(s.endErrs) > 0 {
+		err := s.endErrs[0]
+		s.endErrs = s.endErrs[1:]
+		return err
+	}
 	return s.endErr
 }
 
@@ -243,6 +256,64 @@ func TestExecute_EndRecordFailure_ReportedOutcomeUnchanged(t *testing.T) {
 	if !strings.Contains(result.RunRecordError, "put failed") {
 		t.Errorf("RunRecordError = %q, want the write error", result.RunRecordError)
 	}
+}
+
+// The end record is written again with the same end, until storage holds it
+// or the attempts run out.
+func TestExecute_EndRecordAttempts(t *testing.T) {
+	t.Parallel()
+	refused := errors.New("put failed")
+	for _, tc := range []struct {
+		name     string
+		startErr error
+		endErrs  []error
+		endErr   error
+		calls    string
+		recorded bool
+		failed   bool
+	}{
+		{"first", nil, nil, nil, "start,executor,close,end", true, false},
+		{"third", nil, []error{refused, refused}, nil, "start,executor,close,end,end,end", true, false},
+		{"none", nil, nil, refused, "start,executor,close,end,end,end", false, true},
+		// A record that exists can be this one, unreadable so far.
+		{"an existing record", nil, []error{refused, lode.ErrPathExists}, nil, "start,executor,close,end,end,end", true, false},
+		{"no start record", refused, nil, nil, "start,close,end", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storage := &recordingStorage{startErr: tc.startErr, endErrs: tc.endErrs, endErr: tc.endErr}
+			exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
+			result := executeRun(t, finalizeConfig(t, storage, exec))
+			if got := storage.sequence(); got != tc.calls {
+				t.Errorf("calls = %s, want %s", got, tc.calls)
+			}
+			if result.Recorded != tc.recorded || (result.RunRecordError != "") != tc.failed {
+				t.Errorf("recorded = %t, error %q, want %t and an error %t", result.Recorded, result.RunRecordError, tc.recorded, tc.failed)
+			}
+			for _, end := range storage.ends {
+				if !reflect.DeepEqual(end, storage.ends[0]) {
+					t.Errorf("a later attempt wrote %+v, want %+v", end, storage.ends[0])
+				}
+			}
+		})
+	}
+}
+
+// No attempt starts after the bound, whether or not the store honors it.
+func TestWriteEndRecord_StartsNoAttemptAfterTheBound(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		refused := errors.New("put failed")
+		storage := &recordingStorage{endErr: refused, onEnd: func() { time.Sleep(finalizeTimeout - endRecordDelay/2) }}
+		config := finalizeConfig(t, storage, newMockExecutor(nil, 0))
+		orchestrator, err := NewRunOrchestrator(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := &RunResult{RunMeta: config.RunMeta, Outcome: &types.RunOutcome{Status: types.OutcomeSuccess}}
+		if orchestrator.writeEndRecord(t.Context(), result) || len(storage.ends) != 1 || !strings.Contains(result.RunRecordError, refused.Error()) {
+			t.Errorf("attempts = %d, error %q, want one attempt and its error", len(storage.ends), result.RunRecordError)
+		}
+	})
 }
 
 func TestExecute_NoStorage_WritesNothing(t *testing.T) {

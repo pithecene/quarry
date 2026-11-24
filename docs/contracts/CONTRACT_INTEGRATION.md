@@ -255,15 +255,14 @@ The adapter is invoked **after** `Execute` returns, so all of the following
 have happened ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization):
 1. Run execution completes (success or failure)
 2. Policy flush completes
-3. The run's end record, which holds its metrics, is written, or its write
-   failed. A write reported as failed may still have been persisted. Without
-   an end record, the run's events and artifacts remain readable, and its
-   metrics are only in the exit report, when one was requested
+3. The run's end record, which holds its metrics, is confirmed in storage
 
-Notification is not skipped when finalization is incomplete: a run whose
-start record failed is notified as `executor_crash` (it never started),
-and a run whose end record failed is notified with its real outcome while
-the failure is surfaced as [CONTRACT_RUN.md](CONTRACT_RUN.md) requires.
+A run whose records are not confirmed (`RunResult.Recorded`) is not notified,
+whatever its outcome, and a warning on stderr reports the skip. Its exit
+report carries its outcome and `recorded`, and the failure is surfaced as
+[CONTRACT_RUN.md](CONTRACT_RUN.md) requires. A write reported as failed may still
+have been persisted. Without an end record, the run's events and artifacts remain
+readable, and its metrics are only in the exit report, when one was requested.
 
 This ensures consumers can read the data referenced in the event payload.
 Adapter publish is the last step before CLI output and exit.

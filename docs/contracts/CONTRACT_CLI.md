@@ -110,11 +110,14 @@ No other command may initiate or control execution.
 
 ### Exit Codes
 
-The `run` command exit code is determined by execution outcome:
+The `run` command exit code is determined by execution outcome, and for a `success`
+also by whether the run's records are confirmed in storage
+([CONTRACT_RUN.md](CONTRACT_RUN.md) §Failure Semantics):
 
 | Exit Code | OutcomeStatus | Meaning |
 |-----------|---------------|---------|
-| 0 | `success` | Run completed successfully |
+| 0 | `success` | Run completed successfully, with its records confirmed |
+| 4 | `success` | Run completed successfully, without its records confirmed |
 | 1 | `script_error` | Script emitted `run_error` |
 | 2 | `executor_crash` | Executor crashed or exited abnormally |
 | 3 | `policy_failure` | Ingestion policy failed (non-retryable) |
@@ -124,8 +127,13 @@ The `run` command exit code is determined by execution outcome:
 
 The outcomes `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
-The outcome `storage_error` has its own exit code because a store's timeout or
-refusal is often transient, so a caller can retry on exit code 4 alone.
+Exit code 4 means that storage did not confirm what the run produced, which is
+often transient. It covers `storage_error` and a `success` without confirmed records.
+The events and records of either may be persisted, so a caller that must not
+extract twice reads the run before it retries. The exit report
+tells the two apart by `outcome`. A failed run keeps the exit code of its outcome,
+whether or not its records are confirmed. In a fan-out, the root run alone
+determines the exit code.
 The outcome `deadline_exceeded` has its own exit code, so a caller can tell a
 run that its own `--max-duration` stopped from a crash.
 
@@ -251,7 +259,7 @@ Semantics:
 - `--max-runs` is mandatory when `--depth > 0` (safety rail).
 - `--parallel > 1` without `--depth > 0` emits a stderr warning (no-op).
 - Deduplication: identical `(target, params)` pairs are executed once.
-- Exit code is determined by root run outcome only.
+- The root run determines the exit code (§Exit Codes), and child results do not affect it.
 - Child run results appear in the fan-out summary printed to stdout.
 - Child runs inherit the root run's `--source` and `--category` by default.
   Per-child overrides are supported via `emit.enqueue({ source, category })`.
