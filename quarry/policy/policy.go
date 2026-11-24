@@ -131,7 +131,17 @@ func (r *statsRecorder) incErrors()                 { r.errors.Add(1) }
 func (r *statsRecorder) incFlush()                  { r.flushCount.Add(1) }
 
 func (r *statsRecorder) snapshot() Stats {
-	return r.snapshotLocked(0)
+	s := Stats{
+		TotalEvents:     r.totalEvents.Load(),
+		EventsPersisted: r.eventsPersisted.Load(),
+		EventsDropped:   r.eventsDropped.Load(),
+		BufferSize:      r.bufferSize.Load(),
+		FlushCount:      r.flushCount.Load(),
+		Errors:          r.errors.Load(),
+		DroppedByType:   make(map[types.EventType]int64, len(r.droppedByType)),
+	}
+	maps.Copy(s.DroppedByType, r.droppedByType)
+	return s
 }
 
 // --- Caller-locked methods ---
