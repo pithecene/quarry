@@ -123,6 +123,13 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup
 
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🏗️ Build SDK
+        working-directory: sdk
+        run: pnpm run build
+
       - name: 📦 Package
         env:
           VERSION: ${{ inputs.version }}
