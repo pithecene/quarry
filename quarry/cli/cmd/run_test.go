@@ -12,11 +12,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/adapter"
 	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/internal/testutil"
 
@@ -1111,30 +1113,65 @@ func TestBuildRunCompletedEvent_BasicFields(t *testing.T) {
 // The locator holds what a reader needs and no credentials.
 func TestBuildStorageLocator(t *testing.T) {
 	t.Parallel()
-	abs, err := filepath.Abs("data")
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, tc := range []struct {
 		name    string
 		storage storageChoice
-		want    string
+		want    map[string]any
 	}{
-		{"fs", storageChoice{backend: "fs", path: "data", endpoint: "https://ignored"}, `{"backend":"fs","path":"` + abs + `","dataset":"d"}`},
-		{"s3", storageChoice{backend: "s3", path: "b/p", region: "r"}, `{"backend":"s3","path":"b/p","dataset":"d","region":"r"}`},
+		{"s3", storageChoice{backend: "s3", path: "b/p", region: "r"}, map[string]any{"backend": "s3", "path": "b/p", "dataset": "d", "region": "r"}},
 		{
 			"s3 endpoint",
 			storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:9000/x?token=secret#secret", usePathStyle: true},
-			`{"backend":"s3","path":"b","dataset":"d","endpoint":"https://host:9000/x","s3PathStyle":true}`,
+			map[string]any{"backend": "s3", "path": "b", "dataset": "d", "endpoint": "https://host:9000/x", "s3PathStyle": true},
 		},
-		{"malformed endpoint", storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:port"}, `{"backend":"s3","path":"b","dataset":"d"}`},
+		{
+			"malformed endpoint",
+			storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:port"},
+			map[string]any{"backend": "s3", "path": "b", "dataset": "d"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := json.Marshal(buildStorageLocator(tc.storage, "d"))
-			if err != nil || string(got) != tc.want {
-				t.Errorf("locator = %s, %v, want %s", got, err, tc.want)
+			locator, err := buildStorageLocator(tc.storage, "d")
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.Marshal(locator)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(data, &got); err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("locator = %v, %v, want %v", got, err, tc.want)
 			}
 		})
+	}
+	if _, err := buildStorageLocator(storageChoice{backend: "fs", path: filepath.Join(t.TempDir(), "missing")}, "d"); err == nil {
+		t.Error("buildStorageLocator located a directory that does not exist")
+	}
+}
+
+// A relative directory resolves as the operating system opens it, where the
+// working directory is a symbolic link.
+func TestBuildStorageLocator_PhysicalDirectory(t *testing.T) {
+	testutil.Serial(t, "changes the process working directory and $PWD")
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"real/r1", "real/data", "data"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(root, "current")
+	if err := os.Symlink(filepath.Join(root, "real", "r1"), link); err != nil {
+		t.Skipf("no symbolic links: %v", err)
+	}
+	t.Chdir(link)
+	locator, err := buildStorageLocator(storageChoice{backend: "fs", path: "../data", endpoint: "https://ignored"}, "d")
+	want := adapter.StorageLocator{Backend: "fs", Path: filepath.Join(root, "real", "data"), Dataset: "d"}
+	if err != nil || locator != want {
+		t.Errorf("locator = %+v, %v, want %+v", locator, err, want)
 	}
 }
 

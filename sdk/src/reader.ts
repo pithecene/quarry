@@ -102,7 +102,7 @@ export type RunLocator = {
  */
 export type NotificationLocator = {
   run: RunLocator
-  storage: ReaderStorage
+  storage: ReaderStorage & { dataset: string }
 }
 
 /** Thrown when the CLI cannot be run or exits with an error. */

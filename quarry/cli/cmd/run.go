@@ -573,6 +573,11 @@ func (f *runFinalizer) notifyAdapter(ctx context.Context, result *runtime.RunRes
 	defer iox.DiscardClose(adpt)
 
 	event := buildRunCompletedEvent(result, f.storage, f.storageDataset, f.source, f.category, lode.DeriveDay(f.startTime), duration)
+	event.Locator.Storage, err = buildStorageLocator(f.storage, f.storageDataset)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: adapter notification skipped: %v\n", err)
+		return
+	}
 	publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), f.adapter.timeout)
 	defer cancel()
 	if err := adpt.Publish(publishCtx, event); err != nil {
@@ -1609,8 +1614,7 @@ func buildRunCompletedEvent(
 		EventCount:      result.EventCount,
 		DurationMs:      duration.Milliseconds(),
 		Locator: adapter.Locator{
-			Run:     adapter.RunLocator{Source: source, Category: category, Day: day, RunID: result.RunMeta.RunID},
-			Storage: buildStorageLocator(storageConfig, dataset),
+			Run: adapter.RunLocator{Source: source, Category: category, Day: day, RunID: result.RunMeta.RunID},
 		},
 	}
 	if result.RunMeta.JobID != nil {
@@ -1620,20 +1624,39 @@ func buildRunCompletedEvent(
 }
 
 // buildStorageLocator is the storage as a reader takes it, without credentials.
-func buildStorageLocator(storageConfig storageChoice, dataset string) adapter.StorageLocator {
+func buildStorageLocator(storageConfig storageChoice, dataset string) (adapter.StorageLocator, error) {
 	locator := adapter.StorageLocator{Backend: storageConfig.backend, Path: storageConfig.path, Dataset: dataset}
 	switch storageConfig.backend {
 	case "fs":
-		// A reader runs in another directory.
-		if abs, err := filepath.Abs(storageConfig.path); err == nil {
-			locator.Path = abs
+		root, err := physicalPath(storageConfig.path)
+		if err != nil {
+			return adapter.StorageLocator{}, fmt.Errorf("resolve storage path: %w", err)
 		}
+		locator.Path = root
 	case "s3":
 		locator.Region = storageConfig.region
 		locator.Endpoint = redactEndpoint(storageConfig.endpoint)
 		locator.S3PathStyle = storageConfig.usePathStyle
 	}
-	return locator
+	return locator, nil
+}
+
+// physicalPath is the absolute path that the operating system resolves path to,
+// for a reader in another directory. filepath.Abs alone cleans ".." lexically,
+// against a working directory that can itself be a symbolic link.
+func physicalPath(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || filepath.IsAbs(resolved) {
+		return resolved, err
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if wd, err = filepath.EvalSymlinks(wd); err != nil {
+		return "", err
+	}
+	return filepath.Join(wd, resolved), nil
 }
 
 // redactEndpoint is the endpoint URL without its user information, query, and
