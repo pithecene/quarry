@@ -24,8 +24,9 @@ func WriteMetrics(ctx context.Context, factory lode.Factory[lode.RangeStore], cf
 	if err != nil {
 		return err
 	}
-	// Those releases kept the fields that an end record keeps now.
+	// Those releases kept the fields that an end record keeps now, but for one.
 	record := qlode.NewEndRecord(cfg, qlode.RunEnd{Metrics: &snap}).Metrics
+	delete(record, "flush_triggers")
 	record["record_kind"] = qlode.RecordKindMetrics
 	record["event_type"] = "metrics"
 	record["ts"] = completedAt.UTC().Format(time.RFC3339)

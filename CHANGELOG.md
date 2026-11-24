@@ -15,7 +15,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Adapters notify only for confirmed runs**: `quarry run` sends no notification, and warns on stderr, when the start record failed or Quarry could not confirm the end record. Before, it sent one for every run, so a consumer could receive a run that readers call unterminated or do not find. `CONTRACT_INTEGRATION.md` § Invocation Ordering states the rule.
 - **`quarry run` exits 4 for a success without confirmed records**: the run succeeded, and Quarry could not confirm its end record. Before, it exited 0, so a caller that read only the exit code took the run as durable. A failed run keeps its exit code. `CONTRACT_CLI.md` § Exit Codes states the rule.
 - **An adapter with an endpoint path needs consent**: `quarry run` refuses to start with `--adapter` and a `--storage-endpoint` that has a path, without `--adapter-publish-endpoint-path`. Notifications now carry the endpoint, and a path can hold a secret. `CONTRACT_INTEGRATION.md` § Run Locator states the rule.
-- **The Go module drops APIs that nothing in Quarry uses**: `qlode.QuerySidecarFiles`, `LodeClient.WriteMetrics`, `EventRecord`, and `ArtifactCommitRecord`. Read a run's sidecar files with `qlode.QueryRunDetails`.
+- **The Go module drops APIs that nothing in Quarry uses**: `qlode.QuerySidecarFiles`, `LodeClient.WriteMetrics`, `EventRecord`, and `ArtifactCommitRecord`. Read a run's sidecar files with `qlode.QueryRunDetails`, which returns each path as recorded. Collapse its consecutive slashes to look the object up.
 
 ### Added
 
