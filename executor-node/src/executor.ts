@@ -17,7 +17,8 @@
  *
  * @module
  */
-import childProcess, { type SpawnOptions } from 'node:child_process'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import childProcess from 'node:child_process'
 import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
@@ -236,22 +237,33 @@ export async function launchIdentity(
   }
 }
 
+/** The launch that the current asynchronous call belongs to. */
+const launching = new AsyncLocalStorage<{ pending: boolean }>()
+let spawnFollowsLaunch = false
+
 /**
  * Launch a browser in this process's own group. Puppeteer starts Chromium as
  * the leader of another group, which a signal to this one would not reach: the
  * runtime stops a run by its group, and the browser must stop with it, even
- * while it is still starting. Puppeteer has no option for this, so its spawn is
- * adjusted for the time that the launch takes to spawn.
- * @internal
+ * while it is still starting. Puppeteer has no option for this, so a spawn that
+ * a pending launch makes stays in the group. Every other spawn is unchanged.
  */
-export async function launchInGroup<T>(launch: () => Promise<T>): Promise<T> {
-  const spawn = childProcess.spawn
-  childProcess.spawn = ((command: string, args: readonly string[], options: SpawnOptions) =>
-    spawn(command, args, { ...options, detached: false })) as typeof spawn
+async function launchInGroup<T>(launch: () => Promise<T>): Promise<T> {
+  if (!spawnFollowsLaunch) {
+    spawnFollowsLaunch = true
+    const spawn = childProcess.spawn
+    childProcess.spawn = ((command: string, ...rest: unknown[]) => {
+      const options = rest.at(-1)
+      if (launching.getStore()?.pending && typeof options === 'object' && !Array.isArray(options))
+        rest[rest.length - 1] = { ...options, detached: false }
+      return Reflect.apply(spawn, childProcess, [command, ...rest])
+    }) as typeof spawn
+  }
+  const state = { pending: true }
   try {
-    return await launch()
+    return await launching.run(state, launch)
   } finally {
-    childProcess.spawn = spawn
+    state.pending = false
   }
 }
 

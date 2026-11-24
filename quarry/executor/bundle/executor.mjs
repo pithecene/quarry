@@ -2848,10 +2848,10 @@ __export(executor_exports, {
   getPuppeteer: () => getPuppeteer,
   getVanillaPuppeteer: () => getVanillaPuppeteer,
   launchIdentity: () => launchIdentity,
-  launchInGroup: () => launchInGroup,
   parseRunMeta: () => parseRunMeta,
   resolvePeer: () => resolvePeer
 });
+import { AsyncLocalStorage } from "node:async_hooks";
 import childProcess from "node:child_process";
 import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -2955,12 +2955,21 @@ async function launchIdentity(scriptPath, plugins, args) {
   };
 }
 async function launchInGroup(launch) {
-  const spawn = childProcess.spawn;
-  childProcess.spawn = ((command, args, options) => spawn(command, args, { ...options, detached: false }));
+  if (!spawnFollowsLaunch) {
+    spawnFollowsLaunch = true;
+    const spawn = childProcess.spawn;
+    childProcess.spawn = ((command, ...rest) => {
+      const options = rest.at(-1);
+      if (launching.getStore()?.pending && typeof options === "object" && !Array.isArray(options))
+        rest[rest.length - 1] = { ...options, detached: false };
+      return Reflect.apply(spawn, childProcess, [command, ...rest]);
+    });
+  }
+  const state = { pending: true };
   try {
-    return await launch();
+    return await launching.run(state, launch);
   } finally {
-    childProcess.spawn = spawn;
+    state.pending = false;
   }
 }
 function errorMessage(err) {
@@ -3344,7 +3353,7 @@ async function execute(config) {
     }
   }
 }
-var puppeteerModule, cachedPluginConfig;
+var launching, spawnFollowsLaunch, puppeteerModule, cachedPluginConfig;
 var init_executor = __esm({
   "src/executor.ts"() {
     "use strict";
@@ -3352,6 +3361,8 @@ var init_executor = __esm({
     init_observing_sink();
     init_sink();
     init_loader();
+    launching = new AsyncLocalStorage();
+    spawnFollowsLaunch = false;
     puppeteerModule = null;
     cachedPluginConfig = null;
   }

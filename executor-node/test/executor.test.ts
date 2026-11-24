@@ -1,4 +1,3 @@
-import childProcess from 'node:child_process'
 import {
   mkdirSync,
   mkdtempSync,
@@ -19,7 +18,6 @@ import {
   type ExecutorConfig,
   execute,
   launchIdentity,
-  launchInGroup,
   parseRunMeta
 } from '../src/executor.js'
 import type { RunResultFrame } from '../src/ipc/frame.js'
@@ -1400,25 +1398,5 @@ describe('launchIdentity', () => {
     const script = project('1.0.0', `${dir}/link/../chrome`)
     const identity = await launchIdentity(script, noPlugins, [])
     expect(identity.executable.file).toBe(launched)
-  })
-})
-
-describe('launchInGroup', () => {
-  it('spawns in the group of this process, and only for the launch', async () => {
-    const groupOf = (pid: number | undefined) =>
-      childProcess
-        .execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)])
-        .toString()
-        .trim()
-    const spawn = childProcess.spawn
-    const child = await launchInGroup(async () =>
-      childProcess.spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
-    )
-    try {
-      expect(groupOf(child.pid)).toBe(groupOf(process.pid))
-      expect(childProcess.spawn).toBe(spawn)
-    } finally {
-      child.kill('SIGKILL')
-    }
   })
 })

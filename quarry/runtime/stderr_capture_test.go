@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strconv"
@@ -167,29 +168,50 @@ func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 			if tc.cancel {
 				cancel()
 			}
-			go func() { _, _ = io.Copy(io.Discard, m.Stdout()) }()
-			waited := make(chan error, 1)
+			// As the runtime does: stdout to its end first, and then Wait.
+			ended := make(chan error, 1)
 			go func() {
+				if _, err := io.Copy(io.Discard, m.Stdout()); err != nil {
+					ended <- err
+					return
+				}
 				_, err := m.Wait()
-				waited <- err
+				ended <- err
 			}()
 			select {
-			case err := <-waited:
+			case err := <-ended:
 				if err != nil {
-					t.Fatalf("Wait: %v", err)
+					t.Fatalf("the run ended with %v", err)
 				}
 			case <-time.After(15 * time.Second):
-				t.Fatal("Wait did not return")
+				t.Fatal("the run did not end")
 			}
 			deadline := time.Now().Add(5 * time.Second)
-			for syscall.Kill(pid, 0) == nil && time.Now().Before(deadline) {
+			for running(t, pid) && time.Now().Before(deadline) {
 				time.Sleep(10 * time.Millisecond)
 			}
-			if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+			if running(t, pid) {
 				t.Errorf("the executor's child %d is still running after Wait", pid)
+			}
+			if err := m.Kill(); !errors.Is(err, os.ErrProcessDone) {
+				t.Errorf("Kill after the run ended = %v, want os.ErrProcessDone and no signal", err)
+			}
+			if _, err := m.Wait(); err != nil {
+				t.Errorf("a second Wait = %v, want the same result", err)
 			}
 		})
 	}
+}
+
+// running reports whether pid runs; a zombie that nothing has reaped does not.
+func running(t *testing.T, pid int) bool {
+	t.Helper()
+	out, err := exec.CommandContext(t.Context(), "ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
+	if _, missing := errors.AsType[*exec.ExitError](err); err != nil && !missing {
+		t.Fatal(err)
+	}
+	state := strings.TrimSpace(string(out))
+	return state != "" && !strings.HasPrefix(state, "Z")
 }
 
 // readPID waits for the fake executor to write its child's PID.
