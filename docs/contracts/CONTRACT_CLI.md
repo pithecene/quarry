@@ -227,7 +227,7 @@ for semantics.
 | `--event-sink-redis-url` | string | | Redis URL (required when `--event-sink redis`) |
 | `--event-sink-redis-stream-key` | string | `quarry:events` | Redis Streams key |
 | `--event-sink-redis-max-len` | int | `100000` | Max stream length (-1 disables) |
-| `--event-sink-redis-ttl` | duration | `24h` | Stream key TTL (-1 disables) |
+| `--event-sink-redis-ttl` | duration | `24h` | Stream key TTL (a negative duration disables) |
 | `--event-sink-redis-timeout` | duration | `2s` | Per-operation timeout |
 | `--event-sink-redis-retries` | int | `2` | Retry attempts |
 | `--event-sink-redis-delivery` | string | `mandatory` | Delivery mode for Redis event sink |

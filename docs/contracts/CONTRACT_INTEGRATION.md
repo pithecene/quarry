@@ -145,7 +145,7 @@ Configuration defaults:
 
 Sentinel values:
 - `max_len: -1` disables stream trimming.
-- `ttl: -1` disables key expiry.
+- A negative `ttl`, such as `-1s`, disables key expiry.
 - `max_len: 0` and `ttl: 0` apply defaults.
 
 Each stream entry contains flat fields: `run_id`, `event_type`, `seq`,
@@ -190,7 +190,7 @@ Each stream entry contains flat fields: `run_id`, `event_type`, `seq`,
 | `--event-sink-redis-url <url>` | Redis URL (required when `--event-sink redis` is set) |
 | `--event-sink-redis-stream-key <key>` | Stream key (default `quarry:events`) |
 | `--event-sink-redis-max-len <n>` | Max stream length, -1 disables (default `100000`) |
-| `--event-sink-redis-ttl <duration>` | Key TTL, -1 disables (default `24h`) |
+| `--event-sink-redis-ttl <duration>` | Key TTL, a negative duration such as `-1s` disables (default `24h`) |
 | `--event-sink-redis-timeout <duration>` | Per-operation timeout (default `2s`) |
 | `--event-sink-redis-retries <n>` | Retry attempts (default `2`) |
 | `--event-sink-redis-delivery <mode>` | Delivery mode for Redis sink (default `mandatory`) |
