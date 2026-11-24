@@ -199,6 +199,11 @@ pattern, rebuilds the SDK and executor bundle, then runs
 carries another version fails the build. Never hand-edit a version string;
 if a new file must print the version, add it to the targets list.
 
+`bosun release` then pushes an annotated tag that holds the release notes.
+The workflow drafts the GitHub release from that tag, uploads and verifies
+every asset, publishes the packages and images, and publishes the release
+last. A lightweight tag fails the Tag Check.
+
 Releases are monotonic: the release workflow rejects a tag lower than any
 released tag before publishing anything. Publishing jobs publish versioned
 artifacts only; npm `latest` and GHCR `:latest` / `:slim` are owned by a

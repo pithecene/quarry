@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { assertHighestTag } from '../src/commands/assert-highest-tag.ts'
-import { assertReleasePublished } from '../src/commands/assert-release-published.ts'
 import { ReleaseError } from '../src/errors.ts'
 import { parseReleaseTag, type Version } from '../src/versions.ts'
 import { fakeWorld } from './fake-world.ts'
@@ -65,28 +64,4 @@ describe('parseReleaseTag', () => {
       expect(parseReleaseTag(tag)).toBeUndefined()
     }
   )
-})
-
-describe('assert-release-published', () => {
-  it('passes a published release', async () => {
-    const world = fakeWorld({ release: 'published' })
-    await expect(assertReleasePublished(world.ctx, 'v1.2.3')).resolves.toBeUndefined()
-  })
-
-  it.each([
-    ['missing', /is missing/],
-    ['draft', /is a draft/],
-    ['prerelease', /is a prerelease/]
-  ] as const)('rejects a %s release', async (release, message) => {
-    const world = fakeWorld({ release })
-    await expect(assertReleasePublished(world.ctx, 'v1.2.3')).rejects.toThrow(message)
-  })
-
-  it('reports a lookup failure as one, not as a missing release', async () => {
-    const world = fakeWorld({ releaseLookupFails: true })
-    const error = await assertReleasePublished(world.ctx, 'v1.2.3').catch((e: unknown) => e)
-    expect(error).toBeInstanceOf(ReleaseError)
-    expect((error as ReleaseError).message).toMatch(/could not read the GitHub release/)
-    expect((error as ReleaseError).message).not.toMatch(/missing/)
-  })
 })

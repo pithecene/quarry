@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { onTestFinished } from 'vitest'
 import type { Context } from '../src/context.ts'
 import type { RunOptions, RunResult } from '../src/process.ts'
@@ -17,8 +18,21 @@ export type WorldState = {
   /** Whether the version is on JSR. */
   jsrPublished: boolean
   /** State of the GitHub release, or `missing`. */
-  release: 'published' | 'draft' | 'prerelease' | 'missing'
+  release: 'published' | 'draft' | 'prerelease' | 'draft prerelease' | 'missing'
   releaseLookupFails: boolean
+  /** What each upload of a file does, by file name, before uploads succeed. */
+  uploads: Map<string, ('fail' | 'stored' | 'hang' | 'unstartable')[]>
+  /** Assets that the release holds, by file name, with their digests. */
+  assets: Map<string, string>
+  /** Names of assets whose upload never completed, which have no digest. */
+  incomplete: string[]
+  /** Object type of the tag, and its message when annotated. */
+  tagType: 'tag' | 'commit'
+  tagMessage: string
+  /** The commit that the tag names; the checkout is at `c0`. */
+  tagCommit: string
+  /** Reads of the assets that fail before one succeeds. */
+  assetReadErrors: number
   /** How `pnpm publish` behaves: publishes, fails, or loses a race. */
   pnpmMode: 'ok' | 'fail' | 'race'
   /** How `npx jsr publish` behaves; `poll_fail` uploads but exits non-zero. */
@@ -68,6 +82,13 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
     jsrPublished: false,
     release: 'missing',
     releaseLookupFails: false,
+    uploads: new Map(),
+    assets: new Map(),
+    incomplete: [],
+    tagType: 'tag',
+    tagMessage: 'Title\n\n## Summary\n',
+    tagCommit: 'c0',
+    assetReadErrors: 0,
     pnpmMode: 'ok',
     npxMode: 'ok',
     npmDistTagFails: false,
@@ -94,6 +115,13 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
     const line = args.join(' ')
     switch (command) {
       case 'git':
+        if (args[0] === 'fetch') return ok()
+        if (args[0] === 'rev-parse')
+          return ok(
+            args[1] === 'HEAD' ? 'c0' : args[1]?.endsWith('^{commit}') ? state.tagCommit : 't0'
+          )
+        if (args[0] === 'cat-file') return ok(`${state.tagType}\n`)
+        if (args[0] === 'tag') return ok(state.tagMessage)
         if (state.tagsUnreadable) return fail('fatal: could not read from remote repository')
         return ok(state.tags.map((t) => `0000000\trefs/tags/${t}`).join('\n'))
       case 'npm':
@@ -136,13 +164,42 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
         if (args[2] === 'create') return ok()
         break
       case 'gh':
+        if (args[1] === 'upload') {
+          if (state.release === 'missing') return fail('release not found')
+          const path = args.at(-1) ?? ''
+          const outcome = state.uploads.get(basename(path))?.shift()
+          if (outcome === 'unstartable') throw new Error('spawn gh EAGAIN')
+          if (outcome === 'hang') return { code: 0, stdout: '', stderr: '', timedOut: true }
+          if (outcome === 'fail') return fail('HTTP 404: Not Found')
+          const digest = createHash('sha256').update(readFileSync(path)).digest('hex')
+          state.incomplete = state.incomplete.filter((name) => name !== basename(path))
+          state.assets.set(basename(path), `sha256:${digest}`)
+          return outcome === 'stored' ? fail('unexpected EOF') : ok()
+        }
+        if (args[1] === 'create') {
+          state.release = 'draft'
+          return ok()
+        }
+        if (args[1] === 'edit') {
+          if (args.includes('--draft=false')) state.release = 'published'
+          return ok()
+        }
+        if (state.assetReadErrors-- > 0) return fail('HTTP 502: Bad Gateway')
         if (state.releaseLookupFails) return fail('HTTP 401: Bad credentials')
         if (state.release === 'missing') return fail('release not found')
         return ok(
-          JSON.stringify({
-            isDraft: state.release === 'draft',
-            isPrerelease: state.release === 'prerelease'
-          })
+          JSON.stringify(
+            {
+              isDraft: state.release.startsWith('draft'),
+              isPrerelease: state.release.endsWith('prerelease'),
+              assets: [
+                ...[...state.assets].map(([name, digest]) => ({ name, digest, state: 'uploaded' })),
+                ...state.incomplete.map((name) => ({ name, state: 'starter' }))
+              ]
+            },
+            // Only the requested fields, with those inside an asset.
+            [...(args[4] ?? '').split(','), 'name', 'digest', 'state']
+          )
         )
     }
     throw new Error(`fake world has no behavior for: ${command} ${line}`)

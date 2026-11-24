@@ -161,13 +161,12 @@ jobs:
           mkdir -p dist
           VERSION="${{ inputs.version }}"
           git archive --format=tar.gz --output="dist/quarry-${VERSION}.tar.gz" HEAD
-          sha256sum "dist/quarry-${VERSION}.tar.gz" > "dist/quarry-${VERSION}.tar.gz.sha256"
           cd sdk
           pnpm pack
           SDK_TARBALL="$(ls -t *.tgz | head -n 1)"
           cd ..
           mv "sdk/${SDK_TARBALL}" "dist/quarry-sdk-${VERSION}.tgz"
-          sha256sum "dist/quarry-sdk-${VERSION}.tgz" > "dist/quarry-sdk-${VERSION}.tgz.sha256"
+          node scripts/release/src/cli.ts write-checksums dist
 
       - name: 📋 Package Summary
         run: |
