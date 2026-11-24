@@ -539,6 +539,9 @@ Returns the metrics of the run in storage that ended last: by `ended_at` of its
 end record, or by `ts` of a metrics record of an earlier release. The command
 reads each end record that matches its filters, so its cost grows with their number.
 A record that it cannot read fails the command, because that run may be the latest.
+It skips a metrics record that committed more than one hour before the latest end
+it has read. A writer whose clock steps back further between a run's end and that
+commit can hide the record.
 
 Required flags:
 - `--storage-backend=fs|s3`: storage backend for Lode reads

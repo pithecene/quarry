@@ -488,8 +488,13 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
 		t.Error("QueryLatestMetrics skipped a broken record that may be the latest")
 	}
-	// One that committed before the latest end is not read.
-	end("c", "run-future-a", "2026-02-07", time.Now().Add(time.Hour).Truncate(time.Second), true)
+	// A clock may step back an hour between a run's end and its commit, so a record
+	// that committed within that of the latest end is read, and an earlier one is not.
+	end("c", "run-near", "2026-02-07", time.Now().Add(clockStep/2), true)
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
+		t.Error("QueryLatestMetrics skipped a broken record within a clock step of the latest end")
+	}
+	end("c", "run-future-a", "2026-02-07", time.Now().Add(2*clockStep).Truncate(time.Second), true)
 	if got := latest("", ""); got != "run-future-a" {
 		t.Errorf("latest = %s, want an end after every commit", got)
 	}

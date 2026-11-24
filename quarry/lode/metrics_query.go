@@ -18,6 +18,10 @@ import (
 // ErrNoMetricsFound is returned when no metrics records exist in the dataset.
 var ErrNoMetricsFound = errors.New("no metrics records found")
 
+// clockStep is how far a writer's clock may step back between a run's end and its
+// metrics record's commit, so that the commit still bounds the record's time.
+const clockStep = time.Hour
+
 // endRecordReads is how many end records a query reads at once.
 const endRecordReads = 16
 
@@ -70,8 +74,8 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 		// Metrics records keep whole seconds, so of two in one second the later in
 		// Lode's snapshot order is taken.
 		for _, snap := range slices.Backward(metricsSnapshots(snapshots, filter)) {
-			// A metrics record's time precedes its commit.
-			if latest != nil && snap.CreatedAt.Before(latestAt) {
+			// A metrics record's time precedes its commit, up to a clock step.
+			if latest != nil && snap.CreatedAt.Add(clockStep).Before(latestAt) {
 				continue
 			}
 			data, err := ds.Read(ctx, snap.ID)
