@@ -11,16 +11,11 @@
  * the run as executor_crash.
  */
 import { describe, expect, it } from 'vitest'
-import { decodeFrames, runFixture } from './helpers.js'
+import { runFrames } from './helpers.js'
 
 describe('drainStdout integration', () => {
   it('terminal event and run_result are visible on pipe before EOF', async () => {
-    const { stdout, stderr, exitCode } = await runFixture('drain-stdout-child.ts')
-
-    // Child should exit cleanly
-    expect(exitCode, `child stderr: ${stderr}`).toBe(0)
-
-    const frames = decodeFrames(stdout) as Record<string, unknown>[]
+    const { frames } = await runFrames('drain-stdout-child.ts')
 
     // All three frames must survive the pipe: item, run_complete, run_result
     expect(frames).toHaveLength(3)

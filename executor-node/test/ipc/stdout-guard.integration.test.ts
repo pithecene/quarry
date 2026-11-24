@@ -9,17 +9,11 @@
  * - exit code 0
  */
 import { describe, expect, it } from 'vitest'
-import { decodeFrames, runFixture } from './helpers.js'
+import { runFrames } from './helpers.js'
 
 describe('stdout guard integration', () => {
   it('IPC frames are clean on stdout, stray writes appear on stderr', async () => {
-    const { stdout, stderr, exitCode } = await runFixture('stdout-guard-child.ts')
-
-    // Child should exit cleanly
-    expect(exitCode, `child stderr: ${stderr}`).toBe(0)
-
-    // Stdout should contain exactly 2 valid IPC frames
-    const frames = decodeFrames(stdout) as Record<string, unknown>[]
+    const { frames, stderr } = await runFrames('stdout-guard-child.ts')
     expect(frames).toHaveLength(2)
 
     // Frame 0: item event

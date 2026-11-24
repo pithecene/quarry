@@ -1,12 +1,13 @@
 /**
  * Helpers that the IPC tests share.
  */
-import { type ChildProcess, spawn } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { decode as msgpackDecode } from '@msgpack/msgpack'
 import type { EventEnvelope, EventId, RunId } from '@pithecene/quarry-sdk'
+import { expect } from 'vitest'
 import { LENGTH_PREFIX_SIZE } from '../../src/ipc/frame.js'
+import { runProcess } from '../run-process.js'
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 const tsxBin = resolve(testDir, '../../../node_modules/.bin/tsx')
@@ -27,39 +28,6 @@ export function decodeFrames(data: Buffer): unknown[] {
 }
 
 /**
- * Run a child process fixture with tsx and collect its output and exit code.
- */
-export function runFixture(
-  name: string
-): Promise<{ stdout: Buffer; stderr: string; exitCode: number | null }> {
-  const fixture = resolve(testDir, 'fixtures', name)
-  return new Promise((resolve, reject) => {
-    let child: ChildProcess
-    try {
-      child = spawn(tsxBin, [fixture], {
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
-    } catch (err) {
-      reject(err)
-      return
-    }
-
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    child.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
-    child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      resolve({
-        stdout: Buffer.concat(stdoutChunks),
-        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-        exitCode: code
-      })
-    })
-  })
-}
-
-/**
  * Helper to create a minimal valid event envelope for testing.
  */
 export function makeEnvelope(
@@ -76,4 +44,17 @@ export function makeEnvelope(
     attempt: 1,
     ...overrides
   }
+}
+
+/**
+ * Run a fixture that must exit cleanly, and decode the frames of its stdout.
+ */
+export async function runFrames(
+  name: string
+): Promise<{ frames: Record<string, unknown>[]; stderr: string }> {
+  const { stdout, stderr, exitCode } = await runProcess(tsxBin, [
+    resolve(testDir, 'fixtures', name)
+  ])
+  expect(exitCode, `child stderr: ${stderr}`).toBe(0)
+  return { frames: decodeFrames(stdout) as Record<string, unknown>[], stderr }
 }

@@ -34,6 +34,7 @@ import {
   getPuppeteer,
   getVanillaPuppeteer,
   launchIdentity,
+  type PluginConfig,
   parseRunMeta
 } from '../executor.js'
 import { AckReader } from '../ipc/ack-reader.js'
@@ -51,7 +52,7 @@ function fatalError(message: string): never {
 }
 
 /** The Puppeteer plugins that the environment selects: stealth on and adblocker off by default. */
-function envPlugins(): { stealth: boolean; adblocker: boolean } {
+function envPlugins(): PluginConfig {
   return {
     stealth: process.env.QUARRY_STEALTH !== '0',
     adblocker: process.env.QUARRY_ADBLOCKER === '1'
