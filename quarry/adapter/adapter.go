@@ -22,6 +22,34 @@ type RunCompletedEvent struct {
 	Attempt         int    `json:"attempt"`
 	EventCount      int64  `json:"event_count"`
 	DurationMs      int64  `json:"duration_ms"`
+	// Locator is where a reader finds the run (CONTRACT_INTEGRATION.md §Run
+	// Locator).
+	Locator Locator `json:"locator"`
+}
+
+// Locator is the run and the storage as the SDK's readRun takes them, whose
+// field names it therefore has.
+type Locator struct {
+	Run     RunLocator     `json:"run"`
+	Storage StorageLocator `json:"storage"`
+}
+
+// RunLocator identifies the run in its dataset.
+type RunLocator struct {
+	Source   string `json:"source"`
+	Category string `json:"category"`
+	Day      string `json:"day"`
+	RunID    string `json:"runId"`
+}
+
+// StorageLocator is the storage that holds the run. It carries no credentials.
+type StorageLocator struct {
+	Backend     string `json:"backend"` // fs or s3
+	Path        string `json:"path"`    // fs: absolute directory, s3: bucket/prefix
+	Dataset     string `json:"dataset"`
+	Region      string `json:"region,omitempty"`
+	Endpoint    string `json:"endpoint,omitempty"`
+	S3PathStyle bool   `json:"s3PathStyle,omitempty"`
 }
 
 // Adapter publishes run completion events to a downstream system.

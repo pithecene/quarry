@@ -209,6 +209,7 @@ See [CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) for semantics.
 | `--adapter-channel` | string | | Pub/sub channel name (redis only, default `quarry:run_completed`) |
 | `--adapter-timeout` | duration | `10s` | Per-request timeout |
 | `--adapter-retries` | int | `3` | Retry attempts |
+| `--adapter-publish-endpoint-path` | bool | `false` | Publish the path of `--storage-endpoint` in notifications |
 
 Adapter invocation is best-effort. Failures are logged to stderr.
 The run exit code is determined by execution outcome, never by adapter status.

@@ -96,6 +96,15 @@ export type RunLocator = {
   runId: string
 }
 
+/**
+ * Where a run notification's run is, as its `locator` states it. Pass it on
+ * unchanged: `readRun(locator.run, { storage: locator.storage })`.
+ */
+export type NotificationLocator = {
+  run: RunLocator
+  storage: ReaderStorage & { dataset: string }
+}
+
 /** Thrown when the CLI cannot be run or exits with an error. */
 export class QuarryReadError extends Error {
   readonly exitCode: number | null

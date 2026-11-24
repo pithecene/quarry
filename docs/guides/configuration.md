@@ -116,6 +116,7 @@ See the [proxy guide](proxy.md) for pool configuration format and selection beha
 | `--adapter-channel` | string | `quarry:run_completed` | Pub/sub channel name (redis only) |
 | `--adapter-timeout` | duration | `10s` | Per-request/publish timeout |
 | `--adapter-retries` | int | `3` | Retry attempts |
+| `--adapter-publish-endpoint-path` | bool | `false` | Publish the path of `--storage-endpoint` in notifications. Without it, a run with an adapter and an S3 endpoint whose path is neither empty nor `/` does not start (config: `adapter.publish_endpoint_path`) |
 
 See the [integration guide](integration.md) for adapter usage patterns.
 

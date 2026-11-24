@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -295,6 +296,10 @@ ADVANCED:
 				Usage: "Adapter retry attempts",
 				Value: webhook.DefaultRetries,
 			},
+			&cli.BoolFlag{
+				Name:  "adapter-publish-endpoint-path",
+				Usage: "Publish the path of --storage-endpoint in notifications",
+			},
 			&cli.StringFlag{
 				Name:  "adapter-channel",
 				Usage: "Pub/sub channel name for Redis adapter (default: quarry:run_completed)",
@@ -387,6 +392,9 @@ type adapterChoice struct {
 	headers     map[string]string
 	timeout     time.Duration
 	retries     int
+	// publishEndpointPath allows a notification to carry the path of the storage
+	// endpoint, which no parser can tell from a credential.
+	publishEndpointPath bool
 }
 
 // eventSinkChoice holds parsed event sink configuration.
@@ -572,6 +580,11 @@ func (f *runFinalizer) notifyAdapter(ctx context.Context, result *runtime.RunRes
 	defer iox.DiscardClose(adpt)
 
 	event := buildRunCompletedEvent(result, f.storage, f.storageDataset, f.source, f.category, lode.DeriveDay(f.startTime), duration)
+	event.Locator.Storage, err = buildStorageLocator(f.storage, f.storageDataset)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: adapter notification skipped: %v\n", err)
+		return
+	}
 	publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), f.adapter.timeout)
 	defer cancel()
 	if err := adpt.Publish(publishCtx, event); err != nil {
@@ -728,6 +741,9 @@ func runAction(c *cli.Context) error {
 		ac, err := parseAdapterConfigWithPrecedence(c, cfg, adapterType)
 		if err != nil {
 			return cli.Exit(fmt.Sprintf("invalid adapter config: %v", err), exitConfigError)
+		}
+		if err := validateLocatorEndpoint(storageConfig, ac.publishEndpointPath); err != nil {
+			return cli.Exit(err.Error(), exitConfigError)
 		}
 		adptConfig = &ac
 	}
@@ -1119,6 +1135,8 @@ func parseAdapterConfigWithPrecedence(c *cli.Context, cfg *quarryconfig.Config, 
 		url:         resolveString(c, "adapter-url", configVal(cfg, func(c *quarryconfig.Config) string { return c.Adapter.URL })),
 		timeout:     resolveDuration(c, "adapter-timeout", configDurationVal(cfg)),
 		headers:     make(map[string]string),
+		publishEndpointPath: resolveBool(c, "adapter-publish-endpoint-path",
+			configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.Adapter.PublishEndpointPath })),
 	}
 
 	// Retries: CLI > config > urfave default
@@ -1607,11 +1625,78 @@ func buildRunCompletedEvent(
 		Attempt:         result.RunMeta.Attempt,
 		EventCount:      result.EventCount,
 		DurationMs:      duration.Milliseconds(),
+		Locator: adapter.Locator{
+			Run: adapter.RunLocator{Source: source, Category: category, Day: day, RunID: result.RunMeta.RunID},
+		},
 	}
 	if result.RunMeta.JobID != nil {
 		event.JobID = *result.RunMeta.JobID
 	}
 	return event
+}
+
+// buildStorageLocator is the storage as a reader takes it, without credentials.
+func buildStorageLocator(storageConfig storageChoice, dataset string) (adapter.StorageLocator, error) {
+	locator := adapter.StorageLocator{Backend: storageConfig.backend, Path: storageConfig.path, Dataset: dataset}
+	switch storageConfig.backend {
+	case "fs":
+		root, err := storageRoot(storageConfig.path)
+		if err != nil {
+			return adapter.StorageLocator{}, fmt.Errorf("resolve storage path: %w", err)
+		}
+		locator.Path = root
+	case "s3":
+		locator.Region = storageConfig.region
+		locator.Endpoint = redactEndpoint(storageConfig.endpoint)
+		locator.S3PathStyle = storageConfig.usePathStyle
+	}
+	return locator, nil
+}
+
+// storageRoot is the absolute directory that Lode's filesystem store opens for
+// path. The store cleans path, and the operating system resolves the result
+// against the physical working directory, which filepath.Abs does not use.
+func storageRoot(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if wd, err = filepath.EvalSymlinks(wd); err != nil {
+		return "", err
+	}
+	return filepath.Join(wd, path), nil
+}
+
+// validateLocatorEndpoint rejects an S3 endpoint that a notification cannot carry:
+// one that is no URL with a host, or one with a path unless publishPath allows it.
+// The errors do not repeat the endpoint, which can hold a credential.
+func validateLocatorEndpoint(storageConfig storageChoice, publishPath bool) error {
+	if storageConfig.backend != "s3" || storageConfig.endpoint == "" {
+		return nil
+	}
+	u, err := url.Parse(storageConfig.endpoint)
+	if err != nil || u.Host == "" {
+		return errors.New("--storage-endpoint must be a URL with a host when --adapter is set")
+	}
+	// The path as redactEndpoint publishes it.
+	if path := u.EscapedPath(); path != "" && path != "/" && !publishPath {
+		return errors.New("--storage-endpoint has a path, which notifications would publish: set --adapter-publish-endpoint-path if it holds no secret")
+	}
+	return nil
+}
+
+// redactEndpoint is the endpoint URL without its user information, query, and
+// fragment, or "" when it does not parse as one.
+func redactEndpoint(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	u.User, u.RawQuery, u.Fragment, u.RawFragment = nil, "", "", ""
+	return u.String()
 }
 
 // buildStoragePath constructs a human-readable storage path for the event payload.

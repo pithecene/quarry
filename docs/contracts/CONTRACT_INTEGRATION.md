@@ -179,6 +179,7 @@ Each stream entry contains flat fields: `run_id`, `event_type`, `seq`,
 | `--adapter-channel <name>` | Pub/sub channel name (redis only, default `quarry:run_completed`) |
 | `--adapter-timeout <duration>` | Notification timeout (default `10s`) |
 | `--adapter-retries <n>` | Retry attempts (default `3`) |
+| `--adapter-publish-endpoint-path` | Publish the path of `--storage-endpoint` (§Run Locator) |
 
 ### Event Sink CLI Flags
 
@@ -266,6 +267,32 @@ readable, and its metrics are only in the exit report, when one was requested.
 
 This ensures consumers can read the data referenced in the event payload.
 Adapter publish is the last step before CLI output and exit.
+
+---
+
+## Run Locator
+
+The notification carries a `locator`, which the SDK's `readRun` accepts unchanged
+as `readRun(locator.run, { storage: locator.storage })`:
+
+| Field | Description |
+|-------|-------------|
+| `run.source`, `run.category`, `run.day`, `run.runId` | The run's key, unencoded |
+| `storage.backend` | `fs` or `s3` |
+| `storage.path` | `fs`: absolute directory. `s3`: bucket/prefix |
+| `storage.dataset` | Lode dataset ID |
+| `storage.region` | `s3` only, when the run configured one |
+| `storage.endpoint` | `s3` only, when the run configured one, without user information, query, and fragment |
+| `storage.s3PathStyle` | `s3` only, when the run forced path-style addressing |
+
+The locator carries no credentials of the run's configuration. The path of an
+endpoint addresses the store and can also hold a secret, so a run with an adapter
+and an S3 endpoint whose path is neither empty nor `/` is a configuration error, unless
+`--adapter-publish-endpoint-path` allows the locator to carry the path.
+A run is not notified when the working directory that its relative storage
+directory needs no longer resolves, and a warning on stderr reports it. The reader supplies its own credentials, and the
+reader's environment supplies a region or endpoint that the run did not configure.
+`storage_path` is for people to read, and no reader parses it.
 
 ---
 

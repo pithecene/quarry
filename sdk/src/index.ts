@@ -63,6 +63,7 @@ export { redactProxyEndpoint, validateProxyEndpoint, validateProxyPool } from '.
 // Run reader (public — lists runs and reads their events via the quarry CLI)
 export type {
   ListRunsOptions,
+  NotificationLocator,
   ReaderOptions,
   ReaderStorage,
   RunEvents,

@@ -531,6 +531,7 @@ CLI flags always override config file values.
 | `--adapter-channel <name>` | `quarry:run_completed` | Pub/sub channel name (redis only) |
 | `--adapter-timeout <duration>` | `10s` | Notification timeout |
 | `--adapter-retries <n>` | `3` | Retry attempts |
+| `--adapter-publish-endpoint-path` | `false` | Publish the path of `--storage-endpoint` in notifications |
 
 **Event sink flags (real-time event delivery):**
 
@@ -967,10 +968,13 @@ do {
   because the CLI would treat it as absent (for example, reading the
   default dataset or all sources).
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
+- A notification's `locator` (`NotificationLocator`) reads its run unchanged:
+  `readRun(event.locator.run, { storage: event.locator.storage })`. It carries no
+  credentials, which the reader's environment supplies.
 
 **Built-in adapters**: `--adapter webhook` sends an HTTP POST, and
 `--adapter redis` publishes to a Redis pub/sub channel, after each run whose records Quarry
-confirmed in storage.
+confirmed in storage. A run that cannot be located sends none, and the CLI warns.
 See adapter flags above.
 
 **Event sinks**: `--event-sink redis` streams every event to a Redis

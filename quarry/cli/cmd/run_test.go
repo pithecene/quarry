@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -1151,6 +1153,240 @@ func TestBuildRunCompletedEvent_BasicFields(t *testing.T) {
 	}
 }
 
+// The locator holds what a reader needs and no credentials.
+func TestBuildStorageLocator(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		storage storageChoice
+		want    map[string]any
+	}{
+		{"s3", storageChoice{backend: "s3", path: "b/p", region: "r"}, map[string]any{"backend": "s3", "path": "b/p", "dataset": "d", "region": "r"}},
+		{
+			"s3 endpoint",
+			storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:9000/x?token=secret#secret", usePathStyle: true},
+			map[string]any{"backend": "s3", "path": "b", "dataset": "d", "endpoint": "https://host:9000/x", "s3PathStyle": true},
+		},
+		{
+			"malformed endpoint",
+			storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:port"},
+			map[string]any{"backend": "s3", "path": "b", "dataset": "d"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			locator, err := buildStorageLocator(tc.storage, "d")
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.Marshal(locator)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(data, &got); err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("locator = %v, %v, want %v", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// A notification carries an endpoint's path only where the run allows it, and the
+// refusal does not repeat the endpoint.
+func TestValidateLocatorEndpoint(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		backend, endpoint string
+		publishPath, ok   bool
+	}{
+		{"s3", "", false, true},
+		{"s3", "https://host:9000", false, true},
+		{"s3", "https://host:9000/", false, true},
+		{"s3", "https://host:9000?x=1", false, true},
+		{"s3", "https://host/secret/s3", false, false},
+		{"s3", "https://host/%73ecret", false, false},
+		{"s3", "https://host/%2F", false, false},
+		{"s3", "https://host//", false, false},
+		{"s3", "https://host/secret/s3", true, true},
+		{"s3", "host:9000/secret", true, false},
+		{"s3", "https://host:secret", true, false},
+		{"fs", "https://host/secret", false, true},
+	} {
+		t.Run(fmt.Sprintf("%s %s %t", tc.backend, tc.endpoint, tc.publishPath), func(t *testing.T) {
+			err := validateLocatorEndpoint(storageChoice{backend: tc.backend, endpoint: tc.endpoint}, tc.publishPath)
+			if (err == nil) != tc.ok || (err != nil && (strings.Contains(err.Error(), tc.endpoint) || strings.Contains(err.Error(), "ecret/"))) {
+				t.Errorf("err = %v, want accepted %t and no endpoint", err, tc.ok)
+			}
+		})
+	}
+}
+
+// Consent comes from the flag, or from the config file when the flag is not set.
+func TestParseAdapterConfig_PublishEndpointPath(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		flag string
+		yaml bool
+		want bool
+	}{
+		{"", false, false},
+		{"", true, true},
+		{"true", false, true},
+		{"false", true, false},
+	} {
+		t.Run(fmt.Sprintf("flag=%q yaml=%t", tc.flag, tc.yaml), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "quarry.yaml")
+			content := fmt.Sprintf("adapter:\n  type: webhook\n  url: http://host/\n  publish_endpoint_path: %t\n", tc.yaml)
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := quarryconfig.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			flags := map[string]string{}
+			if tc.flag != "" {
+				flags["adapter-publish-endpoint-path"] = tc.flag
+			}
+			ac, err := parseAdapterConfigWithPrecedence(newAdapterTestContext(t, flags, nil), cfg, "webhook")
+			if err != nil || ac.publishEndpointPath != tc.want {
+				t.Errorf("consent = %t, %v, want %t", ac.publishEndpointPath, err, tc.want)
+			}
+		})
+	}
+}
+
+// A run whose notifications would publish an endpoint path never starts.
+func TestRun_RefusesToPublishAnEndpointPath(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
+	app := cli.NewApp()
+	app.Commands = []*cli.Command{RunCommand()}
+	app.ExitErrHandler = func(*cli.Context, error) {}
+	script := filepath.Join(t.TempDir(), "script.mjs")
+	if err := os.WriteFile(script, []byte("export default async () => {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := app.Run([]string{
+		"quarry", "run", "--script", script, "--run-id", "run-1", "--source", "s",
+		"--storage-backend", "s3", "--storage-path", "bucket", "--storage-endpoint", "https://host/token/s3",
+		"--adapter", "webhook", "--adapter-url", "http://127.0.0.1:1/",
+	})
+	if exit, ok := errors.AsType[cli.ExitCoder](err); !ok || exit.ExitCode() != exitConfigError || !strings.Contains(err.Error(), "--adapter-publish-endpoint-path") {
+		t.Errorf("err = %v, want the configuration error", err)
+	}
+}
+
+// notified returns the body of the completion event that the finalizer of a
+// recorded run publishes, or "" when it publishes none.
+func notified(t *testing.T, storagePath, runID string) string {
+	t.Helper()
+	received := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- string(body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	f := &runFinalizer{
+		adapter:        &adapterChoice{adapterType: "webhook", url: srv.URL, timeout: 5 * time.Second},
+		storage:        storageChoice{backend: "fs", path: storagePath},
+		storageDataset: "quarry",
+		source:         "demo",
+		category:       "default",
+		startTime:      time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC),
+	}
+	f.notifyAdapter(t.Context(), &runtime.RunResult{
+		RunMeta:  &types.RunMeta{RunID: runID, Attempt: 1},
+		Outcome:  &types.RunOutcome{Status: types.OutcomeSuccess},
+		Recorded: true,
+	}, time.Second)
+	select {
+	case body := <-received:
+		return body
+	default:
+		return ""
+	}
+}
+
+// A run written to storage is read through the locator of its notification from
+// another directory, whatever symbolic links lead to the storage directory.
+func TestRunFinalizer_LocatorReadsTheRun(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout, and the test changes the working directory")
+	root := t.TempDir()
+	for _, dir := range []string{"real/r1", "real/data", "data", "real/r1/data"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(root, "real", "r1"), filepath.Join(root, "current")); err != nil {
+		t.Skipf("no symbolic links: %v", err)
+	}
+	for _, tc := range []struct{ name, wd, path string }{
+		{"absolute", root, filepath.Join(root, "data")},
+		{"relative", root, "data"},
+		{"from a linked working directory", filepath.Join(root, "current"), "../data"},
+		{"through a link", root, "current/data"},
+		{"up from a link", root, "current/../data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(tc.wd)
+			runID := strings.ReplaceAll(tc.name, " ", "/")
+			writeFSRun(t, tc.path, runID)
+			body := notified(t, tc.path, runID)
+			var event struct {
+				Locator struct {
+					Run     map[string]string `json:"run"`
+					Storage map[string]string `json:"storage"`
+				} `json:"locator"`
+			}
+			if err := json.Unmarshal([]byte(body), &event); err != nil {
+				t.Fatalf("decode %q: %v", body, err)
+			}
+			t.Chdir(t.TempDir())
+			// The flags that the SDK's readRun passes.
+			run, storage := event.Locator.Run, event.Locator.Storage
+			out, err := runListCLI(t, "events", "--format=json",
+				"--storage-backend="+storage["backend"], "--storage-path="+storage["path"], "--storage-dataset="+storage["dataset"],
+				"--source="+run["source"], "--category="+run["category"], "--day="+run["day"], "--run-id="+run["runId"])
+			if err != nil || !strings.Contains(out, `"run_complete"`) {
+				t.Errorf("list events = %s, %v, want the run's events", out, err)
+			}
+		})
+	}
+}
+
+// A relative directory without a working directory skips the notification.
+func TestRunFinalizer_SkipsAnUnresolvedDirectory(t *testing.T) {
+	testutil.Serial(t, "changes the process working directory and swaps os.Stderr")
+	if goruntime.GOOS == "windows" {
+		t.Skip("a working directory cannot be removed")
+	}
+	wd, err := os.MkdirTemp(t.TempDir(), "wd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logFile, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(wd)
+	original := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() {
+		os.Stderr = original
+		iox.DiscardClose(logFile)
+	})
+	if err := os.Remove(wd); err != nil {
+		t.Fatal(err)
+	}
+	if body := notified(t, "data", "run-1"); body != "" {
+		t.Errorf("published %s", body)
+	}
+	logged, err := os.ReadFile(logFile.Name())
+	if err != nil || !strings.Contains(string(logged), "adapter notification skipped: resolve storage path") {
+		t.Errorf("stderr = %q, %v, want the skip", logged, err)
+	}
+}
+
 func TestBuildRunCompletedEvent_WithJobID(t *testing.T) {
 	t.Parallel()
 
@@ -1297,6 +1533,7 @@ func newAdapterTestContext(t *testing.T, flags map[string]string, sliceFlags map
 		&cli.StringFlag{Name: "adapter-channel"},
 		&cli.DurationFlag{Name: "adapter-timeout", Value: 10 * time.Second},
 		&cli.IntFlag{Name: "adapter-retries", Value: 3},
+		&cli.BoolFlag{Name: "adapter-publish-endpoint-path"},
 		&cli.StringSliceFlag{Name: "adapter-header"},
 	}
 
@@ -1305,6 +1542,7 @@ func newAdapterTestContext(t *testing.T, flags map[string]string, sliceFlags map
 	fs.String("adapter-channel", "", "")
 	fs.Duration("adapter-timeout", 10*time.Second, "")
 	fs.Int("adapter-retries", 3, "")
+	fs.Bool("adapter-publish-endpoint-path", false, "")
 
 	// Register the string slice in the flagset via a multi-value approach.
 	// urfave/cli uses its own internal plumbing for slices, so we handle
