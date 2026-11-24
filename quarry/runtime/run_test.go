@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -1863,6 +1864,23 @@ func (p *deadlineWaitingPolicy) IngestEvent(ctx context.Context, _ *types.EventE
 type groupFailingExecutor struct {
 	Executor
 	err *groupStopError
+}
+
+// Stdout stays open past the run's deadline when the group failed before it, as
+// the grace for its output can.
+func (e *groupFailingExecutor) Stdout() io.Reader {
+	if e.err.cause == nil {
+		return lateReadError{}
+	}
+	return e.Executor.Stdout()
+}
+
+// lateReadError blocks past the test's deadline and then fails the read.
+type lateReadError struct{}
+
+func (lateReadError) Read([]byte) (int, error) {
+	time.Sleep(90 * time.Second)
+	return 0, os.ErrDeadlineExceeded
 }
 
 func (e *groupFailingExecutor) Wait() (*ExecutorResult, error) {
