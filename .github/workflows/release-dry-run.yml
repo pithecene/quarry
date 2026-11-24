@@ -54,7 +54,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: 🧹 Lint
         run: task lint
@@ -71,7 +71,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: 🧪 Test
         run: task test
@@ -88,7 +88,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: 🏗️ Build
         run: task build
@@ -105,7 +105,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: 📦 Run Examples
         run: task examples
