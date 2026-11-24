@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -1331,6 +1338,7 @@ describe('launchIdentity', () => {
       version: '1.0.0'
     })
     expect(identity.executablePath).toBe(chrome)
+    expect(identity.executable.file).toBe(chrome)
     expect(identity.args).toEqual(['--puppeteer-default', '--headless'])
   })
 
@@ -1347,7 +1355,7 @@ describe('launchIdentity', () => {
     vi.stubEnv('PATH', bin)
     try {
       const identity = await launchIdentity(project('1.0.0', 'quarry-test-chrome'), noPlugins, [])
-      expect(identity.executablePath).toBe(chrome)
+      expect(identity.executable.file).toBe(chrome)
     } finally {
       vi.unstubAllEnvs()
     }
@@ -1361,5 +1369,34 @@ describe('launchIdentity', () => {
     await expect(
       launchIdentity(project('1.0.0', '/no/such/chrome'), noPlugins, [])
     ).rejects.toThrow()
+  })
+
+  it("does not take an enclosing project's version for the package's", async () => {
+    const chrome = chromeAt(mkdtempSync(join(tmpdir(), 'quarry-chrome-')), 'chrome')
+    const script = project('1.0.0', chrome, {})
+    writeFileSync(join(dirname(script), 'package.json'), '{"name":"app","version":"9.9.9"}')
+    await expect(launchIdentity(script, noPlugins, [])).rejects.toThrow(/version/)
+  })
+
+  it('differs once the Chrome at the same path is replaced', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'quarry-chrome-'))
+    const chrome = chromeAt(dir, 'chrome')
+    const script = project('1.0.0', chrome)
+    const before = await launchIdentity(script, noPlugins, [])
+    renameSync(chromeAt(dir, 'next'), chrome)
+    const after = await launchIdentity(script, noPlugins, [])
+    expect(after.executable.file).toBe(before.executable.file)
+    expect(after.executable.revision).not.toBe(before.executable.revision)
+  })
+
+  it('follows a symlink before the parent directory after it, as a launch does', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'quarry-chrome-')))
+    chromeAt(dir, 'chrome')
+    const launched = chromeAt(join(dir, 'real'), 'chrome')
+    mkdirSync(join(dir, 'real', 'bin'))
+    symlinkSync(join(dir, 'real', 'bin'), join(dir, 'link'))
+    const script = project('1.0.0', `${dir}/link/../chrome`)
+    const identity = await launchIdentity(script, noPlugins, [])
+    expect(identity.executable.file).toBe(launched)
   })
 })

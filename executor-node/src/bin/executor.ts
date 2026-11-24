@@ -245,8 +245,8 @@ async function browserServer(scriptPath: string): Promise<never> {
   // lock. Launching only if this process sees the same one keeps a change in
   // between, such as an edited .puppeteerrc, from serving the old key.
   const expected = process.env.QUARRY_BROWSER_IDENTITY ?? ''
-  const actual = JSON.stringify(await currentLaunchIdentity(scriptPath))
-  if (expected === '' || JSON.stringify(JSON.parse(expected)) !== actual) {
+  const identity = await currentLaunchIdentity(scriptPath)
+  if (expected === '' || JSON.stringify(JSON.parse(expected)) !== JSON.stringify(identity)) {
     process.stderr.write(
       'the launch identity changed after the runtime keyed this server; not starting\n'
     )
@@ -271,8 +271,11 @@ async function browserServer(scriptPath: string): Promise<never> {
   })
 
   // The proxy applies at the browser level, to every run that connects.
+  // The launch takes the executable it verified, so a configuration edited since
+  // cannot select another.
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: identity.executablePath,
     args: chromiumArgs(browserProxyArgs())
   })
   // In the same tick as the launch, so that a server killed from here on

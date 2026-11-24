@@ -2851,9 +2851,9 @@ __export(executor_exports, {
   parseRunMeta: () => parseRunMeta,
   resolvePeer: () => resolvePeer
 });
-import { accessSync, constants, readFileSync as readFileSync3, realpathSync } from "node:fs";
+import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, delimiter, dirname, isAbsolute as isAbsolute2, join, resolve as resolve2, sep } from "node:path";
+import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
 import { fileURLToPath, pathToFileURL as pathToFileURL2 } from "node:url";
 function resolvePeer(name, scriptPath) {
   const require2 = createRequire(resolve2(scriptPath));
@@ -2875,14 +2875,14 @@ function holds(dir, file) {
 async function loadModule(name, scriptPath) {
   let scriptError;
   try {
-    const location = resolvePeer(name, scriptPath);
-    return { module: await import(pathToFileURL2(location).href), location };
+    const url = pathToFileURL2(resolvePeer(name, scriptPath)).href;
+    return { module: await import(url), url: () => url };
   } catch (err) {
     scriptError = err;
   }
   try {
     const module = await import(name);
-    return { module, location: fileURLToPath(import.meta.resolve(name)) };
+    return { module, url: () => import.meta.resolve(name) };
   } catch (err) {
     throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
       cause: err
@@ -2894,27 +2894,32 @@ async function resolveModule(name, scriptPath) {
 }
 function owningVersion(name, location) {
   for (let dir = dirname(location); ; dir = dirname(dir)) {
+    let pkg = {};
     try {
-      const pkg = JSON.parse(readFileSync3(join(dir, "package.json"), "utf8"));
-      if (typeof pkg.version === "string" && pkg.version !== "") return pkg.version;
+      pkg = JSON.parse(readFileSync3(join(dir, "package.json"), "utf8"));
     } catch {
     }
-    if (dirname(dir) === dir)
+    if (typeof pkg.version === "string" && pkg.version !== "") return pkg.version;
+    const installed2 = basename(dirname(dir)) === "node_modules";
+    if (pkg.name !== void 0 || installed2 || dirname(dir) === dir)
       throw new Error(`cannot identify the version of ${name} loaded from ${location}`);
   }
 }
-function executableFile(path) {
-  if (isAbsolute2(path) || path.includes(sep)) return realpathSync(resolve2(path));
-  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
-    if (dir === "") continue;
-    const candidate = join(dir, path);
+function executableIdentity(path) {
+  const candidates = path.includes(sep) ? [path] : (process.env.PATH ?? "").split(delimiter).map((dir) => `${dir || "."}${sep}${path}`);
+  for (const candidate of candidates) {
     try {
       accessSync(candidate, constants.X_OK);
-      return realpathSync(candidate);
+      const stat = statSync(candidate, { bigint: true });
+      if (!stat.isFile()) continue;
+      return {
+        file: realpathSync.native(candidate),
+        revision: [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join("-")
+      };
     } catch {
     }
   }
-  throw new Error(`cannot find the Chrome executable ${path} on PATH`);
+  throw new Error(`cannot find the Chrome executable ${path}`);
 }
 async function launchIdentity(scriptPath, plugins, args) {
   const names = ["puppeteer"];
@@ -2925,7 +2930,8 @@ async function launchIdentity(scriptPath, plugins, args) {
   let puppeteer;
   for (const name of names) {
     const loaded = await loadModule(name, scriptPath);
-    modules[name] = { location: loaded.location, version: owningVersion(name, loaded.location) };
+    const location = fileURLToPath(loaded.url());
+    modules[name] = { location, version: owningVersion(name, location) };
     if (name === "puppeteer") puppeteer = loaded.module.default;
   }
   if (typeof puppeteer?.executablePath !== "function" || typeof puppeteer.defaultArgs !== "function") {
@@ -2939,7 +2945,8 @@ async function launchIdentity(scriptPath, plugins, args) {
   }
   return {
     modules,
-    executablePath: executableFile(configured),
+    executablePath: configured,
+    executable: executableIdentity(configured),
     plugins,
     // Puppeteer 25 returns both as promises.
     args: await puppeteer.defaultArgs({ headless: true, args })
@@ -4000,8 +4007,8 @@ async function browserServer(scriptPath) {
     process.exit(3);
   }
   const expected = process.env.QUARRY_BROWSER_IDENTITY ?? "";
-  const actual = JSON.stringify(await currentLaunchIdentity(scriptPath));
-  if (expected === "" || JSON.stringify(JSON.parse(expected)) !== actual) {
+  const identity = await currentLaunchIdentity(scriptPath);
+  if (expected === "" || JSON.stringify(JSON.parse(expected)) !== JSON.stringify(identity)) {
     process.stderr.write(
       "the launch identity changed after the runtime keyed this server; not starting\n"
     );
@@ -4025,6 +4032,7 @@ async function browserServer(scriptPath) {
   });
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: identity.executablePath,
     args: chromiumArgs(browserProxyArgs())
   });
   try {

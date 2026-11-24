@@ -201,12 +201,13 @@ func HealthCheckBrowser(ctx context.Context, wsEndpoint string) error {
 // reports the identity of the browser it would launch (the Puppeteer modules
 // it resolves, the Chrome binary, the plugins, and the launch arguments, the
 // proxy among them), because only the resolution that launches can say what
-// it launches. The runtime adds the executor's digest and the proxy username,
-// which the launch arguments leave out; the password never reaches the key.
+// it launches. The runtime adds the executor's digest and the proxy it selected,
+// so no report can make runs on different proxies share a browser. The proxy's
+// password never reaches the key.
 type launchSettings struct {
-	ExecutorSHA256 string          `json:"executor_sha256"`
-	ProxyUsername  *string         `json:"proxy_username,omitempty"`
-	Identity       json.RawMessage `json:"identity"`
+	ExecutorSHA256 string                       `json:"executor_sha256"`
+	Proxy          *types.ProxyEndpointRedacted `json:"proxy,omitempty"`
+	Identity       any                          `json:"identity"`
 }
 
 // launchIdentityTimeout bounds the executor's identity report.
@@ -225,9 +226,14 @@ func browserKey(ctx context.Context, cfg ReusableBrowserConfig) (string, json.Ra
 	if err != nil {
 		return "", nil, err
 	}
-	settings := launchSettings{ExecutorSHA256: executorSum, Identity: identity}
+	settings := launchSettings{ExecutorSHA256: executorSum}
+	// Decoded, so that the key does not depend on the order of object members.
+	if err := json.Unmarshal(identity, &settings.Identity); err != nil {
+		return "", nil, fmt.Errorf("read the launch identity: %w", err)
+	}
 	if cfg.Proxy != nil {
-		settings.ProxyUsername = cfg.Proxy.Username
+		redacted := cfg.Proxy.Redact()
+		settings.Proxy = &redacted
 	}
 	encoded, err := json.Marshal(settings)
 	if err != nil {
@@ -237,8 +243,7 @@ func browserKey(ctx context.Context, cfg ReusableBrowserConfig) (string, json.Ra
 }
 
 // launchIdentity runs the executor's --launch-identity mode in the
-// environment that the browser server would get, and returns its report,
-// compacted so that equal identities encode equally.
+// environment that the browser server would get, and returns its report.
 func launchIdentity(ctx context.Context, cfg ReusableBrowserConfig) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, launchIdentityTimeout)
 	defer cancel()
@@ -250,20 +255,16 @@ func launchIdentity(ctx context.Context, cfg ReusableBrowserConfig) (json.RawMes
 	stderr := &boundedBuffer{limit: maxIdentityDiagnostic}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("report the launch identity: %w: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("report the launch identity: %w: %s", err, bytes.TrimSpace(stderr.kept))
 	}
 	if stdout.overflowed {
 		return nil, fmt.Errorf("the launch identity report exceeds %d bytes", maxIdentityReport)
 	}
-	report := bytes.TrimSpace(stdout.Bytes())
+	report := bytes.TrimSpace(stdout.kept)
 	if err := validIdentity(report); err != nil {
 		return nil, err
 	}
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, report); err != nil {
-		return nil, fmt.Errorf("read the launch identity: %w", err)
-	}
-	return compact.Bytes(), nil
+	return report, nil
 }
 
 // maxIdentityReport and maxIdentityDiagnostic bound what the runtime keeps of
@@ -280,7 +281,11 @@ type reportedIdentity struct {
 		Version  string `json:"version"`
 	} `json:"modules"`
 	ExecutablePath string `json:"executablePath"`
-	Plugins        *struct {
+	Executable     struct {
+		File     string `json:"file"`
+		Revision string `json:"revision"`
+	} `json:"executable"`
+	Plugins *struct {
 		Stealth   *bool `json:"stealth"`
 		Adblocker *bool `json:"adblocker"`
 	} `json:"plugins"`
@@ -295,34 +300,43 @@ func validIdentity(report []byte) error {
 	if err := json.Unmarshal(report, &id); err != nil {
 		return fmt.Errorf("read the launch identity: %w", err)
 	}
-	modulesKnown := len(id.Modules) > 0
-	for name, m := range id.Modules {
-		if name == "" || m.Location == "" || m.Version == "" {
-			modulesKnown = false
-		}
+	incomplete := errors.New("the launch identity report is incomplete")
+	if id.ExecutablePath == "" || id.Executable.File == "" || id.Executable.Revision == "" || id.Args == nil ||
+		id.Plugins == nil || id.Plugins.Stealth == nil || id.Plugins.Adblocker == nil {
+		return incomplete
 	}
-	_, hasPuppeteer := id.Modules["puppeteer"]
-	pluginsKnown := id.Plugins != nil && id.Plugins.Stealth != nil && id.Plugins.Adblocker != nil
-	if !modulesKnown || !hasPuppeteer || id.ExecutablePath == "" || !pluginsKnown || id.Args == nil {
-		return errors.New("the launch identity report is incomplete")
+	required := []string{"puppeteer"}
+	if *id.Plugins.Stealth || *id.Plugins.Adblocker {
+		required = append(required, "puppeteer-extra")
+	}
+	if *id.Plugins.Stealth {
+		required = append(required, "puppeteer-extra-plugin-stealth")
+	}
+	if *id.Plugins.Adblocker {
+		required = append(required, "puppeteer-extra-plugin-adblocker")
+	}
+	for _, name := range required {
+		if m := id.Modules[name]; m.Location == "" || m.Version == "" {
+			return incomplete
+		}
 	}
 	return nil
 }
 
-// boundedBuffer keeps at most limit bytes and records that more arrived.
+// boundedBuffer keeps at most limit bytes and records that more arrived. It
+// does not embed its buffer: io.Copy would call the promoted ReadFrom, which
+// passes the limit by.
 type boundedBuffer struct {
-	bytes.Buffer
+	kept       []byte
 	limit      int
 	overflowed bool
 }
 
 func (b *boundedBuffer) Write(p []byte) (int, error) {
-	if room := b.limit - b.Len(); room < len(p) {
-		b.overflowed = true
-		b.Buffer.Write(p[:max(room, 0)])
-		return len(p), nil
-	}
-	return b.Buffer.Write(p)
+	n := min(len(p), b.limit-len(b.kept))
+	b.overflowed = b.overflowed || n < len(p)
+	b.kept = append(b.kept, p[:n]...)
+	return len(p), nil
 }
 
 // executorSHA256 returns the hex SHA-256 of the executor that path names.
