@@ -13,8 +13,8 @@ Quarry’s core principle:
 
 Scripts and executors remain **policy-agnostic**.
 
-## Current Status (as of v0.19.0)
-- Latest release: v0.19.0 (see CHANGELOG.md).
+## Current Status (as of v0.20.0)
+- Latest release: v0.20.0 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
 - Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side and retention) →
@@ -25,10 +25,11 @@ Scripts and executors remain **policy-agnostic**.
 - v0.19.0 gives `inspect run` a storage reader, makes `list runs` and
   `stats metrics` require the storage path they already read, removes the
   stub-only commands and the TUI, and moves to Lode v0.18.3, which writes manifest format 1.2.0 with
-  zstd and SHA-256 for new datasets. The next release targets the v1.0
-  hardening work under #245: lint and container gates, process supervision,
-  run keys with metrics in the end record, artifact acknowledgement modes,
-  and the run reader with completion notifications.
+  zstd and SHA-256 for new datasets.
+- v0.20.0 ships the durable run lifecycle. The end record holds the metrics,
+  the terminal summary, and the sidecar inventory, and a notification follows
+  its confirmation and carries a locator. The release also supervises the
+  executor's processes. Artifact acknowledgement modes remain under #245.
 
 ---
 
