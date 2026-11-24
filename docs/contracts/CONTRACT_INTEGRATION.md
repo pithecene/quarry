@@ -285,7 +285,8 @@ as `readRun(locator.run, { storage: locator.storage })`:
 | `storage.endpoint` | `s3` only, when the run configured one, without user information, query, and fragment |
 | `storage.s3PathStyle` | `s3` only, when the run forced path-style addressing |
 
-The locator carries no credentials of the run's configuration. The path of an
+The locator states where the run is and authorizes no access: a consumer decides
+which storage it reads. The locator carries no credentials of the run's configuration. The path of an
 endpoint addresses the store and can also hold a secret, so a run with an adapter
 and an S3 endpoint whose path is neither empty nor `/` is a configuration error, unless
 `--adapter-publish-endpoint-path` allows the locator to carry the path.
@@ -321,7 +322,7 @@ that embed the Quarry runtime as a unit of work.
 The orchestrator invokes `runtime.NewRunOrchestrator(config).Execute(ctx)`
 as an atomic unit of work. The runtime owns everything inside this boundary
 (executor lifecycle, IPC, policy, Lode persistence, and run
-finalization: the start record, metrics persistence, and the end record, as
+finalization: the start record and the end record, as
 [CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization defines). The orchestrator owns everything
 outside that boundary (scheduling, retries, fan-out, and notification) and
 receives the same storage contents as the CLI without persisting anything

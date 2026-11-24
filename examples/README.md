@@ -40,5 +40,5 @@ Harbor-notice fan-out adaptation behind the run inspector on `pithecene.sh`:
 
 ## integration-patterns
 
-Conceptual examples for downstream event-bus and polling integration:
+A polling example for downstream integration:
 - [`examples/integration-patterns/`](integration-patterns/)

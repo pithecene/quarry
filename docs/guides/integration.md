@@ -21,7 +21,7 @@ This guide describes two patterns for detecting run completion:
 
 | Pattern | Default | Latency | Complexity | Guarantees |
 |---------|---------|---------|------------|------------|
-| Event-bus | ✅ Recommended | Low | Medium | At-least-once delivery |
+| Event-bus | ✅ Recommended | Low | Medium | Best effort, with retries and possible duplicates |
 | Polling | Fallback | Higher | Lower | Eventual consistency |
 
 ---
@@ -42,7 +42,7 @@ Event published to bus
         ↓
 Downstream consumer receives event
         ↓
-Consumer reads from storage path
+Consumer reads the run through the locator
         ↓
 Transform / Load
 ```
@@ -62,25 +62,9 @@ Only publish to the event bus after this boundary is crossed.
 
 ### Event Payload
 
-A minimal event payload should include:
-
-```json
-{
-  "event_type": "run_completed",
-  "run_id": "run-001",
-  "source": "my-source",
-  "category": "default",
-  "day": "2026-02-04",
-  "outcome": "success",
-  "storage_path": "s3://bucket/source=my-source/category=default/day=2026-02-04/run_id=run-001",
-  "timestamp": "2026-02-04T12:00:00Z"
-}
-```
-
-Include enough information for consumers to:
-- Filter events by source/category
-- Locate data in storage
-- Decide whether to process (based on outcome)
+The [webhook payload](#webhook-payload) shows the fields. A consumer filters by `source` and
+`category`, decides by `outcome`, and reads the run through `locator`.
+`storage_path` is for people to read.
 
 ### Failure and Retry Considerations
 
@@ -113,7 +97,7 @@ quarry run \
   --adapter-header "Authorization=Bearer $TOKEN"
 ```
 
-The adapter publishes after storage commit and metrics persist. If the
+The adapter publishes once Quarry has confirmed both of the run's records in storage. If the
 webhook fails (after retries), the warning is logged to stderr but the
 run exits with its normal outcome code.
 
@@ -142,6 +126,9 @@ run exits with its normal outcome code.
 
 A consumer reads the run with the SDK's
 `readRun(event.locator.run, { storage: event.locator.storage })`.
+The locator says where the run is and grants no access. Before it reads, a consumer
+checks that the notification comes from its publisher, that `locator.run` is the run that
+the notification names, and that `locator.storage` is storage it permits.
 
 The locator carries `--storage-endpoint`. With either adapter and S3 storage,
 `quarry run` refuses to start when that endpoint has a path other than `/`, because a
@@ -174,7 +161,7 @@ quarry run \
   --adapter-channel quarry:run_completed
 ```
 
-The adapter publishes after storage commit and metrics persist. If the
+The adapter publishes once Quarry has confirmed both of the run's records in storage. If the
 publish fails (after retries), the warning is logged to stderr but the
 run exits with its normal outcome code.
 
@@ -262,51 +249,6 @@ events:
 See the [integration contract](../contracts/CONTRACT_INTEGRATION.md) §Event Sink Model for full
 semantics.
 
-### Provider Examples (Optional)
-
-The patterns above are provider-agnostic. This section shows concrete examples
-for common event bus implementations. These are **non-prescriptive**. Use
-whatever infrastructure fits your environment.
-
-<details>
-<summary>AWS SNS + SQS</summary>
-
-```bash
-# After successful run, publish to SNS
-aws sns publish \
-  --topic-arn arn:aws:sns:us-east-1:123456789012:quarry-runs \
-  --message '{"run_id":"run-001","source":"my-source","outcome":"success"}'
-```
-
-Downstream Lambda or ECS task subscribes to SQS queue backed by the SNS topic.
-
-</details>
-
-<details>
-<summary>Kafka</summary>
-
-```bash
-# Publish to Kafka topic
-echo '{"run_id":"run-001","source":"my-source","outcome":"success"}' | \
-  kafka-console-producer --topic quarry-runs --bootstrap-server localhost:9092
-```
-
-Downstream consumer group processes messages with automatic offset management.
-
-</details>
-
-<details>
-<summary>Redis Pub/Sub</summary>
-
-```bash
-# Publish to Redis channel
-redis-cli PUBLISH quarry-runs '{"run_id":"run-001","source":"my-source","outcome":"success"}'
-```
-
-Subscribers receive messages in real time, with no guarantee of persistence.
-
-</details>
-
 ---
 
 ## Polling Pattern (Fallback)
@@ -322,7 +264,7 @@ The polling pattern periodically scans storage for new runs. Use this when:
 ```
 Poller runs on schedule (cron, etc.)
         ↓
-Scan storage for new/changed runs
+List succeeded runs from their run records
         ↓
 Compare against checkpoint (last processed)
         ↓
@@ -333,14 +275,8 @@ Update checkpoint
 
 ### Checkpoint Management
 
-Maintain a checkpoint to track the last processed state:
-
-```json
-{
-  "last_processed_timestamp": "2026-02-04T11:00:00Z",
-  "last_processed_run_ids": ["run-001", "run-002"]
-}
-```
+Maintain a checkpoint of the run IDs that were processed. Runs list in key order,
+not by time, so a timestamp cannot mark where the last poll stopped.
 
 The checkpoint should be **durable** (stored in a database or file) to survive
 poller restarts.
@@ -353,48 +289,12 @@ Because polling may re-scan the same runs, processors must be idempotent:
 - Use upserts instead of inserts for target systems
 - Track processed run IDs in the checkpoint
 
-### Example: Filesystem Polling
+### Example
 
-```bash
-#!/bin/bash
-# Poll for new runs and process them
-
-STORAGE_PATH="/var/quarry/data"
-CHECKPOINT_FILE="/var/quarry/.checkpoint"
-
-# Get last processed timestamp
-LAST_TS=$(cat "$CHECKPOINT_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
-
-# Find runs newer than checkpoint
-find "$STORAGE_PATH" -name "event_type=run_complete" -newer "$CHECKPOINT_FILE" \
-  -exec process_run.sh {} \;
-
-# Update checkpoint
-date -u +%Y-%m-%dT%H:%M:%SZ > "$CHECKPOINT_FILE"
-```
-
-### Example: Object Storage Polling
-
-For object storage backends (S3, GCS, etc.), list objects by prefix and filter
-by modification time:
-
-```bash
-#!/bin/bash
-# Generic object storage polling (adapt for your CLI/SDK)
-
-BUCKET="my-bucket"
-PREFIX="source=my-source/"
-LAST_TS=$(cat "$CHECKPOINT_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
-
-# List and filter by modification time
-# (Replace with your storage CLI: aws s3, gsutil, etc.)
-list_objects "$BUCKET" "$PREFIX" --after "$LAST_TS" | while read -r key; do
-    process_run "$key"
-done
-
-# Update checkpoint
-date -u +%Y-%m-%dT%H:%M:%SZ > "$CHECKPOINT_FILE"
-```
+[`polling-runs.ts`](../../examples/integration-patterns/polling-runs.ts) polls
+filesystem storage with the SDK's `listRuns` and `readRun`. Its header states the change
+for S3. It takes completion
+from the run records. Storage paths and modification times do not establish it.
 
 ---
 
