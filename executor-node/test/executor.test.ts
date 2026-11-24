@@ -1313,9 +1313,10 @@ describe('launchIdentity', () => {
       join(pkg, 'package.json'),
       JSON.stringify({ name: 'puppeteer', main: 'index.js', ...pkgFields })
     )
+    writeFileSync(join(pkg, 'chrome.json'), JSON.stringify(chrome))
     writeFileSync(
       join(pkg, 'index.js'),
-      `module.exports = { executablePath: async () => ${JSON.stringify(chrome)}, defaultArgs: async (o) => ['--puppeteer-default', ...o.args] }\n`
+      "module.exports = { executablePath: async () => require('./chrome.json'), defaultArgs: async (o) => ['--puppeteer-default', ...o.args] }\n"
     )
     return join(dir, 'script.ts')
   }
