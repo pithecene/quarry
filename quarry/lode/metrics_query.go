@@ -36,6 +36,7 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 		if record, err := latestOfDays(ctx, store, nil, runs, nil, filter); err != nil || record != nil {
 			return record, err
 		}
+		runs = nil // none has metrics
 	}
 	var legacy map[string][]*lode.Snapshot
 	if ok {
@@ -88,8 +89,8 @@ func latestOfDays(ctx context.Context, store lode.Store, ds *lode.RecordView[lod
 				}
 			}
 		}
-		// Metrics records keep whole seconds, so of two in one second the later
-		// commit is taken.
+		// Metrics records keep whole seconds, so of two in one second the later in
+		// Lode's snapshot order is taken.
 		of := filter
 		of.Day = day
 		for _, snap := range slices.Backward(legacy[day]) {
@@ -192,7 +193,8 @@ func endMetrics(rec map[string]json.RawMessage, cfg Config) (map[string]any, err
 }
 
 // metricsSnapshots returns the snapshots with metrics records that can match
-// filter, by the days of their records, each in commit order.
+// filter, by the days of their records, each in
+// Lode's snapshot order.
 func metricsSnapshots(snapshots []*lode.Snapshot, filter Config) map[string][]*lode.Snapshot {
 	byDay := make(map[string][]*lode.Snapshot)
 	for _, snap := range snapshots {

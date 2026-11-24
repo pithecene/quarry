@@ -465,13 +465,26 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 		t.Errorf("record = %v, %v, want the fields of a metrics record", record, err)
 	}
 	// A run's end record is its source, whatever a metrics record of it says, and
-	// of two metrics records in one second the later commit is taken.
+	// of two metrics records in one second the later snapshot is taken.
 	end("c", "run-both", "2026-02-07", at(7, 10), true)
 	legacy("c", "run-both", "2026-02-07", at(7, 12))
 	legacy("c", "run-first", "2026-02-07", at(7, 11))
 	legacy("c", "run-second", "2026-02-07", at(7, 11))
 	if got := latest("", ""); got != "run-second" {
 		t.Errorf("latest = %s, want run-second", got)
+	}
+	// A time that does not parse fails the query of its day and of no other.
+	broken := client("c", "run-broken", "2026-02-06")
+	record = toMetricsRecordMap(metrics.Snapshot{RunID: "run-broken", Policy: "strict"}, broken.config, at(6, 1))
+	record["ts"] = "not-a-time"
+	if _, err := broken.dataset.Write(t.Context(), lode.R(record), map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := latest("", ""); got != "run-second" {
+		t.Errorf("latest = %s, want a later day's run beside a broken record", got)
+	}
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-broken", ""); err == nil || errors.Is(err, ErrNoMetricsFound) {
+		t.Errorf("a broken time gave %v, want its parse error", err)
 	}
 	// Metrics of another run are refused.
 	foreign := client("c", "run-foreign", "2026-02-03")
