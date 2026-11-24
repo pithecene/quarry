@@ -276,7 +276,11 @@ the key is an empty string.
 
 - Caller provides a `content_type` (MIME type) with each file.
 - Content type is persisted as a companion `.meta.json` sidecar file
-  alongside the data file in storage.
+  alongside the data file in storage. It holds `content_type` and the `run_id`
+  of the run that wrote it.
+- A companion write can report an error after storage persisted it. Quarry
+  then reads the companion back, and the write succeeds with a logged warning
+  when the stored bytes are its own.
 
 ### Storage Batcher (`createStorageBatcher`)
 

@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pithecene/quarry/iox"
 )
 
 // SidecarFileRef describes a sidecar file written via PutFile.
@@ -33,8 +36,9 @@ type FileWriter interface {
 // Verify LodeClient implements FileWriter.
 var _ FileWriter = (*LodeClient)(nil)
 
-// incompleteFileTimeout bounds the removal of a file whose companion failed.
-const incompleteFileTimeout = 10 * time.Second
+// recoveryTimeout bounds each step taken after a failed write: reading the
+// object back, and removing a file whose companion failed.
+const recoveryTimeout = 10 * time.Second
 
 // PutFile writes a sidecar file to Lode Store at the computed Hive path.
 // Writes the data file and a companion .meta.json with content type, to the
@@ -49,15 +53,15 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	// Write companion metadata file preserving content type.
 	// Store.Put has no metadata parameter, so content type is persisted
 	// as a sidecar JSON file alongside the data.
-	meta, err := json.Marshal(fileMetadata{ContentType: contentType})
+	meta, err := json.Marshal(fileMetadata{ContentType: contentType, RunID: c.config.RunID})
 	if err != nil {
 		return fmt.Errorf("file write metadata marshal failed: %w", err)
 	}
 	metaPath := key + ".meta.json"
-	if err := c.store.Put(ctx, metaPath, bytes.NewReader(meta)); err != nil {
+	if err := c.putReconciled(ctx, metaPath, meta); err != nil {
 		// A file that was not written whole is no file of the run. The context
 		// may have ended the write, so the removal does not use its cancellation.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), incompleteFileTimeout)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
 		defer cancel()
 		if delErr := c.store.Delete(cleanup, key); delErr != nil {
 			err = errors.Join(err, fmt.Errorf("remove the incomplete file: %w", delErr))
@@ -80,9 +84,36 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	return nil
 }
 
+// putReconciled writes data at key, create-only. A write that reports an error
+// can have persisted, so it succeeds when the object reads back as data. The
+// error may be the context's, so the read does not use its cancellation.
+func (c *LodeClient) putReconciled(ctx context.Context, key string, data []byte) error {
+	putErr := c.store.Put(ctx, key, bytes.NewReader(data))
+	if putErr == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
+	defer cancel()
+	rc, err := c.store.Get(ctx, key)
+	if err != nil {
+		return putErr
+	}
+	defer iox.DiscardClose(rc)
+	stored, err := io.ReadAll(io.LimitReader(rc, int64(len(data))+1))
+	if err != nil || !bytes.Equal(stored, data) {
+		return putErr
+	}
+	if c.config.ReconcileObserver != nil {
+		c.config.ReconcileObserver(key, putErr)
+	}
+	return nil
+}
+
 // fileMetadata is the companion metadata written alongside sidecar files.
 type fileMetadata struct {
 	ContentType string `json:"content_type"`
+	// RunID tells this run's companion from another's at the same key.
+	RunID string `json:"run_id"`
 }
 
 // Older Lode stores collapsed repeated slashes. Keep that object location

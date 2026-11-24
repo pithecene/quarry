@@ -1449,7 +1449,7 @@ Quarry could not locate the executor. To fix:
 }
 
 func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
-	lodeSink, client, fw, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runMeta.RunID, choice.name, startTime, collector)
+	lodeSink, client, fw, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runMeta, choice.name, startTime, collector)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create storage sink: %w", err)
 	}
@@ -1491,19 +1491,26 @@ func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storage
 // If collector is non-nil, wraps the sink with metrics instrumentation.
 // Returns the sink, the underlying client (for run finalization),
 // a FileWriter for sidecar file uploads, and any error.
-func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset, source, category, runID, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, lode.FileWriter, error) {
+func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, lode.FileWriter, error) {
+	logger := log.NewLogger(runMeta)
 	// Build Lode config with partition keys
 	cfg := lode.Config{
 		Dataset:  dataset,
 		Source:   source,
 		Category: category,
 		Day:      lode.DeriveDay(startTime),
-		RunID:    runID,
+		RunID:    runMeta.RunID,
 		Policy:   policy,
 		// Collector increments are nil-receiver safe, so this is harmless
 		// when metrics are disabled.
 		RetryObserver:        func(int) { collector.IncLodeWriteRetry() },
 		IndexFailureObserver: func(string, error) { collector.IncArtifactIndexWriteFailure() },
+		ReconcileObserver: func(key string, err error) {
+			logger.Warn("storage write reported an error, and the stored bytes match", map[string]any{
+				"key":   key,
+				"error": err.Error(),
+			})
+		},
 	}
 
 	// LodeClient implements both lode.Client and lode.FileWriter.
