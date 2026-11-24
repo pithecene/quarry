@@ -143,12 +143,12 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 
 	// The output pipes are the runtime's own, so that waiting for the executor
 	// neither closes them nor waits for a child that holds one.
-	stdout, stdoutWrite, err := os.Pipe()
+	stdout, stdoutWrite, err := newOutputPipe()
 	if err != nil {
 		iox.DiscardClose(stdin)
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-	stderr, stderrWrite, err := os.Pipe()
+	stderr, stderrWrite, err := newOutputPipe()
 	if err != nil {
 		iox.DiscardClose(stdin)
 		iox.DiscardClose(stdout)
@@ -168,8 +168,7 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		iox.DiscardClose(stderr)
 		return fmt.Errorf("failed to start executor: %w", err)
 	}
-	output, diagnostics := outputPipe{stdout}, outputPipe{stderr}
-	m.stdout, m.stderrPipe = output, diagnostics
+	m.stdout, m.stderrPipe = stdout, stderr
 	// Stopping what the executor leaves behind also ends the output pipes that
 	// ingestion and the stderr capture read to their end.
 	m.exited = make(chan struct{})
@@ -180,13 +179,12 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		if m.groupErr != nil {
 			// What remains can hold the output open: its readers take what the
 			// pipes hold and end, so that the run ends and reports the group.
-			output.end()
-			diagnostics.end()
+			m.groupErr = errors.Join(m.groupErr, stdout.end(), stderr.end())
 		}
 	}()
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
 	// an executor blocked on a full stderr pipe would never end it.
-	m.stderr = startStderrCapture(diagnostics)
+	m.stderr = startStderrCapture(stderr)
 
 	// Write run metadata and job to stdin
 	input := executorInput{
