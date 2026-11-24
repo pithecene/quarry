@@ -464,6 +464,15 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	if err != nil || record["ts"] != "2026-02-03T02:00:00Z" || record["source"] != "c" || record["day"] != "2026-02-03" || record["event_type"] != "metrics" {
 		t.Errorf("record = %v, %v, want the fields of a metrics record", record, err)
 	}
+	// A run's end record is its source, whatever a metrics record of it says, and
+	// of two metrics records in one second the later commit is taken.
+	end("c", "run-both", "2026-02-07", at(7, 10), true)
+	legacy("c", "run-both", "2026-02-07", at(7, 12))
+	legacy("c", "run-first", "2026-02-07", at(7, 11))
+	legacy("c", "run-second", "2026-02-07", at(7, 11))
+	if got := latest("", ""); got != "run-second" {
+		t.Errorf("latest = %s, want run-second", got)
+	}
 	// Metrics of another run are refused.
 	foreign := client("c", "run-foreign", "2026-02-03")
 	if err := foreign.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "run-foreign", Attempt: 1}, at(3, 0), nil); err != nil {

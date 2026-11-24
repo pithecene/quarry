@@ -1,7 +1,6 @@
 package lode
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,50 +33,90 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 	}
 	// The end record of a named run decides, without its metrics records.
 	if runID != "" {
-		if ended, err := latestEndMetrics(ctx, store, runs, ""); err != nil || ended != nil {
-			return ended, err
+		if record, err := latestOfDays(ctx, store, nil, runs, nil, filter); err != nil || record != nil {
+			return record, err
 		}
 	}
-	var legacy map[string]any
+	var legacy map[string][]*lode.Snapshot
 	if ok {
 		snapshots, err := ds.Snapshots(ctx)
 		if err != nil {
 			return nil, WrapReadError(err, "quarry/snapshots")
 		}
-		legacy, err = latestMetrics(ctx, ds, snapshots, filter)
-		if err != nil {
-			return nil, err
-		}
+		legacy = metricsSnapshots(snapshots, filter)
 	}
-	latest := legacy
-	if runID == "" {
-		// No end record of an earlier day can be later.
-		ended, err := latestEndMetrics(ctx, store, runs, toString(legacy["day"]))
-		if err != nil {
-			return nil, err
-		}
-		if ended != nil && !laterMetrics(legacy, ended) {
-			latest = ended
-		}
-	}
-	if latest == nil {
+	record, err := latestOfDays(ctx, store, ds, runs, legacy, filter)
+	if err == nil && record == nil {
 		return nil, ErrNoMetricsFound
 	}
-	return latest, nil
+	return record, err
 }
 
-// laterMetrics reports whether a is of a later run than b, by its day and then
-// by when it ended. A nil record is of no run.
-func laterMetrics(a, b map[string]any) bool {
-	if a == nil || b == nil {
-		return a != nil
+// latestOfDays returns the metrics of the run that ended last on the latest day
+// that has any, or nil. It reads one day at a time, the latest day first. The
+// end record of a run is its source, and a metrics record only without one.
+func latestOfDays(ctx context.Context, store lode.Store, ds *lode.RecordView[lode.D], runs map[string][]Config, legacy map[string][]*lode.Snapshot, filter Config) (map[string]any, error) {
+	days := slices.Concat(slices.Collect(maps.Keys(runs)), slices.Collect(maps.Keys(legacy)))
+	slices.Sort(days)
+	for _, day := range slices.Backward(slices.Compact(days)) {
+		var latest map[string]any
+		var latestAt time.Time
+		consider := func(record map[string]any) error {
+			at, err := time.Parse(time.RFC3339Nano, toString(record["ts"]))
+			if err != nil {
+				return fmt.Errorf("metrics of run %v: %w", record["run_id"], err)
+			}
+			if latest == nil || at.After(latestAt) {
+				latest, latestAt = record, at
+			}
+			return nil
+		}
+		ended := make(map[string]bool) // by record directory
+		for _, cfg := range runs[day] {
+			rec, err := readEndFields(ctx, store, cfg)
+			if err != nil {
+				return nil, err
+			}
+			record, err := endMetrics(rec, cfg)
+			if err != nil {
+				return nil, err
+			}
+			if record != nil {
+				ended[RunRecordDir(cfg)] = true
+				if err := consider(record); err != nil {
+					return nil, err
+				}
+			}
+		}
+		// Metrics records keep whole seconds, so of two in one second the later
+		// commit is taken.
+		of := filter
+		of.Day = day
+		for _, snap := range slices.Backward(legacy[day]) {
+			data, err := ds.Read(ctx, snap.ID)
+			if err != nil {
+				return nil, WrapReadError(err, fmt.Sprintf("quarry/snapshot/%s", snap.ID))
+			}
+			// Manifest path filtering is a coarse pre-filter; record fields
+			// are authoritative (handles cumulative/multi-record snapshots).
+			for _, record := range data {
+				run := Config{
+					Dataset: filter.Dataset, Source: toString(record["source"]), Category: toString(record["category"]),
+					Day: toString(record["day"]), RunID: toString(record["run_id"]),
+				}
+				if !matchesMetricsRecord(record, of) || ended[RunRecordDir(run)] {
+					continue
+				}
+				if err := consider(record); err != nil {
+					return nil, fmt.Errorf("quarry/snapshot/%s: %w", snap.ID, err)
+				}
+			}
+		}
+		if latest != nil {
+			return latest, nil
+		}
 	}
-	if byDay := cmp.Compare(toString(a["day"]), toString(b["day"])); byDay != 0 {
-		return byDay > 0
-	}
-	endA, _ := time.Parse(time.RFC3339Nano, toString(a["ts"]))
-	endB, _ := time.Parse(time.RFC3339Nano, toString(b["ts"]))
-	return endA.After(endB)
+	return nil, nil
 }
 
 // endedRuns returns the runs that match filter, have a start record, and have
@@ -105,35 +144,6 @@ func endedRuns(ctx context.Context, store lode.Store, filter Config) (map[string
 		}
 	}
 	return byDay, nil
-}
-
-// latestEndMetrics returns the metrics of the latest run whose end record has
-// any, or nil. It reads the end records of one day at a time, the latest day
-// first, and none of a day before since.
-func latestEndMetrics(ctx context.Context, store lode.Store, byDay map[string][]Config, since string) (map[string]any, error) {
-	for _, day := range slices.Backward(slices.Sorted(maps.Keys(byDay))) {
-		if day < since {
-			break
-		}
-		var latest map[string]any
-		for _, cfg := range byDay[day] {
-			rec, err := readEndFields(ctx, store, cfg)
-			if err != nil {
-				return nil, err
-			}
-			record, err := endMetrics(rec, cfg)
-			if err != nil {
-				return nil, err
-			}
-			if laterMetrics(record, latest) {
-				latest = record
-			}
-		}
-		if latest != nil {
-			return latest, nil
-		}
-	}
-	return nil, nil
 }
 
 // endRecordConfig returns the run whose end record key names, and false for any
@@ -181,10 +191,9 @@ func endMetrics(rec map[string]json.RawMessage, cfg Config) (map[string]any, err
 	return record, nil
 }
 
-// latestMetrics returns the latest metrics record that matches filter, or nil.
-// Snapshots are ordered by when they committed, so every metrics snapshot of
-// the latest day is read.
-func latestMetrics(ctx context.Context, ds *lode.RecordView[lode.D], snapshots []*lode.Snapshot, filter Config) (map[string]any, error) {
+// metricsSnapshots returns the snapshots with metrics records that can match
+// filter, by the days of their records, each in commit order.
+func metricsSnapshots(snapshots []*lode.Snapshot, filter Config) map[string][]*lode.Snapshot {
 	byDay := make(map[string][]*lode.Snapshot)
 	for _, snap := range snapshots {
 		if !isMetricsSnapshot(snap) || !snapshotMatchesFilter(snap, "run_id", filter.RunID) || !snapshotMatchesFilter(snap, "source", filter.Source) {
@@ -202,28 +211,7 @@ func latestMetrics(ctx context.Context, ds *lode.RecordView[lode.D], snapshots [
 			byDay[day] = append(byDay[day], snap)
 		}
 	}
-	for _, day := range slices.Backward(slices.Sorted(maps.Keys(byDay))) {
-		of := filter
-		of.Day = day
-		var latest map[string]any
-		for _, snap := range byDay[day] {
-			data, err := ds.Read(ctx, snap.ID)
-			if err != nil {
-				return nil, WrapReadError(err, fmt.Sprintf("quarry/snapshot/%s", snap.ID))
-			}
-			// Manifest path filtering is a coarse pre-filter; record fields
-			// are authoritative (handles cumulative/multi-record snapshots).
-			for _, record := range data {
-				if matchesMetricsRecord(record, of) && laterMetrics(record, latest) {
-					latest = record
-				}
-			}
-		}
-		if latest != nil {
-			return latest, nil
-		}
-	}
-	return nil, nil
+	return byDay
 }
 
 func matchesMetricsRecord(record lode.D, filter Config) bool {
