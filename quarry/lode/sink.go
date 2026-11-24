@@ -45,6 +45,9 @@ type Config struct {
 	// artifact's commit record is persisted, so the failure fails no write.
 	// Optional.
 	IndexFailureObserver func(artifactID string, err error)
+	// ReconcileObserver, if set, is invoked once per write that reported err and
+	// succeeds because the object at key holds its bytes. Optional.
+	ReconcileObserver func(key string, err error)
 }
 
 // Sink is a Lode-backed implementation of policy.Sink.

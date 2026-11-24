@@ -110,8 +110,8 @@ type Run struct {
 	IndexEntries int `json:"index_entries" yaml:"index_entries"`
 	// Kept gives the reason a selected run was not removed.
 	Kept string `json:"kept,omitempty" yaml:"kept,omitempty"`
-	// Skipped lists sidecar paths recorded for the run that lie outside its
-	// sidecar prefix; they are left in place.
+	// Skipped are recorded sidecar paths left in place: one outside the run's
+	// sidecar prefix, or one whose place another run's file can have taken.
 	Skipped []string `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 

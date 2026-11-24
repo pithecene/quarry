@@ -167,8 +167,9 @@ entry in `Manifest.Metadata` containing an array of file references:
 - File refs only appear on event and metrics snapshots, not on chunk snapshots
 - If multiple event flushes occur during a run, file refs appear on the
   first event snapshot after each batch of file writes
-- To enumerate all files for a run, union `sidecar_files` across all
-  snapshots for that `run_id`
+- To enumerate all files for a run, read `sidecar_files` from its end record.
+  When that names none, union `sidecar_files` across all snapshots for that
+  `run_id`
 
 ---
 

@@ -19,12 +19,12 @@ import (
 const metaSuffix = ".meta.json"
 
 // sidecarPaths returns the run's sidecar objects, sorted: every file its
-// snapshots record, with its companion, and, when the sidecar prefix is
+// snapshots and end record name, with its companion, and, when the sidecar prefix is
 // unambiguous, every object listed under it. Sidecar files are caller-owned,
 // so Lode's expiry never deletes them (CONTRACT_LODE.md §Sidecar File
 // Inventory). Recorded paths outside the run's sidecar prefix are returned
 // as skipped and are never deleted.
-func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition string) (paths, skipped []string, err error) {
+func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition string, committed bool) (paths, skipped []string, err error) {
 	prefix := qlode.SidecarFilesPrefix(cfg)
 	// The run key was validated before selection. Its recorded prefix may
 	// contain repeated slashes that older Lode stores collapsed.
@@ -33,6 +33,27 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 	recorded, err := p.recordedSidecars(ctx, partition)
 	if err != nil {
 		return nil, nil, err
+	}
+	// The run's prefix can hold another run's file when its key is ambiguous, so
+	// the end record is used only while the run has snapshots. They expire before
+	// any sidecar goes, so each path still holds the run's own object: without
+	// them, an interrupted prune may have removed it, and another run may have
+	// written the path since. The path is then left in place and reported.
+	ended, err := qlode.ReadEndSidecars(ctx, p.store, cfg)
+	if errors.Is(err, qlode.ErrMalformedSidecars) {
+		err = fmt.Errorf("%w: %w", errMalformedInventory, err)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if !unambiguous(cfg) {
+		for _, file := range ended {
+			if committed {
+				recorded = append(recorded, file.Path)
+			} else {
+				skipped = append(skipped, file.Path)
+			}
+		}
 	}
 	for _, recordedPath := range recorded {
 		name, belongs := strings.CutPrefix(recordedPath, prefix)
@@ -43,7 +64,7 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 		key := objectPrefix + name
 		set[key], set[key+metaSuffix] = true, true
 	}
-	// A file written after the run's last commit is recorded nowhere, so the
+	// A file of a run without an end record can be recorded nowhere, so the
 	// prefix is listed too, but only when its direct children can belong to
 	// no other run: sidecar paths are built from unencoded values.
 	if unambiguous(cfg) {

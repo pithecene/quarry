@@ -1,7 +1,9 @@
 package retention
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +47,8 @@ type runSpec struct {
 	// lateFile is written after the run's last commit, so no snapshot
 	// records it.
 	lateFile bool
+	// noEvents writes no event, so the run has no snapshot.
+	noEvents bool
 	// again writes another snapshot for a run that already started, without
 	// a second start record or sidecar file.
 	again bool
@@ -84,8 +88,10 @@ func (f *fixture) write(spec runSpec) qlode.Config {
 		ContractVersion: types.ContractVersion, EventID: "e1", RunID: spec.runID,
 		Seq: 1, Type: types.EventTypeItem, Ts: spec.day + "T01:00:00Z", Payload: map[string]any{"n": 1}, Attempt: 1,
 	}
-	if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
-		f.t.Fatalf("events: %v", err)
+	if !spec.noEvents {
+		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
+			f.t.Fatalf("events: %v", err)
+		}
 	}
 	for i := range spec.artifacts {
 		f.writeArtifact(c, fmt.Sprintf("a%d", i+1))
@@ -301,7 +307,7 @@ func TestPrune_RecordForAnotherKeyIsKept(t *testing.T) {
 	}
 }
 
-func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
+func TestPrune_EncodedKeyUsesRecordedSidecars(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, lateFile: true})
@@ -317,18 +323,60 @@ func TestPrune_EncodedKeyUsesRecordedSidecarsOnly(t *testing.T) {
 	if got, want := outcomes(report), "[r1:pruned]"; got != want {
 		t.Fatalf("runs = %s, want %s", got, want)
 	}
-	// Only the recorded page.html and its companion: the prefix of an
-	// encoded key is not listed, so the unrecorded late file remains.
-	if report.SidecarObjects != 2 {
-		t.Fatalf("sidecar objects = %d, want 2", report.SidecarObjects)
+	// The prefix of an encoded key is not listed: the snapshots name page.html,
+	// and the end record names the late file too. Each has a companion.
+	if report.SidecarObjects != 4 {
+		t.Fatalf("sidecar objects = %d, want 4", report.SidecarObjects)
 	}
 	left, err := f.store.List(t.Context(), prefix)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	slices.Sort(left)
-	if want := []string{prefix + "late.txt", prefix + "late.txt" + metaSuffix}; !slices.Equal(left, want) {
-		t.Fatalf("left %v, want %v", left, want)
+	if len(left) != 0 {
+		t.Fatalf("left %v, want none", left)
+	}
+}
+
+// An end record that names a path outside the run's prefix keeps the run, also
+// when the run's prefix is listed.
+func TestPrune_KeepsARunWithAForeignEndPath(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	cfg := f.write(runSpec{source: "src", runID: "r1", day: oldDay})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
+	outcome := string(types.OutcomeScriptError)
+	data, err := json.Marshal(qlode.EndRecord{
+		RecordKind: qlode.RecordKindRunEnd, SchemaVersion: qlode.RunRecordSchemaVersion, RunID: cfg.RunID,
+		EndedAt: oldDay + "T02:00:00Z", Outcome: &outcome,
+		SidecarFiles: []qlode.SidecarFileRef{{Path: "elsewhere/a.txt", Filename: "a.txt", ContentType: "text/plain"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Put(t.Context(), qlode.RunRecordDir(cfg)+qlode.EndRecordName, bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:kept]"; got != want || report.Runs[0].Kept != keptInventory {
+		t.Fatalf("runs = %s (%q), want %s for its inventory", got, report.Runs[0].Kept, want)
+	}
+}
+
+// A run without snapshots can be one whose prune was interrupted, so a path its
+// end record names can hold another run's file by now. An ambiguous key's paths
+// then stay: source "a//b" and source "a/b" store their files at one place.
+func TestPrune_LeavesAmbiguousSidecarsWithoutSnapshots(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, noEvents: true})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:pruned]"; got != want || report.SidecarObjects != 0 || len(report.Runs[0].Skipped) != 1 {
+		t.Fatalf("runs = %s with %d sidecar objects and %v skipped, want %s with none and the file skipped", got, report.SidecarObjects, report.Runs[0].Skipped, want)
+	}
+	left, err := f.store.List(t.Context(), "datasets/quarry/partitions/source=a/b/category=cat/day="+oldDay+"/run_id=r1/files/")
+	if err != nil || len(left) != 2 {
+		t.Fatalf("left %v, %v, want the file and its companion", left, err)
 	}
 }
 

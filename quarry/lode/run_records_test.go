@@ -1,13 +1,16 @@
 package lode
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/pithecene/lode/lode"
@@ -223,6 +226,230 @@ func TestNewEndRecord_TerminalSummary(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The end record names every sidecar file of the run, whether or not a snapshot
+// names it too, and run details report each once. A record that names another
+// run's file is malformed.
+func TestEndRecord_SidecarFiles(t *testing.T) {
+	t.Parallel()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1", Policy: "strict"}
+	factory := sharedMemoryFactory()
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(name string) {
+		if err := client.PutFile(t.Context(), name, "text/plain", []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("a.txt")
+	if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: cfg.RunID, Policy: "strict"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	put("late.txt")
+	if err := client.WriteEndRecord(t.Context(), RunEnd{EndedAt: time.Now(), Outcome: types.OutcomeSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := factory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func(files []SidecarFileRef) string {
+		var out []string
+		for _, f := range files {
+			out = append(out, f.Filename)
+		}
+		return strings.Join(out, ",")
+	}
+	recorded, err := ReadEndSidecars(t.Context(), store, cfg)
+	if err != nil || names(recorded) != "a.txt,late.txt" {
+		t.Errorf("end record files %s, %v, want a.txt,late.txt", names(recorded), err)
+	}
+	details, err := QueryRunDetails(t.Context(), factory, cfg)
+	if err != nil || names(details.SidecarFiles) != "a.txt,late.txt" {
+		t.Errorf("details files %s, %v, want each file once", names(details.SidecarFiles), err)
+	}
+
+	// A run without a snapshot has its files too.
+	bare, bareFactory := cfg, sharedMemoryFactory()
+	bareClient, err := NewLodeClientWithFactory(t.Context(), bare, bareFactory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bareClient.PutFile(t.Context(), "only.txt", "text/plain", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := bareClient.WriteEndRecord(t.Context(), RunEnd{EndedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if details, err := QueryRunDetails(t.Context(), bareFactory, bare); err != nil || names(details.SidecarFiles) != "only.txt" {
+		t.Errorf("details files %s, %v, want only.txt without a snapshot", names(details.SidecarFiles), err)
+	}
+
+	other := cfg
+	other.RunID = "run-2"
+	twice := cfg
+	twice.RunID = "run-3"
+	ref := SidecarFileRef{Path: SidecarFilesPrefix(twice) + "a.txt", Filename: "a.txt", ContentType: "text/plain"}
+	if err := putRunRecord(t.Context(), store, twice, EndRecordName, EndRecord{SidecarFiles: []SidecarFileRef{ref, ref}}); err != nil {
+		t.Fatal(err)
+	}
+	if files, err := ReadEndSidecars(t.Context(), store, twice); err != nil || names(files) != "a.txt" {
+		t.Errorf("a repeated entry gave %s, %v, want it once", names(files), err)
+	}
+	foreign := EndRecord{RunID: other.RunID, SidecarFiles: recorded}
+	if err := putRunRecord(t.Context(), store, other, EndRecordName, foreign); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadEndSidecars(t.Context(), store, other); !errors.Is(err, ErrMalformedSidecars) {
+		t.Errorf("a foreign path gave %v, want ErrMalformedSidecars", err)
+	}
+}
+
+// companionFailingStore fails each companion write, and its Delete waits for the
+// context to end.
+type companionFailingStore struct{ lode.RangeStore }
+
+var errCompanion = errors.New("companion refused")
+
+func (s companionFailingStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if strings.HasSuffix(key, ".meta.json") {
+		return errCompanion
+	}
+	return s.RangeStore.Put(ctx, key, r)
+}
+
+func (companionFailingStore) Delete(ctx context.Context, _ string) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// uncertainStore reports an error after it persists a companion, and its reads
+// fail while unreadable is set.
+type uncertainStore struct {
+	lode.RangeStore
+	unreadable bool
+}
+
+var errUncertain = errors.New("no response")
+
+func (s *uncertainStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, ".meta.json") {
+		return err
+	}
+	return errUncertain
+}
+
+func (s *uncertainStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if s.unreadable {
+		return nil, errUncertain
+	}
+	return s.RangeStore.Get(ctx, key)
+}
+
+// A companion write that reports an error after it persisted succeeds by
+// readback, and one that the readback cannot settle leaves the file writable.
+func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
+	t.Parallel()
+	for _, unreadable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
+			store := &uncertainStore{RangeStore: lode.NewMemory(), unreadable: unreadable}
+			var observed []string
+			client, err := NewLodeClientWithFactory(t.Context(), Config{
+				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+				ReconcileObserver: func(key string, _ error) { observed = append(observed, key) },
+			}, sharedFactory(lode.NewMemory()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.store = store
+			put := func(contentType string) error {
+				return client.PutFile(t.Context(), "page.png", contentType, []byte("png"))
+			}
+			err = put("image/png")
+			if unreadable {
+				if !errors.Is(err, errUncertain) || len(client.files) != 0 {
+					t.Fatalf("first PutFile: %v with files %v, want the write's error and no file", err, client.files)
+				}
+				store.unreadable = false
+				if err := put("image/gif"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+					t.Fatalf("other companion: %v with files %v, want ErrPathExists and no file", err, client.files)
+				}
+				err = put("image/png")
+			}
+			if err != nil {
+				t.Fatalf("PutFile: %v", err)
+			}
+			key := SidecarFilesPrefix(client.config) + "page.png"
+			if len(client.files) != 1 || len(observed) != 1 || observed[0] != key+".meta.json" {
+				t.Errorf("files = %v, observed = %v, want one file and its companion", client.files, observed)
+			}
+			var companion map[string]any
+			readJSON(t, store.RangeStore, key+".meta.json", &companion)
+			if companion["content_type"] != "image/png" || companion["run_id"] != "run-1" {
+				t.Errorf("companion = %v, want the content type and the run's ID", companion)
+			}
+			if err := put("image/png"); !errors.Is(err, ErrPathExists) {
+				t.Errorf("second write: %v, want ErrPathExists", err)
+			}
+		})
+	}
+}
+
+// Another write's data file or companion is never taken for this one's, and a
+// refused data file is left as it is.
+func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, content string }{
+		{"page.png", "png"},
+		{"page.png.meta.json", `{"content_type":"image/png"}`},
+		{"page.png.meta.json", `{"content_type":"image/png","run_id":"run-2"}`},
+	} {
+		t.Run(tc.name+tc.content, func(t *testing.T) {
+			store := lode.NewMemory()
+			client, err := NewLodeClientWithFactory(t.Context(), Config{
+				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+			}, sharedFactory(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prefix := SidecarFilesPrefix(client.config)
+			if err := store.Put(t.Context(), prefix+tc.name, strings.NewReader(tc.content)); err != nil {
+				t.Fatal(err)
+			}
+			if err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png")); !errors.Is(err, ErrPathExists) {
+				t.Errorf("PutFile: %v, want ErrPathExists", err)
+			}
+			keys, err := store.List(t.Context(), prefix)
+			if err != nil || len(keys) != 1 || keys[0] != prefix+tc.name || len(client.files) != 0 {
+				t.Errorf("keys = %v, %v with files %v, want only the other write's object", keys, err, client.files)
+			}
+		})
+	}
+}
+
+// A file whose companion fails is removed within a bound, and is no file of the
+// run.
+func TestPutFile_BoundsTheRemovalOfAnIncompleteFile(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
+		client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		store, err := lode.Memory()()
+		if err != nil {
+			t.Fatal(err)
+		}
+		client.store = companionFailingStore{store}
+		err = client.PutFile(t.Context(), "a.txt", "text/plain", []byte("x"))
+		if !errors.Is(err, errCompanion) || !errors.Is(err, context.DeadlineExceeded) || len(client.files) != 0 {
+			t.Errorf("PutFile = %v with files %v, want both failures and no file", err, client.files)
+		}
+	})
 }
 
 func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {
