@@ -351,8 +351,10 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult,
 		Message:          result.Outcome.Message,
 		EventCount:       result.EventCount,
 		MetricsPersisted: metricsPersisted,
-		Metrics:          r.config.Collector.Snapshot(),
 		TerminalSummary:  result.TerminalSummary,
+	}
+	if r.config.Collector != nil {
+		end.Metrics = new(r.config.Collector.Snapshot())
 	}
 	if err := r.config.Storage.WriteEndRecord(ctx, end); err != nil {
 		result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)

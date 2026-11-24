@@ -150,7 +150,7 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	if !end.MetricsPersisted {
 		t.Error("end record should report metrics persisted")
 	}
-	if !reflect.DeepEqual(end.Metrics, config.Collector.Snapshot()) || end.Metrics.RunsCompleted != 1 {
+	if end.Metrics == nil || !reflect.DeepEqual(*end.Metrics, config.Collector.Snapshot()) || end.Metrics.RunsCompleted != 1 {
 		t.Errorf("end record metrics = %+v, want the run's final snapshot", end.Metrics)
 	}
 	if !reflect.DeepEqual(end.TerminalSummary, result.TerminalSummary) || end.TerminalSummary == nil {

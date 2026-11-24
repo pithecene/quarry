@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -113,7 +115,10 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	end := RunEnd{
 		EndedAt: startedAt.Add(time.Minute), Outcome: types.OutcomeScriptError,
 		Terminal: types.EventTypeRunError, Message: "boom", EventCount: 7, MetricsPersisted: true,
-		Metrics:         metrics.Snapshot{EventsPersisted: 7, Policy: "strict", DroppedByType: map[string]int64{"log": 2}},
+		Metrics: &metrics.Snapshot{
+			EventsPersisted: 7, Policy: "strict",
+			DroppedByType: map[string]int64{"log": 2}, FlushTriggers: map[string]int64{"count": 4},
+		},
 		TerminalSummary: map[string]any{"error_type": "fetch"},
 	}
 	if err := client.WriteEndRecord(t.Context(), end); err != nil {
@@ -155,13 +160,53 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	if recorded["events_persisted_total"] != float64(7) || recorded["policy"] != "strict" || dropped["log"] != float64(2) {
 		t.Errorf("end metrics = %v, want the run's counters and dimensions", recorded)
 	}
-	for _, key := range []string{"record_kind", "event_type", "ts"} {
+	if triggers, _ := recorded["flush_triggers"].(map[string]any); triggers["count"] != float64(4) {
+		t.Errorf("end flush_triggers = %v, want the run's", recorded["flush_triggers"])
+	}
+	for _, key := range []string{"record_kind", "event_type", "ts", "source", "category", "day"} {
 		if _, ok := recorded[key]; ok {
 			t.Errorf("end metrics carry %q, which belongs to the metrics record", key)
 		}
 	}
 	if summary, _ := endRec["terminal_summary"].(map[string]any); summary["error_type"] != "fetch" {
 		t.Errorf("end terminal_summary = %v, want the terminal event's payload", endRec["terminal_summary"])
+	}
+}
+
+// The terminal payload keeps the difference between none and an empty one, and
+// one that JSON cannot represent does not stop the record. A run that collects
+// no metrics records none.
+func TestNewEndRecord_TerminalSummary(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		payload map[string]any
+		want    any
+		present bool
+	}{
+		{"no terminal event", nil, nil, false},
+		{"an empty payload", map[string]any{}, map[string]any{}, true},
+		{"a payload", map[string]any{"pages": 3}, map[string]any{"pages": float64(3)}, true},
+		{"a payload that JSON cannot represent", map[string]any{"ratio": math.NaN()}, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(NewEndRecord(Config{RunID: "run-1"}, RunEnd{TerminalSummary: tc.payload}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rec map[string]any
+			if err := json.Unmarshal(data, &rec); err != nil {
+				t.Fatal(err)
+			}
+			got, present := rec["terminal_summary"]
+			if present != tc.present || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("terminal_summary = %v (present %t), want %v (present %t)", got, present, tc.want, tc.present)
+			}
+			if _, ok := rec["metrics"]; ok {
+				t.Error("metrics present for a run that collects none")
+			}
+		})
 	}
 }
 

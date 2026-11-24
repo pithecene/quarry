@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 	"time"
@@ -175,8 +176,8 @@ type RunEnd struct {
 	Message          string
 	EventCount       int64
 	MetricsPersisted bool
-	// Metrics is the run's final snapshot.
-	Metrics metrics.Snapshot
+	// Metrics is the run's final snapshot, or nil when the run collects none.
+	Metrics *metrics.Snapshot
 	// TerminalSummary is the payload of the terminal event received, or nil.
 	TerminalSummary map[string]any
 }
@@ -194,12 +195,12 @@ type EndRecord struct {
 	Message          string  `json:"message,omitempty"`
 	EventCount       *int64  `json:"event_count"`
 	MetricsPersisted bool    `json:"metrics_persisted"`
-	// Metrics has the counters and dimensions of the metrics record. It is
-	// omitted on a backfilled record and by releases before v0.20.0.
+	// Metrics is omitted on a backfilled record and when the run collects none.
 	Metrics map[string]any `json:"metrics,omitempty"`
-	// TerminalSummary is omitted without a terminal event or when it is empty.
-	TerminalSummary map[string]any `json:"terminal_summary,omitempty"`
-	Backfilled      bool           `json:"backfilled"`
+	// TerminalSummary is omitted without a terminal event, and when JSON cannot
+	// represent the payload.
+	TerminalSummary json.RawMessage `json:"terminal_summary,omitempty"`
+	Backfilled      bool            `json:"backfilled"`
 }
 
 // NewStartRecord builds the start record for the run cfg describes.
@@ -232,8 +233,19 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		Message:          end.Message,
 		EventCount:       new(end.EventCount),
 		MetricsPersisted: end.MetricsPersisted,
-		Metrics:          metricsFields(end.Metrics),
-		TerminalSummary:  end.TerminalSummary,
+	}
+	if end.Metrics != nil {
+		rec.Metrics = metricsFields(*end.Metrics)
+		if len(end.Metrics.FlushTriggers) > 0 {
+			rec.Metrics["flush_triggers"] = maps.Clone(end.Metrics.FlushTriggers)
+		}
+	}
+	// A payload that JSON cannot represent, such as one with a NaN, must not cost
+	// the run its end record.
+	if end.TerminalSummary != nil {
+		if summary, err := json.Marshal(end.TerminalSummary); err == nil {
+			rec.TerminalSummary = summary
+		}
 	}
 	if end.Terminal != "" {
 		t := string(end.Terminal)

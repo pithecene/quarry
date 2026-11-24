@@ -537,7 +537,7 @@ func TestEndState(t *testing.T) {
 		{"backfilled run_complete", nil, str("run_complete"), StateSucceeded},
 		{"backfilled run_error", nil, str("run_error"), StateFailed},
 	} {
-		if got := endState(qlode.EndRecord{Outcome: tc.outcome, Terminal: tc.terminal}); got != tc.want {
+		if got := endState(endFields{Outcome: tc.outcome, Terminal: tc.terminal}); got != tc.want {
 			t.Errorf("%s: state = %s, want %s", tc.name, got, tc.want)
 		}
 	}
