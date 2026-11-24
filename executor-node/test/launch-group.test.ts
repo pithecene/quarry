@@ -22,28 +22,30 @@ describe("a run's browser", () => {
     const dir = mkdtempSync(join(tmpdir(), 'quarry-group-'))
     const chrome = join(dir, 'chrome')
     const report = join(dir, 'pgid')
-    writeFileSync(chrome, `#!/bin/sh\nps -o pgid= -p $$ > '${report}'\nsleep 1\nexit 1\n`)
+    const observed = join(dir, 'observed')
+    // It holds the launch open until the helper has been observed, for 10 seconds at most.
+    writeFileSync(
+      chrome,
+      `#!/bin/sh\nps -o pgid= -p $$ > '${report}'\ni=0\nwhile [ ! -e '${observed}' ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done\nexit 1\n`
+    )
     chmodSync(chrome, 0o755)
     const script = join(dir, 'script.mjs')
     writeFileSync(script, 'export default async () => {}\n')
 
     // A helper that other code detaches while the launch is pending.
-    const helper = new Promise<{ pid: number | undefined; group: string }>((done, fail) => {
-      const timer = setInterval(() => {
-        if (!existsSync(report)) return
-        clearInterval(timer)
-        try {
-          const child = childProcess.spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
-          done({ pid: child.pid, group: groupOf(child.pid) })
-          child.kill('SIGKILL')
-        } catch (err) {
-          fail(err)
-        }
-      }, 20)
-    })
+    const observeHelper = async () => {
+      await vi.waitFor(() => expect(existsSync(report)).toBe(true), { timeout: 5000 })
+      const child = childProcess.spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+      try {
+        return { pid: child.pid, group: groupOf(child.pid) }
+      } finally {
+        child.kill('SIGKILL')
+        writeFileSync(observed, '')
+      }
+    }
     const output = new PassThrough()
     output.resume()
-    const result = await execute({
+    const run = execute({
       scriptPath: script,
       job: {},
       run: { run_id: 'run-1' as RunId, attempt: 1 },
@@ -51,10 +53,10 @@ describe("a run's browser", () => {
       stealth: false,
       puppeteerOptions: { executablePath: chrome }
     })
+    const [result, { pid, group }] = await Promise.all([run, observeHelper()])
 
     expect(result.outcome.status).not.toBe('completed')
     await vi.waitFor(() => expect(readFileSync(report, 'utf8').trim()).toBe(groupOf(process.pid)))
-    const { pid, group } = await helper
     expect(group).toBe(String(pid))
   })
 })

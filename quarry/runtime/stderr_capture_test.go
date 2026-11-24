@@ -203,15 +203,55 @@ func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 	}
 }
 
+// A manager that starts a second run stops that run too.
+func TestExecutorManager_StopsASecondRun(t *testing.T) {
+	t.Parallel()
+	if goruntime.GOOS == "windows" {
+		t.Skip("the fake executor is a POSIX shell script")
+	}
+	script := filepath.Join(t.TempDir(), "wait.sh")
+	if err := os.WriteFile(script, []byte("read -r input\nread -r ack\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewExecutorManager(&ExecutorConfig{
+		ExecutorPath: "/bin/sh",
+		ScriptPath:   script,
+		RunMeta:      &types.RunMeta{RunID: "run-1", Attempt: 1},
+	})
+	for run := range 2 {
+		ctx, cancel := context.WithCancel(t.Context())
+		if err := m.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+		ended := make(chan error, 1)
+		go func() {
+			_, err := m.Wait()
+			ended <- err
+		}()
+		select {
+		case err := <-ended:
+			if err != nil {
+				t.Errorf("run %d: Wait: %v", run, err)
+			}
+		case <-time.After(15 * time.Second):
+			t.Fatalf("run %d did not end when it was cancelled", run)
+		}
+	}
+}
+
 // running reports whether pid runs; a zombie that nothing has reaped does not.
 func running(t *testing.T, pid int) bool {
 	t.Helper()
 	out, err := exec.CommandContext(t.Context(), "ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
-	if _, missing := errors.AsType[*exec.ExitError](err); err != nil && !missing {
-		t.Fatal(err)
+	if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+		return false
 	}
-	state := strings.TrimSpace(string(out))
-	return state != "" && !strings.HasPrefix(state, "Z")
+	if err != nil {
+		t.Logf("ps could not inspect %d: %v", pid, err)
+		return true
+	}
+	return !strings.HasPrefix(strings.TrimSpace(string(out)), "Z")
 }
 
 // readPID waits for the fake executor to write its child's PID.

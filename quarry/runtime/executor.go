@@ -119,11 +119,18 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	// The executor leads a process group that holds everything it starts, its
 	// browser among them, so one signal stops all of it.
 	m.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	// The exit reports a group that could not be stopped.
 	m.cmd.Cancel = func() error {
-		_ = m.Kill()
-		return os.ErrProcessDone
+		err := m.Kill()
+		if goruntime.GOOS == "darwin" && errors.Is(err, syscall.EPERM) {
+			// Darwin reports EPERM for an executor that has exited and is not yet
+			// reaped. stopGroup reports a group that does remain.
+			return os.ErrProcessDone
+		}
+		return err
 	}
+	m.groupMu.Lock()
+	m.stopped = false
+	m.groupMu.Unlock()
 
 	m.cmd.Env = withResolveFrom(os.Environ(), m.config.ResolveFrom)
 
@@ -169,6 +176,12 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		defer close(m.exited)
 		m.waitErr = m.cmd.Wait()
 		m.groupErr = m.stopGroup()
+		if m.groupErr != nil {
+			// What remains can hold the output open: end its readers, so that the
+			// run ends and reports the group.
+			iox.DiscardClose(stdout)
+			iox.DiscardClose(stderr)
+		}
 	}()
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
 	// an executor blocked on a full stderr pipe would never end it.
@@ -230,7 +243,6 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 
 	<-m.exited
 	if m.groupErr != nil {
-		// What remains can hold the output open, so its end is not awaited.
 		return nil, fmt.Errorf("stop what the executor started: %w", m.groupErr)
 	}
 	err := m.waitErr
@@ -283,20 +295,22 @@ func (m *ExecutorManager) stopGroup() error {
 	m.groupMu.Lock()
 	defer m.groupMu.Unlock()
 	m.stopped = true
-	deadline := time.Now().Add(zombieGrace)
-	for {
-		err := killGroup(m.cmd.Process.Pid)
-		switch {
-		case errors.Is(err, os.ErrProcessDone):
-			return nil
+	pgid := m.cmd.Process.Pid
+	err := killGroup(pgid)
+	if goruntime.GOOS == "darwin" && errors.Is(err, syscall.EPERM) {
 		// Darwin reports EPERM for a group that holds only zombies, until they
-		// are reaped, and for one that Quarry may not signal.
-		case errors.Is(err, syscall.EPERM) && goruntime.GOOS == "darwin" && time.Now().Before(deadline):
-			time.Sleep(5 * time.Millisecond)
-		default:
-			return err
+		// are reaped, and for one that Quarry may not signal. The check signals
+		// nothing, because the number may be another group's once they are.
+		for deadline := time.Now().Add(zombieGrace); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+			if errors.Is(syscall.Kill(-pgid, 0), syscall.ESRCH) {
+				return nil
+			}
 		}
 	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return nil
+	}
+	return err
 }
 
 // killGroup kills the process group pgid. A group with no process left is
