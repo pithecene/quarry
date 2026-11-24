@@ -69,6 +69,8 @@ type ExecutorManager struct {
 	exited   chan struct{}
 	waitErr  error
 	groupErr error
+	// signalGroup kills a process group; a test replaces it.
+	signalGroup func(pgid int) error
 	// stderrPipe is what stderr drains.
 	stderrPipe io.Closer
 
@@ -80,7 +82,8 @@ type ExecutorManager struct {
 // NewExecutorManager creates a new executor manager.
 func NewExecutorManager(config *ExecutorConfig) *ExecutorManager {
 	return &ExecutorManager{
-		config: config,
+		config:      config,
+		signalGroup: killGroup,
 	}
 }
 
@@ -175,12 +178,13 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	go func() {
 		defer close(m.exited)
 		m.waitErr = m.cmd.Wait()
-		m.groupErr = m.stopGroup()
-		if m.groupErr != nil {
+		if err := m.stopGroup(); err != nil {
+			m.groupErr = &groupStopError{err: err, cause: context.Cause(ctx)}
 			// What remains can hold the output open: its readers end after a
 			// grace, so that the run ends and reports the group.
 			deadline := time.Now().Add(outputGrace)
-			m.groupErr = errors.Join(m.groupErr, stdout.SetReadDeadline(deadline), stderr.SetReadDeadline(deadline))
+			_ = stdout.SetReadDeadline(deadline) // newOutputPipe showed that it can
+			_ = stderr.SetReadDeadline(deadline)
 		}
 	}()
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
@@ -246,7 +250,7 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 	iox.DiscardClose(m.stdout)
 	iox.DiscardClose(m.stderrPipe)
 	if m.groupErr != nil {
-		return nil, fmt.Errorf("stop what the executor started: %w", m.groupErr)
+		return nil, m.groupErr
 	}
 	err := m.waitErr
 
@@ -283,8 +287,18 @@ func (m *ExecutorManager) Kill() error {
 	if m.stopped {
 		return os.ErrProcessDone
 	}
-	return killGroup(m.cmd.Process.Pid)
+	return m.signalGroup(m.cmd.Process.Pid)
 }
+
+// groupStopError reports an executor's group that could not be stopped, and the
+// cause that had ended the run by then, if any.
+type groupStopError struct {
+	err   error
+	cause error
+}
+
+func (e *groupStopError) Error() string { return "stop what the executor started: " + e.err.Error() }
+func (e *groupStopError) Unwrap() error { return e.err }
 
 // outputGrace is how long the output of a group that could not be stopped is
 // still read.
@@ -315,7 +329,7 @@ func (m *ExecutorManager) stopGroup() error {
 	defer m.groupMu.Unlock()
 	m.stopped = true
 	pgid := m.cmd.Process.Pid
-	err := killGroup(pgid)
+	err := m.signalGroup(pgid)
 	if goruntime.GOOS == "darwin" && errors.Is(err, syscall.EPERM) {
 		// Darwin reports EPERM for a group that holds only zombies, until they
 		// are reaped, and for one that Quarry may not signal. The check signals

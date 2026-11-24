@@ -497,6 +497,10 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		// killed executor is reaped did not.
 		r.stoppedByDeadline = ingestionStoppedByDeadline
 	}
+	if group, ok := errors.AsType[*groupStopError](execErr); ok {
+		// Nor did one that passes while the output of the group is still read.
+		r.stoppedByDeadline = errors.Is(group.cause, ErrRunDeadline)
+	}
 
 	// Always attempt policy flush (best effort) on all termination paths
 	// Per CONTRACT_POLICY.md: "Buffered events must be flushed on run_complete, run_error, runtime termination (best effort)"

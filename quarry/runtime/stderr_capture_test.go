@@ -203,6 +203,70 @@ func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 	}
 }
 
+// When the group cannot be stopped, a child can hold both outputs open. What it
+// writes during the grace is read, both readers end, and Wait reports the group
+// with no cause, although the run ends meanwhile.
+func TestExecutorManager_UnstoppableGroup(t *testing.T) {
+	t.Parallel()
+	if goruntime.GOOS == "windows" {
+		t.Skip("the fake executor is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "child.pid")
+	script := filepath.Join(dir, "hold.sh")
+	body := "read -r input\n(sleep 1; echo late; echo late >&2; exec sleep 300) &\necho $! > '" + pidFile + "'\nexit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewExecutorManager(&ExecutorConfig{
+		ExecutorPath: "/bin/sh",
+		ScriptPath:   script,
+		RunMeta:      &types.RunMeta{RunID: "run-1", Attempt: 1},
+	})
+	refused := errors.New("signal refused")
+	m.signalGroup = func(int) error { return refused }
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	if err := m.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pid := readPID(t, pidFile)
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	stdout := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(m.Stdout())
+		stdout <- string(data)
+	}()
+	ended := make(chan error, 1)
+	go func() {
+		<-m.exited
+		cancel() // the run ends while its output is still read
+		_, err := m.Wait()
+		ended <- err
+	}()
+	limit := time.After(outputGrace + 15*time.Second)
+	select {
+	case out := <-stdout:
+		if out != "late\n" {
+			t.Errorf("stdout %q, want what the child wrote during the grace", out)
+		}
+	case <-limit:
+		t.Fatal("stdout did not end")
+	}
+	select {
+	case err := <-ended:
+		group, ok := errors.AsType[*groupStopError](err)
+		if !ok || !errors.Is(err, refused) || group.cause != nil {
+			t.Errorf("Wait = %v, want the group's error with no cause", err)
+		}
+	case <-limit:
+		t.Fatal("stderr did not end")
+	}
+	if text := string(m.stderr.wait()); text != "late\n" {
+		t.Errorf("stderr %q, want what the child wrote during the grace", text)
+	}
+}
+
 // A manager that starts a second run stops that run too.
 func TestExecutorManager_StopsASecondRun(t *testing.T) {
 	t.Parallel()
