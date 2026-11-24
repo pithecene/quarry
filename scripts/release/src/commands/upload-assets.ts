@@ -17,7 +17,7 @@ export type UploadPolicy = RetryPolicy & {
  *
  * Each attempt uploads only the files that the release does not hold, so
  * GitHub's record decides every outcome: one failed file does not withhold the
- * others, and a file whose upload's response was lost does not upload twice. Uploads
+ * others, and a file that GitHub stored before the client failed does not upload twice. Uploads
  * replace, so only a draft takes them. A published release is read-only and
  * needs each file by name, because a re-run rebuilds archives with other bytes.
  */

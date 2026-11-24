@@ -24,6 +24,8 @@ export type WorldState = {
   uploads: Map<string, ('fail' | 'stored' | 'hang' | 'unstartable')[]>
   /** Assets that the release holds, by file name, with their digests. */
   assets: Map<string, string>
+  /** Names of assets whose upload never completed, which have no digest. */
+  incomplete: string[]
   /** Object type of the tag, and its message when annotated. */
   tagType: 'tag' | 'commit'
   tagMessage: string
@@ -82,6 +84,7 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
     releaseLookupFails: false,
     uploads: new Map(),
     assets: new Map(),
+    incomplete: [],
     tagType: 'tag',
     tagMessage: 'Title\n\n## Summary\n',
     tagCommit: 'c0',
@@ -169,6 +172,7 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
           if (outcome === 'hang') return { code: 0, stdout: '', stderr: '', timedOut: true }
           if (outcome === 'fail') return fail('HTTP 404: Not Found')
           const digest = createHash('sha256').update(readFileSync(path)).digest('hex')
+          state.incomplete = state.incomplete.filter((name) => name !== basename(path))
           state.assets.set(basename(path), `sha256:${digest}`)
           return outcome === 'stored' ? fail('unexpected EOF') : ok()
         }
@@ -188,11 +192,10 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
             {
               isDraft: state.release.startsWith('draft'),
               isPrerelease: state.release.endsWith('prerelease'),
-              assets: [...state.assets].map(([name, digest]) => ({
-                name,
-                digest,
-                state: 'uploaded'
-              }))
+              assets: [
+                ...[...state.assets].map(([name, digest]) => ({ name, digest, state: 'uploaded' })),
+                ...state.incomplete.map((name) => ({ name, state: 'starter' }))
+              ]
             },
             // Only the requested fields, with those inside an asset.
             [...(args[4] ?? '').split(','), 'name', 'digest', 'state']

@@ -44,7 +44,7 @@ export const githubReleaseState = async (ctx: Context, tag: string): Promise<Rel
   return read.release.state
 }
 
-const DIGEST = /^sha256:[0-9a-f]{64}$/
+const DIGEST = /^sha256:[0-9a-f]{64}$/i
 
 // Only a complete asset has a digest, and without one nothing can be decided.
 type Asset =
@@ -55,7 +55,9 @@ const parseAsset = (value: unknown): Asset | undefined => {
   const { name, state, digest } = (value ?? {}) as Record<string, unknown>
   if (typeof name !== 'string' || typeof state !== 'string') return undefined
   if (state !== 'uploaded') return { name, state: 'incomplete' }
-  return typeof digest === 'string' && DIGEST.test(digest) ? { name, state, digest } : undefined
+  return typeof digest === 'string' && DIGEST.test(digest)
+    ? { name, state, digest: digest.toLowerCase() }
+    : undefined
 }
 
 const parseRelease = (stdout: string): Release | undefined => {
