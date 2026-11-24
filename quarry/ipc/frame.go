@@ -81,20 +81,6 @@ func (e *FrameError) Unwrap() error {
 	return e.Err
 }
 
-// IsFatal returns true if this error is fatal (terminate run).
-// Per CONTRACT_IPC.md, partial and oversized frames are fatal.
-func (e *FrameError) IsFatal() bool {
-	return e.Kind == FrameErrorPartial || e.Kind == FrameErrorTooLarge
-}
-
-// IsFatalFrameError returns true if the error is a fatal frame error.
-func IsFatalFrameError(err error) bool {
-	if frameErr, ok := errors.AsType[*FrameError](err); ok {
-		return frameErr.IsFatal()
-	}
-	return false
-}
-
 // FrameDecoder decodes length-prefixed msgpack frames from a stream.
 type FrameDecoder struct {
 	reader io.Reader
@@ -254,55 +240,27 @@ func DecodeFrame(payload []byte) (any, error) {
 
 // DecodeEventEnvelope decodes a payload as an EventEnvelope.
 func DecodeEventEnvelope(payload []byte) (*types.EventEnvelope, error) {
-	var envelope types.EventEnvelope
-	if err := msgpack.Unmarshal(payload, &envelope); err != nil {
-		return nil, &FrameError{
-			Kind: FrameErrorDecode,
-			Msg:  "failed to decode event envelope",
-			Err:  err,
-		}
+	envelope, err := decodeAs[types.EventEnvelope](payload, "event envelope")
+	if err != nil {
+		return nil, err
 	}
 	envelope.RawFrameBytes = int64(len(payload)) + LengthPrefixSize
-	return &envelope, nil
+	return envelope, nil
 }
 
 // DecodeRunResult decodes a payload as a RunResultFrame.
 func DecodeRunResult(payload []byte) (*types.RunResultFrame, error) {
-	var result types.RunResultFrame
-	if err := msgpack.Unmarshal(payload, &result); err != nil {
-		return nil, &FrameError{
-			Kind: FrameErrorDecode,
-			Msg:  "failed to decode run result",
-			Err:  err,
-		}
-	}
-	return &result, nil
+	return decodeAs[types.RunResultFrame](payload, "run result")
 }
 
 // DecodeFileWrite decodes a payload as a FileWriteFrame.
 func DecodeFileWrite(payload []byte) (*types.FileWriteFrame, error) {
-	var frame types.FileWriteFrame
-	if err := msgpack.Unmarshal(payload, &frame); err != nil {
-		return nil, &FrameError{
-			Kind: FrameErrorDecode,
-			Msg:  "failed to decode file write",
-			Err:  err,
-		}
-	}
-	return &frame, nil
+	return decodeAs[types.FileWriteFrame](payload, "file write")
 }
 
 // DecodeFileWriteAck decodes a payload as a FileWriteAckFrame.
 func DecodeFileWriteAck(payload []byte) (*types.FileWriteAckFrame, error) {
-	var frame types.FileWriteAckFrame
-	if err := msgpack.Unmarshal(payload, &frame); err != nil {
-		return nil, &FrameError{
-			Kind: FrameErrorDecode,
-			Msg:  "failed to decode file write ack",
-			Err:  err,
-		}
-	}
-	return &frame, nil
+	return decodeAs[types.FileWriteAckFrame](payload, "file write ack")
 }
 
 // EncodeFrame encodes a payload with a 4-byte big-endian length prefix.

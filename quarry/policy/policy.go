@@ -94,14 +94,6 @@ func estimateEventSize(envelope *types.EventEnvelope) int64 {
 	return size
 }
 
-// DroppableTypes returns the set of event types that may be dropped.
-func DroppableTypes() map[types.EventType]bool {
-	// Return a copy to prevent mutation
-	result := make(map[types.EventType]bool, len(droppableTypes))
-	maps.Copy(result, droppableTypes)
-	return result
-}
-
 // statsRecorder is an internal helper for thread-safe stats management.
 // Uses atomic.Int64 for hot-path counters to eliminate lock contention.
 //
@@ -139,17 +131,7 @@ func (r *statsRecorder) incErrors()                 { r.errors.Add(1) }
 func (r *statsRecorder) incFlush()                  { r.flushCount.Add(1) }
 
 func (r *statsRecorder) snapshot() Stats {
-	s := Stats{
-		TotalEvents:     r.totalEvents.Load(),
-		EventsPersisted: r.eventsPersisted.Load(),
-		EventsDropped:   r.eventsDropped.Load(),
-		BufferSize:      r.bufferSize.Load(),
-		FlushCount:      r.flushCount.Load(),
-		Errors:          r.errors.Load(),
-		DroppedByType:   make(map[types.EventType]int64, len(r.droppedByType)),
-	}
-	maps.Copy(s.DroppedByType, r.droppedByType)
-	return s
+	return r.snapshotLocked(0)
 }
 
 // --- Caller-locked methods ---

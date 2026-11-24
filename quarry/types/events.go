@@ -1,7 +1,7 @@
 package types
 
 // ContractVersion is the emit contract version per CONTRACT_EMIT.md.
-// This is an alias for the canonical Version to maintain backward compatibility.
+// It is the canonical Version.
 const ContractVersion = Version
 
 // EventType represents the type of event per CONTRACT_EMIT.md.
@@ -23,17 +23,6 @@ const (
 func (e EventType) IsTerminal() bool {
 	return e == EventTypeRunComplete || e == EventTypeRunError
 }
-
-// LogLevel represents log severity per CONTRACT_EMIT.md.
-type LogLevel string
-
-// Log level constants per CONTRACT_EMIT.md.
-const (
-	LogLevelDebug LogLevel = "debug"
-	LogLevelInfo  LogLevel = "info"
-	LogLevelWarn  LogLevel = "warn"
-	LogLevelError LogLevel = "error"
-)
 
 // EventEnvelope is the envelope for all events per CONTRACT_EMIT.md.
 // All fields use msgpack tags to match the TypeScript SDK wire format.
@@ -66,79 +55,4 @@ type EventEnvelope struct {
 	// from, length prefix included, set by the decoder and never on the wire.
 	// Zero means the envelope was built in process.
 	RawFrameBytes int64 `msgpack:"-" json:"-"`
-}
-
-// ItemPayload represents an item event payload per CONTRACT_EMIT.md.
-type ItemPayload struct {
-	// ItemType is a caller-defined type label.
-	ItemType string `msgpack:"item_type"`
-	// Data is the record payload.
-	Data map[string]any `msgpack:"data"`
-}
-
-// ArtifactPayload represents an artifact event payload per CONTRACT_EMIT.md.
-// This is the commit record for an artifact; bytes are transmitted separately.
-type ArtifactPayload struct {
-	// ArtifactID is the unique identifier for the artifact.
-	ArtifactID string `msgpack:"artifact_id"`
-	// Name is a human-readable name.
-	Name string `msgpack:"name"`
-	// ContentType is the MIME content type.
-	ContentType string `msgpack:"content_type"`
-	// SizeBytes is the total size in bytes.
-	SizeBytes int64 `msgpack:"size_bytes"`
-}
-
-// CheckpointPayload represents a checkpoint event payload per CONTRACT_EMIT.md.
-type CheckpointPayload struct {
-	// CheckpointID is the unique identifier for the checkpoint.
-	CheckpointID string `msgpack:"checkpoint_id"`
-	// Note is an optional human-readable note.
-	Note *string `msgpack:"note,omitempty"`
-}
-
-// EnqueuePayload represents an enqueue event payload per CONTRACT_EMIT.md.
-// This is advisory only; not guaranteed or required.
-type EnqueuePayload struct {
-	// Target is the target identifier for the work.
-	Target string `msgpack:"target"`
-	// Params is the parameters for the work.
-	Params map[string]any `msgpack:"params"`
-	// Source is an optional partition override for the child run's source.
-	Source string `msgpack:"source,omitempty"`
-	// Category is an optional partition override for the child run's category.
-	Category string `msgpack:"category,omitempty"`
-}
-
-// RotateProxyPayload represents a rotate_proxy event payload per CONTRACT_EMIT.md.
-// This is advisory only; not guaranteed or required.
-type RotateProxyPayload struct {
-	// Reason is an optional reason for the rotation request.
-	Reason *string `msgpack:"reason,omitempty"`
-}
-
-// LogPayload represents a log event payload per CONTRACT_EMIT.md.
-type LogPayload struct {
-	// Level is the log level.
-	Level LogLevel `msgpack:"level"`
-	// Message is the log message.
-	Message string `msgpack:"message"`
-	// Fields is optional structured fields.
-	Fields map[string]any `msgpack:"fields,omitempty"`
-}
-
-// RunErrorPayload represents a run_error event payload per CONTRACT_EMIT.md.
-type RunErrorPayload struct {
-	// ErrorType is the error type/category.
-	ErrorType string `msgpack:"error_type"`
-	// Message is the error message.
-	Message string `msgpack:"message"`
-	// Stack is an optional stack trace.
-	Stack *string `msgpack:"stack,omitempty"`
-}
-
-// RunCompletePayload represents a run_complete event payload per CONTRACT_EMIT.md.
-type RunCompletePayload struct {
-	// Summary is an optional summary object.
-	Summary map[string]any `msgpack:"summary,omitempty"`
 }

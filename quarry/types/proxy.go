@@ -169,16 +169,6 @@ func (p *ProxyPool) Validate() error {
 	return nil
 }
 
-// JobProxyRequest is a job-level proxy selection request.
-type JobProxyRequest struct {
-	// Pool is the pool name to select from.
-	Pool string `json:"pool" msgpack:"pool"`
-	// Strategy is the optional strategy override.
-	Strategy *ProxyStrategy `json:"strategy,omitempty" msgpack:"strategy,omitempty"`
-	// StickyKey is the optional sticky key override.
-	StickyKey *string `json:"sticky_key,omitempty" msgpack:"sticky_key,omitempty"`
-}
-
 // LargePoolThreshold is the number of endpoints above which round_robin
 // is discouraged in favor of random.
 const LargePoolThreshold = 50

@@ -283,10 +283,6 @@ func TestFrameDecoder_PartialFrame(t *testing.T) {
 		t.Fatal("expected error for truncated frame")
 	}
 
-	if !IsFatalFrameError(err) {
-		t.Errorf("expected fatal frame error, got: %v", err)
-	}
-
 	var frameErr *FrameError
 	if !errors.As(err, &frameErr) {
 		t.Fatalf("expected *FrameError, got %T", err)
@@ -294,11 +290,6 @@ func TestFrameDecoder_PartialFrame(t *testing.T) {
 
 	if frameErr.Kind != FrameErrorPartial {
 		t.Errorf("Kind = %v, want FrameErrorPartial", frameErr.Kind)
-	}
-
-	// Verify IsFatal() directly
-	if !frameErr.IsFatal() {
-		t.Error("FrameErrorPartial.IsFatal() should return true")
 	}
 }
 
@@ -319,10 +310,6 @@ func TestFrameDecoder_OversizedFrame(t *testing.T) {
 		t.Fatal("expected error for oversized frame")
 	}
 
-	if !IsFatalFrameError(err) {
-		t.Errorf("expected fatal frame error, got: %v", err)
-	}
-
 	var frameErr *FrameError
 	if !errors.As(err, &frameErr) {
 		t.Fatalf("expected *FrameError, got %T", err)
@@ -330,11 +317,6 @@ func TestFrameDecoder_OversizedFrame(t *testing.T) {
 
 	if frameErr.Kind != FrameErrorTooLarge {
 		t.Errorf("Kind = %v, want FrameErrorTooLarge", frameErr.Kind)
-	}
-
-	// Verify IsFatal() directly
-	if !frameErr.IsFatal() {
-		t.Error("FrameErrorTooLarge.IsFatal() should return true")
 	}
 }
 
@@ -364,10 +346,6 @@ func TestFrameDecoder_TruncatedLengthPrefix(t *testing.T) {
 		t.Fatal("expected error for truncated length prefix")
 	}
 
-	if !IsFatalFrameError(err) {
-		t.Errorf("expected fatal frame error, got: %v", err)
-	}
-
 	var frameErr *FrameError
 	if !errors.As(err, &frameErr) {
 		t.Fatalf("expected *FrameError, got %T", err)
@@ -379,7 +357,6 @@ func TestFrameDecoder_TruncatedLengthPrefix(t *testing.T) {
 }
 
 // TestFrameDecoder_MalformedMsgpack validates decode error for invalid msgpack.
-// Decode errors are non-fatal (the frame was read correctly, just couldn't decode).
 func TestFrameDecoder_MalformedMsgpack(t *testing.T) {
 	t.Parallel()
 
@@ -406,11 +383,6 @@ func TestFrameDecoder_MalformedMsgpack(t *testing.T) {
 
 	if frameErr.Kind != FrameErrorDecode {
 		t.Errorf("Kind = %v, want FrameErrorDecode", frameErr.Kind)
-	}
-
-	// Decode errors are NOT fatal (frame was valid, content wasn't)
-	if IsFatalFrameError(err) {
-		t.Error("decode errors should not be fatal")
 	}
 }
 
@@ -677,24 +649,6 @@ func TestDecodeFrame_FileWriteAck(t *testing.T) {
 	}
 	if !decoded.OK {
 		t.Error("OK = false, want true")
-	}
-}
-
-// TestIsFatalFrameError_NonFrameError validates IsFatalFrameError with non-FrameError.
-func TestIsFatalFrameError_NonFrameError(t *testing.T) {
-	t.Parallel()
-
-	regularErr := errors.New("regular error")
-	if IsFatalFrameError(regularErr) {
-		t.Error("regular errors should not be fatal frame errors")
-	}
-
-	if IsFatalFrameError(nil) {
-		t.Error("nil should not be a fatal frame error")
-	}
-
-	if IsFatalFrameError(io.EOF) {
-		t.Error("io.EOF should not be a fatal frame error")
 	}
 }
 

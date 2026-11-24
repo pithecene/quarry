@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/pithecene/quarry/metrics"
@@ -125,15 +124,4 @@ func WriteRunReport(report *RunReport, path string) error {
 		return fmt.Errorf("failed to write report to %s: %w", path, err)
 	}
 	return nil
-}
-
-// writeRunReportTo writes report JSON to any writer (for testing).
-func writeRunReportTo(report *RunReport, w io.Writer) error {
-	data, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal report: %w", err)
-	}
-	data = append(data, '\n')
-	_, err = w.Write(data)
-	return err
 }
