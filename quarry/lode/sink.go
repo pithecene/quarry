@@ -46,7 +46,7 @@ type Config struct {
 	// Optional.
 	IndexFailureObserver func(artifactID string, err error)
 	// ReconcileObserver, if set, is invoked once per write that reported err and
-	// succeeds because the object at key reads back as written. Optional.
+	// succeeds because the object at key holds its bytes. Optional.
 	ReconcileObserver func(key string, err error)
 }
 

@@ -53,7 +53,7 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	// Write companion metadata file preserving content type.
 	// Store.Put has no metadata parameter, so content type is persisted
 	// as a sidecar JSON file alongside the data.
-	meta, err := json.Marshal(fileMetadata{ContentType: contentType})
+	meta, err := json.Marshal(fileMetadata{ContentType: contentType, RunID: c.config.RunID})
 	if err != nil {
 		return fmt.Errorf("file write metadata marshal failed: %w", err)
 	}
@@ -112,6 +112,8 @@ func (c *LodeClient) putReconciled(ctx context.Context, key string, data []byte)
 // fileMetadata is the companion metadata written alongside sidecar files.
 type fileMetadata struct {
 	ContentType string `json:"content_type"`
+	// RunID tells this run's companion from another's at the same key.
+	RunID string `json:"run_id"`
 }
 
 // Older Lode stores collapsed repeated slashes. Keep that object location

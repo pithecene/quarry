@@ -1506,7 +1506,7 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 		RetryObserver:        func(int) { collector.IncLodeWriteRetry() },
 		IndexFailureObserver: func(string, error) { collector.IncArtifactIndexWriteFailure() },
 		ReconcileObserver: func(key string, err error) {
-			logger.Warn("storage write reported an error and persisted", map[string]any{
+			logger.Warn("storage write reported an error, and the stored bytes match", map[string]any{
 				"key":   key,
 				"error": err.Error(),
 			})

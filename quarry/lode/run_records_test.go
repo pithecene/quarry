@@ -393,6 +393,38 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	}
 }
 
+// Another write's data file or companion is never taken for this one's, and a
+// refused data file is left as it is.
+func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, content string }{
+		{"page.png", "png"},
+		{"page.png.meta.json", `{"content_type":"image/png"}`},
+		{"page.png.meta.json", `{"content_type":"image/png","run_id":"run-2"}`},
+	} {
+		t.Run(tc.name+tc.content, func(t *testing.T) {
+			store := lode.NewMemory()
+			client, err := NewLodeClientWithFactory(t.Context(), Config{
+				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+			}, sharedFactory(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prefix := SidecarFilesPrefix(client.config)
+			if err := store.Put(t.Context(), prefix+tc.name, strings.NewReader(tc.content)); err != nil {
+				t.Fatal(err)
+			}
+			if err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png")); !errors.Is(err, ErrPathExists) {
+				t.Errorf("PutFile: %v, want ErrPathExists", err)
+			}
+			keys, err := store.List(t.Context(), prefix)
+			if err != nil || len(keys) != 1 || keys[0] != prefix+tc.name || len(client.files) != 0 {
+				t.Errorf("keys = %v, %v with files %v, want only the other write's object", keys, err, client.files)
+			}
+		})
+	}
+}
+
 // A file whose companion fails is removed within a bound, and is no file of the
 // run.
 func TestPutFile_BoundsTheRemovalOfAnIncompleteFile(t *testing.T) {
