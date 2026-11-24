@@ -269,6 +269,22 @@ func TestEndRecord_SidecarFiles(t *testing.T) {
 		t.Errorf("details files %s, %v, want each file once", names(details.SidecarFiles), err)
 	}
 
+	// A run without a snapshot has its files too.
+	bare, bareFactory := cfg, sharedMemoryFactory()
+	bareClient, err := NewLodeClientWithFactory(t.Context(), bare, bareFactory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bareClient.PutFile(t.Context(), "only.txt", "text/plain", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := bareClient.WriteEndRecord(t.Context(), RunEnd{EndedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if details, err := QueryRunDetails(t.Context(), bareFactory, bare); err != nil || names(details.SidecarFiles) != "only.txt" {
+		t.Errorf("details files %s, %v, want only.txt without a snapshot", names(details.SidecarFiles), err)
+	}
+
 	other := cfg
 	other.RunID = "run-2"
 	foreign := EndRecord{RunID: other.RunID, SidecarFiles: recorded}

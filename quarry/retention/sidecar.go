@@ -24,7 +24,7 @@ const metaSuffix = ".meta.json"
 // so Lode's expiry never deletes them (CONTRACT_LODE.md §Sidecar File
 // Inventory). Recorded paths outside the run's sidecar prefix are returned
 // as skipped and are never deleted.
-func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition string) (paths, skipped []string, err error) {
+func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition string, committed bool) (paths, skipped []string, err error) {
 	prefix := qlode.SidecarFilesPrefix(cfg)
 	// The run key was validated before selection. Its recorded prefix may
 	// contain repeated slashes that older Lode stores collapsed.
@@ -34,15 +34,22 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 	if err != nil {
 		return nil, nil, err
 	}
-	ended, err := qlode.ReadEndSidecars(ctx, p.store, cfg)
-	if err != nil {
+	// The run's prefix can hold another run's file when its key is ambiguous, so
+	// the end record is used only while the run has snapshots. They expire before
+	// any sidecar goes, so each path still holds the run's own object: without
+	// them, an interrupted prune may have removed it, and another run may have
+	// written the path since.
+	if committed && !unambiguous(cfg) {
+		ended, err := qlode.ReadEndSidecars(ctx, p.store, cfg)
 		if errors.Is(err, qlode.ErrMalformedSidecars) {
 			err = fmt.Errorf("%w: %w", errMalformedInventory, err)
 		}
-		return nil, nil, err
-	}
-	for _, file := range ended {
-		recorded = append(recorded, file.Path)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, file := range ended {
+			recorded = append(recorded, file.Path)
+		}
 	}
 	for _, recordedPath := range recorded {
 		name, belongs := strings.CutPrefix(recordedPath, prefix)

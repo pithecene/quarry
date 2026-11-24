@@ -45,6 +45,8 @@ type runSpec struct {
 	// lateFile is written after the run's last commit, so no snapshot
 	// records it.
 	lateFile bool
+	// noEvents writes no event, so the run has no snapshot.
+	noEvents bool
 	// again writes another snapshot for a run that already started, without
 	// a second start record or sidecar file.
 	again bool
@@ -84,8 +86,10 @@ func (f *fixture) write(spec runSpec) qlode.Config {
 		ContractVersion: types.ContractVersion, EventID: "e1", RunID: spec.runID,
 		Seq: 1, Type: types.EventTypeItem, Ts: spec.day + "T01:00:00Z", Payload: map[string]any{"n": 1}, Attempt: 1,
 	}
-	if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
-		f.t.Fatalf("events: %v", err)
+	if !spec.noEvents {
+		if err := c.WriteEvents(ctx, "quarry", spec.runID, []*types.EventEnvelope{ev}); err != nil {
+			f.t.Fatalf("events: %v", err)
+		}
 	}
 	for i := range spec.artifacts {
 		f.writeArtifact(c, fmt.Sprintf("a%d", i+1))
@@ -328,6 +332,24 @@ func TestPrune_EncodedKeyUsesRecordedSidecars(t *testing.T) {
 	}
 	if len(left) != 0 {
 		t.Fatalf("left %v, want none", left)
+	}
+}
+
+// A run without snapshots can be one whose prune was interrupted, so a path its
+// end record names can hold another run's file by now. An ambiguous key's paths
+// then stay: source "a//b" and source "a/b" store their files at one place.
+func TestPrune_LeavesAmbiguousSidecarsWithoutSnapshots(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, noEvents: true})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:pruned]"; got != want || report.SidecarObjects != 0 {
+		t.Fatalf("runs = %s with %d sidecar objects, want %s with none", got, report.SidecarObjects, want)
+	}
+	left, err := f.store.List(t.Context(), "datasets/quarry/partitions/source=a/b/category=cat/day="+oldDay+"/run_id=r1/files/")
+	if err != nil || len(left) != 2 {
+		t.Fatalf("left %v, %v, want the file and its companion", left, err)
 	}
 }
 

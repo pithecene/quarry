@@ -45,7 +45,8 @@ type RunConfig struct {
 	// ExecutorFactory overrides executor creation (for testing).
 	// If nil, uses NewExecutorManager.
 	ExecutorFactory ExecutorFactory
-	// FileWriter handles sidecar file writes via Lode Store.
+	// FileWriter handles sidecar file writes via Lode Store. With Storage set it
+	// must be the same client, whose end record names the files it wrote.
 	// If nil, file_write frames are logged and ignored.
 	FileWriter lode.FileWriter
 	// ArtifactStore holds the run's artifact bytes as Lode Volumes. If nil,

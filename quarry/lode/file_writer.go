@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -50,6 +51,11 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	}
 	metaPath := key + ".meta.json"
 	if err := c.store.Put(ctx, metaPath, bytes.NewReader(meta)); err != nil {
+		// A file that was not written whole is no file of the run. The context
+		// may have ended the write, so the removal does not use its cancellation.
+		if delErr := c.store.Delete(context.WithoutCancel(ctx), key); delErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove the incomplete file: %w", delErr))
+		}
 		return WrapWriteError(err, metaPath)
 	}
 

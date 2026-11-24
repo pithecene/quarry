@@ -660,13 +660,15 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    found.
 2. Gather the run's sidecar files and their `.meta.json` companions
    (§Sidecar File Inventory): every path that the run's snapshots
-   and end record name, and, when Hive encoding leaves the run's source, category, day, and
+   record, and, when Hive encoding leaves the run's source, category, day, and
    run ID unchanged, every direct child of its sidecar prefix. A path
    more than one level down can belong to a run whose ID continues the prefix, such as
    `r/files/x` beneath run `r`, so it is never listed. Without that
    condition, a direct child could also belong to another run, so the
-   prefix is not listed, and a file that neither a snapshot nor an end
-   record names remains. A path that a snapshot records outside the run's sidecar prefix is reported
+   prefix is not listed. The end record names the files of such a run, and
+   the prune uses it only while the run has snapshots: without them, an
+   interrupted prune may have removed a file whose place another run's file
+   has taken since. A file that no source names remains. A path that a snapshot records outside the run's sidecar prefix is reported
    and left in place. A recorded inventory in any other form, or an end
    record that names a path outside the prefix, names files
    that cannot be found, so the prune keeps the run, deletes nothing of it,
@@ -705,9 +707,8 @@ the report counts them.
 Each step is idempotent, and a run is listed until step 6. A prune that is
 interrupted, or that fails with a store error, is therefore completed by
 the next prune that selects the run, with one exception: if it stops
-after step 3 for a run whose key Hive encoding changes and whose end
-record does not name its files, the recorded sidecar paths are gone with
-the manifests, and those files remain. If step 3 is interrupted after Lode
+after step 3 for a run whose key Hive encoding changes, the manifests are
+gone and the end record is not used, so the files that remain stay. If step 3 is interrupted after Lode
 deleted the run's last manifest, the next prune no longer finds the
 snapshot's residual data, and `Dataset.Sweep` removes it.
 

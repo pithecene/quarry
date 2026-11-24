@@ -27,7 +27,15 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 		return RunDetails{}, WrapReadError(err, "datasets/"+key.Dataset)
 	}
 	if !ok {
-		return RunDetails{}, nil
+		// A run can write files and its end record without a snapshot.
+		if store == nil {
+			return RunDetails{}, nil
+		}
+		files, err := ReadEndSidecars(ctx, store, key)
+		if err != nil {
+			return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
+		}
+		return RunDetails{SidecarFiles: files}, nil
 	}
 	prefix := PartitionPrefix(key)
 	snapshots, err := readRunSnapshots(ctx, ds, prefix)
@@ -60,8 +68,12 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 		return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 	}
 	// Snapshots and the end record can each name a file.
+	seen := make(map[SidecarFileRef]bool, len(files))
+	for _, file := range files {
+		seen[file] = true
+	}
 	for _, file := range recorded {
-		if !slices.Contains(files, file) {
+		if !seen[file] {
 			files = append(files, file)
 		}
 	}

@@ -521,10 +521,10 @@ is null when none is visible. A metrics record without a recognized policy
 name makes the command exit 1 with an error on stderr.
 
 The `sidecar_files` field lists files written via `storage.put()` during the
-run and recorded in the visible snapshots' metadata
+run and recorded in its end record or the visible snapshots' metadata
 ([CONTRACT_LODE.md](CONTRACT_LODE.md) § Sidecar File Inventory). The field is
 omitted when the inventory is empty. A malformed inventory makes the command
-exit 1 with an error on stderr that identifies the snapshot.
+exit 1 with an error on stderr that identifies the record or the snapshot.
 
 ---
 

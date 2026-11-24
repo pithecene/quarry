@@ -18,7 +18,8 @@ func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode
 }
 
 // openReadStore is openReadView that also returns the store it built, for a
-// caller that opens another view of the same dataset.
+// caller that reads more of the same dataset. It returns the store of a dataset
+// without a snapshot too.
 func openReadStore(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view *lode.RecordView[lode.D], store lode.RangeStore, ok bool, err error) {
 	if factory == nil {
 		return nil, nil, false, errors.New("read: nil store factory")
@@ -29,7 +30,7 @@ func openReadStore(ctx context.Context, dataset string, factory lode.Factory[lod
 	}
 	view, err = OpenView(ctx, dataset, store)
 	if errors.Is(err, lode.ErrNotFound) {
-		return nil, nil, false, nil
+		return nil, store, false, nil
 	}
 	return view, store, err == nil, err
 }
