@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 
@@ -691,7 +692,6 @@ func TestIngestionEngine_PipeCloseAfterTerminal(t *testing.T) {
 	}
 }
 
-// recordingFileWriter is a FileWriter that records each PutFile.
 type recordingFileWriter struct {
 	mu    sync.Mutex
 	Files []recordedFile
@@ -894,60 +894,6 @@ func TestIngestionEngine_FileWrite_ErrorAck_NoStreamError(t *testing.T) {
 	}
 }
 
-func TestIngestionEngine_FileWrite_NilAckWriter_BackwardCompat(t *testing.T) {
-	t.Parallel()
-
-	runMeta := &types.RunMeta{
-		RunID:   "run-123",
-		Attempt: 1,
-	}
-
-	var buf bytes.Buffer
-
-	envelope := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-1",
-		RunID:           "run-123",
-		Seq:             1,
-		Type:            types.EventTypeItem,
-		Ts:              "2024-01-01T00:00:00Z",
-		Payload:         map[string]any{"item_type": "test", "data": map[string]any{}},
-		Attempt:         1,
-	}
-	buf.Write(encodeEventFrame(envelope))
-
-	fileWrite := &types.FileWriteFrame{
-		Type:        "file_write",
-		WriteID:     1,
-		Filename:    "screenshot.png",
-		ContentType: "image/png",
-		Data:        []byte("fake-png-data"),
-	}
-	buf.Write(encodeFileWriteFrame(fileWrite))
-
-	terminal := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-2",
-		RunID:           "run-123",
-		Seq:             2,
-		Type:            types.EventTypeRunComplete,
-		Ts:              "2024-01-01T00:00:01Z",
-		Payload:         map[string]any{},
-		Attempt:         1,
-	}
-	buf.Write(encodeEventFrame(terminal))
-
-	logger := log.NewLogger(runMeta)
-	fw := &recordingFileWriter{}
-	// nil ackWriter — backward compat, no panic
-	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, nil)
-
-	err := engine.Run(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 // epipeWriter simulates a broken pipe (EPIPE).
 type epipeWriter struct{}
 
@@ -955,57 +901,64 @@ func (epipeWriter) Write(_ []byte) (int, error) {
 	return 0, errors.New("write |1: broken pipe")
 }
 
-func TestIngestionEngine_FileWrite_AckWriteEPIPE_NonFatal(t *testing.T) {
+// A file write whose ack cannot be sent fails no run and is kept.
+func TestIngestionEngine_FileWrite_WithoutAnAck(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		acks io.Writer
+	}{
+		{"no writer", nil},
+		{"broken pipe", epipeWriter{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runMeta := &types.RunMeta{
+				RunID:   "run-123",
+				Attempt: 1,
+			}
 
-	runMeta := &types.RunMeta{
-		RunID:   "run-123",
-		Attempt: 1,
-	}
+			var buf bytes.Buffer
 
-	var buf bytes.Buffer
+			envelope := &types.EventEnvelope{
+				ContractVersion: types.ContractVersion,
+				EventID:         "evt-1",
+				RunID:           "run-123",
+				Seq:             1,
+				Type:            types.EventTypeItem,
+				Ts:              "2024-01-01T00:00:00Z",
+				Payload:         map[string]any{"item_type": "test", "data": map[string]any{}},
+				Attempt:         1,
+			}
+			buf.Write(encodeEventFrame(envelope))
 
-	envelope := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-1",
-		RunID:           "run-123",
-		Seq:             1,
-		Type:            types.EventTypeItem,
-		Ts:              "2024-01-01T00:00:00Z",
-		Payload:         map[string]any{"item_type": "test", "data": map[string]any{}},
-		Attempt:         1,
-	}
-	buf.Write(encodeEventFrame(envelope))
+			fileWrite := &types.FileWriteFrame{
+				Type:        "file_write",
+				WriteID:     1,
+				Filename:    "screenshot.png",
+				ContentType: "image/png",
+				Data:        []byte("fake-png-data"),
+			}
+			buf.Write(encodeFileWriteFrame(fileWrite))
 
-	fileWrite := &types.FileWriteFrame{
-		Type:        "file_write",
-		WriteID:     1,
-		Filename:    "screenshot.png",
-		ContentType: "image/png",
-		Data:        []byte("fake-png-data"),
-	}
-	buf.Write(encodeFileWriteFrame(fileWrite))
+			terminal := &types.EventEnvelope{
+				ContractVersion: types.ContractVersion,
+				EventID:         "evt-2",
+				RunID:           "run-123",
+				Seq:             2,
+				Type:            types.EventTypeRunComplete,
+				Ts:              "2024-01-01T00:00:01Z",
+				Payload:         map[string]any{},
+				Attempt:         1,
+			}
+			buf.Write(encodeEventFrame(terminal))
 
-	terminal := &types.EventEnvelope{
-		ContractVersion: types.ContractVersion,
-		EventID:         "evt-2",
-		RunID:           "run-123",
-		Seq:             2,
-		Type:            types.EventTypeRunComplete,
-		Ts:              "2024-01-01T00:00:01Z",
-		Payload:         map[string]any{},
-		Attempt:         1,
-	}
-	buf.Write(encodeEventFrame(terminal))
-
-	logger := log.NewLogger(runMeta)
-	fw := &recordingFileWriter{}
-	// EPIPE ack writer — should not cause stream error
-	engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, &epipeWriter{})
-
-	err := engine.Run(t.Context())
-	if err != nil {
-		t.Fatalf("expected nil error (EPIPE non-fatal), got: %v", err)
+			logger := log.NewLogger(runMeta)
+			fw := &recordingFileWriter{}
+			engine := NewIngestionEngine(&buf, policy.NewNoopPolicy(), NewArtifactManager(nil), fw, logger, runMeta, nil, nil, tc.acks)
+			if err := engine.Run(t.Context()); err != nil || len(fw.Files) != 1 {
+				t.Errorf("Run = %v with %d files, want one file and no error", err, len(fw.Files))
+			}
+		})
 	}
 }
 

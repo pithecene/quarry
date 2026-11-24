@@ -126,51 +126,20 @@ func (c *fakeClient) Close() error {
 
 var _ Client = (*fakeClient)(nil)
 
-func TestSink_WriteEvents_DiskFullError(t *testing.T) {
+func TestSink_WriteEvents_PropagatesTheClientsError(t *testing.T) {
 	t.Parallel()
-
-	diskFullErr := &diskFullError{msg: "no space left on device"}
-	client := &fakeClient{writeErr: diskFullErr}
-	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
-
-	events := []*types.EventEnvelope{
-		{Type: "item", RunID: "run-1", Seq: 1},
-	}
-
-	err := sink.WriteEvents(t.Context(), events)
-	if err == nil {
-		t.Fatal("expected error for disk full, got nil")
-	}
-
-	// Error should propagate
-	if !errors.Is(err, diskFullErr) {
-		t.Errorf("expected disk full error, got: %v", err)
-	}
-
-	// Write should have been attempted
-	if len(client.writes) != 1 {
-		t.Errorf("expected 1 write call, got %d", len(client.writes))
-	}
-}
-
-func TestSink_WriteEvents_PermissionError(t *testing.T) {
-	t.Parallel()
-
-	permErr := &permissionError{msg: "permission denied"}
-	client := &fakeClient{writeErr: permErr}
-	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
-
-	events := []*types.EventEnvelope{
-		{Type: "item", RunID: "run-1", Seq: 1},
-	}
-
-	err := sink.WriteEvents(t.Context(), events)
-	if err == nil {
-		t.Fatal("expected error for permission denied, got nil")
-	}
-
-	if !errors.Is(err, permErr) {
-		t.Errorf("expected permission error, got: %v", err)
+	for _, writeErr := range []error{
+		&diskFullError{msg: "no space left on device"},
+		&permissionError{msg: "permission denied"},
+	} {
+		t.Run(writeErr.Error(), func(t *testing.T) {
+			client := &fakeClient{writeErr: writeErr}
+			sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
+			err := sink.WriteEvents(t.Context(), []*types.EventEnvelope{{Type: "item", RunID: "run-1", Seq: 1}})
+			if !errors.Is(err, writeErr) || len(client.writes) != 1 {
+				t.Errorf("WriteEvents = %v after %d writes, want %v after one", err, len(client.writes), writeErr)
+			}
+		})
 	}
 }
 
