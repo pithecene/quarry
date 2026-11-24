@@ -9,7 +9,7 @@ runs:
     # tool while the mise.toml key still matches, so the image is in the key.
     - name: 🏷️ Runner image
       shell: bash
-      run: echo "MISE_RUNNER_IMAGE=$ImageOS-$ImageVersion" >> "$GITHUB_ENV"
+      run: scripts/ci/runner-image.sh
 
     - name: 🧰 Mise
       uses: jdx/mise-action@v2

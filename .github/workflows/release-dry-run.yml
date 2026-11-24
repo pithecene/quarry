@@ -15,23 +15,7 @@ jobs:
   validate_version:
     name: 🔎 Validate Version
     runs-on: ubuntu-latest
-    outputs:
-      semver_match: ${{ steps.regex-match.outputs.match }}
     steps:
-      - name: 🔎 Match SemVer Format
-        uses: actions-ecosystem/action-regex-match@v2
-        id: regex-match
-        with:
-          text: ${{ inputs.version }}
-          regex: ^v[0-9]+\.[0-9]+\.[0-9]+$
-
-      - name: ❌ Fail on Invalid Version
-        if: ${{ steps.regex-match.outputs.match == '' }}
-        run: |
-          echo "::error::Invalid version format: ${{ inputs.version }}"
-          echo "Version must match semver format: vX.Y.Z (e.g., v0.1.0)"
-          exit 1
-
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
@@ -53,27 +37,10 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: 🔒 Check All Version Targets
-        run: scripts/version-check.sh
-
-      - name: 🔒 Check Version Matches Input
-        run: |
-          INPUT_VERSION="${{ inputs.version }}"
-          TAG_VERSION="${INPUT_VERSION#v}"
-          GO_VERSION=$(grep -oP 'const Version = "\K[^"]+' quarry/types/version.go)
-          SDK_VERSION=$(jq -r '.version' sdk/package.json)
-          echo "Input version: $TAG_VERSION"
-          echo "Go version: $GO_VERSION"
-          echo "SDK version: $SDK_VERSION"
-          if [ "$GO_VERSION" != "$SDK_VERSION" ]; then
-            echo "::error::Version mismatch! quarry/types/version.go ($GO_VERSION) != sdk/package.json ($SDK_VERSION)"
-            exit 1
-          fi
-          if [ "$GO_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Version mismatch! Input ($TAG_VERSION) != code version ($GO_VERSION)"
-            exit 1
-          fi
-          echo "✅ All versions match: $TAG_VERSION"
+      - name: 🔒 Check All Versions Match Input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: scripts/version-check.sh "$VERSION"
 
   lint:
     name: 🧹 Lint
@@ -157,30 +124,12 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📦 Package
-        run: |
-          mkdir -p dist
-          VERSION="${{ inputs.version }}"
-          git archive --format=tar.gz --output="dist/quarry-${VERSION}.tar.gz" HEAD
-          cd sdk
-          pnpm pack
-          SDK_TARBALL="$(ls -t *.tgz | head -n 1)"
-          cd ..
-          mv "sdk/${SDK_TARBALL}" "dist/quarry-sdk-${VERSION}.tgz"
-          node scripts/release/src/cli.ts write-checksums dist
+        env:
+          VERSION: ${{ inputs.version }}
+        run: scripts/ci/package-source.sh "$VERSION"
 
       - name: 📋 Package Summary
-        run: |
-          echo "## 📦 Dry Run Package Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| File | Size | SHA256 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|--------|" >> $GITHUB_STEP_SUMMARY
-          for f in dist/*.tar.gz dist/*.tgz; do
-            SIZE=$(du -h "$f" | cut -f1)
-            SHA=$(cat "${f}.sha256" | cut -d' ' -f1)
-            echo "| $(basename $f) | $SIZE | \`${SHA:0:16}...\` |" >> $GITHUB_STEP_SUMMARY
-          done
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Dry run complete.** Ready to tag and release." >> $GITHUB_STEP_SUMMARY
+        run: scripts/ci/package-summary.sh
 
       - name: ⬆️ Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -202,7 +151,7 @@ jobs:
 
       - name: 🏷️ Extract commit
         id: meta
-        run: echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: scripts/ci/image-metadata.sh
 
       - name: 🐳 Build slim (no push)
         uses: docker/build-push-action@v6

@@ -6,7 +6,7 @@ vars:
     sh: grep -m1 -oE 'ghcr.io/pithecene/bosun:[^ "]+' .github/workflows/check.yaml
   TS_PACKAGES: sdk executor-node
   COMMIT:
-    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+    sh: scripts/ci/commit.sh
 
 tasks:
   # ====================
@@ -91,7 +91,7 @@ tasks:
       - task: executor:bundle
       # The e2e IPC fixture is the executor's own output, so it carries the
       # contract version; the ipc fixture test fails on a stale one.
-      - cd executor-node && npx tsx testdata/generate-e2e-fixture.ts
+      - pnpm -C executor-node exec tsx testdata/generate-e2e-fixture.ts
       - task: version:check
       - echo "✅ All lockstep targets updated to {{.V}}"
 
@@ -116,15 +116,8 @@ tasks:
   go:cross:
     desc: Cross-compile quarry for all platforms
     deps: [executor:bundle]
-    dir: quarry
     cmds:
-      - |
-        mkdir -p dist
-        for pair in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-          GOOS="${pair%/*}" GOARCH="${pair#*/}" CGO_ENABLED=0 \
-            go build -ldflags "-X main.commit={{.COMMIT}}" -o "dist/quarry_${GOOS}_${GOARCH}" ./cmd/quarry
-          echo "✅ ${pair}"
-        done
+      - scripts/ci/go-cross.sh {{.COMMIT}}
 
   go:lint:
     desc: Lint Go module
@@ -136,25 +129,15 @@ tasks:
   check:login:
     desc: Log in once to the registry that holds the internal check's image, with the read-only registry token
     status:
-      - docker manifest inspect "{{.BOSUN_IMAGE}}" > /dev/null 2>&1
+      - docker manifest inspect "{{.BOSUN_IMAGE}}"
     cmds:
       - docker login ghcr.io
 
   check:
     desc: Run the internal check (bosun.yaml) in the image that CI's check job names (needs read access to it)
     deps: [check:login]
-    vars:
-      # A linked worktree's .git names the repository's .git directory, which
-      # mounts at the same path so that Git finds it in the container.
-      GIT_COMMON:
-        sh: cd "$(git rev-parse --git-common-dir)" && pwd
     cmds:
-      - mkdir -p .bosun/go
-      - >-
-        docker run --rm --pull always -v "{{.ROOT_DIR}}:/work" -v "{{.GIT_COMMON}}:{{.GIT_COMMON}}"
-        -e GOMODCACHE=/work/.bosun/go/mod -e GOCACHE=/work/.bosun/go/build
-        -e GOLANGCI_LINT_CACHE=/work/.bosun/go/lint
-        "{{.BOSUN_IMAGE}}" check
+      - scripts/ci/internal-check.sh {{.BOSUN_IMAGE}}
 
   go:test:
     desc: Test Go module
@@ -165,9 +148,8 @@ tasks:
 
   cli:parity:
     desc: Validate CLI/config parity artifact
-    dir: quarry
     cmds:
-      - go test ./cli/cmd -run Parity -v
+      - scripts/ci/cli-parity.sh
 
   go:test:race:
     desc: Test Go module with race detector
@@ -190,7 +172,8 @@ tasks:
   scripts:lint:
     desc: Lint shell scripts (shellcheck), examples, and the release tool (tsc, biome)
     cmds:
-      - shellcheck -x scripts/*.sh
+      - shellcheck -x scripts/*.sh scripts/ci/*.sh
+      - scripts/ci/no-inline-shell.sh
       - pnpm exec tsc -p scripts/release
       - pnpm exec biome check --error-on-warnings scripts/release examples
 
@@ -207,6 +190,12 @@ tasks:
     desc: Build container image with commit SHA
     cmds:
       - docker build --build-arg COMMIT={{.COMMIT}} -t quarry:local .
+
+  docker:smoke:
+    desc: Run a page script in the local image as an unmapped UID
+    deps: [docker:build]
+    cmds:
+      - scripts/ci/container-smoke.sh quarry:local
 
   # ==================
   # TypeScript tasks

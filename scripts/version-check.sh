@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # Verify that every lockstep version target carries the canonical version.
-# Usage: scripts/version-check.sh
+# Usage: scripts/version-check.sh [vX.Y.Z]
 #
 # Fails if any target in scripts/version-targets.txt matches nothing (the
 # text it pins has moved or been deleted) or matches a version other than
-# quarry/types/version.go. Run by `task version:check` and CI.
+# quarry/types/version.go, or when the given tag names another version. Run by `task version:check` and CI.
 
 set -euo pipefail
 # shellcheck source=scripts/version-targets.sh
 source "$(dirname "$0")/version-targets.sh"
 
 EXPECTED=$(canonical_version)
+if [[ $# -gt 0 && "$1" != "v$EXPECTED" ]]; then
+  echo "::error::Version mismatch! $1 != code version v$EXPECTED"
+  exit 1
+fi
 status=0
 
 # Whatever sits in the version slot: the whole run of non-space characters
