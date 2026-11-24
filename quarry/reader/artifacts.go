@@ -93,7 +93,7 @@ func (r *Reader) ListArtifacts(ctx context.Context, run Run) ([]Artifact, error)
 
 // artifactsOf reads the commit records among recs in sequence order. A
 // retry under an at-least-once policy may persist a commit record twice
-// (CONTRACT_POLICY.md §Flush Modes), so the first record of each artifact
+// (CONTRACT_POLICY.md §Flush Semantics), so the first record of each artifact
 // ID stands for the artifact.
 //
 // A commit record that a release before 0.15 wrote may state a size of 0
@@ -337,7 +337,7 @@ func (v *volumeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 // chunkReader assembles the artifact from its chunk records, which must
 // cover [0, SizeBytes) without a gap. A retry under an at-least-once policy
 // may persist a chunk twice at one offset, or append a second copy of the
-// artifact after a complete one (CONTRACT_POLICY.md §Flush Modes), so a
+// artifact after a complete one (CONTRACT_POLICY.md §Flush Semantics), so a
 // chunk that repeats bytes the assembled prefix already holds, and every
 // chunk at or past SizeBytes, is ignored. A chunk that conflicts with the
 // prefix is an error. So is an artifact none of whose chunks is a last chunk

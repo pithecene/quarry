@@ -45,14 +45,9 @@ See the [SDK and setup guide](../../PUBLIC_API.md) for the full hook reference w
 
 ## Outcomes
 
-Runs end in one of a few outcomes:
-- success (normal completion)
-- script error (emitted `run_error`)
-- executor crash
-- policy failure
-- version mismatch (SDK/CLI contract version mismatch)
-
-Each outcome is observable in runtime metadata.
+A run ends in one outcome, such as `success` or `storage_error`. The
+[CLI contract](../contracts/CONTRACT_CLI.md) § Exit Codes lists each with its exit code.
+The end record, the exit report, and the notification carry the outcome.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Quarry includes a Go benchmark suite covering all three ingestion policy
 implementations. Benchmarks live in [`quarry/policy/benchmark_test.go`](../../quarry/policy/benchmark_test.go) and
-exercise the hot path: event/chunk ingestion, flush cycles, concurrent
+exercise the hot path: event ingestion, flush cycles, concurrent
 access, and slow-sink behavior.
 
 ## Running
@@ -27,12 +27,11 @@ go test ./policy/... -bench=BenchmarkStreamingPolicy -benchmem -benchtime=100x
 
 ### Strict Policy
 
-Synchronous, unbuffered writes. Every event/chunk hits the sink immediately.
+Synchronous, unbuffered writes. Every event hits the sink immediately.
 
 | Benchmark | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
 | IngestEvent | 19.31 | 8 | 1 |
-| IngestArtifactChunk | 17.80 | 8 | 1 |
 | ConcurrentIngest (1 goroutine) | 19.22 | 8 | 1 |
 | ConcurrentIngest (4 goroutines) | 26.14 | 8 | 1 |
 | ConcurrentIngest (8 goroutines) | 28.23 | 8 | 1 |
@@ -42,7 +41,7 @@ Synchronous, unbuffered writes. Every event/chunk hits the sink immediately.
 
 **Key findings:**
 - Atomic stats counters eliminate lock contention: 1 -> 4 -> 8 goroutines
-  scales from 19ns to 28ns (1.47x), down from 4.7x with mutex-based stats.
+  scales from 19ns to 28ns (1.47x).
 - Sink latency dominates: 1ms delay -> ~1ms/op regardless of other overhead.
 - 1 allocation per call (the `[]*EventEnvelope` batch-of-1 wrapper).
 
@@ -52,9 +51,6 @@ Bounded buffer with drop rules and batch flushes.
 
 | Benchmark | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
-| IngestEvent (at_least_once) | 42.73 | 47 | 0 |
-| IngestEvent (chunks_first) | 26.17 | 45 | 0 |
-| IngestEvent (two_phase) | 27.01 | 48 | 0 |
 | IngestThenFlush (batch=10) | 2,879 | 5,598 | 41 |
 | IngestThenFlush (batch=100) | 26,247 | 48,138 | 401 |
 | IngestThenFlush (batch=1000) | 303,871 | 486,990 | 4,745 |
@@ -62,9 +58,6 @@ Bounded buffer with drop rules and batch flushes.
 | ConcurrentIngest | 87.04 | 44 | 0 |
 
 **Key findings:**
-- Amortized ingestion cost is ~27-43ns/event (mode-dependent).
-- `at_least_once` mode is ~60% slower than others due to buffer preservation
-  semantics on flush, a cost acceptable for its stronger durability guarantee.
 - Drop pressure path (droppable events hitting full buffer) costs only 25ns
   with zero allocations.
 - Flush cost scales linearly with batch size (~288ns/event at batch=10,
@@ -77,7 +70,6 @@ Continuous persistence with bounded buffer, batched writes, and backpressure.
 | Benchmark | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
 | IngestEvent | 13.20 | 0 | 0 |
-| IngestArtifactChunk | 68.70 | 21 | 0 |
 | CountTriggerFlush (count=10) | 399.2 | 635 | 4 |
 | CountTriggerFlush (count=50) | 532.5 | 543 | 4 |
 | CountTriggerFlush (count=100) | 352.8 | 531 | 4 |
@@ -96,29 +88,11 @@ Continuous persistence with bounded buffer, batched writes, and backpressure.
 - Concurrent ingestion (224ns) is higher than strict (28ns) due to mutex
   contention on the shared buffer. This is inherent to batched buffering.
 
-## Contention Analysis
-
-Before it moved to atomic counters, `statsRecorder` used a `sync.Mutex` for all counter
-operations. This caused severe contention scaling:
-
-| Goroutines | Mutex-based (ns/op) | Atomic-based (ns/op) | Improvement |
-|---:|---:|---:|---:|
-| 1 | 22 | 19 | 1.2x |
-| 4 | 43 | 26 | 1.7x |
-| 8 | 103 | 28 | 3.7x |
-
-The fix replaced `sync.Mutex` + `Stats` struct with individual
-`sync/atomic.Int64` fields. Counter methods (`incTotalEvents`, etc.)
-became lock-free `atomic.Add` calls. The `droppedByType` map (cold path,
-only written by buffered policy drops) retains caller-provided
-synchronization via the policy's own mutex.
-
 ## What the Benchmarks Measure
 
 | Benchmark | What it tests |
 |---|---|
 | `IngestEvent` | Hot-path event ingestion (no flush) |
-| `IngestArtifactChunk` | Hot-path chunk ingestion |
 | `ConcurrentIngest` | Multi-goroutine contention on ingestion |
 | `SlowSink` | Sink latency impact on throughput |
 | `IngestThenFlush` | Full ingest + flush cycle at various batch sizes |

@@ -6,21 +6,23 @@
  *
  * 1. Validates the event payload
  * 2. Checks if the run has already been processed (idempotency)
- * 3. Reads events from the storage path
+ * 3. Reads the run's events through the notification's locator
  * 4. Transforms and loads data to target system
  * 5. Marks the run as processed
  *
  * This is a conceptual example - adapt to your infrastructure.
  */
+import { type NotificationLocator, readRun } from '@pithecene/quarry-sdk'
 
-// Event payload structure (matches event-bus-sns.sh output)
+// The fields of Quarry's run_completed notification that this handler uses.
 type RunCompletedEvent = {
   event_type: 'run_completed'
   run_id: string
   source: string
+  category: string
   day: string
-  outcome: 'success' | 'error'
-  storage_path: string
+  outcome: string
+  locator: NotificationLocator
   timestamp: string
 }
 
@@ -55,7 +57,7 @@ export async function handleRunCompleted(event: RunCompletedEvent): Promise<void
 
   try {
     // 4. Read and process events from storage
-    console.log(`[handler] Processing run ${event.run_id} from ${event.storage_path}`)
+    console.log(`[handler] Processing run ${event.run_id}`)
     await processRunData(event)
 
     // 5. Mark as processed (after successful processing)
@@ -73,34 +75,14 @@ export async function handleRunCompleted(event: RunCompletedEvent): Promise<void
  * This is where you'd read events/artifacts and transform/load them.
  */
 async function processRunData(event: RunCompletedEvent): Promise<void> {
-  // Example: Read items from the run's storage path
-  const itemsPath = `${event.storage_path}/event_type=item/data.jsonl`
-
-  console.log(`[handler] Reading items from: ${itemsPath}`)
-
-  // In production, use appropriate storage client:
-  // - fs.readFileSync for local filesystem
-  // - S3 client for S3 storage
-  // - etc.
-
-  // Simulated processing
-  const items = await readItemsFromStorage(itemsPath)
+  const { events } = await readRun(event.locator.run, { storage: event.locator.storage })
+  const items = events.filter((stored) => stored.type === 'item')
 
   for (const item of items) {
     await transformAndLoad(item, event)
   }
 
   console.log(`[handler] Processed ${items.length} items from run ${event.run_id}`)
-}
-
-/**
- * Read items from storage path.
- * Replace with actual storage access logic.
- */
-async function readItemsFromStorage(_path: string): Promise<unknown[]> {
-  // Simulated - return empty array
-  // In production: read JSONL file, parse each line
-  return []
 }
 
 /**
@@ -136,9 +118,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     event_type: 'run_completed',
     run_id: 'test-run-001',
     source: 'demo',
+    category: 'default',
     day: '2026-02-04',
     outcome: 'success',
-    storage_path: './quarry-data/source=demo/day=2026-02-04/run_id=test-run-001',
+    locator: {
+      run: { source: 'demo', category: 'default', day: '2026-02-04', runId: 'test-run-001' },
+      storage: { backend: 'fs', path: './quarry-data', dataset: 'quarry' }
+    },
     timestamp: new Date().toISOString()
   }
 

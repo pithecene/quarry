@@ -1,17 +1,13 @@
 // Package main provides the quarry CLI entrypoint.
 //
 // The CLI is the only execution entrypoint per CONTRACT_CLI.md.
-// All commands except `run` are read-only.
+// Only `run` executes work.
 //
 // Usage:
 //
 //	quarry <command> [subcommand] [options]
 //
-// Exit codes for `run` per CONTRACT_RUN.md:
-//   - 0: success (run_complete)
-//   - 1: script error (run_error)
-//   - 2: executor crash
-//   - 3: policy failure
+// CONTRACT_CLI.md §Exit Codes lists the exit codes of `run`.
 package main
 
 import (

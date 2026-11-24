@@ -41,7 +41,8 @@ Every stored record includes a `record_kind` field to identify its type:
 |------------------|------------------------------------------------|
 | `event`          | Standard event (item, log, checkpoint, etc.)   |
 | `artifact_event` | Artifact commit record (marks artifact complete)|
-| `artifact_chunk` | Binary chunk of an artifact                    |
+| `artifact_chunk` | Binary chunk of an artifact, in older data only |
+| `metrics`        | Metrics of a run, in older data only           |
 
 This allows queries to filter by record type without parsing payloads.
 
@@ -49,17 +50,11 @@ This allows queries to filter by record type without parsing payloads.
 
 ## Artifact Storage
 
-Artifacts (binary files) are stored as a sequence of chunks followed by a
-commit record.
-
-**Flow:**
-1. Chunks are emitted with sequential `seq` numbers starting at 1
-2. The final chunk has `is_last: true`
-3. An artifact commit event is emitted with total `size_bytes`
-4. Chunks are written to storage first, then the commit record
-
-The commit record is the durability boundary. If a run fails before the
-commit is written, chunks are considered orphans.
+The bytes of an artifact are stored in a Lode Volume of the run, and its commit record
+names that Volume. The commit record is the durability boundary: a Volume without one is
+an orphan. The runtime removes its run's orphans, and `quarry prune` removes the rest.
+The [storage contract](../contracts/CONTRACT_LODE.md) § Artifact Storage states the rules.
+Older data holds artifact bytes in chunk records, which readers still read.
 
 ---
 
@@ -71,7 +66,7 @@ Lode verifies a recorded digest when a read reaches the end of the object.
 
 ## Chunk Record Checksums
 
-Chunk records may include an MD5 checksum for integrity verification.
+Chunk records of older data may include an MD5 checksum for integrity verification.
 
 - `checksum`: hex-encoded MD5 digest of chunk data
 - `checksum_algo`: always `"md5"` when checksum is present
@@ -92,10 +87,11 @@ when present.
 
 **Error Handling:**
 - Storage errors are classified and wrapped with context (operation, path).
-- Disk full errors (`ENOSPC`) are surfaced as policy failures.
-- Permission errors (`EACCES`) are surfaced as policy failures.
+- A failed event write, such as disk full (`ENOSPC`) or permission denied (`EACCES`), ends
+  the run as `storage_error`, unless its sink is best effort.
 - Not-found errors (missing directories) are surfaced at initialization or write time.
-- Quarry does **not** retry failed writes. Errors propagate immediately.
+- Quarry does **not** retry failed data writes. It retries only a commit that conflicts with
+  another writer, and the end record.
 - The ingestion policy determines whether partial data is preserved on failure.
 - Error messages include actionable context (what operation failed, where).
 
@@ -111,18 +107,15 @@ when present.
 
 **Error Handling:**
 - Storage errors are classified and wrapped with context (operation, path).
-- Authentication failures (invalid/expired credentials) are surfaced as policy failures.
-- Access denied errors (valid credentials but insufficient permissions) are surfaced as policy failures.
-- Throttling errors (429/SlowDown) are surfaced immediately (no automatic retry).
-- Network timeouts are surfaced as policy failures.
+- A failed event write, such as an authentication, access, throttling, or timeout error, ends
+  the run as `storage_error`, unless its sink is best effort.
 - Error messages include actionable context (what operation failed, where).
 
 **Consistency Caveats:**
 - S3 provides **strong read-after-write consistency** for PUTs (since Dec 2020).
 - However, Quarry does **not** guarantee transactional semantics across multiple writes.
 - If a run fails mid-stream, partial data may exist in S3.
-- Orphaned chunks (written before a failed commit) are **not** automatically cleaned up.
-- Consider enabling S3 lifecycle policies to expire orphaned data.
+- `quarry prune` removes the data that a failed run left.
 
 **Required IAM Permissions:**
 ```json
@@ -131,6 +124,7 @@ when present.
   "Action": [
     "s3:PutObject",
     "s3:GetObject",
+    "s3:DeleteObject",
     "s3:ListBucket"
   ],
   "Resource": [
@@ -164,7 +158,6 @@ entry in `Manifest.Metadata` containing an array of file references:
 ```
 
 **Key behaviors:**
-- File refs only appear on event snapshots, not on chunk snapshots
 - If multiple event flushes occur during a run, file refs appear on the
   first event snapshot after each batch of file writes
 - To enumerate all files for a run, read `sidecar_files` from its end record.
@@ -178,7 +171,7 @@ entry in `Manifest.Metadata` containing an array of file references:
 The following behaviors are explicitly **out of scope**:
 
 **No Automatic Retries:**
-- Quarry does not retry failed storage writes.
+- Quarry does not retry failed data writes.
 - If a write fails, the error propagates to the policy and run outcome.
 - Callers are responsible for implementing retry logic at the job/orchestration level.
 
@@ -191,6 +184,5 @@ The following behaviors are explicitly **out of scope**:
 - Duplicate detection is a downstream consumer responsibility.
 - If a run is retried, it may produce duplicate events with different run IDs.
 
-**No Garbage Collection:**
-- Orphaned artifact chunks are not automatically cleaned up.
-- S3 lifecycle policies or manual cleanup are recommended.
+**No Automatic Retention:**
+- Quarry deletes stored runs only when `quarry prune` runs.

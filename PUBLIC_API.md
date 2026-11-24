@@ -400,7 +400,7 @@ files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of
 prefix-scanning storage.
 
 Each entry includes `path`, `filename`, `content_type`, and `size`. File refs
-are flushed into the snapshot on event writes only (not chunk writes). The end record of a run names every file the run wrote. For a run
+are flushed into the snapshot on event writes. The end record of a run names every file the run wrote. For a run
 whose end record names none, union `sidecar_files` from all snapshots for that
 `run_id`.
 
@@ -877,12 +877,13 @@ Storage is a **Quarry-level** concern. The underlying Lode subsystem is internal
 Data is stored in Hive-partitioned layout:
 ```
 /var/quarry/data/
-  source=my-source/
-    category=default/
-      day=2026-02-03/
-        run_id=run-001/
-          event_type=item/
-            <data objects>   # zstd-compressed JSONL in new datasets
+  datasets/quarry/partitions/
+    source=my-source/
+      category=default/
+        day=2026-02-03/
+          run_id=run-001/
+            event_type=item/
+              <data objects>   # zstd-compressed JSONL in new datasets
 ```
 
 Read the data through `quarry list events` or Lode: the reader decompresses
@@ -900,6 +901,7 @@ verifies a digest when the manifest records one.
 Uses AWS default credential chain. IAM permissions required:
 - `s3:PutObject`
 - `s3:GetObject`
+- `s3:DeleteObject`
 - `s3:ListBucket`
 
 ### S3-Compatible Providers

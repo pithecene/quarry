@@ -42,7 +42,7 @@ Event published to bus
         ↓
 Downstream consumer receives event
         ↓
-Consumer reads from storage path
+Consumer reads the run through the locator
         ↓
 Transform / Load
 ```
@@ -62,25 +62,9 @@ Only publish to the event bus after this boundary is crossed.
 
 ### Event Payload
 
-A minimal event payload should include:
-
-```json
-{
-  "event_type": "run_completed",
-  "run_id": "run-001",
-  "source": "my-source",
-  "category": "default",
-  "day": "2026-02-04",
-  "outcome": "success",
-  "storage_path": "s3://bucket/source=my-source/category=default/day=2026-02-04/run_id=run-001",
-  "timestamp": "2026-02-04T12:00:00Z"
-}
-```
-
-Include enough information for consumers to:
-- Filter events by source/category
-- Locate data in storage
-- Decide whether to process (based on outcome)
+The [webhook payload](#webhook-payload) shows the fields. A consumer filters by `source` and
+`category`, decides by `outcome`, and reads the run through `locator`.
+`storage_path` is for people to read.
 
 ### Failure and Retry Considerations
 
@@ -113,7 +97,7 @@ quarry run \
   --adapter-header "Authorization=Bearer $TOKEN"
 ```
 
-The adapter publishes after storage commit and metrics persist. If the
+The adapter publishes once the run's end record is confirmed in storage. If the
 webhook fails (after retries), the warning is logged to stderr but the
 run exits with its normal outcome code.
 
@@ -174,7 +158,7 @@ quarry run \
   --adapter-channel quarry:run_completed
 ```
 
-The adapter publishes after storage commit and metrics persist. If the
+The adapter publishes once the run's end record is confirmed in storage. If the
 publish fails (after retries), the warning is logged to stderr but the
 run exits with its normal outcome code.
 

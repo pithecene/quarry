@@ -16,7 +16,7 @@ need to detect when runs complete and process the emitted data.
 
 ### Event-Bus Pattern
 
-- [`event-bus-sns.sh`](event-bus-sns.sh) — AWS SNS/SQS example (publish after run)
+- [`event-bus-sns.sh`](event-bus-sns.sh) — AWS SNS/SQS example (forward a notification)
 - [`event-bus-handler.ts`](event-bus-handler.ts) — TypeScript handler for processing run events
 
 ### Polling Pattern
@@ -32,16 +32,18 @@ to your infrastructure and requirements.
 ### Running the Event-Bus Example
 
 ```bash
-# 1. Run a Quarry extraction
+# 1. Run a Quarry extraction, which notifies a webhook
 quarry run \
   --script ../demo.ts \
   --run-id run-001 \
   --source demo \
   --storage-backend fs \
-  --storage-path ./quarry-data
+  --storage-path ./quarry-data \
+  --adapter webhook \
+  --adapter-url https://hooks.example.com/quarry
 
-# 2. Publish completion event (after run exits successfully)
-./event-bus-sns.sh run-001 demo success ./quarry-data
+# 2. In the webhook receiver, forward the notification it received
+QUARRY_SNS_TOPIC=<topic-arn> ./event-bus-sns.sh < notification.json
 ```
 
 ### Running the Polling Example
