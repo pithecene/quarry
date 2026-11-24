@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -600,161 +599,61 @@ func TestExitCodeConstants(t *testing.T) {
 
 // --- Config precedence and validation tests ---
 
-// newTestCLIContext builds a minimal *cli.Context with the given flags set.
-// flagValues maps flag names to their string values. All listed flags are
-// registered and marked as explicitly set (c.IsSet returns true).
-// defaultFlags maps flag names to default values (not explicitly set).
-func newTestCLIContext(t *testing.T, flagValues, defaultFlags map[string]string) *cli.Context {
-	t.Helper()
-	app := cli.NewApp()
-
-	// Register all flags
-	allFlags := make(map[string]string)
-	maps.Copy(allFlags, defaultFlags)
-	maps.Copy(allFlags, flagValues)
-
-	var cliFlags []cli.Flag
-	for name, val := range allFlags {
-		cliFlags = append(cliFlags, &cli.StringFlag{Name: name, Value: val})
+// An explicit flag wins, its zero value included, then a nonzero configured
+// value, then the flag's default.
+func TestResolve_Precedence(t *testing.T) {
+	testutil.Serial(t, "flag.Apply mutates the package-level flag definitions")
+	flags := []cli.Flag{
+		&cli.StringFlag{Name: "string", Value: "default"},
+		&cli.IntFlag{Name: "int", Value: 1},
+		&cli.Int64Flag{Name: "int64", Value: 1},
+		&cli.BoolFlag{Name: "bool"},
+		&cli.DurationFlag{Name: "duration", Value: time.Second},
 	}
-	app.Flags = cliFlags
-
-	// Build a flagset with only the explicitly set flags
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	for name, val := range allFlags {
-		fs.String(name, val, "")
-	}
-
-	// Only set the flagValues (not defaults) so c.IsSet works
-	for name, val := range flagValues {
-		if err := fs.Set(name, val); err != nil {
-			t.Fatalf("failed to set flag %s: %v", name, err)
+	context := func(t *testing.T, args ...string) *cli.Context {
+		t.Helper()
+		set := flag.NewFlagSet("test", flag.ContinueOnError)
+		for _, f := range flags {
+			if err := f.Apply(set); err != nil {
+				t.Fatal(err)
+			}
 		}
+		if err := set.Parse(args); err != nil {
+			t.Fatal(err)
+		}
+		return cli.NewContext(cli.NewApp(), set, nil)
 	}
-
-	return cli.NewContext(app, fs, nil)
-}
-
-func TestResolveString_CLIWins(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newTestCLIContext(t, map[string]string{"source": "cli-val"}, nil)
-	got := resolveString(c, "source", "config-val")
-	if got != "cli-val" {
-		t.Errorf("expected CLI to win, got %q", got)
-	}
-}
-
-// When the CLI flag is unset, resolveString falls back to the config value,
-// then to the urfave default.
-func TestResolveString_Fallback(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	for _, tc := range []struct{ name, flag, flagDefault, config, want string }{
-		{"config value", "source", "", "config-val", "config-val"},
-		{"urfave default", "category", "default", "", "default"},
+	for _, tc := range []struct {
+		name       string
+		args       []string
+		configured bool
+		want       []any
+	}{
+		{"default", nil, false, []any{"default", 1, int64(1), false, time.Second}},
+		{"configured", nil, true, []any{"config", 2, int64(2), true, 2 * time.Second}},
+		{"flag", []string{"--string=flag", "--int=3", "--int64=3", "--bool=true", "--duration=3s"}, true, []any{"flag", 3, int64(3), true, 3 * time.Second}},
+		{"explicit zero", []string{"--string=", "--int=0", "--int64=0", "--bool=false", "--duration=0s"}, true, []any{"", 0, int64(0), false, time.Duration(0)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := newTestCLIContext(t, nil, map[string]string{tc.flag: tc.flagDefault})
-			if got := resolveString(c, tc.flag, tc.config); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
+			c := context(t, tc.args...)
+			var text string
+			var number int
+			var number64 int64
+			var duration time.Duration
+			if tc.configured {
+				text, number, number64, duration = "config", 2, 2, 2*time.Second
+			}
+			got := []any{
+				resolve(c, "string", text, (*cli.Context).String),
+				resolve(c, "int", number, (*cli.Context).Int),
+				resolve(c, "int64", number64, (*cli.Context).Int64),
+				resolve(c, "bool", tc.configured, (*cli.Context).Bool),
+				resolve(c, "duration", duration, (*cli.Context).Duration),
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestConfigVal_NilConfig(t *testing.T) {
-	t.Parallel()
-
-	got := configVal(nil, func(c *quarryconfig.Config) string { return c.Source })
-	if got != "" {
-		t.Errorf("expected empty for nil config, got %q", got)
-	}
-}
-
-func TestConfigVal_NonNil(t *testing.T) {
-	t.Parallel()
-
-	cfg := &quarryconfig.Config{Source: "from-config"}
-	got := configVal(cfg, func(c *quarryconfig.Config) string { return c.Source })
-	if got != "from-config" {
-		t.Errorf("expected from-config, got %q", got)
-	}
-}
-
-func TestResolveInt_CLIWins(t *testing.T) {
-	t.Parallel()
-
-	app := cli.NewApp()
-	app.Flags = []cli.Flag{&cli.IntFlag{Name: "buffer-events"}}
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.Int("buffer-events", 0, "")
-	_ = fs.Set("buffer-events", "500")
-	c := cli.NewContext(app, fs, nil)
-
-	got := resolveInt(c, "buffer-events", 1000)
-	if got != 500 {
-		t.Errorf("expected CLI to win with 500, got %d", got)
-	}
-}
-
-func TestResolveInt_ConfigFallback(t *testing.T) {
-	t.Parallel()
-
-	app := cli.NewApp()
-	app.Flags = []cli.Flag{&cli.IntFlag{Name: "buffer-events"}}
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.Int("buffer-events", 0, "")
-	c := cli.NewContext(app, fs, nil)
-
-	got := resolveInt(c, "buffer-events", 1000)
-	if got != 1000 {
-		t.Errorf("expected config fallback 1000, got %d", got)
-	}
-}
-
-func TestResolveBool_CLIWins(t *testing.T) {
-	t.Parallel()
-
-	app := cli.NewApp()
-	app.Flags = []cli.Flag{&cli.BoolFlag{Name: "storage-s3-path-style"}}
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.Bool("storage-s3-path-style", false, "")
-	_ = fs.Set("storage-s3-path-style", "true")
-	c := cli.NewContext(app, fs, nil)
-
-	got := resolveBool(c, "storage-s3-path-style", false)
-	if !got {
-		t.Error("expected CLI true to win")
-	}
-}
-
-func TestResolveDuration_CLIWins(t *testing.T) {
-	t.Parallel()
-
-	app := cli.NewApp()
-	app.Flags = []cli.Flag{&cli.DurationFlag{Name: "adapter-timeout"}}
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.Duration("adapter-timeout", 0, "")
-	_ = fs.Set("adapter-timeout", "30s")
-	c := cli.NewContext(app, fs, nil)
-
-	got := resolveDuration(c, "adapter-timeout", 10*time.Second)
-	if got != 30*time.Second {
-		t.Errorf("expected CLI 30s to win, got %v", got)
-	}
-}
-
-func TestResolveDuration_ConfigFallback(t *testing.T) {
-	t.Parallel()
-
-	app := cli.NewApp()
-	app.Flags = []cli.Flag{&cli.DurationFlag{Name: "adapter-timeout"}}
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.Duration("adapter-timeout", 0, "")
-	c := cli.NewContext(app, fs, nil)
-
-	got := resolveDuration(c, "adapter-timeout", 10*time.Second)
-	if got != 10*time.Second {
-		t.Errorf("expected config fallback 10s, got %v", got)
 	}
 }
 
@@ -1568,7 +1467,7 @@ func TestParseAdapterConfig_WebhookValid(t *testing.T) {
 		"adapter-url": "https://hooks.example.com/quarry",
 	}, nil)
 
-	ac, err := parseAdapterConfigWithPrecedence(c, nil, "webhook")
+	ac, err := parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, "webhook")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1588,7 +1487,7 @@ func TestParseAdapterConfig_MissingURL(t *testing.T) {
 	} {
 		t.Run(tc.adapter, func(t *testing.T) {
 			c := newAdapterTestContext(t, nil, nil)
-			_, err := parseAdapterConfigWithPrecedence(c, nil, tc.adapter)
+			_, err := parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, tc.adapter)
 			if err == nil {
 				t.Fatal("expected error for missing URL")
 			}
@@ -1606,7 +1505,7 @@ func TestParseAdapterConfig_RedisValid(t *testing.T) {
 		"adapter-channel": "my-channel",
 	}, nil)
 
-	ac, err := parseAdapterConfigWithPrecedence(c, nil, "redis")
+	ac, err := parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, "redis")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1624,7 +1523,7 @@ func TestParseAdapterConfig_UnknownType(t *testing.T) {
 		"adapter-url": "https://example.com",
 	}, nil)
 
-	_, err := parseAdapterConfigWithPrecedence(c, nil, "kafka")
+	_, err := parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, "kafka")
 	if err == nil {
 		t.Fatal("expected error for unknown adapter type")
 	}
@@ -1738,7 +1637,7 @@ func TestParseAdapterConfig_MalformedHeader(t *testing.T) {
 
 	var parseErr error
 	app.Action = func(c *cli.Context) error {
-		_, parseErr = parseAdapterConfigWithPrecedence(c, nil, "webhook")
+		_, parseErr = parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, "webhook")
 		return nil
 	}
 
@@ -2055,7 +1954,7 @@ func TestRunDryRun_ExitCodes(t *testing.T) {
 // The fix captures childStartTime once and passes it to both.
 //
 // This test observes buildPolicy's internally-derived day by writing a probe
-// file through the returned FileWriter and inspecting the Hive-partitioned
+// file through the returned client and inspecting the Hive-partitioned
 // path on disk. The day= partition in the path is what buildPolicy computed
 // from the timestamp; StorageDay is what RunConfig would pass to the executor.
 // If someone reintroduces a second time.Now(), these would diverge.
@@ -2074,17 +1973,17 @@ func TestChildRun_StorageDayAlignedWithBuildPolicy(t *testing.T) {
 
 	// Call buildPolicy with the captured timestamp — this is exactly what
 	// childFactory.Run() does at run.go:386-389
-	childPol, _, childFileWriter, err := buildPolicy(t.Context(), pol, storage, "quarry", "src", "cat", &types.RunMeta{RunID: "run-001", Attempt: 1}, childStartTime, collector, nil)
+	childPol, childClient, err := buildPolicy(t.Context(), pol, storage, "quarry", "src", "cat", &types.RunMeta{RunID: "run-001", Attempt: 1}, childStartTime, collector, nil)
 	if err != nil {
 		t.Fatalf("buildPolicy: %v", err)
 	}
 	defer iox.DiscardClose(childPol)
 
-	// Write a probe file through the FileWriter to observe the day partition
+	// Write a probe file through the client to observe the day partition
 	// that buildPolicy derived internally. The file lands at:
 	//   datasets/quarry/partitions/source=src/category=cat/day=<DAY>/run_id=run-001/files/probe.txt
 	// where <DAY> is what buildStorageSink computed via lode.DeriveDay(startTime).
-	if err := childFileWriter.PutFile(t.Context(), "probe.txt", "text/plain", []byte("x")); err != nil {
+	if err := childClient.PutFile(t.Context(), "probe.txt", "text/plain", []byte("x")); err != nil {
 		t.Fatalf("PutFile: %v", err)
 	}
 
@@ -2131,7 +2030,7 @@ func TestParseEventSinkConfig_NoConfigDefaultsNil(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	c := cli.NewContext(app, fs, nil)
 
-	sinks, err := parseEventSinkConfig(c, nil)
+	sinks, err := parseEventSinkConfig(c, &quarryconfig.Config{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2401,7 +2300,7 @@ func TestBuildPolicy_GivesThePolicyARunLogger(t *testing.T) {
 			logged := captureStderr(t, func() {
 				collector := metrics.NewCollector(tc.choice.name, "executor.mjs", "fs", "run-log", "")
 				runMeta := &types.RunMeta{RunID: "run-log", Attempt: 3}
-				pol, _, _, err := buildPolicy(t.Context(), tc.choice, storageChoice{backend: "fs", path: t.TempDir()}, "quarry", "src", "cat", runMeta, time.Now(), collector, nil)
+				pol, _, err := buildPolicy(t.Context(), tc.choice, storageChoice{backend: "fs", path: t.TempDir()}, "quarry", "src", "cat", runMeta, time.Now(), collector, nil)
 				if err != nil {
 					t.Fatalf("buildPolicy: %v", err)
 				}

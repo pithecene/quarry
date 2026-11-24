@@ -35,19 +35,18 @@ type adapterChoice struct {
 // parseAdapterConfigWithPrecedence builds adapter config using CLI > config > defaults.
 func parseAdapterConfigWithPrecedence(c *cli.Context, cfg *quarryconfig.Config, adapterType string) (adapterChoice, error) {
 	ac := adapterChoice{
-		adapterType: adapterType,
-		url:         resolveString(c, "adapter-url", configVal(cfg, func(c *quarryconfig.Config) string { return c.Adapter.URL })),
-		timeout:     resolveDuration(c, "adapter-timeout", configDurationVal(cfg)),
-		headers:     make(map[string]string),
-		publishEndpointPath: resolveBool(c, "adapter-publish-endpoint-path",
-			configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.Adapter.PublishEndpointPath })),
+		adapterType:         adapterType,
+		url:                 resolve(c, "adapter-url", cfg.Adapter.URL, (*cli.Context).String),
+		timeout:             resolve(c, "adapter-timeout", cfg.Adapter.Timeout.Duration, (*cli.Context).Duration),
+		headers:             make(map[string]string),
+		publishEndpointPath: resolve(c, "adapter-publish-endpoint-path", cfg.Adapter.PublishEndpointPath, (*cli.Context).Bool),
 	}
 
 	// Retries: CLI > config > urfave default
 	switch {
 	case c.IsSet("adapter-retries"):
 		ac.retries = c.Int("adapter-retries")
-	case cfg != nil && cfg.Adapter.Retries != nil:
+	case cfg.Adapter.Retries != nil:
 		ac.retries = *cfg.Adapter.Retries
 	default:
 		ac.retries = c.Int("adapter-retries")
@@ -66,15 +65,13 @@ func parseAdapterConfigWithPrecedence(c *cli.Context, cfg *quarryconfig.Config, 
 		if ac.url == "" {
 			return ac, errors.New("--adapter-url is required when --adapter=redis")
 		}
-		ac.channel = resolveString(c, "adapter-channel", configVal(cfg, func(c *quarryconfig.Config) string { return c.Adapter.Channel }))
+		ac.channel = resolve(c, "adapter-channel", cfg.Adapter.Channel, (*cli.Context).String)
 	default:
 		return ac, fmt.Errorf("unknown adapter type: %q (supported: webhook, redis)", ac.adapterType)
 	}
 
 	// Merge config headers first, then CLI headers override
-	if cfg != nil {
-		maps.Copy(ac.headers, cfg.Adapter.Headers)
-	}
+	maps.Copy(ac.headers, cfg.Adapter.Headers)
 	for _, h := range c.StringSlice("adapter-header") {
 		k, v, ok := strings.Cut(h, "=")
 		if !ok || k == "" {
