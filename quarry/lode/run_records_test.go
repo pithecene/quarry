@@ -119,7 +119,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 			EventsPersisted: 7, Policy: "strict",
 			DroppedByType: map[string]int64{"log": 2}, FlushTriggers: map[string]int64{"count": 4},
 		},
-		TerminalSummary: map[string]any{"error_type": "fetch"},
+		TerminalSummary: json.RawMessage(`{"error_type":"fetch"}`),
 	}
 	if err := client.WriteEndRecord(t.Context(), end); err != nil {
 		t.Fatalf("WriteEndRecord: %v", err)
@@ -173,6 +173,15 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	}
 }
 
+// nested returns a payload of the given depth.
+func nested(depth int) map[string]any {
+	m := map[string]any{}
+	for range depth {
+		m = map[string]any{"m": m}
+	}
+	return m
+}
+
 // The terminal payload keeps the difference between none and an empty one, and
 // one that JSON cannot represent does not stop the record. A run that collects
 // no metrics records none.
@@ -188,10 +197,16 @@ func TestNewEndRecord_TerminalSummary(t *testing.T) {
 		{"an empty payload", map[string]any{}, map[string]any{}, true},
 		{"a payload", map[string]any{"pages": 3}, map[string]any{"pages": float64(3)}, true},
 		{"a payload that JSON cannot represent", map[string]any{"ratio": math.NaN()}, nil, false},
+		{"a payload nested too deeply to read back", nested(9999), nil, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := json.Marshal(NewEndRecord(Config{RunID: "run-1"}, RunEnd{TerminalSummary: tc.payload}))
+			var end RunEnd
+			if tc.payload != nil {
+				// The caller writes the record without a summary that is refused.
+				end.TerminalSummary, _ = EncodeTerminalSummary(tc.payload)
+			}
+			data, err := json.Marshal(NewEndRecord(Config{RunID: "run-1"}, end))
 			if err != nil {
 				t.Fatal(err)
 			}

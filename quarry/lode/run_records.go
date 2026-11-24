@@ -178,8 +178,9 @@ type RunEnd struct {
 	MetricsPersisted bool
 	// Metrics is the run's final snapshot, or nil when the run collects none.
 	Metrics *metrics.Snapshot
-	// TerminalSummary is the payload of the terminal event received, or nil.
-	TerminalSummary map[string]any
+	// TerminalSummary is the encoded payload of the terminal event received
+	// (EncodeTerminalSummary), or nil.
+	TerminalSummary json.RawMessage
 }
 
 // EndRecord is a run's end record (CONTRACT_RUN.md §End Record).
@@ -222,6 +223,20 @@ func NewStartRecord(cfg Config, meta *types.RunMeta, startedAt time.Time) StartR
 	}
 }
 
+// EncodeTerminalSummary encodes a terminal event's payload for RunEnd. It
+// refuses one that an end record cannot hold, such as one with a NaN or nested
+// too deeply to read back, because the record must be written without it.
+func EncodeTerminalSummary(payload map[string]any) (json.RawMessage, error) {
+	summary, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := json.Marshal(EndRecord{TerminalSummary: summary}); err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
 // NewEndRecord builds the end record for the run cfg describes.
 func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 	rec := EndRecord{
@@ -240,13 +255,7 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 			rec.Metrics["flush_triggers"] = maps.Clone(end.Metrics.FlushTriggers)
 		}
 	}
-	// A payload that JSON cannot represent, such as one with a NaN, must not cost
-	// the run its end record.
-	if end.TerminalSummary != nil {
-		if summary, err := json.Marshal(end.TerminalSummary); err == nil {
-			rec.TerminalSummary = summary
-		}
-	}
+	rec.TerminalSummary = end.TerminalSummary
 	if end.Terminal != "" {
 		t := string(end.Terminal)
 		rec.Terminal = &t

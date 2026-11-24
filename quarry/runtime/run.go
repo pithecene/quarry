@@ -351,7 +351,15 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult,
 		Message:          result.Outcome.Message,
 		EventCount:       result.EventCount,
 		MetricsPersisted: metricsPersisted,
-		TerminalSummary:  result.TerminalSummary,
+	}
+	if result.TerminalSummary != nil {
+		summary, err := lode.EncodeTerminalSummary(result.TerminalSummary)
+		if err != nil {
+			r.logger.Warn("end record omits the terminal summary", map[string]any{
+				"error": err.Error(),
+			})
+		}
+		end.TerminalSummary = summary
 	}
 	if r.config.Collector != nil {
 		end.Metrics = new(r.config.Collector.Snapshot())

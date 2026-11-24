@@ -1,10 +1,13 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"sync"
@@ -153,11 +156,32 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	if end.Metrics == nil || !reflect.DeepEqual(*end.Metrics, config.Collector.Snapshot()) || end.Metrics.RunsCompleted != 1 {
 		t.Errorf("end record metrics = %+v, want the run's final snapshot", end.Metrics)
 	}
-	if !reflect.DeepEqual(end.TerminalSummary, result.TerminalSummary) || end.TerminalSummary == nil {
-		t.Errorf("end record terminal summary = %v, want the result's %v", end.TerminalSummary, result.TerminalSummary)
+	if want, err := json.Marshal(result.TerminalSummary); err != nil || string(end.TerminalSummary) != string(want) {
+		t.Errorf("end record terminal summary = %s, want the result's %s (%v)", end.TerminalSummary, want, err)
 	}
 	if result.RunRecordError != "" {
 		t.Errorf("unexpected RunRecordError %q", result.RunRecordError)
+	}
+}
+
+// An end record is written without a payload that it cannot hold, with a warning.
+func TestWriteEndRecord_OmitsAnUnencodableSummary(t *testing.T) {
+	t.Parallel()
+	storage := &recordingStorage{}
+	config := finalizeConfig(t, storage, newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0))
+	orchestrator, err := NewRunOrchestrator(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logged bytes.Buffer
+	orchestrator.logger = orchestrator.logger.WithOutput(&logged)
+	result := &RunResult{Outcome: &types.RunOutcome{}, TerminalSummary: map[string]any{"ratio": math.NaN()}}
+	orchestrator.writeEndRecord(t.Context(), result, true)
+	if storage.end == nil || storage.end.TerminalSummary != nil || result.RunRecordError != "" {
+		t.Errorf("end = %+v, error %q, want a record without a summary", storage.end, result.RunRecordError)
+	}
+	if !strings.Contains(logged.String(), "omits the terminal summary") {
+		t.Errorf("logged %q, want a warning", logged.String())
 	}
 }
 
