@@ -372,7 +372,7 @@ func TestQueryLatestMetrics_FiltersOnEscapedValues(t *testing.T) {
 }
 
 // The latest run's metrics come from its end record or from a metrics record of
-// an earlier release, whichever run is later by its day and then its end.
+// an earlier release, whichever run ended later.
 func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	t.Parallel()
 	factory := sharedMemoryFactory()
@@ -454,11 +454,16 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	if got := latest("", ""); got != "run-later" {
 		t.Errorf("latest = %s, want the later instant", got)
 	}
-	// A run of an earlier day that committed last is not the latest.
+	// The run that ended last is the latest, whatever its day and commit order.
+	legacy("c", "run-slow", "2026-02-01", at(4, 2))
 	legacy("c", "run-late", "2026-02-04", at(4, 1))
-	legacy("c", "run-slow", "2026-02-01", at(6, 1))
-	if got := latest("", ""); got != "run-late" {
-		t.Errorf("latest = %s, want the later metrics record", got)
+	if got := latest("", ""); got != "run-slow" {
+		t.Errorf("latest = %s, want the metrics record that ended last", got)
+	}
+	end("c", "run-long", "2026-02-01", at(5, 1), true)
+	end("c", "run-short", "2026-02-04", at(4, 23), true)
+	if got := latest("", ""); got != "run-long" {
+		t.Errorf("latest = %s, want the end record that ended last", got)
 	}
 	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-2", "")
 	if err != nil || record["ts"] != "2026-02-03T02:00:00Z" || record["source"] != "c" || record["day"] != "2026-02-03" || record["event_type"] != "metrics" {
@@ -473,15 +478,15 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	if got := latest("", ""); got != "run-second" {
 		t.Errorf("latest = %s, want run-second", got)
 	}
-	// A time that does not parse fails the query of its day and of no other.
+	// A metrics record whose time does not parse fails the queries that read it.
 	broken := client("c", "run-broken", "2026-02-06")
 	record = toMetricsRecordMap(metrics.Snapshot{RunID: "run-broken", Policy: "strict"}, broken.config, at(6, 1))
 	record["ts"] = "not-a-time"
 	if _, err := broken.dataset.Write(t.Context(), lode.R(record), map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := latest("", ""); got != "run-second" {
-		t.Errorf("latest = %s, want a later day's run beside a broken record", got)
+	if got := latest("run-second", ""); got != "run-second" {
+		t.Errorf("latest = %s, want a named run beside a broken record", got)
 	}
 	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-broken", ""); err == nil || errors.Is(err, ErrNoMetricsFound) {
 		t.Errorf("a broken time gave %v, want its parse error", err)

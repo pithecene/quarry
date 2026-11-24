@@ -129,8 +129,8 @@ Without `--storage-backend` and `--storage-path`, each exits 1. None of them
 answers for data that Quarry does not persist, such as proxy usage or IPC
 state, and none substitutes a stub response for a read of storage.
 
-- `stats metrics` reads the metrics of the latest run in storage, by its day and
-  then by when it ended, from its end record or a metrics record
+- `stats metrics` reads the metrics of the run in storage that ended last,
+  from its end record or a metrics record
   ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
 - `list runs` lists run records ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`), and
   `list events` reads one run's events ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list events`).

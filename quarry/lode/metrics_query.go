@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pithecene/lode/lode"
@@ -17,10 +18,14 @@ import (
 // ErrNoMetricsFound is returned when no metrics records exist in the dataset.
 var ErrNoMetricsFound = errors.New("no metrics records found")
 
-// QueryLatestMetrics returns the metrics of the dataset's latest run, by its day
-// and then by when it ended, from the run's end record or from a metrics record
-// of an earlier release. Filters by runID and source if non-empty. Returns the
-// fields of a metrics record, or ErrNoMetricsFound if no run has any.
+// endRecordReads is how many end records a query reads at once.
+const endRecordReads = 16
+
+// QueryLatestMetrics returns the metrics of the dataset's run that ended last,
+// from the run's end record or from a metrics record of an earlier release.
+// Filters by runID and source if non-empty. Returns the fields of a metrics
+// record, or ErrNoMetricsFound if no run has any. Nothing orders end records by
+// time, so it reads each that matches.
 func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStore], dataset, runID, source string) (map[string]any, error) {
 	ds, store, ok, err := openReadStore(ctx, dataset, factory)
 	if err != nil {
@@ -31,69 +36,46 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 	if err != nil {
 		return nil, err
 	}
-	// The end record of a named run decides, without its metrics records.
-	if runID != "" {
-		if record, err := latestOfDays(ctx, store, nil, runs, nil, filter); err != nil || record != nil {
-			return record, err
-		}
-		runs = nil // none has metrics
+	records, err := readEndMetrics(ctx, store, runs)
+	if err != nil {
+		return nil, err
 	}
-	var legacy map[string][]*lode.Snapshot
-	if ok {
+	var latest map[string]any
+	var latestAt time.Time
+	consider := func(record map[string]any) error {
+		at, err := time.Parse(time.RFC3339Nano, toString(record["ts"]))
+		if err != nil {
+			return fmt.Errorf("metrics of run %v: %w", record["run_id"], err)
+		}
+		if latest == nil || at.After(latestAt) {
+			latest, latestAt = record, at
+		}
+		return nil
+	}
+	// The end record of a run is its source, and a metrics record only without one.
+	ended := make(map[string]bool) // by record directory
+	for i, record := range records {
+		if record == nil {
+			continue
+		}
+		ended[RunRecordDir(runs[i])] = true
+		if err := consider(record); err != nil {
+			return nil, err
+		}
+	}
+	// The end record of a named run decides, without its metrics records.
+	if ok && (runID == "" || latest == nil) {
 		snapshots, err := ds.Snapshots(ctx)
 		if err != nil {
 			return nil, WrapReadError(err, "quarry/snapshots")
 		}
-		legacy = metricsSnapshots(snapshots, filter)
-	}
-	record, err := latestOfDays(ctx, store, ds, runs, legacy, filter)
-	if err == nil && record == nil {
-		return nil, ErrNoMetricsFound
-	}
-	return record, err
-}
-
-// latestOfDays returns the metrics of the run that ended last on the latest day
-// that has any, or nil. It reads one day at a time, the latest day first. The
-// end record of a run is its source, and a metrics record only without one.
-func latestOfDays(ctx context.Context, store lode.Store, ds *lode.RecordView[lode.D], runs map[string][]Config, legacy map[string][]*lode.Snapshot, filter Config) (map[string]any, error) {
-	days := slices.Concat(slices.Collect(maps.Keys(runs)), slices.Collect(maps.Keys(legacy)))
-	slices.Sort(days)
-	for _, day := range slices.Backward(slices.Compact(days)) {
-		var latest map[string]any
-		var latestAt time.Time
-		consider := func(record map[string]any) error {
-			at, err := time.Parse(time.RFC3339Nano, toString(record["ts"]))
-			if err != nil {
-				return fmt.Errorf("metrics of run %v: %w", record["run_id"], err)
-			}
-			if latest == nil || at.After(latestAt) {
-				latest, latestAt = record, at
-			}
-			return nil
-		}
-		ended := make(map[string]bool) // by record directory
-		for _, cfg := range runs[day] {
-			rec, err := readEndFields(ctx, store, cfg)
-			if err != nil {
-				return nil, err
-			}
-			record, err := endMetrics(rec, cfg)
-			if err != nil {
-				return nil, err
-			}
-			if record != nil {
-				ended[RunRecordDir(cfg)] = true
-				if err := consider(record); err != nil {
-					return nil, err
-				}
-			}
-		}
 		// Metrics records keep whole seconds, so of two in one second the later in
 		// Lode's snapshot order is taken.
-		of := filter
-		of.Day = day
-		for _, snap := range slices.Backward(legacy[day]) {
+		for _, snap := range slices.Backward(metricsSnapshots(snapshots, filter)) {
+			// A metrics record's time precedes its commit.
+			if latest != nil && snap.CreatedAt.Before(latestAt) {
+				continue
+			}
 			data, err := ds.Read(ctx, snap.ID)
 			if err != nil {
 				return nil, WrapReadError(err, fmt.Sprintf("quarry/snapshot/%s", snap.ID))
@@ -102,10 +84,10 @@ func latestOfDays(ctx context.Context, store lode.Store, ds *lode.RecordView[lod
 			// are authoritative (handles cumulative/multi-record snapshots).
 			for _, record := range data {
 				run := Config{
-					Dataset: filter.Dataset, Source: toString(record["source"]), Category: toString(record["category"]),
+					Dataset: dataset, Source: toString(record["source"]), Category: toString(record["category"]),
 					Day: toString(record["day"]), RunID: toString(record["run_id"]),
 				}
-				if !matchesMetricsRecord(record, of) || ended[RunRecordDir(run)] {
+				if !matchesMetricsRecord(record, filter) || ended[RunRecordDir(run)] {
 					continue
 				}
 				if err := consider(record); err != nil {
@@ -113,16 +95,47 @@ func latestOfDays(ctx context.Context, store lode.Store, ds *lode.RecordView[lod
 				}
 			}
 		}
-		if latest != nil {
-			return latest, nil
+	}
+	if latest == nil {
+		return nil, ErrNoMetricsFound
+	}
+	return latest, nil
+}
+
+// readEndMetrics returns the metrics of each run's end record, nil where it has
+// none.
+func readEndMetrics(ctx context.Context, store lode.Store, runs []Config) ([]map[string]any, error) {
+	records := make([]map[string]any, len(runs))
+	errs := make([]error, len(runs))
+	var next atomic.Int64
+	var failed atomic.Bool
+	var wg sync.WaitGroup
+	for range min(endRecordReads, len(runs)) {
+		wg.Go(func() {
+			for i := next.Add(1) - 1; i < int64(len(runs)) && !failed.Load(); i = next.Add(1) - 1 {
+				rec, err := readEndFields(ctx, store, runs[i])
+				if err == nil {
+					records[i], err = endMetrics(rec, runs[i])
+				}
+				if err != nil {
+					errs[i] = err
+					failed.Store(true)
+				}
+			}
+		})
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
 		}
 	}
-	return nil, nil
+	return records, nil
 }
 
 // endedRuns returns the runs that match filter, have a start record, and have
-// an end record, by day. An end record without a start record names no run.
-func endedRuns(ctx context.Context, store lode.Store, filter Config) (map[string][]Config, error) {
+// an end record. An end record without a start record names no run.
+func endedRuns(ctx context.Context, store lode.Store, filter Config) ([]Config, error) {
 	prefix := RunRecordPrefix(filter.Dataset)
 	if filter.Source != "" {
 		prefix = RunRecordPrefix(filter.Dataset, filter.Source)
@@ -137,14 +150,14 @@ func endedRuns(ctx context.Context, store lode.Store, filter Config) (map[string
 			started[dir+"/"] = true
 		}
 	}
-	byDay := make(map[string][]Config)
+	var runs []Config
 	for _, key := range keys {
 		cfg, ok := endRecordConfig(filter.Dataset, key)
 		if ok && started[RunRecordDir(cfg)] && (filter.RunID == "" || cfg.RunID == filter.RunID) {
-			byDay[cfg.Day] = append(byDay[cfg.Day], cfg)
+			runs = append(runs, cfg)
 		}
 	}
-	return byDay, nil
+	return runs, nil
 }
 
 // endRecordConfig returns the run whose end record key names, and false for any
@@ -193,27 +206,15 @@ func endMetrics(rec map[string]json.RawMessage, cfg Config) (map[string]any, err
 }
 
 // metricsSnapshots returns the snapshots with metrics records that can match
-// filter, by the days of their records, each in
-// Lode's snapshot order.
-func metricsSnapshots(snapshots []*lode.Snapshot, filter Config) map[string][]*lode.Snapshot {
-	byDay := make(map[string][]*lode.Snapshot)
+// filter, in Lode's snapshot order.
+func metricsSnapshots(snapshots []*lode.Snapshot, filter Config) []*lode.Snapshot {
+	var matched []*lode.Snapshot
 	for _, snap := range snapshots {
-		if !isMetricsSnapshot(snap) || !snapshotMatchesFilter(snap, "run_id", filter.RunID) || !snapshotMatchesFilter(snap, "source", filter.Source) {
-			continue
-		}
-		days := make(map[string]bool)
-		for _, f := range snap.Objects {
-			for segment := range strings.SplitSeq(f.Path, "/") {
-				if day, ok := strings.CutPrefix(segment, "day="); ok {
-					days[day] = true
-				}
-			}
-		}
-		for day := range days {
-			byDay[day] = append(byDay[day], snap)
+		if isMetricsSnapshot(snap) && snapshotMatchesFilter(snap, "run_id", filter.RunID) && snapshotMatchesFilter(snap, "source", filter.Source) {
+			matched = append(matched, snap)
 		}
 	}
-	return byDay
+	return matched
 }
 
 func matchesMetricsRecord(record lode.D, filter Config) bool {
