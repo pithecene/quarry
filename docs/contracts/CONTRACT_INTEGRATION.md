@@ -269,6 +269,27 @@ Adapter publish is the last step before CLI output and exit.
 
 ---
 
+## Run Locator
+
+The notification carries a `locator`, which the SDK's `readRun` accepts unchanged
+as `readRun(locator.run, { storage: locator.storage })`:
+
+| Field | Description |
+|-------|-------------|
+| `run.source`, `run.category`, `run.day`, `run.runId` | The run's key, unencoded |
+| `storage.backend` | `fs` or `s3` |
+| `storage.path` | `fs`: absolute directory. `s3`: bucket/prefix |
+| `storage.dataset` | Lode dataset ID |
+| `storage.region` | `s3` only, when the run configured one |
+| `storage.endpoint` | `s3` only, when the run configured one, without user information, query, and fragment |
+| `storage.s3PathStyle` | `s3` only, when the run forced path-style addressing |
+
+The locator never carries credentials. The reader supplies its own, and the
+reader's environment supplies a region or endpoint that the run did not configure.
+`storage_path` is for people to read, and no reader parses it.
+
+---
+
 ## Failure and Backpressure
 
 - Adapter failures must be observable via stderr warnings.

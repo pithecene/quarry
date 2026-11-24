@@ -1108,6 +1108,86 @@ func TestBuildRunCompletedEvent_BasicFields(t *testing.T) {
 	}
 }
 
+// The locator holds what a reader needs and no credentials.
+func TestBuildStorageLocator(t *testing.T) {
+	t.Parallel()
+	abs, err := filepath.Abs("data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		storage storageChoice
+		want    string
+	}{
+		{"fs", storageChoice{backend: "fs", path: "data", endpoint: "https://ignored"}, `{"backend":"fs","path":"` + abs + `","dataset":"d"}`},
+		{"s3", storageChoice{backend: "s3", path: "b/p", region: "r"}, `{"backend":"s3","path":"b/p","dataset":"d","region":"r"}`},
+		{
+			"s3 endpoint",
+			storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:9000/x?token=secret#secret", usePathStyle: true},
+			`{"backend":"s3","path":"b","dataset":"d","endpoint":"https://host:9000/x","s3PathStyle":true}`,
+		},
+		{"malformed endpoint", storageChoice{backend: "s3", path: "b", endpoint: "https://key:secret@host:port"}, `{"backend":"s3","path":"b","dataset":"d"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := json.Marshal(buildStorageLocator(tc.storage, "d"))
+			if err != nil || string(got) != tc.want {
+				t.Errorf("locator = %s, %v, want %s", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// A run written to storage is read through the locator of its notification.
+func TestRunFinalizer_LocatorReadsTheRun(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
+	root := t.TempDir()
+	writeFSRun(t, root, "run 1")
+	received := make(chan []byte, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- body
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	f := &runFinalizer{
+		adapter:        &adapterChoice{adapterType: "webhook", url: srv.URL, timeout: 5 * time.Second},
+		storage:        storageChoice{backend: "fs", path: root},
+		storageDataset: "quarry",
+		source:         "demo",
+		category:       "default",
+		startTime:      time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC),
+	}
+	f.notifyAdapter(t.Context(), &runtime.RunResult{
+		RunMeta:  &types.RunMeta{RunID: "run 1", Attempt: 1},
+		Outcome:  &types.RunOutcome{Status: types.OutcomeSuccess},
+		Recorded: true,
+	}, time.Second)
+	var event struct {
+		Locator struct {
+			Run     map[string]string `json:"run"`
+			Storage map[string]any    `json:"storage"`
+		} `json:"locator"`
+	}
+	select {
+	case body := <-received:
+		if err := json.Unmarshal(body, &event); err != nil {
+			t.Fatalf("decode %s: %v", body, err)
+		}
+	default:
+		t.Fatal("no notification")
+	}
+	// The flags that the SDK's readRun passes.
+	run, storage := event.Locator.Run, event.Locator.Storage
+	out, err := runListCLI(t, "events", "--format=json",
+		fmt.Sprintf("--storage-backend=%v", storage["backend"]), fmt.Sprintf("--storage-path=%v", storage["path"]),
+		fmt.Sprintf("--storage-dataset=%v", storage["dataset"]),
+		"--source="+run["source"], "--category="+run["category"], "--day="+run["day"], "--run-id="+run["runId"])
+	if err != nil || !strings.Contains(out, `"run 1"`) || !strings.Contains(out, `"run_complete"`) {
+		t.Errorf("list events = %s, %v, want the run's events", out, err)
+	}
+}
+
 func TestBuildRunCompletedEvent_WithJobID(t *testing.T) {
 	t.Parallel()
 

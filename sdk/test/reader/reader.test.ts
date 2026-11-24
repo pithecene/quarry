@@ -8,6 +8,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { NotificationLocator } from '../../src/reader'
 import { listRuns, QuarryReadError, readRun } from '../../src/reader'
 
 type Fake = { path: string; argsFile: string }
@@ -200,6 +201,32 @@ describe('readRun', () => {
       '--category=default',
       '--day=2026-10-22',
       '--run-id=-r1',
+      '--format=json'
+    ])
+  })
+})
+
+describe('NotificationLocator', () => {
+  it('reads its run unchanged', async () => {
+    const fake = await fakeQuarry(JSON.stringify({ run, events: [] }))
+    // The locator of a notification's JSON payload.
+    const locator = JSON.parse(
+      '{"run":{"source":"demo","category":"default","day":"2026-10-22","runId":"r1"},"storage":{"backend":"s3","path":"b/p","dataset":"d","region":"r","endpoint":"https://host:9000","s3PathStyle":true}}'
+    ) as NotificationLocator
+    await readRun(locator.run, { quarryPath: fake.path, storage: locator.storage })
+    expect(await argsOf(fake)).toEqual([
+      'list',
+      'events',
+      '--storage-backend=s3',
+      '--storage-path=b/p',
+      '--storage-dataset=d',
+      '--storage-region=r',
+      '--storage-endpoint=https://host:9000',
+      '--storage-s3-path-style',
+      '--source=demo',
+      '--category=default',
+      '--day=2026-10-22',
+      '--run-id=r1',
       '--format=json'
     ])
   })

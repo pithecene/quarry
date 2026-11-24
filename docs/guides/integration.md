@@ -131,9 +131,16 @@ run exits with its normal outcome code.
   "timestamp": "2026-02-07T12:00:00Z",
   "attempt": 1,
   "event_count": 42,
-  "duration_ms": 1500
+  "duration_ms": 1500,
+  "locator": {
+    "run": { "source": "my-source", "category": "default", "day": "2026-02-07", "runId": "run-001" },
+    "storage": { "backend": "fs", "path": "/data", "dataset": "quarry" }
+  }
 }
 ```
+
+A consumer reads the run with the SDK's
+`readRun(event.locator.run, { storage: event.locator.storage })`.
 
 #### Adapter Options
 

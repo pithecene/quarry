@@ -967,6 +967,9 @@ do {
   because the CLI would treat it as absent (for example, reading the
   default dataset or all sources).
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
+- A notification's `locator` (`NotificationLocator`) reads its run unchanged:
+  `readRun(event.locator.run, { storage: event.locator.storage })`. It carries no
+  credentials, which the reader's environment supplies.
 
 **Built-in adapters**: `--adapter webhook` sends an HTTP POST, and
 `--adapter redis` publishes to a Redis pub/sub channel, after each run whose records Quarry

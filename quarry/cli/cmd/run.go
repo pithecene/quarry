@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -1607,11 +1608,43 @@ func buildRunCompletedEvent(
 		Attempt:         result.RunMeta.Attempt,
 		EventCount:      result.EventCount,
 		DurationMs:      duration.Milliseconds(),
+		Locator: adapter.Locator{
+			Run:     adapter.RunLocator{Source: source, Category: category, Day: day, RunID: result.RunMeta.RunID},
+			Storage: buildStorageLocator(storageConfig, dataset),
+		},
 	}
 	if result.RunMeta.JobID != nil {
 		event.JobID = *result.RunMeta.JobID
 	}
 	return event
+}
+
+// buildStorageLocator is the storage as a reader takes it, without credentials.
+func buildStorageLocator(storageConfig storageChoice, dataset string) adapter.StorageLocator {
+	locator := adapter.StorageLocator{Backend: storageConfig.backend, Path: storageConfig.path, Dataset: dataset}
+	switch storageConfig.backend {
+	case "fs":
+		// A reader runs in another directory.
+		if abs, err := filepath.Abs(storageConfig.path); err == nil {
+			locator.Path = abs
+		}
+	case "s3":
+		locator.Region = storageConfig.region
+		locator.Endpoint = redactEndpoint(storageConfig.endpoint)
+		locator.S3PathStyle = storageConfig.usePathStyle
+	}
+	return locator
+}
+
+// redactEndpoint is the endpoint URL without its user information, query, and
+// fragment, or "" when it does not parse as one.
+func redactEndpoint(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	u.User, u.RawQuery, u.Fragment, u.RawFragment = nil, "", "", ""
+	return u.String()
 }
 
 // buildStoragePath constructs a human-readable storage path for the event payload.
