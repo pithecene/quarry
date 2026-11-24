@@ -69,6 +69,22 @@ jobs:
       - name: 🧪 Test
         run: task test:race
 
+  oldest-node:
+    name: 🕰️ Oldest Node
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup
+        uses: ./.github/actions/setup
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧪 Test on the oldest Node
+        run: task go:test:oldest-node
+
   bundle-freshness:
     name: 📦 Bundle Freshness
     runs-on: ubuntu-latest

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -216,7 +217,8 @@ func TestProcess_StartMethodsDeliverTheBundle(t *testing.T) {
 	}
 	_, err = embeddedProcess(t, "console.error('why'); process.exit(3)").Output()
 	var exit *exec.ExitError
-	if !errors.As(err, &exit) || strings.TrimSpace(string(exit.Stderr)) != "why" {
+	// Node may add warnings of its own, as 22.6 does for type stripping.
+	if !errors.As(err, &exit) || !slices.Contains(strings.Split(string(exit.Stderr), "\n"), "why") {
 		t.Errorf("Output error = %v, want an exit error with stderr", err)
 	}
 }
