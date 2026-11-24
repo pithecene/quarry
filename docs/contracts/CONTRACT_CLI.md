@@ -321,16 +321,16 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   message.
 - Fan-out (`--depth > 0`) uses the reusable browser if available and falls back
   to `LaunchManagedBrowser` when reuse is disabled. The managed browser routes
-  its traffic through the run's resolved proxy and resolves puppeteer from
-  the run's `--resolve-from`, as the reusable browser does.
+  its traffic through the run's resolved proxy and falls back to the run's
+  `--resolve-from` to resolve puppeteer, as the reusable browser does.
 - A run shares the reusable browser only when its launch settings match the
   server's. Before it asks for a lease, the runtime runs the executor's
   `--launch-identity` mode in the environment the server would get, which
   reports the browser that this run would launch: where each Puppeteer
-  module resolves and its version, the Chrome binary Puppeteer would start,
-  the plugins, and the launch arguments, the proxy among them. The key
-  digests that report, the executor's SHA-256, and the proxy username (never
-  its password). A run whose key differs, or whose identity cannot be
+  module resolves and its version, the Chrome file Puppeteer would start and
+  its revision, the plugins, and Puppeteer's launch arguments before the
+  plugins change them. The key digests that report, the executor's SHA-256,
+  and the run's resolved proxy (never its password). A run whose key differs, or whose identity cannot be
   reported, launches its own browser (the reusable browser is not killed).
 - The runtime and the server keep their state in the discovery directory,
   `$XDG_RUNTIME_DIR/quarry/browser-reuse/`, or

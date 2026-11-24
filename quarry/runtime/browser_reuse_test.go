@@ -32,7 +32,7 @@ func TestBrowserKey(t *testing.T) {
 	fake := func(name, extra string) string {
 		path := filepath.Join(dir, name)
 		body := "#!/bin/sh\n[ \"$1\" = --launch-identity ] || exit 2\n" + extra +
-			"printf '{\"modules\":{\"puppeteer\":{\"location\":\"%s\",\"version\":\"25.0.0\"}},\"executablePath\":\"/chrome%s\",\"plugins\":{\"stealth\":true,\"adblocker\":false},\"args\":[]}\\n' \"$FAKE_IDENTITY\" \"${QUARRY_RESOLVE_FROM-}\"\n"
+			"printf '{\"modules\":{\"puppeteer\":{\"location\":\"%s\",\"version\":\"25.0.0\"}},\"executablePath\":\"/chrome%s\",\"executable\":{\"file\":\"/chrome\",\"revision\":\"1\"},\"plugins\":{\"stealth\":false,\"adblocker\":false},\"args\":[]}\\n' \"$FAKE_IDENTITY\" \"${QUARRY_RESOLVE_FROM-}\"\n"
 		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,18 @@ func TestBrowserKey(t *testing.T) {
 	}
 	nullReport := report("null", "null")
 	emptyReport := report("empty", "{}")
-	unresolvedReport := report("unresolved", `{"modules":{"puppeteer":{"location":"/a","version":"1"}},"executablePath":{},"plugins":{"stealth":true,"adblocker":false},"args":[]}`)
+	const plain = `{"modules":{"puppeteer":{"location":"/a","version":"1"}},"executablePath":"/c","executable":{"file":"/c","revision":"1"},"plugins":{"stealth":false,"adblocker":false},"args":[]}`
+	const reordered = `{"args":[],"plugins":{"adblocker":false,"stealth":false},"executable":{"revision":"1","file":"/c"},"executablePath":"/c","modules":{"puppeteer":{"version":"1","location":"/a"}}}`
+	// Padded past both limits, on both streams.
+	noisyReport := report("noisy", plain+"'; head -c 2000000 /dev/zero | tr '\\0' ' '; echo '")
+	noPluginModules := report("no-plugin-modules", strings.Replace(plain, `"stealth":false`, `"stealth":true`, 1))
+	noRevision := report("no-revision", strings.Replace(plain, `"revision":"1"`, `"revision":""`, 1))
+	unresolvedReport := report("unresolved", `{"modules":{"puppeteer":{"location":"/a","version":"1"}},"executablePath":{},"plugins":{"stealth":false,"adblocker":false},"args":[]}`)
+	// One executor, so that its digest stays the same, reports either order.
+	ordered := filepath.Join(dir, "ordered")
+	if err := os.WriteFile(ordered, []byte("#!/bin/sh\nif [ \"$FAKE_IDENTITY\" = reordered ]; then echo '"+reordered+"'; else echo '"+plain+"'; fi\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	user, pass1, pass2 := "admin", "secret1", "secret2"
 	proxy := func(username, password *string) *types.ProxyEndpoint {
 		return &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: "proxy.example.com", Port: 8080, Username: username, Password: password}
@@ -85,6 +96,9 @@ func TestBrowserKey(t *testing.T) {
 		{"the same identity", base, `/a/puppeteer.js`, true},
 		{"another proxy password", with(func(c *ReusableBrowserConfig) { c.Proxy = proxy(&user, &pass2) }), `/a/puppeteer.js`, true},
 		{"another identity", base, `/b/puppeteer.js`, false},
+		{"another proxy host, which the report leaves out", with(func(c *ReusableBrowserConfig) {
+			c.Proxy = &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: "other.example.com", Port: 8080, Username: &user, Password: &pass1}
+		}), `/a/puppeteer.js`, false},
 		{"no proxy username", with(func(c *ReusableBrowserConfig) { c.Proxy = proxy(nil, nil) }), `/a/puppeteer.js`, false},
 		{"another executor", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = otherExecutor }), `/a/puppeteer.js`, false},
 		{"a module root, which the identity mode receives", with(func(c *ReusableBrowserConfig) { c.ResolveFrom = "/opt/quarry" }), `/a/puppeteer.js`, false},
@@ -100,6 +114,14 @@ func TestBrowserKey(t *testing.T) {
 			}
 		})
 	}
+	t.Run("object members in another order", func(t *testing.T) {
+		cfg := with(func(c *ReusableBrowserConfig) { c.ExecutorPath = ordered })
+		first, err1 := key(t, cfg, "plain")
+		second, err2 := key(t, cfg, "reordered")
+		if err1 != nil || err2 != nil || first != second {
+			t.Errorf("keys %q (%v) and %q (%v), want equal", first, err1, second, err2)
+		}
+	})
 	fifo := filepath.Join(dir, "fifo")
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
@@ -113,6 +135,9 @@ func TestBrowserKey(t *testing.T) {
 		{"a null identity", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = nullReport })},
 		{"an empty identity", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = emptyReport })},
 		{"an identity with an unresolved executable path", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = unresolvedReport })},
+		{"a report past its size limit", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noisyReport })},
+		{"an enabled plugin without its modules", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noPluginModules })},
+		{"an executable without a revision", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noRevision })},
 		{"a missing executor", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = filepath.Join(dir, "missing") })},
 		{"a FIFO in place of the executor", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = fifo })},
 	}
