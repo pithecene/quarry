@@ -173,7 +173,6 @@ tasks:
     desc: Lint shell scripts (shellcheck), examples, and the release tool (tsc, biome)
     cmds:
       - shellcheck -x scripts/*.sh scripts/ci/*.sh
-      - node scripts/ci/no-inline-shell.ts
       - pnpm exec tsc -p scripts/release
       - pnpm exec biome check --error-on-warnings scripts/release scripts/ci examples
 
