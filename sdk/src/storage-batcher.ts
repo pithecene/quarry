@@ -67,12 +67,12 @@ export function createStorageBatcher(
   let totalAdded = 0
 
   // Flush waiters — resolved when all items have settled
-  let flushResolve: (() => void) | null = null
+  const flushWaiters: Array<() => void> = []
 
   function checkFlushComplete(): void {
-    if (flushResolve !== null && completed >= totalAdded) {
-      flushResolve()
-      flushResolve = null
+    if (completed < totalAdded) return
+    for (const resolve of flushWaiters.splice(0)) {
+      resolve()
     }
   }
 
@@ -135,7 +135,7 @@ export function createStorageBatcher(
       }
       // Wait for all items to settle via promise (no polling)
       await new Promise<void>((resolve) => {
-        flushResolve = resolve
+        flushWaiters.push(resolve)
       })
       if (failed !== null) {
         throw failed
