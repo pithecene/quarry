@@ -40,11 +40,9 @@ jobs:
         if: ${{ steps.regex-match.outputs.match != '' }}
         run: node scripts/release/src/cli.ts assert-highest-tag "$GITHUB_REF_NAME"
 
-      - name: 🔎 Release Published
+      - name: 🔎 Tag Holds Release Notes
         if: ${{ steps.regex-match.outputs.match != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/release/src/cli.ts assert-release-published "$GITHUB_REF_NAME"
+        run: node scripts/release/src/cli.ts assert-release-notes "$GITHUB_REF_NAME"
 
   version_lockstep:
     name: 🔒 Version Lockstep
@@ -192,7 +190,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           ARCHIVE="quarry_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           tar -czf "dist/${ARCHIVE}" -C quarry quarry
-          sha256sum "dist/${ARCHIVE}" > "dist/${ARCHIVE}.sha256"
+          node scripts/release/src/cli.ts write-checksums dist
 
       - name: ⬆️ Upload
         uses: actions/upload-artifact@v4
@@ -223,13 +221,12 @@ jobs:
           mkdir -p dist
           VERSION="${GITHUB_REF_NAME}"
           git archive --format=tar.gz --output="dist/quarry-${VERSION}.tar.gz" HEAD
-          sha256sum "dist/quarry-${VERSION}.tar.gz" > "dist/quarry-${VERSION}.tar.gz.sha256"
           cd sdk
           pnpm pack
           SDK_TARBALL="$(ls -t *.tgz | head -n 1)"
           cd ..
           mv "sdk/${SDK_TARBALL}" "dist/quarry-sdk-${VERSION}.tgz"
-          sha256sum "dist/quarry-sdk-${VERSION}.tgz" > "dist/quarry-sdk-${VERSION}.tgz.sha256"
+          node scripts/release/src/cli.ts write-checksums dist
 
       - name: ⬇️ Download platform binaries
         uses: actions/download-artifact@v4
@@ -261,27 +258,42 @@ jobs:
         run: echo "Release approved; continuing."
 
   release:
-    name: 🚀 GitHub Release
+    name: 📝 Draft Release
     runs-on: ubuntu-latest
     needs: [hold]
     steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+
       - name: ⬇️ Download Artifacts
         uses: actions/download-artifact@v4
         with:
           name: release-dist
           path: dist
 
-      # Tag Check has confirmed the release exists.
-      - name: 📎 Upload Assets
+      # The release stays a draft until everything has published, so a
+      # failed upload is never public.
+      - name: 📝 Draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+        run: node scripts/release/src/cli.ts draft-release "$GITHUB_REF_NAME"
+
+      - name: 📎 Upload and Verify Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/release/src/cli.ts upload-assets "$GITHUB_REF_NAME" dist
 
   publish_ghpr:
     name: 📦 Publish SDK (GitHub Packages)
     runs-on: ubuntu-latest
-    needs: [hold]
+    needs: [release]
     permissions:
       contents: read
       packages: write
@@ -339,7 +351,7 @@ jobs:
   publish_jsr:
     name: 📦 Publish SDK (JSR)
     runs-on: ubuntu-latest
-    needs: [hold]
+    needs: [release]
     # Sized for publish-jsr's three 8-minute attempts plus backoff.
     timeout-minutes: 35
     permissions:
@@ -361,7 +373,7 @@ jobs:
   container:
     name: 🐳 Container Images
     runs-on: ubuntu-latest
-    needs: [hold]
+    needs: [release]
     permissions:
       contents: read
       packages: write
@@ -411,6 +423,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+
+  publish_release:
+    name: 🚀 GitHub Release
+    runs-on: ubuntu-latest
+    needs: [release, publish_ghpr, publish_jsr, container]
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+
+      - name: 🚀 Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/release/src/cli.ts publish-release "$GITHUB_REF_NAME"
 
   # Publishing jobs publish versioned artifacts only. This job owns the moving
   # pointers (npm `latest`, GHCR :latest/:slim) and points them at the highest

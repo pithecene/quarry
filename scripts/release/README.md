@@ -1,7 +1,7 @@
 # Release tool
 
-The steps the release workflows run: the tag gates, idempotent publishing to
-npm and JSR, and convergence of the moving pointers (npm `latest`, GHCR
+The steps the release workflows run: the tag gates, checksums, the GitHub
+release and its assets, idempotent publishing to npm and JSR, and convergence of the moving pointers (npm `latest`, GHCR
 `:latest` and `:slim`).
 
 ```
@@ -11,7 +11,11 @@ node scripts/release/src/cli.ts <command> [arguments]
 | Command | Used by |
 |---|---|
 | `assert-highest-tag <tag>` | `release.yml` Tag Check, `release-dry-run.yml` |
-| `assert-release-published <tag>` | `release.yml` Tag Check |
+| `assert-release-notes <tag>` | `release.yml` Tag Check |
+| `write-checksums <dir>` | `release.yml` Archive and Package, `release-dry-run.yml` |
+| `draft-release <tag>` | `release.yml` Draft Release |
+| `upload-assets <tag> <dir>` | `release.yml` Draft Release |
+| `publish-release <tag>` | `release.yml` GitHub Release, last |
 | `publish-npm <package-dir>` | `release.yml` publish to GitHub Packages |
 | `publish-jsr <package-dir> <version>` | `release.yml` publish to JSR |
 | `converge-pointers <npm-package-dir> <image>` | `release.yml` Release Pointers |
@@ -43,6 +47,8 @@ Environment tunables:
 
 - Registry lookups: `PROBE_ATTEMPTS` (3) and `PROBE_RETRY_DELAY` (5 s,
   doubled per retry).
+- Asset uploads: `UPLOAD_ATTEMPTS` (3), `UPLOAD_ATTEMPT_TIMEOUT` (300 s),
+  and `UPLOAD_RETRY_DELAY` (5 s, doubled per retry), counted per file.
 - JSR publishing: `JSR_ATTEMPTS` (3), `JSR_ATTEMPT_TIMEOUT` (480 s), and
   `JSR_RETRY_DELAY` (10 s, doubled per retry).
 

@@ -26,6 +26,21 @@ export const githubReleaseState = async (ctx: Context, tag: string): Promise<Rel
   return state
 }
 
+/** The digest of each complete asset that the GitHub release for `tag` holds. */
+export const releaseDigests = async (
+  ctx: Context,
+  tag: string
+): Promise<ReadonlyMap<string, string | undefined>> => {
+  const result = await ctx.run('gh', ['release', 'view', tag, '--json', 'assets'])
+  if (result.code !== 0) {
+    throw new ReleaseError(`could not read the assets of ${tag}: ${lastLine(result.stderr)}`)
+  }
+  const { assets } = JSON.parse(result.stdout) as {
+    assets: { name: string; digest?: string; state: string }[]
+  }
+  return new Map(assets.filter((a) => a.state === 'uploaded').map((a) => [a.name, a.digest]))
+}
+
 const parseState = (stdout: string): ReleaseState | undefined => {
   let parsed: unknown
   try {

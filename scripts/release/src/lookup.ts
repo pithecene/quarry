@@ -23,6 +23,10 @@ export type RetryPolicy = {
   readonly delayMs: number
 }
 
+/** The delay after failed attempt `attempt`, counted from 1. */
+export const retryDelay = ({ delayMs }: Pick<RetryPolicy, 'delayMs'>, attempt: number): number =>
+  delayMs * 2 ** (attempt - 1)
+
 /**
  * Runs `probe` until it answers `present` or `absent`, or the attempts run
  * out. Only `failed` is retried: a definite answer is final.
@@ -33,12 +37,11 @@ export const lookupWithRetry = async (
   sleep: Sleep,
   log: Log
 ): Promise<Lookup> => {
-  let delayMs = policy.delayMs
   for (let attempt = 1; ; attempt++) {
     const result = await probe()
     if (result.kind !== 'failed' || attempt >= policy.attempts) return result
+    const delayMs = retryDelay(policy, attempt)
     log(`${result.reason}; retrying in ${delayMs / 1000}s`)
     await sleep(delayMs)
-    delayMs *= 2
   }
 }

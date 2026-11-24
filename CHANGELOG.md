@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release checksum files verify beside a download**: each `.sha256` file now names the bare file. Before, it named a path under `dist/`, so `sha256sum -c` failed on a downloaded file.
+
 ---
 
 ## [0.19.0] - 2026-11-23

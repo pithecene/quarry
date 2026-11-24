@@ -1,6 +1,6 @@
 import type { Context } from '../context.ts'
 import { ReleaseError } from '../errors.ts'
-import { lookupWithRetry, type RetryPolicy } from '../lookup.ts'
+import { lookupWithRetry, type RetryPolicy, retryDelay } from '../lookup.ts'
 import { readManifestFields } from '../package-manifest.ts'
 import { jsrProbe } from '../registry/jsr.ts'
 
@@ -45,7 +45,6 @@ export const publishJsr = async (
   // registry does not stop the attempt.
   if (before.kind === 'failed') ctx.log(`could not check whether ${spec} is on JSR; publishing`)
 
-  let delayMs = policy.retryDelayMs
   for (let attempt = 1; attempt <= policy.attempts; attempt++) {
     ctx.log(`Attempt ${attempt}/${policy.attempts}: jsr publish ${spec}`)
     const result = await ctx.run('npx', ['--yes', 'jsr', 'publish', '--set-version', version], {
@@ -69,9 +68,9 @@ export const publishJsr = async (
       return
     }
     if (attempt < policy.attempts) {
+      const delayMs = retryDelay({ delayMs: policy.retryDelayMs }, attempt)
       ctx.log(`Retrying in ${delayMs / 1000}s`)
       await ctx.sleep(delayMs)
-      delayMs *= 2
     }
   }
   throw new ReleaseError(`failed to publish ${spec} to JSR after ${policy.attempts} attempts`)

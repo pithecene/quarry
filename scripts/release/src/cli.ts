@@ -12,10 +12,14 @@
 
 import { setTimeout as sleep } from 'node:timers/promises'
 import { assertHighestTag } from './commands/assert-highest-tag.ts'
-import { assertReleasePublished } from './commands/assert-release-published.ts'
+import { assertReleaseNotes } from './commands/assert-release-notes.ts'
 import { convergePointers } from './commands/converge-pointers.ts'
+import { draftRelease } from './commands/draft-release.ts'
 import { publishJsr } from './commands/publish-jsr.ts'
 import { publishNpm } from './commands/publish-npm.ts'
+import { publishRelease } from './commands/publish-release.ts'
+import { type UploadPolicy, uploadAssets } from './commands/upload-assets.ts'
+import { writeChecksums } from './commands/write-checksums.ts'
 import type { Context } from './context.ts'
 import { describeError, ReleaseError, UsageError } from './errors.ts'
 import type { RetryPolicy } from './lookup.ts'
@@ -55,10 +59,23 @@ const lookupPolicy = (env: Env): RetryPolicy => ({
   delayMs: envInt(env, 'PROBE_RETRY_DELAY', { ...DELAY_SECONDS, fallback: 5 }) * 1000
 })
 
+const uploadPolicy = (env: Env): UploadPolicy => ({
+  attempts: envInt(env, 'UPLOAD_ATTEMPTS', { ...ATTEMPTS, fallback: 3 }),
+  delayMs: envInt(env, 'UPLOAD_RETRY_DELAY', { ...DELAY_SECONDS, fallback: 5 }) * 1000,
+  attemptTimeoutMs:
+    envInt(env, 'UPLOAD_ATTEMPT_TIMEOUT', { min: 1, max: 3600, fallback: 300 }) * 1000
+})
+
 const releaseTag = (raw: string): Version => {
   const tag = parseReleaseTag(raw)
   if (tag === undefined) throw new UsageError(`not a release tag: ${raw} (expected vX.Y.Z)`)
   return tag
+}
+
+// A tag that reads as an option would reach gh as one.
+const checkedTag = (raw: string): string => {
+  releaseTag(raw)
+  return raw
 }
 
 /** Exactly one non-empty positional argument per name, keyed by name. */
@@ -72,6 +89,11 @@ const positionals = <const K extends string>(
   return Object.fromEntries(names.map((n, i) => [n, args[i]])) as Record<K, string>
 }
 
+const tagCommand = (name: string, step: (ctx: Context, tag: string) => Promise<void>): Command => ({
+  usage: `${name} <tag>`,
+  run: (ctx, args) => step(ctx, checkedTag(positionals(args, ['tag']).tag))
+})
+
 // A Map, so a name such as `toString` or `__proto__` is not a command.
 const COMMANDS: ReadonlyMap<string, Command> = new Map(
   Object.entries({
@@ -82,11 +104,22 @@ const COMMANDS: ReadonlyMap<string, Command> = new Map(
         return assertHighestTag(ctx, releaseTag(tag))
       }
     },
-    'assert-release-published': {
-      usage: 'assert-release-published <tag>',
+    'assert-release-notes': tagCommand('assert-release-notes', assertReleaseNotes),
+    'draft-release': tagCommand('draft-release', draftRelease),
+    'publish-release': tagCommand('publish-release', publishRelease),
+    'write-checksums': {
+      usage: 'write-checksums <dir>',
       run: (ctx, args) => {
-        const { tag } = positionals(args, ['tag'])
-        return assertReleasePublished(ctx, tag)
+        const { dir } = positionals(args, ['dir'])
+        return writeChecksums(ctx, dir)
+      }
+    },
+    'upload-assets': {
+      usage:
+        'upload-assets <tag> <dir>   (UPLOAD_ATTEMPTS 3, UPLOAD_ATTEMPT_TIMEOUT 300 s, UPLOAD_RETRY_DELAY 5 s)',
+      run: (ctx, args, env) => {
+        const { tag, dir } = positionals(args, ['tag', 'dir'])
+        return uploadAssets(ctx, checkedTag(tag), dir, uploadPolicy(env))
       }
     },
     'publish-npm': {
