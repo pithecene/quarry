@@ -2083,6 +2083,13 @@ func TestRunFinalizer_NotifiesAfterTheRunContextIsCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	f.notifyAdapter(ctx, result, time.Second)
+	select {
+	case body := <-received:
+		t.Fatalf("completion event %s for a run without its records", body)
+	default:
+	}
+	result.Recorded = true
+	f.notifyAdapter(ctx, result, time.Second)
 
 	select {
 	case body := <-received:

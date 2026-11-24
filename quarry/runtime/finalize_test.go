@@ -30,6 +30,7 @@ type recordingStorage struct {
 	calls      []string
 	startErr   error
 	endErr     error
+	endErrs    []error // of the first writes of the end record, before endErr
 	end        *lode.RunEnd
 	startedAt  time.Time
 	deadlineAt *time.Time
@@ -55,6 +56,11 @@ func (s *recordingStorage) WriteStartRecord(ctx context.Context, _ *types.RunMet
 func (s *recordingStorage) WriteEndRecord(_ context.Context, end lode.RunEnd) error {
 	s.record("end")
 	s.end = &end
+	if len(s.endErrs) > 0 {
+		err := s.endErrs[0]
+		s.endErrs = s.endErrs[1:]
+		return err
+	}
 	return s.endErr
 }
 
@@ -242,6 +248,40 @@ func TestExecute_EndRecordFailure_ReportedOutcomeUnchanged(t *testing.T) {
 	}
 	if !strings.Contains(result.RunRecordError, "put failed") {
 		t.Errorf("RunRecordError = %q, want the write error", result.RunRecordError)
+	}
+}
+
+// The end record is written again with the same end, until storage holds it,
+// the attempts run out, or another record is there.
+func TestExecute_EndRecordAttempts(t *testing.T) {
+	t.Parallel()
+	refused := errors.New("put failed")
+	for _, tc := range []struct {
+		name     string
+		startErr error
+		endErrs  []error
+		endErr   error
+		calls    string
+		recorded bool
+		failed   bool
+	}{
+		{"first", nil, nil, nil, "start,executor,close,end", true, false},
+		{"third", nil, []error{refused, refused}, nil, "start,executor,close,end,end,end", true, false},
+		{"none", nil, nil, refused, "start,executor,close,end,end,end", false, true},
+		{"another record", nil, nil, lode.ErrPathExists, "start,executor,close,end", false, true},
+		{"no start record", refused, nil, nil, "start,close,end", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storage := &recordingStorage{startErr: tc.startErr, endErrs: tc.endErrs, endErr: tc.endErr}
+			exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
+			result := executeRun(t, finalizeConfig(t, storage, exec))
+			if got := storage.sequence(); got != tc.calls {
+				t.Errorf("calls = %s, want %s", got, tc.calls)
+			}
+			if result.Recorded != tc.recorded || (result.RunRecordError != "") != tc.failed {
+				t.Errorf("recorded = %t, error %q, want %t and an error %t", result.Recorded, result.RunRecordError, tc.recorded, tc.failed)
+			}
+		})
 	}
 }
 

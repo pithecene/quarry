@@ -12,6 +12,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Breaking Changes
 
 - **Runs no longer write metrics into the dataset**: the end record holds a run's metrics, and the runtime writes no `event_type=metrics` partition. `stats metrics` and `inspect run` read both, so earlier runs stay readable. A consumer that reads the partition itself must read `metrics` from `end.json`. `CONTRACT_LODE.md` § Metrics Record Storage states the rule.
+- **An adapter is notified only of a run that storage holds complete**: `quarry run` sends no notification for a run whose start record failed or whose end record is not confirmed, and it warns on stderr. Before, it sent one for every run, so a consumer could receive a run that readers report as unterminated or do not find. `CONTRACT_INTEGRATION.md` § Invocation Ordering states the rule.
 
 ### Added
 
@@ -19,6 +20,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A failed write of the end record is retried**: the runtime reads the record back after a failed write, and writes it again when storage does not hold it, at most three times in all. Before, one lost response or brief outage left a finished run without its end record. `CONTRACT_RUN.md` § Failure Semantics states the rule.
 - **A lost response no longer fails a sidecar file**: Quarry reads a file's `.meta.json` companion back when its write reports an error. The file succeeds with a logged warning when the bytes match. Before, the script's `storage.put()` failed although storage held both objects. The companion now also holds the `run_id`, so it never matches another run's. `CONTRACT_EMIT.md` § Content Type states the rule.
 - **Pruning removes the sidecar files that a run's end record names**: the end record now names each sidecar file the run wrote as `sidecar_files`, and `inspect run` and `quarry prune` read it beside the snapshots. Before, a file written after the last commit of a run with an encoded key stayed behind. A run without snapshots keeps such files, and the report lists them as skipped. Earlier records name none. `CONTRACT_LODE.md` § Sidecar File Inventory states the rule.
 - **A run's browser no longer outlives the run**: the executor now leads a process group that holds the browser it launches, and the runtime kills that group when the run ends. Before, a cancelled run killed only the executor process, so its Chromium kept running. A child process that held the executor's output could also keep a finished run open. `CONTRACT_IPC.md` § Executor Process Group states the rule.
@@ -27,6 +29,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Upgrade Notes
 
+- **Missing notifications**: take a run without a notification from its exit code, its exit report, or `list runs`. A run whose records storage does not hold sends none.
 - **Reading metrics**: read `metrics` from a run's `end.json` in place of the `event_type=metrics` partition. `quarry stats metrics` and `quarry inspect run` need no change, and runs of earlier releases stay readable.
 
 ---

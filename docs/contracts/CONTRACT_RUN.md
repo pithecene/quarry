@@ -195,10 +195,15 @@ no storage configured (as in unit tests), steps 1 and 3 write nothing.
   - Values that can never form a valid key are rejected earlier, as a
     configuration error, before `Execute` ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Key
     Encoding).
-- **End record.** Failure does not change the outcome. It is surfaced on
+- **End record.** A write that reports an error succeeds when the stored
+  record reads back as its bytes. Otherwise the runtime logs the error and
+  writes the same bytes again, at most 3 times in all, and it starts no
+  attempt later than 30 seconds after the first. It never replaces a record that
+  differs. Failure does not change the outcome. It is surfaced on
   stderr, in `RunResult.RunRecordError`, and in the structured exit report
-  (`run_record_error`). As with the start record, a write reported as
-  failed may still have been persisted.
+  (`run_record_error`). A write reported as failed may still have been
+  persisted. `RunResult.Recorded` reports that the start record was written and
+  the end record confirmed, so that a reader finds the run complete.
 
 ---
 

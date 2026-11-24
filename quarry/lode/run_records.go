@@ -292,13 +292,22 @@ func (c *LodeClient) WriteStartRecord(ctx context.Context, meta *types.RunMeta, 
 	return c.putRecord(ctx, StartRecordName, record)
 }
 
-// WriteEndRecord writes the run's end record.
+// WriteEndRecord writes the run's end record. A repeated call with the same end
+// writes the same bytes, so it succeeds when an earlier one persisted.
 func (c *LodeClient) WriteEndRecord(ctx context.Context, end RunEnd) error {
 	rec := NewEndRecord(c.config, end)
 	c.mu.Lock()
 	rec.SidecarFiles = slices.Clone(c.files)
 	c.mu.Unlock()
-	return c.putRecord(ctx, EndRecordName, rec)
+	data, err := encodeRunRecord(c.config, rec)
+	if err != nil {
+		return err
+	}
+	path := RunRecordDir(c.config) + EndRecordName
+	if err := c.putReconciled(ctx, path, data); err != nil {
+		return WrapWriteError(err, path)
+	}
+	return nil
 }
 
 func (c *LodeClient) putRecord(ctx context.Context, name string, record any) error {
@@ -381,14 +390,23 @@ func validateRecordKey(cfg Config) error {
 	return nil
 }
 
-// putRunRecord writes one record of the run cfg names, create-only.
-func putRunRecord(ctx context.Context, store lode.Store, cfg Config, name string, record any) error {
+// encodeRunRecord encodes a record of the run cfg names.
+func encodeRunRecord(cfg Config, record any) ([]byte, error) {
 	if err := validateRecordKey(cfg); err != nil {
-		return err
+		return nil, err
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
-		return fmt.Errorf("run record marshal failed: %w", err)
+		return nil, fmt.Errorf("run record marshal failed: %w", err)
+	}
+	return data, nil
+}
+
+// putRunRecord writes one record of the run cfg names, create-only.
+func putRunRecord(ctx context.Context, store lode.Store, cfg Config, name string, record any) error {
+	data, err := encodeRunRecord(cfg, record)
+	if err != nil {
+		return err
 	}
 	path := RunRecordDir(cfg) + name
 	if err := store.Put(ctx, path, bytes.NewReader(data)); err != nil {

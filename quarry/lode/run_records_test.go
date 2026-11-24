@@ -326,17 +326,18 @@ func (companionFailingStore) Delete(ctx context.Context, _ string) error {
 	return ctx.Err()
 }
 
-// uncertainStore reports an error after it persists a companion, and its reads
-// fail while unreadable is set.
+// uncertainStore reports an error after it persists a key with the suffix, and
+// its reads fail while unreadable is set.
 type uncertainStore struct {
 	lode.RangeStore
+	suffix     string
 	unreadable bool
 }
 
 var errUncertain = errors.New("no response")
 
 func (s *uncertainStore) Put(ctx context.Context, key string, r io.Reader) error {
-	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, ".meta.json") {
+	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, s.suffix) {
 		return err
 	}
 	return errUncertain
@@ -355,7 +356,7 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	t.Parallel()
 	for _, unreadable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
-			store := &uncertainStore{RangeStore: lode.NewMemory(), unreadable: unreadable}
+			store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: ".meta.json", unreadable: unreadable}
 			var observed []string
 			client, err := NewLodeClientWithFactory(t.Context(), Config{
 				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
@@ -450,6 +451,40 @@ func TestPutFile_BoundsTheRemovalOfAnIncompleteFile(t *testing.T) {
 			t.Errorf("PutFile = %v with files %v, want both failures and no file", err, client.files)
 		}
 	})
+}
+
+// An end record whose write reports an error after it persisted is written, at
+// once by readback or by a repeated call, and one that differs is refused.
+func TestWriteEndRecord_ReconcilesAnUncertainWrite(t *testing.T) {
+	t.Parallel()
+	for _, unreadable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
+			client, err := NewLodeClientWithFactory(t.Context(), Config{
+				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+			}, sharedFactory(lode.NewMemory()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: EndRecordName, unreadable: unreadable}
+			client.store = store
+			end := RunEnd{EndedAt: time.Date(2026, 2, 3, 1, 0, 0, 0, time.UTC), Outcome: types.OutcomeSuccess}
+			err = client.WriteEndRecord(t.Context(), end)
+			if unreadable {
+				if !errors.Is(err, errUncertain) {
+					t.Fatalf("WriteEndRecord: %v, want the write's error", err)
+				}
+				store.unreadable = false
+				err = client.WriteEndRecord(t.Context(), end)
+			}
+			if err != nil {
+				t.Fatalf("WriteEndRecord: %v", err)
+			}
+			end.EventCount = 1
+			if err := client.WriteEndRecord(t.Context(), end); !errors.Is(err, ErrPathExists) {
+				t.Errorf("another end: %v, want ErrPathExists", err)
+			}
+		})
+	}
 }
 
 func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {

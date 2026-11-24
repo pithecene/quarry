@@ -106,6 +106,13 @@ var ErrRunDeadline = errors.New("run deadline exceeded")
 // finalizeTimeout bounds each write after a run.
 const finalizeTimeout = 30 * time.Second
 
+// The end record is written at most endRecordAttempts times within
+// finalizeTimeout, endRecordDelay apart.
+const (
+	endRecordAttempts = 3
+	endRecordDelay    = 500 * time.Millisecond
+)
+
 // RunResult represents the result of a run.
 type RunResult struct {
 	// RunMeta is the run identity and lineage.
@@ -136,6 +143,9 @@ type RunResult struct {
 	// §Failure Semantics). Empty when the end record was written or the run
 	// has no storage.
 	RunRecordError string
+	// Recorded reports that storage holds both of the run's records, so that a
+	// reader finds the run complete.
+	Recorded bool
 }
 
 // RunOrchestrator orchestrates a single run.
@@ -246,7 +256,7 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 
 	result := r.execute(runCtx)
 	r.closePolicy(result)
-	r.writeEndRecord(ctx, result)
+	result.Recorded = r.writeEndRecord(ctx, result)
 	return result, nil
 }
 
@@ -316,11 +326,11 @@ func (r *RunOrchestrator) writeStartRecord(ctx context.Context, deadlineAt *time
 	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, r.config.StartedAt, deadlineAt)
 }
 
-// writeEndRecord writes the end record; a failure is reported on the result and
-// does not change the outcome.
-func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult) {
+// writeEndRecord writes the end record and reports whether storage holds it; a
+// failure is reported on the result and does not change the outcome.
+func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult) bool {
 	if r.config.Storage == nil {
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
 	defer cancel()
@@ -344,11 +354,28 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult)
 	if r.config.Collector != nil {
 		end.Metrics = new(r.config.Collector.Snapshot())
 	}
-	if err := r.config.Storage.WriteEndRecord(ctx, end); err != nil {
-		result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)
-		r.logger.Error("run end record write failed", map[string]any{
-			"error": err.Error(),
+	for attempt := 1; ; attempt++ {
+		err := r.config.Storage.WriteEndRecord(ctx, end)
+		if err == nil {
+			return true
+		}
+		// A record that exists and is not this one stays.
+		if attempt == endRecordAttempts || ctx.Err() != nil || errors.Is(err, lode.ErrPathExists) {
+			result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)
+			r.logger.Error("run end record write failed", map[string]any{
+				"error":    err.Error(),
+				"attempts": attempt,
+			})
+			return false
+		}
+		r.logger.Warn("run end record write failed, retrying", map[string]any{
+			"error":   err.Error(),
+			"attempt": attempt,
 		})
+		select {
+		case <-ctx.Done():
+		case <-time.After(endRecordDelay):
+		}
 	}
 }
 
