@@ -1,19 +1,22 @@
 package runtime
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/internal/testutil"
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/policy"
@@ -166,22 +169,48 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 
 // An end record is written without a payload that it cannot hold, with a warning.
 func TestWriteEndRecord_OmitsAnUnencodableSummary(t *testing.T) {
-	t.Parallel()
+	testutil.Serial(t, "swaps the process-wide os.Stderr")
+	// The logger takes os.Stderr when it is built, with the run's identity.
+	logFile, err := os.Create(filepath.Join(t.TempDir(), "log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() {
+		os.Stderr = original
+		iox.DiscardClose(logFile)
+	})
 	storage := &recordingStorage{}
 	config := finalizeConfig(t, storage, newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0))
 	orchestrator, err := NewRunOrchestrator(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logged bytes.Buffer
-	orchestrator.logger = orchestrator.logger.WithOutput(&logged)
 	result := &RunResult{Outcome: &types.RunOutcome{}, TerminalSummary: map[string]any{"ratio": math.NaN()}}
 	orchestrator.writeEndRecord(t.Context(), result, true)
 	if storage.end == nil || storage.end.TerminalSummary != nil || result.RunRecordError != "" {
 		t.Errorf("end = %+v, error %q, want a record without a summary", storage.end, result.RunRecordError)
 	}
-	if !strings.Contains(logged.String(), "omits the terminal summary") {
-		t.Errorf("logged %q, want a warning", logged.String())
+	logged, err := os.ReadFile(logFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line struct {
+		Level   string `json:"level"`
+		Message string `json:"message"`
+		RunID   string `json:"run_id"`
+		Attempt int    `json:"attempt"`
+		Fields  struct {
+			Error string `json:"error"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(logged, &line); err != nil {
+		t.Fatalf("log %q: %v", logged, err)
+	}
+	if line.Level != "warn" || !strings.Contains(line.Message, "omits the terminal summary") ||
+		line.RunID != "run-fin" || line.Attempt != 1 || !strings.Contains(line.Fields.Error, "NaN") {
+		t.Errorf("logged %q, want one warning with the run's identity and the encoding error", logged)
 	}
 }
 
