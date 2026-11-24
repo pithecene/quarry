@@ -32,16 +32,3 @@ func TestCloseFunc(t *testing.T) {
 		t.Fatal("Close was not called")
 	}
 }
-
-func TestDiscardErr(t *testing.T) {
-	t.Parallel()
-
-	called := false
-	DiscardErr(func() error {
-		called = true
-		return errors.New("ignored")
-	})
-	if !called {
-		t.Fatal("fn was not called")
-	}
-}

@@ -842,7 +842,7 @@ func TestIngestionEngine_FileWrite_ErrorAck_NoStreamError(t *testing.T) {
 	}
 
 	// Terminal event should have been processed
-	if !engine.HasTerminal() {
+	if _, seen := engine.GetTerminalEvent(); !seen {
 		t.Error("expected terminal event to be recorded")
 	}
 

@@ -94,14 +94,6 @@ func estimateEventSize(envelope *types.EventEnvelope) int64 {
 	return size
 }
 
-// DroppableTypes returns the set of event types that may be dropped.
-func DroppableTypes() map[types.EventType]bool {
-	// Return a copy to prevent mutation
-	result := make(map[types.EventType]bool, len(droppableTypes))
-	maps.Copy(result, droppableTypes)
-	return result
-}
-
 // statsRecorder is an internal helper for thread-safe stats management.
 // Uses atomic.Int64 for hot-path counters to eliminate lock contention.
 //

@@ -3,9 +3,6 @@
 
 package types
 
-// RunResultType is the type discriminant for run result control frames.
-const RunResultType = "run_result"
-
 // RunResultStatus is the status of a run result.
 type RunResultStatus string
 
