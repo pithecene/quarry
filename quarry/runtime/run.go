@@ -364,6 +364,10 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult)
 		if attempt == endRecordAttempts {
 			break
 		}
+		r.logger.Warn("run end record write failed", map[string]any{
+			"error":   err.Error(),
+			"attempt": attempt,
+		})
 		select {
 		case <-ctx.Done():
 		case <-time.After(endRecordDelay):
@@ -371,13 +375,9 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult)
 		if ctx.Err() != nil {
 			break
 		}
-		r.logger.Warn("run end record write failed, retrying", map[string]any{
-			"error":   err.Error(),
-			"attempt": attempt,
-		})
 	}
 	result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)
-	r.logger.Error("run end record write failed", map[string]any{
+	r.logger.Error("run end record not confirmed", map[string]any{
 		"error":    err.Error(),
 		"attempts": attempt,
 	})

@@ -29,7 +29,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Upgrade Notes
 
-- **Missing notifications**: take the outcome of a run without a notification from its exit code or its exit report. `list runs` shows what storage holds of it: an unterminated run, or none when its start record is missing.
+- **Missing notifications**: take the outcome of a run without a notification from its exit code or its exit report. `list runs` shows what storage holds of it: nothing without a start record, an unterminated run without an end record, and a finished run when both persisted unconfirmed.
 - **Reading metrics**: read `metrics` from a run's `end.json` in place of the `event_type=metrics` partition. `quarry stats metrics` and `quarry inspect run` need no change, and runs of earlier releases stay readable.
 
 ---
