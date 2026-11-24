@@ -40,7 +40,7 @@ describe('main', () => {
     [['assert-highest-tag'], /expected <tag>/],
     [['assert-highest-tag', 'v1.2.3', 'extra'], /expected <tag>/],
     [['assert-highest-tag', '1.2.3'], /not a release tag: 1\.2\.3/],
-    [['publish-jsr', 'sdk'], /expected <package-dir> <version>/]
+    [['publish-jsr', 'sdk'], /expected <package-dir> <tag>/]
   ])('exits 2 for invalid arguments %j', async (argv, message) => {
     const output = stderr()
     expect(await main(argv, {}, fakeWorld().ctx)).toBe(2)
@@ -58,7 +58,7 @@ describe('main', () => {
   ])('exits 2 for an invalid %s of %j', async (name, value) => {
     const world = fakeWorld({ jsrPublished: true })
     const output = stderr()
-    expect(await main(['publish-jsr', world.pkgDir, '1.2.3'], { [name]: value }, world.ctx)).toBe(2)
+    expect(await main(['publish-jsr', world.pkgDir, 'v1.2.3'], { [name]: value }, world.ctx)).toBe(2)
     expect(output()).toContain(`${name} must be`)
   })
 
@@ -66,7 +66,7 @@ describe('main', () => {
     const world = fakeWorld({ jsrPublished: true, jsrLookupErrors: 1 })
     stderr()
     const env = { PROBE_ATTEMPTS: '2', PROBE_RETRY_DELAY: '7' }
-    expect(await main(['publish-jsr', world.pkgDir, '1.2.3'], env, world.ctx)).toBe(0)
+    expect(await main(['publish-jsr', world.pkgDir, 'v1.2.3'], env, world.ctx)).toBe(0)
     expect(world.sleeps).toEqual([7000])
   })
 
