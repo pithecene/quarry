@@ -131,16 +131,16 @@ const COMMANDS: ReadonlyMap<string, Command> = new Map(
     },
     'publish-jsr': {
       usage:
-        'publish-jsr <package-dir> <version>   (JSR_ATTEMPTS 3, JSR_ATTEMPT_TIMEOUT 480 s, JSR_RETRY_DELAY 10 s)',
+        'publish-jsr <package-dir> <tag>   (JSR_ATTEMPTS 3, JSR_ATTEMPT_TIMEOUT 480 s, JSR_RETRY_DELAY 10 s)',
       run: (ctx, args, env) => {
-        const { 'package-dir': dir, version } = positionals(args, ['package-dir', 'version'])
+        const { 'package-dir': dir, tag } = positionals(args, ['package-dir', 'tag'])
         const policy = {
           attempts: envInt(env, 'JSR_ATTEMPTS', { ...ATTEMPTS, fallback: 3 }),
           attemptTimeoutMs:
             envInt(env, 'JSR_ATTEMPT_TIMEOUT', { min: 1, max: 3600, fallback: 480 }) * 1000,
           retryDelayMs: envInt(env, 'JSR_RETRY_DELAY', { ...DELAY_SECONDS, fallback: 10 }) * 1000
         }
-        return publishJsr(ctx, dir, version, policy, lookupPolicy(env))
+        return publishJsr(ctx, dir, checkedTag(tag).slice(1), policy, lookupPolicy(env))
       }
     },
     'converge-pointers': {

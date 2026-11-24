@@ -15,6 +15,12 @@ if [[ $# -gt 0 && "$1" != "v$EXPECTED" ]]; then
   echo "::error::Version mismatch! $1 != code version v$EXPECTED"
   exit 1
 fi
+# The targets pin text; this reads the version that a publish would use.
+SDK_VERSION=$(jq -r .version sdk/package.json)
+if [[ "$SDK_VERSION" != "$EXPECTED" ]]; then
+  echo "::error::Version mismatch! sdk/package.json ($SDK_VERSION) != code version $EXPECTED"
+  exit 1
+fi
 status=0
 
 # Whatever sits in the version slot: the whole run of non-space characters

@@ -189,7 +189,8 @@ tasks:
   docker:build:
     desc: Build container image with commit SHA
     cmds:
-      - docker build --build-arg COMMIT={{.COMMIT}} -t quarry:local .
+      # The full image needs Chrome for Testing, which publishes amd64 alone.
+      - docker build --platform linux/amd64 --build-arg COMMIT={{.COMMIT}} -t quarry:local .
 
   docker:smoke:
     desc: Run a page script in the local image as an unmapped UID

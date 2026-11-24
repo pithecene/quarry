@@ -311,7 +311,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: 📦 Publish
-        run: node scripts/release/src/cli.ts publish-jsr sdk "${GITHUB_REF_NAME#v}"
+        run: node scripts/release/src/cli.ts publish-jsr sdk "$GITHUB_REF_NAME"
 
   container:
     name: 🐳 Container Images
