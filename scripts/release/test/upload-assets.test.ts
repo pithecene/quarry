@@ -39,7 +39,7 @@ describe('upload-assets', () => {
       })
       await upload()
       expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz', 'a.tar.gz', 'a.tar.gz'])
-      expect(world.sleeps).toEqual([5000, 10000, 20000])
+      expect(world.sleeps).toEqual([5000, 10000])
       const uploads = world.calls.filter((c) => c.args[1] === 'upload')
       expect(uploads.every((c) => c.options.timeoutMs === POLICY.attemptTimeoutMs)).toBe(true)
     }
@@ -74,14 +74,65 @@ describe('upload-assets', () => {
     await draft.upload()
     expect(draft.uploaded()).toContain('a.tar.gz')
 
-    const published = distWorld({ release: 'published', assets: assets() })
+    const held = new Map([...assets(), ['b.tar.gz', 'sha256:other']])
+    const published = distWorld({ release: 'published', assets: held })
     await published.upload()
     expect(published.uploaded()).toEqual([])
   })
 
-  it('does not take an unreadable asset list for missing assets', async () => {
-    const { upload, uploaded } = distWorld({ assetReadErrors: 1 })
-    await upload()
+  it('fails on a published release that lacks a file, and uploads nothing', async () => {
+    const { upload, uploaded } = distWorld({
+      release: 'published',
+      assets: new Map([['a.tar.gz', 'sha256:other']])
+    })
+    await expect(upload()).rejects.toThrow('is published, and lacks: b.tar.gz')
+    expect(uploaded()).toEqual([])
+  })
+
+  it('uploads nothing when it cannot read the release', async () => {
+    const once = distWorld({ assetReadErrors: 1 })
+    await once.upload()
+    expect(once.uploaded()).toEqual(['a.tar.gz', 'b.tar.gz'])
+
+    const { upload, uploaded } = distWorld({ assetReadErrors: 100 })
+    await expect(upload()).rejects.toThrow('HTTP 502: Bad Gateway')
+    expect(uploaded()).toEqual([])
+  })
+
+  it('refuses a malformed asset list', async () => {
+    const { world, uploaded } = distWorld()
+    const run = world.ctx.run
+    const ctx = {
+      ...world.ctx,
+      run: async (...args: Parameters<typeof run>) =>
+        args[1][1] === 'view'
+          ? {
+              code: 0,
+              stdout: '{"isDraft":true,"isPrerelease":false,"assets":[{}]}',
+              stderr: '',
+              timedOut: false
+            }
+          : run(...args)
+    }
+    await expect(uploadAssets(ctx, 'v1.2.3', join(world.pkgDir, 'dist'), POLICY)).rejects.toThrow(
+      'unexpected output'
+    )
+    expect(uploaded()).toEqual([])
+  })
+
+  it('reads the release again after its delay, before it uploads', async () => {
+    const { world, dir, uploaded } = distWorld({
+      uploads: new Map([['a.tar.gz', ['fail', 'fail']]])
+    })
+    const ctx = {
+      ...world.ctx,
+      sleep: async () => {
+        world.state.release = 'published'
+        world.state.assets.set('a.tar.gz', 'sha256:other')
+      }
+    }
+    // The first retry waits; by then someone published the release.
+    await uploadAssets(ctx, 'v1.2.3', dir, POLICY)
     expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz'])
   })
 
