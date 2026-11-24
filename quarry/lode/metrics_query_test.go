@@ -9,6 +9,7 @@ import (
 	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/types"
 )
 
 // toInt64 converts a value to int64 for test assertions on raw map fields.
@@ -390,7 +391,15 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 		if collected {
 			rec.Metrics = &metrics.Snapshot{RunID: runID, Policy: "strict", Executor: "e", StorageBackend: "fs"}
 		}
-		if err := client(source, runID, day).WriteEndRecord(t.Context(), rec); err != nil {
+		c := client(source, runID, day)
+		started, err := time.Parse(time.DateOnly, day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.WriteStartRecord(t.Context(), &types.RunMeta{RunID: runID, Attempt: 1}, started, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.WriteEndRecord(t.Context(), rec); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -432,12 +441,38 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 			}
 		})
 	}
+	// An end record without a start record names no run.
+	if err := client("c", "run-pruned", "2026-02-09").WriteEndRecord(t.Context(), RunEnd{EndedAt: at(9, 1), Metrics: &metrics.Snapshot{RunID: "run-pruned"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := latest("", ""); got != "run-2" {
+		t.Errorf("latest = %s, want no run without a start record", got)
+	}
+	// Times compare as instants, not as text.
+	end("c", "run-tenth", "2026-02-03", at(3, 3).Add(100*time.Millisecond), true)
+	end("c", "run-later", "2026-02-03", at(3, 3).Add(110*time.Millisecond), true)
+	if got := latest("", ""); got != "run-later" {
+		t.Errorf("latest = %s, want the later instant", got)
+	}
+	// A run of an earlier day that committed last is not the latest.
 	legacy("c", "run-late", "2026-02-04", at(4, 1))
+	legacy("c", "run-slow", "2026-02-01", at(6, 1))
 	if got := latest("", ""); got != "run-late" {
 		t.Errorf("latest = %s, want the later metrics record", got)
 	}
 	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-2", "")
-	if err != nil || record["ts"] != "2026-02-03T02:00:00Z" || record["source"] != "c" || record["day"] != "2026-02-03" {
+	if err != nil || record["ts"] != "2026-02-03T02:00:00Z" || record["source"] != "c" || record["day"] != "2026-02-03" || record["event_type"] != "metrics" {
 		t.Errorf("record = %v, %v, want the fields of a metrics record", record, err)
+	}
+	// Metrics of another run are refused.
+	foreign := client("c", "run-foreign", "2026-02-03")
+	if err := foreign.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "run-foreign", Attempt: 1}, at(3, 0), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := foreign.WriteEndRecord(t.Context(), RunEnd{EndedAt: at(3, 1), Metrics: &metrics.Snapshot{RunID: "run-2"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-foreign", ""); err == nil {
+		t.Error("QueryLatestMetrics returned another run's metrics")
 	}
 }

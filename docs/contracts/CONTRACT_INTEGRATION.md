@@ -255,8 +255,9 @@ The adapter is invoked **after** `Execute` returns, so all of the following
 have happened ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization):
 1. Run execution completes (success or failure)
 2. Policy flush completes
-3. Metrics are persisted to Lode
-4. The run's end record is written, or its write failed
+3. The run's end record, which holds its metrics, is written, or its write
+   failed. After a failed write, the run's events and artifacts remain
+   readable, and its metrics are only in the exit report
 
 Notification is not skipped when finalization is incomplete: a run whose
 start record failed is notified as `executor_crash` (it never started),

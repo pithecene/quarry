@@ -308,26 +308,27 @@ func (c *LodeClient) putRecord(ctx context.Context, name string, record any) err
 // errMalformedRecord marks a run record that was read and is not its JSON form.
 var errMalformedRecord = errors.New("malformed run record")
 
-// readEndRecord decodes the run's end record into v. It is false when the run
+// readEndFields returns the fields of the run's end record, or nil when the run
 // has none.
-func readEndRecord(ctx context.Context, store lode.Store, cfg Config, v any) (bool, error) {
+func readEndFields(ctx context.Context, store lode.Store, cfg Config) (map[string]json.RawMessage, error) {
 	key := RunRecordDir(cfg) + EndRecordName
 	rc, err := store.Get(ctx, key)
 	if errors.Is(err, lode.ErrNotFound) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, WrapReadError(err, key)
+		return nil, WrapReadError(err, key)
 	}
 	defer iox.DiscardClose(rc)
 	data, err := io.ReadAll(rc)
 	if err != nil {
-		return false, WrapReadError(err, key)
+		return nil, WrapReadError(err, key)
 	}
-	if err := json.Unmarshal(data, v); err != nil {
-		return false, fmt.Errorf("%w %s: %w", errMalformedRecord, key, err)
+	var rec map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return nil, fmt.Errorf("%w %s: %w", errMalformedRecord, key, err)
 	}
-	return true, nil
+	return rec, nil
 }
 
 // ErrMalformedSidecars marks an end record whose sidecar files cannot be read as
@@ -335,18 +336,21 @@ func readEndRecord(ctx context.Context, store lode.Store, cfg Config, v any) (bo
 var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
 
 // ReadEndSidecars returns the sidecar files that the run's end record holds, each
-// once, or
-// none when the run has no end record or its record holds none.
+// once, or none when the run has no end record or its record holds none.
 func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]SidecarFileRef, error) {
-	key := RunRecordDir(cfg) + EndRecordName
-	var rec map[string]json.RawMessage
-	found, err := readEndRecord(ctx, store, cfg, &rec)
+	rec, err := readEndFields(ctx, store, cfg)
 	if errors.Is(err, errMalformedRecord) {
 		return nil, fmt.Errorf("%w: %w", ErrMalformedSidecars, err)
 	}
-	if err != nil || !found {
+	if err != nil {
 		return nil, err
 	}
+	return endSidecars(rec, cfg)
+}
+
+// endSidecars returns the sidecar files of an end record, each once.
+func endSidecars(rec map[string]json.RawMessage, cfg Config) ([]SidecarFileRef, error) {
+	key := RunRecordDir(cfg) + EndRecordName
 	files, err := decodeSidecarFiles(rec)
 	if err != nil {
 		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)

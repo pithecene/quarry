@@ -26,7 +26,11 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 	if err != nil {
 		return RunDetails{}, WrapReadError(err, "datasets/"+key.Dataset)
 	}
-	record, err := readEndMetrics(ctx, store, key)
+	end, err := readEndFields(ctx, store, key)
+	if err != nil {
+		return RunDetails{}, fmt.Errorf("read end record: %w", err)
+	}
+	record, err := endMetrics(end, key)
 	if err != nil {
 		return RunDetails{}, fmt.Errorf("read metrics: %w", err)
 	}
@@ -62,7 +66,7 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 			return RunDetails{}, fmt.Errorf("read metrics: unknown policy %q for run %q", policy, key.RunID)
 		}
 	}
-	recorded, err := ReadEndSidecars(ctx, store, key)
+	recorded, err := endSidecars(end, key)
 	if err != nil {
 		return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 	}

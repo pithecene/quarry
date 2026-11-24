@@ -24,6 +24,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **A run shares the reusable browser only when its launch settings match**: the server now compares the browser that the run would launch with its own. The executor reports that browser's Puppeteer modules and versions, Chrome binary, plugins, and launch arguments, and the runtime adds the executor's digest and the proxy. Before, it compared only the proxy, so a run with `QUARRY_STEALTH=0` could receive a browser launched with other settings. A run whose settings differ launches its own browser (`CONTRACT_CLI.md` § Transparent Browser Reuse).
 - **Release checksum files verify beside a download**: each `.sha256` file now names the bare file. Before, it named a path under `dist/`, so `sha256sum -c` failed on a downloaded file.
 
+### Upgrade Notes
+
+- **Reading metrics**: read `metrics` from a run's `end.json` in place of the `event_type=metrics` partition. `quarry stats metrics` and `quarry inspect run` need no change, and runs of earlier releases stay readable.
+
 ---
 
 ## [0.19.0] - 2026-11-23
