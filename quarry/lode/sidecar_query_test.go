@@ -60,6 +60,9 @@ func TestQueryRunDetails_Sidecars(t *testing.T) {
 			}
 		})
 	}
+	if got := sidecarsOf(t, sharedMemoryFactory(), key("run-A")); got != nil {
+		t.Errorf("sidecar files of an empty store = %+v, want nil", got)
+	}
 }
 
 // A malformed sidecar inventory fails the query with an error that names
