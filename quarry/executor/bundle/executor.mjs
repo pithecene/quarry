@@ -45,714 +45,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// ../sdk/dist/index.mjs
-import { createHash, randomUUID } from "node:crypto";
-import { readFileSync as readFileSync2 } from "node:fs";
-import v8 from "node:v8";
-function hasBrand(value, brand) {
-  return typeof value === "object" && value !== null && Reflect.get(value, brand) === true;
-}
-function buildStorageKey(partition, filename) {
-  return `datasets/${partition.dataset}/partitions/source=${partition.source}/category=${partition.category}/day=${partition.day}/run_id=${partition.run_id}/files/${filename}`;
-}
-function isRecoverable(err) {
-  return err instanceof ArtifactRangeRefusedError || err instanceof ArtifactWriterError;
-}
-function validateWriterOptions(options) {
-  const size = options.size_bytes;
-  if (!Number.isSafeInteger(size) || size < 0 || size > ARTIFACT_MAX_BYTES) throw new ArtifactWriterError(`artifact size_bytes ${size} is not a whole number from 0 to ${ARTIFACT_MAX_BYTES}`);
-  if (options.sha256 !== void 0 && !SHA256_HEX.test(options.sha256)) throw new ArtifactWriterError(`artifact sha256 "${options.sha256}" is not a hex SHA-256`);
-}
-function* splitRanges(offset, data) {
-  for (let at = 0; at < data.byteLength; at += ARTIFACT_RANGE_MAX_BYTES) yield [offset + at, data.subarray(at, at + ARTIFACT_RANGE_MAX_BYTES)];
-}
-function createAPIs(run, sink, storagePartition) {
-  let seq = 0;
-  let terminalEmitted = false;
-  let sinkFailed = null;
-  let chain = Promise.resolve();
-  function serialize(fn) {
-    const result = chain.then(async () => {
-      if (sinkFailed !== null) throw new SinkFailedError(sinkFailed);
-      try {
-        return await fn();
-      } catch (err) {
-        if (!isRecoverable(err)) sinkFailed = err;
-        throw err;
-      }
-    });
-    chain = result.then(() => {
-    }, () => {
-    });
-    return result;
-  }
-  function createEnvelope(type, payload) {
-    return {
-      contract_version: CONTRACT_VERSION,
-      event_id: randomUUID(),
-      run_id: run.run_id,
-      type,
-      ts: (/* @__PURE__ */ new Date()).toISOString(),
-      payload,
-      attempt: run.attempt,
-      ...run.job_id !== void 0 && { job_id: run.job_id },
-      ...run.parent_run_id !== void 0 && { parent_run_id: run.parent_run_id }
-    };
-  }
-  async function writeEnvelope(envelope) {
-    seq += 1;
-    const complete = {
-      ...envelope,
-      seq
-    };
-    await sink.writeEvent(complete);
-  }
-  function assertNotTerminal() {
-    if (terminalEmitted) throw new TerminalEventError();
-  }
-  async function openArtifact(options) {
-    const declared = Object.freeze({
-      name: options.name,
-      content_type: options.content_type,
-      size_bytes: options.size_bytes,
-      ...options.sha256 !== void 0 && { sha256: options.sha256 }
-    });
-    validateWriterOptions(declared);
-    const artifact = new OpenArtifact(randomUUID(), declared);
-    await sink.openArtifact(artifact.artifact_id, declared.size_bytes, declared.sha256);
-    return artifact;
-  }
-  async function writeRanges(artifact, offset, data) {
-    artifact.checkWrite(offset, data.byteLength);
-    for (const [at, range] of splitRanges(offset, data)) {
-      try {
-        await sink.writeArtifactRange(artifact.artifact_id, at, range);
-      } catch (err) {
-        if (err instanceof ArtifactRangeRefusedError) throw new ArtifactRangeRefusedError(err.message, at, { cause: err });
-        throw err;
-      }
-      artifact.wrote(at, range.byteLength);
-    }
-  }
-  async function commitArtifact(artifact) {
-    artifact.checkCommit();
-    await writeEnvelope(createEnvelope("artifact", {
-      artifact_id: artifact.artifact_id,
-      name: artifact.options.name,
-      content_type: artifact.options.content_type,
-      size_bytes: artifact.options.size_bytes
-    }));
-    artifact.commit();
-    return artifact.artifact_id;
-  }
-  function writerOf(artifact) {
-    return {
-      artifact_id: artifact.artifact_id,
-      writeAt: (offset, data) => serialize(async () => {
-        assertNotTerminal();
-        await writeRanges(artifact, offset, data);
-      }),
-      commit: () => serialize(async () => {
-        assertNotTerminal();
-        return commitArtifact(artifact);
-      })
-    };
-  }
-  function emitEvent(type, payload) {
-    return serialize(async () => {
-      assertNotTerminal();
-      await writeEnvelope(createEnvelope(type, payload));
-    });
-  }
-  const emit = {
-    item(options) {
-      return emitEvent("item", {
-        item_type: options.item_type,
-        data: options.data
-      });
-    },
-    artifact(options) {
-      return serialize(async () => {
-        assertNotTerminal();
-        const artifact = await openArtifact({
-          name: options.name,
-          content_type: options.content_type,
-          size_bytes: options.data.byteLength
-        });
-        if (options.data.byteLength > 0) await writeRanges(artifact, 0, options.data);
-        return commitArtifact(artifact);
-      });
-    },
-    artifactWriter(options) {
-      return serialize(async () => {
-        assertNotTerminal();
-        return writerOf(await openArtifact(options));
-      });
-    },
-    checkpoint(options) {
-      return emitEvent("checkpoint", {
-        checkpoint_id: options.checkpoint_id,
-        ...options.note !== void 0 && { note: options.note }
-      });
-    },
-    enqueue(options) {
-      return emitEvent("enqueue", {
-        target: options.target,
-        params: options.params,
-        ...options.source !== void 0 && { source: options.source },
-        ...options.category !== void 0 && { category: options.category }
-      });
-    },
-    rotateProxy(options) {
-      return emitEvent("rotate_proxy", { ...options?.reason !== void 0 && { reason: options.reason } });
-    },
-    log(options) {
-      return emitEvent("log", {
-        level: options.level,
-        message: options.message,
-        ...options.fields !== void 0 && { fields: options.fields }
-      });
-    },
-    async debug(message, fields) {
-      await emit.log({
-        level: "debug",
-        message,
-        fields
-      });
-    },
-    async info(message, fields) {
-      await emit.log({
-        level: "info",
-        message,
-        fields
-      });
-    },
-    async warn(message, fields) {
-      await emit.log({
-        level: "warn",
-        message,
-        fields
-      });
-    },
-    async error(message, fields) {
-      await emit.log({
-        level: "error",
-        message,
-        fields
-      });
-    },
-    runError(options) {
-      return serialize(async () => {
-        assertNotTerminal();
-        await writeEnvelope(createEnvelope("run_error", {
-          error_type: options.error_type,
-          message: options.message,
-          ...options.stack !== void 0 && { stack: options.stack }
-        }));
-        terminalEmitted = true;
-      });
-    },
-    runComplete(options) {
-      return serialize(async () => {
-        assertNotTerminal();
-        await writeEnvelope(createEnvelope("run_complete", { ...options?.summary !== void 0 && { summary: options.summary } }));
-        terminalEmitted = true;
-      });
-    }
-  };
-  function validateFilename(filename) {
-    if (!filename) throw new StorageFilenameError(filename, "filename must not be empty");
-    if (filename.includes("/") || filename.includes("\\")) throw new StorageFilenameError(filename, "filename must not contain path separators");
-    if (filename.includes("..")) throw new StorageFilenameError(filename, 'filename must not contain ".."');
-  }
-  return {
-    emit,
-    storage: { put(options) {
-      return serialize(async () => {
-        assertNotTerminal();
-        validateFilename(options.filename);
-        await sink.writeFile(options.filename, options.content_type, options.data);
-        return { key: storagePartition ? buildStorageKey(storagePartition, options.filename) : "" };
-      });
-    } }
-  };
-}
-function validateThresholds(t) {
-  for (const [name, value] of Object.entries(t)) if (value <= 0 || value > 1) throw new RangeError(`MemoryThreshold "${name}" must be in (0, 1], got ${value}`);
-  if (t.moderate >= t.high) throw new RangeError(`MemoryThresholds must be monotonic: moderate (${t.moderate}) must be < high (${t.high})`);
-  if (t.high >= t.critical) throw new RangeError(`MemoryThresholds must be monotonic: high (${t.high}) must be < critical (${t.critical})`);
-}
-function classifyPressure(ratio, thresholds) {
-  if (ratio >= thresholds.critical) return "critical";
-  if (ratio >= thresholds.high) return "high";
-  if (ratio >= thresholds.moderate) return "moderate";
-  return "low";
-}
-function highestPressure(levels) {
-  let max = 0;
-  for (const level of levels) {
-    const idx = PRESSURE_ORDER.indexOf(level);
-    if (idx > max) max = idx;
-  }
-  return PRESSURE_ORDER[max];
-}
-function readNodeUsage() {
-  const heapStats = v8.getHeapStatistics();
-  const used = process.memoryUsage().heapUsed;
-  const limit = heapStats.heap_size_limit;
-  return {
-    used,
-    limit,
-    ratio: limit > 0 ? used / limit : 0
-  };
-}
-async function readBrowserUsage(page) {
-  if (!page) return null;
-  try {
-    const m = await page.metrics();
-    const used = m.JSHeapUsedSize ?? 0;
-    const limit = m.JSHeapTotalSize ?? 0;
-    return {
-      used,
-      limit,
-      ratio: limit > 0 ? used / limit : 0
-    };
-  } catch {
-    return null;
-  }
-}
-function readCgroupUsage(readFile = readCgroupFile) {
-  const v2Current = readFile("/sys/fs/cgroup/memory.current");
-  const v2Max = readFile("/sys/fs/cgroup/memory.max");
-  if (v2Current !== null && v2Max !== null) return {
-    used: v2Current,
-    limit: v2Max,
-    ratio: v2Max > 0 ? v2Current / v2Max : 0
-  };
-  const v1Usage = readFile("/sys/fs/cgroup/memory/memory.usage_in_bytes");
-  const v1Limit = readFile("/sys/fs/cgroup/memory/memory.limit_in_bytes");
-  if (v1Usage !== null && v1Limit !== null) {
-    if (v1Limit >= CGROUP_UNLIMITED_THRESHOLD) return null;
-    return {
-      used: v1Usage,
-      limit: v1Limit,
-      ratio: v1Limit > 0 ? v1Usage / v1Limit : 0
-    };
-  }
-  return null;
-}
-function readCgroupFile(path) {
-  try {
-    const content = readFileSync2(path, "utf8").trim();
-    if (content === "max") return null;
-    const value = Number.parseInt(content, 10);
-    return Number.isNaN(value) ? null : value;
-  } catch {
-    return null;
-  }
-}
-function createMemoryAPI(options) {
-  const thresholds = {
-    ...DEFAULT_THRESHOLDS,
-    ...options.thresholds
-  };
-  validateThresholds(thresholds);
-  const readNode = options._readNode ?? readNodeUsage;
-  const readBrowser = options._readBrowser ?? readBrowserUsage;
-  const readCgroup = options._readCgroup ?? (() => readCgroupUsage(options._readCgroupFile));
-  async function snapshot(opts) {
-    const includeBrowser = opts?.browser !== false;
-    const node = readNode();
-    const browser = includeBrowser ? await readBrowser(options.page) : null;
-    const cgroup = readCgroup();
-    const levels = [classifyPressure(node.ratio, thresholds)];
-    if (browser) levels.push(classifyPressure(browser.ratio, thresholds));
-    if (cgroup) levels.push(classifyPressure(cgroup.ratio, thresholds));
-    return {
-      node,
-      browser,
-      cgroup,
-      pressure: highestPressure(levels),
-      ts: (/* @__PURE__ */ new Date()).toISOString()
-    };
-  }
-  return {
-    snapshot,
-    async isAbove(level) {
-      const snap = await snapshot();
-      return PRESSURE_ORDER.indexOf(snap.pressure) >= PRESSURE_ORDER.indexOf(level);
-    }
-  };
-}
-function noBrowserHandle(member) {
-  const fail = () => {
-    throw new NoBrowserError(member);
-  };
-  return new Proxy(/* @__PURE__ */ Object.create(null), {
-    get: (_target, key) => typeof key === "symbol" || key === "then" ? void 0 : fail(),
-    has: fail,
-    set: fail,
-    ownKeys: fail,
-    apply: fail
-  });
-}
-function requireHandle(value, member) {
-  if (value === void 0) throw new Error(`createContext needs ${member} unless noBrowser is set`);
-  return value;
-}
-function createContext(options) {
-  const { emit, storage } = createAPIs(options.run, options.sink, options.storagePartition);
-  const noBrowser = options.noBrowser === true;
-  const page = noBrowser ? noBrowserHandle("page") : requireHandle(options.page, "page");
-  const browser = noBrowser ? noBrowserHandle("browser") : requireHandle(options.browser, "browser");
-  const browserContext = noBrowser ? noBrowserHandle("browserContext") : requireHandle(options.browserContext, "browserContext");
-  const memory = createMemoryAPI({
-    page: noBrowser ? null : page,
-    thresholds: options.memoryThresholds
-  });
-  const ctx = {
-    job: options.job,
-    run: Object.freeze(options.run),
-    page,
-    browser,
-    browserContext,
-    emit,
-    storage,
-    memory
-  };
-  return Object.freeze(ctx);
-}
-var ARTIFACT_RANGE_MAX_BYTES, ARTIFACT_MAX_BYTES, RANGE_REFUSED_BRAND, WRITER_ERROR_BRAND, ArtifactRangeRefusedError, ArtifactWriterError, RangeSet, CONTRACT_VERSION, TerminalEventError, SinkFailedError, StorageFilenameError, SHA256_HEX, OpenArtifact, PRESSURE_ORDER, DEFAULT_THRESHOLDS, CGROUP_UNLIMITED_THRESHOLD, NoBrowserError, isString, isNumber, oneOf, orNull, optional, runSummaryFields, storedEventFields;
-var init_dist = __esm({
-  "../sdk/dist/index.mjs"() {
-    "use strict";
-    ARTIFACT_RANGE_MAX_BYTES = 8 * 1024 * 1024;
-    ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024;
-    RANGE_REFUSED_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactRangeRefusedError");
-    WRITER_ERROR_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactWriterError");
-    ArtifactRangeRefusedError = class extends Error {
-      /**
-      * The offset of the refused range, when the SDK knows it. A rejected
-      * `writeAt(offset, data)` committed the bytes from `offset` up to this
-      * offset, and none from it on.
-      */
-      offset;
-      [RANGE_REFUSED_BRAND] = true;
-      constructor(message, offset, options) {
-        super(message, options);
-        this.name = "ArtifactRangeRefusedError";
-        this.offset = offset;
-      }
-      static [Symbol.hasInstance](value) {
-        return hasBrand(value, RANGE_REFUSED_BRAND);
-      }
-    };
-    ArtifactWriterError = class extends Error {
-      [WRITER_ERROR_BRAND] = true;
-      constructor(message) {
-        super(message);
-        this.name = "ArtifactWriterError";
-      }
-      static [Symbol.hasInstance](value) {
-        return hasBrand(value, WRITER_ERROR_BRAND);
-      }
-    };
-    RangeSet = class {
-      ranges = [];
-      /** Reports whether [start, end) shares a byte with a range in the set. */
-      overlaps(start, end) {
-        const next = this.ranges[this.firstEndingAfter(start)];
-        return next !== void 0 && next.start < end;
-      }
-      /**
-      * Adds [start, end), which must not overlap a range in the set, merged
-      * with the range that ends at start and the one that begins at end.
-      */
-      add(start, end) {
-        const first = this.firstEndingAfter(start - 1);
-        let merged = {
-          start,
-          end
-        };
-        let count = 0;
-        for (let next = this.ranges[first]; next !== void 0 && next.start <= end; ) {
-          merged = {
-            start: Math.min(merged.start, next.start),
-            end: Math.max(merged.end, next.end)
-          };
-          count++;
-          next = this.ranges[first + count];
-        }
-        this.ranges.splice(first, count, merged);
-      }
-      /** Reports whether the set is exactly [0, size). */
-      covers(size) {
-        if (size === 0) return this.ranges.length === 0;
-        const only = this.ranges[0];
-        return this.ranges.length === 1 && only?.start === 0 && only.end === size;
-      }
-      /** Returns the index of the first range whose end exceeds offset. */
-      firstEndingAfter(offset) {
-        let lo = 0;
-        let hi = this.ranges.length;
-        while (lo < hi) {
-          const mid = lo + hi >>> 1;
-          if ((this.ranges[mid]?.end ?? Number.POSITIVE_INFINITY) > offset) hi = mid;
-          else lo = mid + 1;
-        }
-        return lo;
-      }
-    };
-    CONTRACT_VERSION = "0.19.0";
-    TerminalEventError = class extends Error {
-      constructor() {
-        super("Cannot emit: a terminal event (run_error or run_complete) has already been emitted");
-        this.name = "TerminalEventError";
-      }
-    };
-    SinkFailedError = class extends Error {
-      constructor(cause) {
-        super("Cannot emit: sink has previously failed");
-        this.name = "SinkFailedError";
-        this.cause = cause;
-      }
-    };
-    StorageFilenameError = class extends Error {
-      constructor(filename, reason) {
-        super(`Invalid storage filename "${filename}": ${reason}`);
-        this.name = "StorageFilenameError";
-      }
-    };
-    SHA256_HEX = /^[0-9a-f]{64}$/i;
-    OpenArtifact = class {
-      written = new RangeSet();
-      committed = false;
-      constructor(artifact_id, options) {
-        this.artifact_id = artifact_id;
-        this.options = options;
-      }
-      /**
-      * Refuse a write after the commit, an empty range, or a range outside
-      * the artifact or overlapping a written one.
-      */
-      checkWrite(offset, length) {
-        this.checkOpen();
-        const size = this.options.size_bytes;
-        if (!Number.isSafeInteger(offset) || offset < 0 || length === 0 || length > size - offset) throw new ArtifactWriterError(`artifact ${this.artifact_id}: range of ${length} bytes at ${offset} is empty or outside [0, ${size})`);
-        if (this.written.overlaps(offset, offset + length)) throw new ArtifactWriterError(`artifact ${this.artifact_id}: range of ${length} bytes at ${offset} overlaps a written range`);
-      }
-      /** Record a range the runtime committed. */
-      wrote(offset, length) {
-        this.written.add(offset, offset + length);
-      }
-      /** Refuse a commit after the commit, or before the ranges cover the artifact. */
-      checkCommit() {
-        this.checkOpen();
-        if (!this.written.covers(this.options.size_bytes)) throw new ArtifactWriterError(`artifact ${this.artifact_id}: written ranges do not cover its ${this.options.size_bytes} bytes`);
-      }
-      /** Mark the artifact committed: its artifact event is written. */
-      commit() {
-        this.committed = true;
-      }
-      checkOpen() {
-        if (this.committed) throw new ArtifactWriterError(`artifact ${this.artifact_id} is committed`);
-      }
-    };
-    PRESSURE_ORDER = [
-      "low",
-      "moderate",
-      "high",
-      "critical"
-    ];
-    DEFAULT_THRESHOLDS = {
-      moderate: 0.5,
-      high: 0.7,
-      critical: 0.9
-    };
-    CGROUP_UNLIMITED_THRESHOLD = 2 ** 62;
-    NoBrowserError = class extends Error {
-      /** The context member the script used. */
-      member;
-      constructor(member) {
-        super(`ctx.${member} is unavailable: this run declares no browser (quarry run --no-browser)`);
-        this.name = "NoBrowserError";
-        this.member = member;
-      }
-    };
-    isString = (v) => typeof v === "string";
-    isNumber = (v) => typeof v === "number";
-    oneOf = (...values) => (v) => values.includes(v);
-    orNull = (check) => (v) => v === null || check(v);
-    optional = (check) => (v) => v === void 0 || check(v);
-    runSummaryFields = {
-      run_id: isString,
-      job_id: optional(isString),
-      parent_run_id: optional(isString),
-      attempt: isNumber,
-      dataset: isString,
-      source: isString,
-      category: isString,
-      day: isString,
-      partition: isString,
-      started_at: orNull(isString),
-      state: oneOf(...[
-        "succeeded",
-        "failed",
-        "unterminated"
-      ]),
-      backfilled: (v) => typeof v === "boolean",
-      ended_at: orNull(isString),
-      outcome: orNull(isString),
-      terminal: oneOf("run_complete", "run_error", null),
-      message: optional(isString),
-      event_count: orNull(isNumber)
-    };
-    storedEventFields = {
-      record_kind: oneOf("event", "artifact_event"),
-      seq: isNumber,
-      ts: isString
-    };
-  }
-});
-
-// src/ipc/observing-sink.ts
-function isTerminalType(type) {
-  return type === "run_complete" || type === "run_error";
-}
-function isPlainObject(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-var SinkAlreadyFailedError, ObservingSink;
-var init_observing_sink = __esm({
-  "src/ipc/observing-sink.ts"() {
-    "use strict";
-    init_dist();
-    SinkAlreadyFailedError = class extends Error {
-      constructor(originalCause) {
-        const causeMsg = originalCause instanceof Error ? originalCause.message : String(originalCause);
-        super(`Sink has already failed: ${causeMsg}`);
-        this.name = "SinkAlreadyFailedError";
-        this.cause = originalCause;
-      }
-    };
-    ObservingSink = class {
-      constructor(inner) {
-        this.inner = inner;
-      }
-      inner;
-      terminalState = null;
-      sinkFailure = null;
-      /**
-       * Write an event envelope, tracking the first terminal event on success.
-       * @throws SinkAlreadyFailedError if the sink has previously failed
-       */
-      async writeEvent(envelope) {
-        if (this.sinkFailure !== null) {
-          throw new SinkAlreadyFailedError(this.sinkFailure);
-        }
-        try {
-          await this.inner.writeEvent(envelope);
-          if (this.terminalState === null && isTerminalType(envelope.type)) {
-            this.terminalState = this.extractTerminalState(envelope.type, envelope.payload);
-          }
-        } catch (err) {
-          if (this.sinkFailure === null) {
-            this.sinkFailure = err;
-          }
-          throw err;
-        }
-      }
-      /**
-       * Write an artifact open frame, tracking failures.
-       * @throws SinkAlreadyFailedError if the sink has previously failed
-       */
-      async openArtifact(artifactId, sizeBytes, expectedSha256) {
-        if (this.sinkFailure !== null) {
-          throw new SinkAlreadyFailedError(this.sinkFailure);
-        }
-        try {
-          await this.inner.openArtifact(artifactId, sizeBytes, expectedSha256);
-        } catch (err) {
-          if (this.sinkFailure === null) {
-            this.sinkFailure = err;
-          }
-          throw err;
-        }
-      }
-      /**
-       * Write an artifact range, tracking failures. A range the runtime refused
-       * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
-       * rethrown without marking the sink failed.
-       * @throws SinkAlreadyFailedError if the sink has previously failed
-       */
-      async writeArtifactRange(artifactId, offset, data) {
-        if (this.sinkFailure !== null) {
-          throw new SinkAlreadyFailedError(this.sinkFailure);
-        }
-        try {
-          await this.inner.writeArtifactRange(artifactId, offset, data);
-        } catch (err) {
-          if (this.sinkFailure === null && !(err instanceof ArtifactRangeRefusedError)) {
-            this.sinkFailure = err;
-          }
-          throw err;
-        }
-      }
-      /**
-       * Write a sidecar file, tracking failures.
-       * @throws SinkAlreadyFailedError if the sink has previously failed
-       */
-      async writeFile(filename, contentType, data) {
-        if (this.sinkFailure !== null) {
-          throw new SinkAlreadyFailedError(this.sinkFailure);
-        }
-        try {
-          await this.inner.writeFile(filename, contentType, data);
-        } catch (err) {
-          if (this.sinkFailure === null) {
-            this.sinkFailure = err;
-          }
-          throw err;
-        }
-      }
-      /**
-       * Extract terminal state from type and payload.
-       * Type alone is authoritative; payload fields are best-effort.
-       */
-      extractTerminalState(type, payload) {
-        if (type === "run_error") {
-          let errorType;
-          let message;
-          if (isPlainObject(payload)) {
-            if ("error_type" in payload && typeof payload.error_type === "string") {
-              errorType = payload.error_type;
-            }
-            if ("message" in payload && typeof payload.message === "string") {
-              message = payload.message;
-            }
-          }
-          return { type: "run_error", errorType, message };
-        }
-        let summary;
-        if (isPlainObject(payload) && "summary" in payload && isPlainObject(payload.summary)) {
-          summary = payload.summary;
-        }
-        return { type: "run_complete", summary };
-      }
-      // SinkState implementation
-      getTerminalState() {
-        return this.terminalState;
-      }
-      isSinkFailed() {
-        return this.sinkFailure !== null;
-      }
-      getSinkFailure() {
-        return this.sinkFailure;
-      }
-    };
-  }
-});
-
 // ../node_modules/.pnpm/@msgpack+msgpack@3.1.3/node_modules/@msgpack/msgpack/dist.cjs/utils/utf8.cjs
 var require_utf8 = __commonJS({
   "../node_modules/.pnpm/@msgpack+msgpack@3.1.3/node_modules/@msgpack/msgpack/dist.cjs/utils/utf8.cjs"(exports) {
@@ -2462,914 +1754,6 @@ var require_dist = __commonJS({
   }
 });
 
-// src/ipc/frame.ts
-function encodeFrame(payload) {
-  if (payload.length > MAX_PAYLOAD_SIZE) {
-    throw new FrameSizeError(payload.length, MAX_PAYLOAD_SIZE);
-  }
-  const frame = Buffer.allocUnsafe(LENGTH_PREFIX_SIZE + payload.length);
-  frame.writeUInt32BE(payload.length, 0);
-  frame.set(payload, LENGTH_PREFIX_SIZE);
-  return frame;
-}
-function encodeEventFrame(envelope) {
-  const payload = (0, import_msgpack.encode)(envelope);
-  return encodeFrame(payload);
-}
-function encodeRunResultFrame(outcome, proxyUsed) {
-  const frame = {
-    type: "run_result",
-    outcome,
-    ...proxyUsed && { proxy_used: proxyUsed }
-  };
-  const payload = (0, import_msgpack.encode)(frame);
-  return encodeFrame(payload);
-}
-function encodeFileWriteFrame(filename, contentType, data, writeId = 0) {
-  if (data.length > MAX_CHUNK_SIZE) {
-    throw new ChunkValidationError(
-      `file data size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
-    );
-  }
-  const frame = {
-    type: "file_write",
-    write_id: writeId,
-    filename,
-    content_type: contentType,
-    data
-  };
-  const payload = (0, import_msgpack.encode)(frame);
-  return encodeFrame(payload);
-}
-function decodeFileWriteAck(payload) {
-  const decoded = (0, import_msgpack.decode)(payload);
-  if (decoded.type !== "file_write_ack") {
-    throw new Error(`Expected file_write_ack frame, got type: ${String(decoded.type)}`);
-  }
-  return {
-    type: "file_write_ack",
-    write_id: decoded.write_id,
-    ok: decoded.ok,
-    ...decoded.error != null && { error: decoded.error }
-  };
-}
-function encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256) {
-  const frame = {
-    type: "artifact_open",
-    artifact_id: artifactId,
-    size_bytes: sizeBytes,
-    ...expectedSha256 !== void 0 && { expected_sha256: expectedSha256 }
-  };
-  return encodeFrame((0, import_msgpack.encode)(frame));
-}
-function encodeArtifactRangeFrame(artifactId, rangeId, offset, data) {
-  if (data.length > MAX_CHUNK_SIZE) {
-    throw new ChunkValidationError(
-      `range size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
-    );
-  }
-  const frame = {
-    type: "artifact_range",
-    artifact_id: artifactId,
-    range_id: rangeId,
-    offset,
-    data
-  };
-  return encodeFrame((0, import_msgpack.encode)(frame));
-}
-function decodeArtifactRangeAck(payload) {
-  const decoded = (0, import_msgpack.decode)(payload);
-  if (decoded.type !== "artifact_range_ack") {
-    throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`);
-  }
-  return {
-    type: "artifact_range_ack",
-    range_id: decoded.range_id,
-    ok: decoded.ok,
-    ...decoded.error != null && { error: decoded.error }
-  };
-}
-var import_msgpack, MAX_FRAME_SIZE, MAX_PAYLOAD_SIZE, MAX_CHUNK_SIZE, LENGTH_PREFIX_SIZE, FrameSizeError, ChunkValidationError;
-var init_frame = __esm({
-  "src/ipc/frame.ts"() {
-    "use strict";
-    import_msgpack = __toESM(require_dist(), 1);
-    MAX_FRAME_SIZE = 16 * 1024 * 1024;
-    MAX_PAYLOAD_SIZE = MAX_FRAME_SIZE - 4;
-    MAX_CHUNK_SIZE = 8 * 1024 * 1024;
-    LENGTH_PREFIX_SIZE = 4;
-    FrameSizeError = class extends Error {
-      constructor(payloadSize, maxPayloadSize) {
-        super(`Payload size ${payloadSize} exceeds maximum ${maxPayloadSize}`);
-        this.payloadSize = payloadSize;
-        this.maxPayloadSize = maxPayloadSize;
-        this.name = "FrameSizeError";
-      }
-      payloadSize;
-      maxPayloadSize;
-    };
-    ChunkValidationError = class extends Error {
-      constructor(message) {
-        super(message);
-        this.name = "ChunkValidationError";
-      }
-    };
-  }
-});
-
-// src/ipc/sink.ts
-function writeWithBackpressure(stream, data, writeFn) {
-  return new Promise((resolve3, reject) => {
-    if (stream.destroyed) {
-      reject(new StreamClosedError("destroyed"));
-      return;
-    }
-    if (stream.writableEnded || stream.writableFinished) {
-      reject(new StreamClosedError("ended"));
-      return;
-    }
-    let settled = false;
-    const settle = (fn) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-    const onError = (err) => settle(() => reject(err));
-    const onClose = () => settle(() => reject(new StreamClosedError("close")));
-    const onFinish = () => settle(() => reject(new StreamClosedError("finish")));
-    const onDrain = () => settle(() => resolve3());
-    const cleanup = () => {
-      stream.off("error", onError);
-      stream.off("close", onClose);
-      stream.off("finish", onFinish);
-      stream.off("drain", onDrain);
-    };
-    stream.on("error", onError);
-    stream.on("close", onClose);
-    stream.on("finish", onFinish);
-    let canContinue;
-    try {
-      canContinue = writeFn(data);
-    } catch (err) {
-      cleanup();
-      reject(err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
-    if (canContinue) {
-      setImmediate(() => settle(() => resolve3()));
-    } else {
-      stream.on("drain", onDrain);
-    }
-  });
-}
-function drainStdout() {
-  return new Promise((resolve3, reject) => {
-    if (process.stdout.writableFinished) {
-      resolve3();
-      return;
-    }
-    const onError = (err) => {
-      cleanup();
-      reject(err);
-    };
-    const cleanup = () => {
-      process.stdout.off("error", onError);
-    };
-    process.stdout.on("error", onError);
-    process.stdout.end(() => {
-      cleanup();
-      resolve3();
-    });
-  });
-}
-var StreamClosedError, StdioSink;
-var init_sink = __esm({
-  "src/ipc/sink.ts"() {
-    "use strict";
-    init_frame();
-    StreamClosedError = class extends Error {
-      constructor(reason) {
-        super(`Output stream unavailable: ${reason}`);
-        this.name = "StreamClosedError";
-      }
-    };
-    StdioSink = class {
-      /**
-       * @param output - The writable stream (used for state checks and event listening)
-       * @param writeFn - Optional function for actual writes. When omitted, defaults to
-       *   `output.write()`. When provided, allows the caller to bypass a patched
-       *   `output.write` (e.g. the stdout guard) while still using `output` for
-       *   backpressure events and stream state.
-       * @param ackReader - Optional AckReader for file_write_ack correlation.
-       *   When provided, writeFile blocks until the runtime sends an ack.
-       *   When omitted, writeFile is fire-and-forget (backward compat).
-       */
-      constructor(output, writeFn, ackReader) {
-        this.output = output;
-        this.writeFn = writeFn ?? ((data) => output.write(data));
-        this.ackReader = ackReader;
-      }
-      output;
-      writeFn;
-      ackReader;
-      writeIdCounter = 0;
-      rangeIdCounter = 0;
-      /**
-       * Write an event envelope as a framed message.
-       * Blocks on backpressure per CONTRACT_IPC.md.
-       */
-      async writeEvent(envelope) {
-        const frame = encodeEventFrame(envelope);
-        await writeWithBackpressure(this.output, frame, this.writeFn);
-      }
-      /**
-       * Write an artifact_open frame with the artifact's size and any expected
-       * SHA-256. Per CONTRACT_IPC.md §Artifact Frames, it precedes the
-       * artifact's ranges and its artifact event, and an empty artifact sends
-       * it alone. Blocks on backpressure per CONTRACT_IPC.md.
-       */
-      async openArtifact(artifactId, sizeBytes, expectedSha256) {
-        await writeWithBackpressure(
-          this.output,
-          encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256),
-          this.writeFn
-        );
-      }
-      /**
-       * Write one artifact_range frame of at most MAX_CHUNK_SIZE bytes at
-       * offset. Blocks on backpressure per CONTRACT_IPC.md.
-       *
-       * The range blocks until the runtime acknowledges it, so a resolved
-       * write is committed, and a refused range rejects with the runtime's
-       * error. A range has no fire-and-forget fallback, so a sink without an
-       * AckReader refuses the write.
-       */
-      async writeArtifactRange(artifactId, offset, data) {
-        const ackReader = this.ackReader;
-        if (ackReader === void 0) {
-          throw new Error("artifact writes need an AckReader: a range resolves on its acknowledgement");
-        }
-        if (data.length > MAX_CHUNK_SIZE) {
-          throw new Error(`artifact range of ${data.length} bytes exceeds max ${MAX_CHUNK_SIZE}`);
-        }
-        const rangeId = ++this.rangeIdCounter;
-        const ackPromise = ackReader.waitForRangeAck(rangeId);
-        const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data);
-        await writeWithBackpressure(this.output, frame, this.writeFn);
-        await ackPromise;
-      }
-      /**
-       * Write a run result control frame.
-       * Per CONTRACT_IPC.md, this is a control frame emitted once after terminal event.
-       * It does NOT affect seq ordering.
-       *
-       * @param outcome - The run outcome
-       * @param proxyUsed - Optional redacted proxy endpoint (no password)
-       */
-      async writeRunResult(outcome, proxyUsed) {
-        const frame = encodeRunResultFrame(outcome, proxyUsed);
-        await writeWithBackpressure(this.output, frame, this.writeFn);
-      }
-      /**
-       * Write a sidecar file via file_write frame.
-       * Bypasses seq numbering and the policy pipeline.
-       * Blocks on backpressure per CONTRACT_IPC.md.
-       *
-       * When an AckReader is configured, this method blocks until the runtime
-       * sends a file_write_ack. On error ack, the returned promise rejects.
-       * Without an AckReader, this is fire-and-forget (backward compat).
-       *
-       * @param filename - Target filename (no path separators, no "..")
-       * @param contentType - MIME content type
-       * @param data - Raw binary data (max 8 MiB)
-       */
-      async writeFile(filename, contentType, data) {
-        if (this.ackReader) {
-          const writeId = ++this.writeIdCounter;
-          const ackPromise = this.ackReader.waitForAck(writeId);
-          const frame = encodeFileWriteFrame(filename, contentType, data, writeId);
-          await writeWithBackpressure(this.output, frame, this.writeFn);
-          await ackPromise;
-        } else {
-          const frame = encodeFileWriteFrame(filename, contentType, data);
-          await writeWithBackpressure(this.output, frame, this.writeFn);
-        }
-      }
-    };
-  }
-});
-
-// src/loader.ts
-import { isAbsolute, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-function isFunction(value) {
-  return typeof value === "function";
-}
-function isOptionalFunction(value) {
-  return value === void 0 || isFunction(value);
-}
-function annotateImportError(message) {
-  if (/needs an import attribute of.*type:\s*["']?json/i.test(message)) {
-    return message + "\n\nHint: Node ESM requires an import attribute for JSON modules. Change the import to:\n  import data from './file.json' with { type: 'json' }\nThis applies to your script and all of its transitive dependencies.";
-  }
-  return message;
-}
-async function loadScript(scriptPath) {
-  const absolutePath = isAbsolute(scriptPath) ? scriptPath : resolve(process.cwd(), scriptPath);
-  const fileUrl = pathToFileURL(absolutePath).href;
-  let module;
-  try {
-    module = await import(fileUrl);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new ScriptLoadError(scriptPath, `import failed: ${annotateImportError(message)}`);
-  }
-  if (module === null || typeof module !== "object") {
-    throw new ScriptLoadError(scriptPath, "module is not an object");
-  }
-  const mod = module;
-  if (!("default" in mod)) {
-    throw new ScriptLoadError(scriptPath, "missing default export");
-  }
-  if (!isFunction(mod.default)) {
-    throw new ScriptLoadError(scriptPath, "default export is not a function");
-  }
-  const HOOK_NAMES2 = [
-    "prepare",
-    "beforeRun",
-    "afterRun",
-    "onError",
-    "beforeTerminal",
-    "cleanup"
-  ];
-  for (const name of HOOK_NAMES2) {
-    if (!isOptionalFunction(mod[name])) {
-      throw new ScriptLoadError(scriptPath, `${name} hook is not a function`);
-    }
-  }
-  const validatedModule = mod;
-  return {
-    script: validatedModule.default,
-    hooks: {
-      prepare: validatedModule.prepare,
-      beforeRun: validatedModule.beforeRun,
-      afterRun: validatedModule.afterRun,
-      onError: validatedModule.onError,
-      beforeTerminal: validatedModule.beforeTerminal,
-      cleanup: validatedModule.cleanup
-    },
-    module: validatedModule
-  };
-}
-var ScriptLoadError;
-var init_loader = __esm({
-  "src/loader.ts"() {
-    "use strict";
-    ScriptLoadError = class extends Error {
-      constructor(scriptPath, reason) {
-        super(`Failed to load script "${scriptPath}": ${reason}`);
-        this.scriptPath = scriptPath;
-        this.reason = reason;
-        this.name = "ScriptLoadError";
-      }
-      scriptPath;
-      reason;
-    };
-  }
-});
-
-// src/executor.ts
-var executor_exports = {};
-__export(executor_exports, {
-  _resetPuppeteerForTesting: () => _resetPuppeteerForTesting,
-  errorMessage: () => errorMessage,
-  execute: () => execute,
-  getPuppeteer: () => getPuppeteer,
-  getVanillaPuppeteer: () => getVanillaPuppeteer,
-  launchIdentity: () => launchIdentity,
-  parseRunMeta: () => parseRunMeta,
-  resolvePeer: () => resolvePeer
-});
-import { AsyncLocalStorage } from "node:async_hooks";
-import childProcess from "node:child_process";
-import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
-import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
-import { fileURLToPath, pathToFileURL as pathToFileURL2 } from "node:url";
-function resolvePeer(name, scriptPath) {
-  const require2 = createRequire(resolve2(scriptPath));
-  const nodePath = (process.env.NODE_PATH ?? "").split(delimiter);
-  const found = require2.resolve(name);
-  const permitted = (require2.resolve.paths(name) ?? []).filter((dir) => basename(dir) === "node_modules" || nodePath.includes(dir)).some((dir) => holds(join(dir, name), found));
-  if (!permitted) {
-    throw new Error(`Cannot find package '${name}' from ${resolve2(scriptPath)}: refused ${found}`);
-  }
-  return found;
-}
-function holds(dir, file) {
-  try {
-    return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep);
-  } catch {
-    return false;
-  }
-}
-async function loadModule(name, scriptPath) {
-  let scriptError;
-  try {
-    const url = pathToFileURL2(resolvePeer(name, scriptPath)).href;
-    return { module: await import(url), url: () => url };
-  } catch (err) {
-    scriptError = err;
-  }
-  try {
-    const module = await import(name);
-    return { module, url: () => import.meta.resolve(name) };
-  } catch (err) {
-    throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
-      cause: err
-    });
-  }
-}
-async function resolveModule(name, scriptPath) {
-  return (await loadModule(name, scriptPath)).module;
-}
-function owningVersion(name, location) {
-  for (let dir = dirname(location); ; dir = dirname(dir)) {
-    let pkg = {};
-    try {
-      pkg = JSON.parse(readFileSync3(join(dir, "package.json"), "utf8"));
-    } catch {
-    }
-    if (typeof pkg.version === "string" && pkg.version !== "") return pkg.version;
-    const root = Object.keys(pkg).some((field) => field !== "type");
-    if (root || basename(dirname(dir)) === "node_modules" || dirname(dir) === dir)
-      throw new Error(`cannot identify the version of ${name} loaded from ${location}`);
-  }
-}
-function executableIdentity(path) {
-  if (!path.includes(sep) && process.env.PATH === void 0)
-    throw new Error(`cannot look up the Chrome executable ${path} without PATH`);
-  const candidates = path.includes(sep) ? [path] : (process.env.PATH ?? "").split(delimiter).map((dir) => `${dir || "."}${sep}${path}`);
-  for (const candidate of candidates) {
-    try {
-      accessSync(candidate, constants.X_OK);
-      const stat = statSync(candidate, { bigint: true });
-      if (!stat.isFile()) continue;
-      return {
-        file: realpathSync.native(candidate),
-        revision: [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join("-")
-      };
-    } catch {
-    }
-  }
-  throw new Error(`cannot find the Chrome executable ${path}`);
-}
-async function launchIdentity(scriptPath, plugins, args) {
-  const names = ["puppeteer"];
-  if (plugins.stealth || plugins.adblocker) names.push("puppeteer-extra");
-  if (plugins.stealth) names.push("puppeteer-extra-plugin-stealth");
-  if (plugins.adblocker) names.push("puppeteer-extra-plugin-adblocker");
-  const modules = {};
-  let puppeteer;
-  for (const name of names) {
-    const loaded = await loadModule(name, scriptPath);
-    const location = fileURLToPath(loaded.url());
-    modules[name] = { location, version: owningVersion(name, location) };
-    if (name === "puppeteer") puppeteer = loaded.module.default;
-  }
-  if (typeof puppeteer?.executablePath !== "function" || typeof puppeteer.defaultArgs !== "function") {
-    throw new Error(
-      "puppeteer exposes no executablePath() and defaultArgs() to identify its launch"
-    );
-  }
-  const configured = await puppeteer.executablePath();
-  if (typeof configured !== "string" || configured === "") {
-    throw new Error("puppeteer reported no Chrome executable");
-  }
-  return {
-    modules,
-    executablePath: configured,
-    executable: executableIdentity(configured),
-    plugins,
-    // Puppeteer 25 returns both as promises.
-    args: await puppeteer.defaultArgs({ headless: true, args })
-  };
-}
-async function launchInGroup(launch) {
-  if (!spawnFollowsLaunch) {
-    spawnFollowsLaunch = true;
-    const spawn = childProcess.spawn;
-    childProcess.spawn = ((command, ...rest) => {
-      const options = rest.at(-1);
-      if (launching.getStore()?.pending && typeof options === "object" && !Array.isArray(options))
-        rest[rest.length - 1] = { ...options, detached: false };
-      return Reflect.apply(spawn, childProcess, [command, ...rest]);
-    });
-  }
-  const state = { pending: true };
-  try {
-    return await launching.run(state, launch);
-  } finally {
-    state.pending = false;
-  }
-}
-function errorMessage(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-async function resolveModuleOrThrow(name, scriptPath, hint) {
-  try {
-    return await resolveModule(name, scriptPath);
-  } catch (err) {
-    const scriptDir = dirname(resolve2(scriptPath));
-    throw new Error(
-      `Failed to load ${name}: ${errorMessage(err)}
-${hint}
-Install it in your project (${scriptDir}): npm install ${name}`
-    );
-  }
-}
-async function getPuppeteer(scriptPath, plugins) {
-  if (puppeteerModule && cachedPluginConfig) {
-    const configChanged = cachedPluginConfig.stealth !== plugins.stealth || cachedPluginConfig.adblocker !== plugins.adblocker;
-    if (!configChanged) return puppeteerModule;
-    puppeteerModule = null;
-    cachedPluginConfig = null;
-  }
-  const puppeteerMod = await resolveModuleOrThrow(
-    "puppeteer",
-    scriptPath,
-    "Puppeteer is a peer dependency of quarry-executor."
-  );
-  const vanillaPuppeteer = puppeteerMod.default;
-  if (!plugins.stealth && !plugins.adblocker) {
-    cachedPluginConfig = plugins;
-    puppeteerModule = vanillaPuppeteer;
-    return vanillaPuppeteer;
-  }
-  const extraMod = await resolveModuleOrThrow(
-    "puppeteer-extra",
-    scriptPath,
-    "puppeteer-extra is required while a plugin is enabled, and stealth is enabled by default.\nOr disable stealth with QUARRY_STEALTH=0"
-  );
-  const { addExtra } = extraMod;
-  const pptr = addExtra(vanillaPuppeteer);
-  if (plugins.stealth) {
-    const stealthMod = await resolveModuleOrThrow(
-      "puppeteer-extra-plugin-stealth",
-      scriptPath,
-      "Stealth is enabled by default.\nOr disable stealth with QUARRY_STEALTH=0"
-    );
-    const StealthPlugin = stealthMod.default;
-    pptr.use(StealthPlugin());
-  }
-  if (plugins.adblocker) {
-    const adblockerMod = await resolveModuleOrThrow(
-      "puppeteer-extra-plugin-adblocker",
-      scriptPath,
-      "Adblocker was enabled but the plugin is not installed."
-    );
-    const AdblockerPlugin = adblockerMod.default;
-    pptr.use(AdblockerPlugin({ blockTrackers: true }));
-  }
-  cachedPluginConfig = plugins;
-  puppeteerModule = pptr;
-  return pptr;
-}
-function _resetPuppeteerForTesting() {
-  puppeteerModule = null;
-  cachedPluginConfig = null;
-}
-async function getVanillaPuppeteer(scriptPath) {
-  const puppeteerMod = await resolveModuleOrThrow(
-    "puppeteer",
-    scriptPath,
-    "Puppeteer is a peer dependency of quarry-executor."
-  );
-  return puppeteerMod.default;
-}
-function parseRunMeta(input) {
-  if (input === null || typeof input !== "object") {
-    throw new Error("run metadata must be an object");
-  }
-  const obj = input;
-  if (typeof obj.run_id !== "string" || obj.run_id === "") {
-    throw new Error("run_id must be a non-empty string");
-  }
-  if (typeof obj.attempt !== "number" || !Number.isInteger(obj.attempt) || obj.attempt < 1) {
-    throw new Error("attempt must be a positive integer");
-  }
-  const hasParentRunId = typeof obj.parent_run_id === "string" && obj.parent_run_id !== "";
-  if (obj.attempt === 1 && hasParentRunId) {
-    throw new Error("initial run (attempt=1) must not have parent_run_id");
-  }
-  if (obj.attempt > 1 && !hasParentRunId) {
-    throw new Error(`retry run (attempt=${obj.attempt}) must have parent_run_id`);
-  }
-  const run = {
-    run_id: obj.run_id,
-    attempt: obj.attempt,
-    ...typeof obj.job_id === "string" && obj.job_id !== "" && { job_id: obj.job_id },
-    ...hasParentRunId && { parent_run_id: obj.parent_run_id }
-  };
-  return run;
-}
-function buildPuppeteerLaunchOptions(baseOptions, proxy) {
-  if (!proxy) {
-    return baseOptions ?? {};
-  }
-  const proxyUrl = `${proxy.protocol}://${proxy.host}:${proxy.port}`;
-  const existingArgs = baseOptions?.args ?? [];
-  const proxyArgs = [`--proxy-server=${proxyUrl}`];
-  return {
-    ...baseOptions,
-    args: [...existingArgs, ...proxyArgs]
-  };
-}
-async function emitRunResult(stdioSink, outcome, proxy) {
-  try {
-    const runResultOutcome = toRunResultOutcome(outcome);
-    const proxyUsed = proxy ? redactProxy(proxy) : void 0;
-    await stdioSink.writeRunResult(runResultOutcome, proxyUsed);
-  } catch {
-  }
-}
-async function safeClose(resource) {
-  if (!resource) return;
-  try {
-    await resource.close();
-  } catch {
-  }
-}
-function isSinkFailure(err) {
-  return !(err instanceof TerminalEventError);
-}
-function toRunResultOutcome(outcome) {
-  switch (outcome.status) {
-    case "completed":
-      return {
-        status: "completed",
-        message: outcome.summary ? "run completed with summary" : "run completed"
-      };
-    case "error":
-      return {
-        status: "error",
-        message: outcome.message,
-        error_type: outcome.errorType,
-        stack: outcome.stack
-      };
-    case "crash":
-      return {
-        status: "crash",
-        message: outcome.message
-      };
-  }
-}
-function redactProxy(proxy) {
-  return {
-    protocol: proxy.protocol,
-    host: proxy.host,
-    port: proxy.port,
-    ...proxy.username && { username: proxy.username }
-  };
-}
-async function execute(config) {
-  const output = config.output ?? process.stdout;
-  const stdioSink = new StdioSink(output, config.outputWrite, config.ackReader);
-  const sink = new ObservingSink(stdioSink);
-  let browser = null;
-  let browserContext = null;
-  let page = null;
-  let script = null;
-  let ctx = null;
-  let scriptThrew = false;
-  let scriptError = null;
-  let isConnected = false;
-  function determineOutcome(sinkState) {
-    if (sinkState.isSinkFailed()) {
-      const failure = sinkState.getSinkFailure();
-      const message = errorMessage(failure);
-      return {
-        outcome: { status: "crash", message },
-        terminalEmitted: sinkState.getTerminalState() !== null
-      };
-    }
-    const terminalState = sinkState.getTerminalState();
-    if (terminalState !== null) {
-      if (terminalState.type === "run_error") {
-        return {
-          outcome: {
-            status: "error",
-            errorType: terminalState.errorType ?? "unknown",
-            message: terminalState.message ?? "Unknown error"
-          },
-          terminalEmitted: true
-        };
-      }
-      return {
-        outcome: { status: "completed", summary: terminalState.summary },
-        terminalEmitted: true
-      };
-    }
-    if (scriptThrew && scriptError) {
-      return {
-        outcome: {
-          status: "error",
-          errorType: "script_error",
-          message: scriptError.message,
-          stack: scriptError.stack
-        },
-        terminalEmitted: false
-      };
-    }
-    return {
-      outcome: { status: "completed" },
-      terminalEmitted: false
-    };
-  }
-  try {
-    try {
-      script = await loadScript(config.scriptPath);
-    } catch (err) {
-      if (err instanceof ScriptLoadError) {
-        return {
-          outcome: { status: "crash", message: err.message },
-          terminalEmitted: false
-        };
-      }
-      throw err;
-    }
-    let effectiveJob = config.job;
-    if (script.hooks.prepare) {
-      let prepareResult;
-      try {
-        prepareResult = await script.hooks.prepare(config.job, config.run);
-      } catch (err) {
-        const message = errorMessage(err);
-        const crashOutcome = { status: "crash", message };
-        await emitRunResult(stdioSink, crashOutcome, config.proxy);
-        return { outcome: crashOutcome, terminalEmitted: false };
-      }
-      if (prepareResult === null || prepareResult === void 0 || typeof prepareResult !== "object" || !("action" in prepareResult)) {
-        const crashOutcome = {
-          status: "crash",
-          message: `prepare hook must return { action: 'continue' | 'skip' }, got: ${String(prepareResult)}`
-        };
-        await emitRunResult(stdioSink, crashOutcome, config.proxy);
-        return { outcome: crashOutcome, terminalEmitted: false };
-      }
-      if (prepareResult.action === "skip") {
-        const { emit } = createAPIs(config.run, sink, config.storagePartition);
-        const summary = { skipped: true };
-        if (prepareResult.reason !== void 0) {
-          summary.reason = prepareResult.reason;
-        }
-        try {
-          await emit.runComplete({ summary });
-        } catch {
-        }
-        const result2 = determineOutcome(sink);
-        await emitRunResult(stdioSink, result2.outcome, config.proxy);
-        return result2;
-      }
-      if (prepareResult.action === "continue") {
-        if (prepareResult.job !== void 0) {
-          effectiveJob = prepareResult.job;
-        }
-      } else {
-        const crashOutcome = {
-          status: "crash",
-          message: `prepare hook returned unrecognized action: ${prepareResult.action}`
-        };
-        await emitRunResult(stdioSink, crashOutcome, config.proxy);
-        return { outcome: crashOutcome, terminalEmitted: false };
-      }
-    }
-    if (config.noBrowser === true) {
-    } else if (config.browserWSEndpoint) {
-      const puppeteer = await getVanillaPuppeteer(config.scriptPath);
-      browser = await puppeteer.connect({ browserWSEndpoint: config.browserWSEndpoint });
-      isConnected = true;
-    } else {
-      const plugins = {
-        stealth: config.stealth !== false,
-        adblocker: config.adblocker === true
-      };
-      const puppeteer = await getPuppeteer(config.scriptPath, plugins);
-      const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy);
-      browser = await launchInGroup(() => puppeteer.launch(launchOptions));
-    }
-    if (browser) {
-      browserContext = await browser.createBrowserContext();
-      page = await browserContext.newPage();
-    }
-    if (page && config.proxy?.username && config.proxy?.password) {
-      await page.authenticate({
-        username: config.proxy.username,
-        password: config.proxy.password
-      });
-    }
-    ctx = createContext({
-      job: effectiveJob,
-      run: config.run,
-      page: page ?? void 0,
-      browser: browser ?? void 0,
-      browserContext: browserContext ?? void 0,
-      noBrowser: config.noBrowser === true,
-      sink,
-      storagePartition: config.storagePartition
-    });
-    let rawScriptError = null;
-    try {
-      if (script.hooks.beforeRun) {
-        await script.hooks.beforeRun(ctx);
-      }
-      await script.script(ctx);
-      if (script.hooks.afterRun) {
-        await script.hooks.afterRun(ctx);
-      }
-    } catch (err) {
-      scriptThrew = true;
-      rawScriptError = err;
-      scriptError = {
-        message: errorMessage(err),
-        stack: err instanceof Error ? err.stack : void 0
-      };
-      if (script.hooks.onError && sink.getTerminalState() === null) {
-        try {
-          await script.hooks.onError(err, ctx);
-        } catch {
-        }
-      }
-    }
-    if (script.hooks.beforeTerminal && !sink.isSinkFailed() && sink.getTerminalState() === null) {
-      const signal = rawScriptError !== null ? { outcome: "error", error: rawScriptError } : { outcome: "completed" };
-      try {
-        await script.hooks.beforeTerminal(signal, ctx);
-      } catch {
-      }
-    }
-    if (!sink.isSinkFailed() && sink.getTerminalState() === null) {
-      try {
-        if (scriptThrew && scriptError) {
-          await ctx.emit.runError({
-            error_type: "script_error",
-            message: scriptError.message,
-            stack: scriptError.stack
-          });
-        } else {
-          await ctx.emit.runComplete();
-        }
-      } catch (err) {
-        if (isSinkFailure(err)) {
-        }
-      }
-    }
-    if (script.hooks.cleanup && ctx) {
-      try {
-        await script.hooks.cleanup(ctx);
-      } catch {
-      }
-    }
-    const result = determineOutcome(sink);
-    await emitRunResult(stdioSink, result.outcome, config.proxy);
-    return result;
-  } catch (err) {
-    const message = errorMessage(err);
-    const crashOutcome = { status: "crash", message };
-    await emitRunResult(stdioSink, crashOutcome, config.proxy);
-    return {
-      outcome: crashOutcome,
-      terminalEmitted: false
-    };
-  } finally {
-    await safeClose(page);
-    await safeClose(browserContext);
-    if (isConnected && browser) {
-      try {
-        await browser.disconnect();
-      } catch {
-      }
-    } else {
-      await safeClose(browser);
-    }
-  }
-}
-var launching, spawnFollowsLaunch, puppeteerModule, cachedPluginConfig;
-var init_executor = __esm({
-  "src/executor.ts"() {
-    "use strict";
-    init_dist();
-    init_observing_sink();
-    init_sink();
-    init_loader();
-    launching = new AsyncLocalStorage();
-    spawnFollowsLaunch = false;
-    puppeteerModule = null;
-    cachedPluginConfig = null;
-  }
-});
-
 // src/resolve-from.ts
 var resolve_from_exports = {};
 __export(resolve_from_exports, {
@@ -3660,13 +2044,1545 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// src/bin/executor.ts
-init_executor();
+// src/executor.ts
+import { AsyncLocalStorage } from "node:async_hooks";
+import childProcess from "node:child_process";
+import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
+import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
+import { fileURLToPath, pathToFileURL as pathToFileURL2 } from "node:url";
+
+// ../sdk/dist/index.mjs
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync as readFileSync2 } from "node:fs";
+import v8 from "node:v8";
+var ARTIFACT_RANGE_MAX_BYTES = 8 * 1024 * 1024;
+var ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024;
+var RANGE_REFUSED_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactRangeRefusedError");
+var WRITER_ERROR_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactWriterError");
+function hasBrand(value, brand) {
+  return typeof value === "object" && value !== null && Reflect.get(value, brand) === true;
+}
+var ArtifactRangeRefusedError = class extends Error {
+  /**
+  * The offset of the refused range, when the SDK knows it. A rejected
+  * `writeAt(offset, data)` committed the bytes from `offset` up to this
+  * offset, and none from it on.
+  */
+  offset;
+  [RANGE_REFUSED_BRAND] = true;
+  constructor(message, offset, options) {
+    super(message, options);
+    this.name = "ArtifactRangeRefusedError";
+    this.offset = offset;
+  }
+  static [Symbol.hasInstance](value) {
+    return hasBrand(value, RANGE_REFUSED_BRAND);
+  }
+};
+var ArtifactWriterError = class extends Error {
+  [WRITER_ERROR_BRAND] = true;
+  constructor(message) {
+    super(message);
+    this.name = "ArtifactWriterError";
+  }
+  static [Symbol.hasInstance](value) {
+    return hasBrand(value, WRITER_ERROR_BRAND);
+  }
+};
+var RangeSet = class {
+  ranges = [];
+  /** Reports whether [start, end) shares a byte with a range in the set. */
+  overlaps(start, end) {
+    const next = this.ranges[this.firstEndingAfter(start)];
+    return next !== void 0 && next.start < end;
+  }
+  /**
+  * Adds [start, end), which must not overlap a range in the set, merged
+  * with the range that ends at start and the one that begins at end.
+  */
+  add(start, end) {
+    const first = this.firstEndingAfter(start - 1);
+    let merged = {
+      start,
+      end
+    };
+    let count = 0;
+    for (let next = this.ranges[first]; next !== void 0 && next.start <= end; ) {
+      merged = {
+        start: Math.min(merged.start, next.start),
+        end: Math.max(merged.end, next.end)
+      };
+      count++;
+      next = this.ranges[first + count];
+    }
+    this.ranges.splice(first, count, merged);
+  }
+  /** Reports whether the set is exactly [0, size). */
+  covers(size) {
+    if (size === 0) return this.ranges.length === 0;
+    const only = this.ranges[0];
+    return this.ranges.length === 1 && only?.start === 0 && only.end === size;
+  }
+  /** Returns the index of the first range whose end exceeds offset. */
+  firstEndingAfter(offset) {
+    let lo = 0;
+    let hi = this.ranges.length;
+    while (lo < hi) {
+      const mid = lo + hi >>> 1;
+      if ((this.ranges[mid]?.end ?? Number.POSITIVE_INFINITY) > offset) hi = mid;
+      else lo = mid + 1;
+    }
+    return lo;
+  }
+};
+var CONTRACT_VERSION = "0.19.0";
+var TerminalEventError = class extends Error {
+  constructor() {
+    super("Cannot emit: a terminal event (run_error or run_complete) has already been emitted");
+    this.name = "TerminalEventError";
+  }
+};
+var SinkFailedError = class extends Error {
+  constructor(cause) {
+    super("Cannot emit: sink has previously failed");
+    this.name = "SinkFailedError";
+    this.cause = cause;
+  }
+};
+var StorageFilenameError = class extends Error {
+  constructor(filename, reason) {
+    super(`Invalid storage filename "${filename}": ${reason}`);
+    this.name = "StorageFilenameError";
+  }
+};
+function buildStorageKey(partition, filename) {
+  return `datasets/${partition.dataset}/partitions/source=${partition.source}/category=${partition.category}/day=${partition.day}/run_id=${partition.run_id}/files/${filename}`;
+}
+var SHA256_HEX = /^[0-9a-f]{64}$/i;
+function isRecoverable(err) {
+  return err instanceof ArtifactRangeRefusedError || err instanceof ArtifactWriterError;
+}
+function validateWriterOptions(options) {
+  const size = options.size_bytes;
+  if (!Number.isSafeInteger(size) || size < 0 || size > ARTIFACT_MAX_BYTES) throw new ArtifactWriterError(`artifact size_bytes ${size} is not a whole number from 0 to ${ARTIFACT_MAX_BYTES}`);
+  if (options.sha256 !== void 0 && !SHA256_HEX.test(options.sha256)) throw new ArtifactWriterError(`artifact sha256 "${options.sha256}" is not a hex SHA-256`);
+}
+function* splitRanges(offset, data) {
+  for (let at = 0; at < data.byteLength; at += ARTIFACT_RANGE_MAX_BYTES) yield [offset + at, data.subarray(at, at + ARTIFACT_RANGE_MAX_BYTES)];
+}
+var OpenArtifact = class {
+  written = new RangeSet();
+  committed = false;
+  constructor(artifact_id, options) {
+    this.artifact_id = artifact_id;
+    this.options = options;
+  }
+  /**
+  * Refuse a write after the commit, an empty range, or a range outside
+  * the artifact or overlapping a written one.
+  */
+  checkWrite(offset, length) {
+    this.checkOpen();
+    const size = this.options.size_bytes;
+    if (!Number.isSafeInteger(offset) || offset < 0 || length === 0 || length > size - offset) throw new ArtifactWriterError(`artifact ${this.artifact_id}: range of ${length} bytes at ${offset} is empty or outside [0, ${size})`);
+    if (this.written.overlaps(offset, offset + length)) throw new ArtifactWriterError(`artifact ${this.artifact_id}: range of ${length} bytes at ${offset} overlaps a written range`);
+  }
+  /** Record a range the runtime committed. */
+  wrote(offset, length) {
+    this.written.add(offset, offset + length);
+  }
+  /** Refuse a commit after the commit, or before the ranges cover the artifact. */
+  checkCommit() {
+    this.checkOpen();
+    if (!this.written.covers(this.options.size_bytes)) throw new ArtifactWriterError(`artifact ${this.artifact_id}: written ranges do not cover its ${this.options.size_bytes} bytes`);
+  }
+  /** Mark the artifact committed: its artifact event is written. */
+  commit() {
+    this.committed = true;
+  }
+  checkOpen() {
+    if (this.committed) throw new ArtifactWriterError(`artifact ${this.artifact_id} is committed`);
+  }
+};
+function createAPIs(run, sink, storagePartition) {
+  let seq = 0;
+  let terminalEmitted = false;
+  let sinkFailed = null;
+  let chain = Promise.resolve();
+  function serialize(fn) {
+    const result = chain.then(async () => {
+      if (sinkFailed !== null) throw new SinkFailedError(sinkFailed);
+      try {
+        return await fn();
+      } catch (err) {
+        if (!isRecoverable(err)) sinkFailed = err;
+        throw err;
+      }
+    });
+    chain = result.then(() => {
+    }, () => {
+    });
+    return result;
+  }
+  function createEnvelope(type, payload) {
+    return {
+      contract_version: CONTRACT_VERSION,
+      event_id: randomUUID(),
+      run_id: run.run_id,
+      type,
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      payload,
+      attempt: run.attempt,
+      ...run.job_id !== void 0 && { job_id: run.job_id },
+      ...run.parent_run_id !== void 0 && { parent_run_id: run.parent_run_id }
+    };
+  }
+  async function writeEnvelope(envelope) {
+    seq += 1;
+    const complete = {
+      ...envelope,
+      seq
+    };
+    await sink.writeEvent(complete);
+  }
+  function assertNotTerminal() {
+    if (terminalEmitted) throw new TerminalEventError();
+  }
+  async function openArtifact(options) {
+    const declared = Object.freeze({
+      name: options.name,
+      content_type: options.content_type,
+      size_bytes: options.size_bytes,
+      ...options.sha256 !== void 0 && { sha256: options.sha256 }
+    });
+    validateWriterOptions(declared);
+    const artifact = new OpenArtifact(randomUUID(), declared);
+    await sink.openArtifact(artifact.artifact_id, declared.size_bytes, declared.sha256);
+    return artifact;
+  }
+  async function writeRanges(artifact, offset, data) {
+    artifact.checkWrite(offset, data.byteLength);
+    for (const [at, range] of splitRanges(offset, data)) {
+      try {
+        await sink.writeArtifactRange(artifact.artifact_id, at, range);
+      } catch (err) {
+        if (err instanceof ArtifactRangeRefusedError) throw new ArtifactRangeRefusedError(err.message, at, { cause: err });
+        throw err;
+      }
+      artifact.wrote(at, range.byteLength);
+    }
+  }
+  async function commitArtifact(artifact) {
+    artifact.checkCommit();
+    await writeEnvelope(createEnvelope("artifact", {
+      artifact_id: artifact.artifact_id,
+      name: artifact.options.name,
+      content_type: artifact.options.content_type,
+      size_bytes: artifact.options.size_bytes
+    }));
+    artifact.commit();
+    return artifact.artifact_id;
+  }
+  function writerOf(artifact) {
+    return {
+      artifact_id: artifact.artifact_id,
+      writeAt: (offset, data) => serialize(async () => {
+        assertNotTerminal();
+        await writeRanges(artifact, offset, data);
+      }),
+      commit: () => serialize(async () => {
+        assertNotTerminal();
+        return commitArtifact(artifact);
+      })
+    };
+  }
+  function emitEvent(type, payload) {
+    return serialize(async () => {
+      assertNotTerminal();
+      await writeEnvelope(createEnvelope(type, payload));
+    });
+  }
+  const emit = {
+    item(options) {
+      return emitEvent("item", {
+        item_type: options.item_type,
+        data: options.data
+      });
+    },
+    artifact(options) {
+      return serialize(async () => {
+        assertNotTerminal();
+        const artifact = await openArtifact({
+          name: options.name,
+          content_type: options.content_type,
+          size_bytes: options.data.byteLength
+        });
+        if (options.data.byteLength > 0) await writeRanges(artifact, 0, options.data);
+        return commitArtifact(artifact);
+      });
+    },
+    artifactWriter(options) {
+      return serialize(async () => {
+        assertNotTerminal();
+        return writerOf(await openArtifact(options));
+      });
+    },
+    checkpoint(options) {
+      return emitEvent("checkpoint", {
+        checkpoint_id: options.checkpoint_id,
+        ...options.note !== void 0 && { note: options.note }
+      });
+    },
+    enqueue(options) {
+      return emitEvent("enqueue", {
+        target: options.target,
+        params: options.params,
+        ...options.source !== void 0 && { source: options.source },
+        ...options.category !== void 0 && { category: options.category }
+      });
+    },
+    rotateProxy(options) {
+      return emitEvent("rotate_proxy", { ...options?.reason !== void 0 && { reason: options.reason } });
+    },
+    log(options) {
+      return emitEvent("log", {
+        level: options.level,
+        message: options.message,
+        ...options.fields !== void 0 && { fields: options.fields }
+      });
+    },
+    async debug(message, fields) {
+      await emit.log({
+        level: "debug",
+        message,
+        fields
+      });
+    },
+    async info(message, fields) {
+      await emit.log({
+        level: "info",
+        message,
+        fields
+      });
+    },
+    async warn(message, fields) {
+      await emit.log({
+        level: "warn",
+        message,
+        fields
+      });
+    },
+    async error(message, fields) {
+      await emit.log({
+        level: "error",
+        message,
+        fields
+      });
+    },
+    runError(options) {
+      return serialize(async () => {
+        assertNotTerminal();
+        await writeEnvelope(createEnvelope("run_error", {
+          error_type: options.error_type,
+          message: options.message,
+          ...options.stack !== void 0 && { stack: options.stack }
+        }));
+        terminalEmitted = true;
+      });
+    },
+    runComplete(options) {
+      return serialize(async () => {
+        assertNotTerminal();
+        await writeEnvelope(createEnvelope("run_complete", { ...options?.summary !== void 0 && { summary: options.summary } }));
+        terminalEmitted = true;
+      });
+    }
+  };
+  function validateFilename(filename) {
+    if (!filename) throw new StorageFilenameError(filename, "filename must not be empty");
+    if (filename.includes("/") || filename.includes("\\")) throw new StorageFilenameError(filename, "filename must not contain path separators");
+    if (filename.includes("..")) throw new StorageFilenameError(filename, 'filename must not contain ".."');
+  }
+  return {
+    emit,
+    storage: { put(options) {
+      return serialize(async () => {
+        assertNotTerminal();
+        validateFilename(options.filename);
+        await sink.writeFile(options.filename, options.content_type, options.data);
+        return { key: storagePartition ? buildStorageKey(storagePartition, options.filename) : "" };
+      });
+    } }
+  };
+}
+var PRESSURE_ORDER = [
+  "low",
+  "moderate",
+  "high",
+  "critical"
+];
+var DEFAULT_THRESHOLDS = {
+  moderate: 0.5,
+  high: 0.7,
+  critical: 0.9
+};
+function validateThresholds(t) {
+  for (const [name, value] of Object.entries(t)) if (value <= 0 || value > 1) throw new RangeError(`MemoryThreshold "${name}" must be in (0, 1], got ${value}`);
+  if (t.moderate >= t.high) throw new RangeError(`MemoryThresholds must be monotonic: moderate (${t.moderate}) must be < high (${t.high})`);
+  if (t.high >= t.critical) throw new RangeError(`MemoryThresholds must be monotonic: high (${t.high}) must be < critical (${t.critical})`);
+}
+function classifyPressure(ratio, thresholds) {
+  if (ratio >= thresholds.critical) return "critical";
+  if (ratio >= thresholds.high) return "high";
+  if (ratio >= thresholds.moderate) return "moderate";
+  return "low";
+}
+function highestPressure(levels) {
+  let max = 0;
+  for (const level of levels) {
+    const idx = PRESSURE_ORDER.indexOf(level);
+    if (idx > max) max = idx;
+  }
+  return PRESSURE_ORDER[max];
+}
+function readNodeUsage() {
+  const heapStats = v8.getHeapStatistics();
+  const used = process.memoryUsage().heapUsed;
+  const limit = heapStats.heap_size_limit;
+  return {
+    used,
+    limit,
+    ratio: limit > 0 ? used / limit : 0
+  };
+}
+async function readBrowserUsage(page) {
+  if (!page) return null;
+  try {
+    const m = await page.metrics();
+    const used = m.JSHeapUsedSize ?? 0;
+    const limit = m.JSHeapTotalSize ?? 0;
+    return {
+      used,
+      limit,
+      ratio: limit > 0 ? used / limit : 0
+    };
+  } catch {
+    return null;
+  }
+}
+var CGROUP_UNLIMITED_THRESHOLD = 2 ** 62;
+function readCgroupUsage(readFile = readCgroupFile) {
+  const v2Current = readFile("/sys/fs/cgroup/memory.current");
+  const v2Max = readFile("/sys/fs/cgroup/memory.max");
+  if (v2Current !== null && v2Max !== null) return {
+    used: v2Current,
+    limit: v2Max,
+    ratio: v2Max > 0 ? v2Current / v2Max : 0
+  };
+  const v1Usage = readFile("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+  const v1Limit = readFile("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+  if (v1Usage !== null && v1Limit !== null) {
+    if (v1Limit >= CGROUP_UNLIMITED_THRESHOLD) return null;
+    return {
+      used: v1Usage,
+      limit: v1Limit,
+      ratio: v1Limit > 0 ? v1Usage / v1Limit : 0
+    };
+  }
+  return null;
+}
+function readCgroupFile(path) {
+  try {
+    const content = readFileSync2(path, "utf8").trim();
+    if (content === "max") return null;
+    const value = Number.parseInt(content, 10);
+    return Number.isNaN(value) ? null : value;
+  } catch {
+    return null;
+  }
+}
+function createMemoryAPI(options) {
+  const thresholds = {
+    ...DEFAULT_THRESHOLDS,
+    ...options.thresholds
+  };
+  validateThresholds(thresholds);
+  const readNode = options._readNode ?? readNodeUsage;
+  const readBrowser = options._readBrowser ?? readBrowserUsage;
+  const readCgroup = options._readCgroup ?? (() => readCgroupUsage(options._readCgroupFile));
+  async function snapshot(opts) {
+    const includeBrowser = opts?.browser !== false;
+    const node = readNode();
+    const browser = includeBrowser ? await readBrowser(options.page) : null;
+    const cgroup = readCgroup();
+    const levels = [classifyPressure(node.ratio, thresholds)];
+    if (browser) levels.push(classifyPressure(browser.ratio, thresholds));
+    if (cgroup) levels.push(classifyPressure(cgroup.ratio, thresholds));
+    return {
+      node,
+      browser,
+      cgroup,
+      pressure: highestPressure(levels),
+      ts: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+  return {
+    snapshot,
+    async isAbove(level) {
+      const snap = await snapshot();
+      return PRESSURE_ORDER.indexOf(snap.pressure) >= PRESSURE_ORDER.indexOf(level);
+    }
+  };
+}
+var NoBrowserError = class extends Error {
+  /** The context member the script used. */
+  member;
+  constructor(member) {
+    super(`ctx.${member} is unavailable: this run declares no browser (quarry run --no-browser)`);
+    this.name = "NoBrowserError";
+    this.member = member;
+  }
+};
+function noBrowserHandle(member) {
+  const fail = () => {
+    throw new NoBrowserError(member);
+  };
+  return new Proxy(/* @__PURE__ */ Object.create(null), {
+    get: (_target, key) => typeof key === "symbol" || key === "then" ? void 0 : fail(),
+    has: fail,
+    set: fail,
+    ownKeys: fail,
+    apply: fail
+  });
+}
+function requireHandle(value, member) {
+  if (value === void 0) throw new Error(`createContext needs ${member} unless noBrowser is set`);
+  return value;
+}
+function createContext(options) {
+  const { emit, storage } = createAPIs(options.run, options.sink, options.storagePartition);
+  const noBrowser = options.noBrowser === true;
+  const page = noBrowser ? noBrowserHandle("page") : requireHandle(options.page, "page");
+  const browser = noBrowser ? noBrowserHandle("browser") : requireHandle(options.browser, "browser");
+  const browserContext = noBrowser ? noBrowserHandle("browserContext") : requireHandle(options.browserContext, "browserContext");
+  const memory = createMemoryAPI({
+    page: noBrowser ? null : page,
+    thresholds: options.memoryThresholds
+  });
+  const ctx = {
+    job: options.job,
+    run: Object.freeze(options.run),
+    page,
+    browser,
+    browserContext,
+    emit,
+    storage,
+    memory
+  };
+  return Object.freeze(ctx);
+}
+var isString = (v) => typeof v === "string";
+var isNumber = (v) => typeof v === "number";
+var oneOf = (...values) => (v) => values.includes(v);
+var orNull = (check) => (v) => v === null || check(v);
+var optional = (check) => (v) => v === void 0 || check(v);
+var runSummaryFields = {
+  run_id: isString,
+  job_id: optional(isString),
+  parent_run_id: optional(isString),
+  attempt: isNumber,
+  dataset: isString,
+  source: isString,
+  category: isString,
+  day: isString,
+  partition: isString,
+  started_at: orNull(isString),
+  state: oneOf(...[
+    "succeeded",
+    "failed",
+    "unterminated"
+  ]),
+  backfilled: (v) => typeof v === "boolean",
+  ended_at: orNull(isString),
+  outcome: orNull(isString),
+  terminal: oneOf("run_complete", "run_error", null),
+  message: optional(isString),
+  event_count: orNull(isNumber)
+};
+var storedEventFields = {
+  record_kind: oneOf("event", "artifact_event"),
+  seq: isNumber,
+  ts: isString
+};
+
+// src/ipc/observing-sink.ts
+var SinkAlreadyFailedError = class extends Error {
+  constructor(originalCause) {
+    const causeMsg = originalCause instanceof Error ? originalCause.message : String(originalCause);
+    super(`Sink has already failed: ${causeMsg}`);
+    this.name = "SinkAlreadyFailedError";
+    this.cause = originalCause;
+  }
+};
+function isTerminalType(type) {
+  return type === "run_complete" || type === "run_error";
+}
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+var ObservingSink = class {
+  constructor(inner) {
+    this.inner = inner;
+  }
+  inner;
+  terminalState = null;
+  sinkFailure = null;
+  /**
+   * Write an event envelope, tracking the first terminal event on success.
+   * @throws SinkAlreadyFailedError if the sink has previously failed
+   */
+  async writeEvent(envelope) {
+    await this.guard(async () => {
+      await this.inner.writeEvent(envelope);
+      if (this.terminalState === null && isTerminalType(envelope.type)) {
+        this.terminalState = this.extractTerminalState(envelope.type, envelope.payload);
+      }
+    });
+  }
+  /**
+   * Write an artifact open frame, tracking failures.
+   * @throws SinkAlreadyFailedError if the sink has previously failed
+   */
+  async openArtifact(artifactId, sizeBytes, expectedSha256) {
+    await this.guard(() => this.inner.openArtifact(artifactId, sizeBytes, expectedSha256));
+  }
+  /**
+   * Write an artifact range, tracking failures. A range the runtime refused
+   * (ArtifactRangeRefusedError) is recoverable per CONTRACT_IPC.md and is
+   * rethrown without marking the sink failed.
+   * @throws SinkAlreadyFailedError if the sink has previously failed
+   */
+  async writeArtifactRange(artifactId, offset, data) {
+    await this.guard(
+      () => this.inner.writeArtifactRange(artifactId, offset, data),
+      (err) => err instanceof ArtifactRangeRefusedError
+    );
+  }
+  /**
+   * Write a sidecar file, tracking failures.
+   * @throws SinkAlreadyFailedError if the sink has previously failed
+   */
+  async writeFile(filename, contentType, data) {
+    await this.guard(() => this.inner.writeFile(filename, contentType, data));
+  }
+  /**
+   * Run a write unless the sink has failed, and keep its first failure, which
+   * a recoverable error is not.
+   */
+  async guard(write, isRecoverable2 = () => false) {
+    if (this.sinkFailure !== null) {
+      throw new SinkAlreadyFailedError(this.sinkFailure);
+    }
+    try {
+      await write();
+    } catch (err) {
+      if (this.sinkFailure === null && !isRecoverable2(err)) {
+        this.sinkFailure = err;
+      }
+      throw err;
+    }
+  }
+  /**
+   * Extract terminal state from type and payload.
+   * Type alone is authoritative; payload fields are best-effort.
+   */
+  extractTerminalState(type, payload) {
+    if (type === "run_error") {
+      let errorType;
+      let message;
+      if (isPlainObject(payload)) {
+        if ("error_type" in payload && typeof payload.error_type === "string") {
+          errorType = payload.error_type;
+        }
+        if ("message" in payload && typeof payload.message === "string") {
+          message = payload.message;
+        }
+      }
+      return { type: "run_error", errorType, message };
+    }
+    let summary;
+    if (isPlainObject(payload) && "summary" in payload && isPlainObject(payload.summary)) {
+      summary = payload.summary;
+    }
+    return { type: "run_complete", summary };
+  }
+  // SinkState implementation
+  getTerminalState() {
+    return this.terminalState;
+  }
+  isSinkFailed() {
+    return this.sinkFailure !== null;
+  }
+  getSinkFailure() {
+    return this.sinkFailure;
+  }
+};
+
+// src/ipc/frame.ts
+var import_msgpack = __toESM(require_dist(), 1);
+var MAX_FRAME_SIZE = 16 * 1024 * 1024;
+var MAX_PAYLOAD_SIZE = MAX_FRAME_SIZE - 4;
+var MAX_CHUNK_SIZE = 8 * 1024 * 1024;
+var LENGTH_PREFIX_SIZE = 4;
+var FrameSizeError = class extends Error {
+  constructor(payloadSize, maxPayloadSize) {
+    super(`Payload size ${payloadSize} exceeds maximum ${maxPayloadSize}`);
+    this.payloadSize = payloadSize;
+    this.maxPayloadSize = maxPayloadSize;
+    this.name = "FrameSizeError";
+  }
+  payloadSize;
+  maxPayloadSize;
+};
+function encodeFrame(payload) {
+  if (payload.length > MAX_PAYLOAD_SIZE) {
+    throw new FrameSizeError(payload.length, MAX_PAYLOAD_SIZE);
+  }
+  const frame = Buffer.allocUnsafe(LENGTH_PREFIX_SIZE + payload.length);
+  frame.writeUInt32BE(payload.length, 0);
+  frame.set(payload, LENGTH_PREFIX_SIZE);
+  return frame;
+}
+function encodeEventFrame(envelope) {
+  const payload = (0, import_msgpack.encode)(envelope);
+  return encodeFrame(payload);
+}
+var ChunkValidationError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ChunkValidationError";
+  }
+};
+function encodeRunResultFrame(outcome, proxyUsed) {
+  const frame = {
+    type: "run_result",
+    outcome,
+    ...proxyUsed && { proxy_used: proxyUsed }
+  };
+  const payload = (0, import_msgpack.encode)(frame);
+  return encodeFrame(payload);
+}
+function encodeFileWriteFrame(filename, contentType, data, writeId = 0) {
+  if (data.length > MAX_CHUNK_SIZE) {
+    throw new ChunkValidationError(
+      `file data size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
+    );
+  }
+  const frame = {
+    type: "file_write",
+    write_id: writeId,
+    filename,
+    content_type: contentType,
+    data
+  };
+  const payload = (0, import_msgpack.encode)(frame);
+  return encodeFrame(payload);
+}
+function decodeFileWriteAck(payload) {
+  const decoded = (0, import_msgpack.decode)(payload);
+  if (decoded.type !== "file_write_ack") {
+    throw new Error(`Expected file_write_ack frame, got type: ${String(decoded.type)}`);
+  }
+  return {
+    type: "file_write_ack",
+    write_id: decoded.write_id,
+    ok: decoded.ok,
+    ...decoded.error != null && { error: decoded.error }
+  };
+}
+function encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256) {
+  const frame = {
+    type: "artifact_open",
+    artifact_id: artifactId,
+    size_bytes: sizeBytes,
+    ...expectedSha256 !== void 0 && { expected_sha256: expectedSha256 }
+  };
+  return encodeFrame((0, import_msgpack.encode)(frame));
+}
+function encodeArtifactRangeFrame(artifactId, rangeId, offset, data) {
+  if (data.length > MAX_CHUNK_SIZE) {
+    throw new ChunkValidationError(
+      `range size ${data.length} exceeds MAX_CHUNK_SIZE ${MAX_CHUNK_SIZE}`
+    );
+  }
+  const frame = {
+    type: "artifact_range",
+    artifact_id: artifactId,
+    range_id: rangeId,
+    offset,
+    data
+  };
+  return encodeFrame((0, import_msgpack.encode)(frame));
+}
+function decodeArtifactRangeAck(payload) {
+  const decoded = (0, import_msgpack.decode)(payload);
+  if (decoded.type !== "artifact_range_ack") {
+    throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`);
+  }
+  return {
+    type: "artifact_range_ack",
+    range_id: decoded.range_id,
+    ok: decoded.ok,
+    ...decoded.error != null && { error: decoded.error }
+  };
+}
+
+// src/ipc/sink.ts
+var StreamClosedError = class extends Error {
+  constructor(reason) {
+    super(`Output stream unavailable: ${reason}`);
+    this.name = "StreamClosedError";
+  }
+};
+function writeWithBackpressure(stream, data, writeFn) {
+  return new Promise((resolve3, reject) => {
+    if (stream.destroyed) {
+      reject(new StreamClosedError("destroyed"));
+      return;
+    }
+    if (stream.writableEnded || stream.writableFinished) {
+      reject(new StreamClosedError("ended"));
+      return;
+    }
+    let settled = false;
+    const settle = (fn) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn();
+    };
+    const onError = (err) => settle(() => reject(err));
+    const onClose = () => settle(() => reject(new StreamClosedError("close")));
+    const onFinish = () => settle(() => reject(new StreamClosedError("finish")));
+    const onDrain = () => settle(() => resolve3());
+    const cleanup = () => {
+      stream.off("error", onError);
+      stream.off("close", onClose);
+      stream.off("finish", onFinish);
+      stream.off("drain", onDrain);
+    };
+    stream.on("error", onError);
+    stream.on("close", onClose);
+    stream.on("finish", onFinish);
+    let canContinue;
+    try {
+      canContinue = writeFn(data);
+    } catch (err) {
+      cleanup();
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    if (canContinue) {
+      setImmediate(() => settle(() => resolve3()));
+    } else {
+      stream.on("drain", onDrain);
+    }
+  });
+}
+function drainStdout() {
+  return new Promise((resolve3, reject) => {
+    if (process.stdout.writableFinished) {
+      resolve3();
+      return;
+    }
+    const onError = (err) => {
+      cleanup();
+      reject(err);
+    };
+    const cleanup = () => {
+      process.stdout.off("error", onError);
+    };
+    process.stdout.on("error", onError);
+    process.stdout.end(() => {
+      cleanup();
+      resolve3();
+    });
+  });
+}
+var StdioSink = class {
+  /**
+   * @param output - The writable stream (used for state checks and event listening)
+   * @param writeFn - Optional function for actual writes. When omitted, defaults to
+   *   `output.write()`. When provided, allows the caller to bypass a patched
+   *   `output.write` (e.g. the stdout guard) while still using `output` for
+   *   backpressure events and stream state.
+   * @param ackReader - Optional AckReader for file_write_ack correlation.
+   *   When provided, writeFile blocks until the runtime sends an ack.
+   *   When omitted, writeFile is fire-and-forget (backward compat).
+   */
+  constructor(output, writeFn, ackReader) {
+    this.output = output;
+    this.writeFn = writeFn ?? ((data) => output.write(data));
+    this.ackReader = ackReader;
+  }
+  output;
+  writeFn;
+  ackReader;
+  writeIdCounter = 0;
+  rangeIdCounter = 0;
+  /**
+   * Write an event envelope as a framed message.
+   * Blocks on backpressure per CONTRACT_IPC.md.
+   */
+  async writeEvent(envelope) {
+    const frame = encodeEventFrame(envelope);
+    await writeWithBackpressure(this.output, frame, this.writeFn);
+  }
+  /**
+   * Write an artifact_open frame with the artifact's size and any expected
+   * SHA-256. Per CONTRACT_IPC.md §Artifact Frames, it precedes the
+   * artifact's ranges and its artifact event, and an empty artifact sends
+   * it alone. Blocks on backpressure per CONTRACT_IPC.md.
+   */
+  async openArtifact(artifactId, sizeBytes, expectedSha256) {
+    await writeWithBackpressure(
+      this.output,
+      encodeArtifactOpenFrame(artifactId, sizeBytes, expectedSha256),
+      this.writeFn
+    );
+  }
+  /**
+   * Write one artifact_range frame of at most MAX_CHUNK_SIZE bytes at
+   * offset. Blocks on backpressure per CONTRACT_IPC.md.
+   *
+   * The range blocks until the runtime acknowledges it, so a resolved
+   * write is committed, and a refused range rejects with the runtime's
+   * error. A range has no fire-and-forget fallback, so a sink without an
+   * AckReader refuses the write.
+   */
+  async writeArtifactRange(artifactId, offset, data) {
+    const ackReader = this.ackReader;
+    if (ackReader === void 0) {
+      throw new Error("artifact writes need an AckReader: a range resolves on its acknowledgement");
+    }
+    if (data.length > MAX_CHUNK_SIZE) {
+      throw new Error(`artifact range of ${data.length} bytes exceeds max ${MAX_CHUNK_SIZE}`);
+    }
+    const rangeId = ++this.rangeIdCounter;
+    const ackPromise = ackReader.waitForRangeAck(rangeId);
+    const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data);
+    await writeWithBackpressure(this.output, frame, this.writeFn);
+    await ackPromise;
+  }
+  /**
+   * Write a run result control frame.
+   * Per CONTRACT_IPC.md, this is a control frame emitted once after terminal event.
+   * It does NOT affect seq ordering.
+   *
+   * @param outcome - The run outcome
+   * @param proxyUsed - Optional redacted proxy endpoint (no password)
+   */
+  async writeRunResult(outcome, proxyUsed) {
+    const frame = encodeRunResultFrame(outcome, proxyUsed);
+    await writeWithBackpressure(this.output, frame, this.writeFn);
+  }
+  /**
+   * Write a sidecar file via file_write frame.
+   * Bypasses seq numbering and the policy pipeline.
+   * Blocks on backpressure per CONTRACT_IPC.md.
+   *
+   * When an AckReader is configured, this method blocks until the runtime
+   * sends a file_write_ack. On error ack, the returned promise rejects.
+   * Without an AckReader, this is fire-and-forget (backward compat).
+   *
+   * @param filename - Target filename (no path separators, no "..")
+   * @param contentType - MIME content type
+   * @param data - Raw binary data (max 8 MiB)
+   */
+  async writeFile(filename, contentType, data) {
+    if (this.ackReader) {
+      const writeId = ++this.writeIdCounter;
+      const ackPromise = this.ackReader.waitForAck(writeId);
+      const frame = encodeFileWriteFrame(filename, contentType, data, writeId);
+      await writeWithBackpressure(this.output, frame, this.writeFn);
+      await ackPromise;
+    } else {
+      const frame = encodeFileWriteFrame(filename, contentType, data);
+      await writeWithBackpressure(this.output, frame, this.writeFn);
+    }
+  }
+};
+
+// src/loader.ts
+import { isAbsolute, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+var HOOK_NAMES = [
+  "prepare",
+  "beforeRun",
+  "afterRun",
+  "onError",
+  "beforeTerminal",
+  "cleanup"
+];
+var ScriptLoadError = class extends Error {
+  constructor(scriptPath, reason) {
+    super(`Failed to load script "${scriptPath}": ${reason}`);
+    this.scriptPath = scriptPath;
+    this.reason = reason;
+    this.name = "ScriptLoadError";
+  }
+  scriptPath;
+  reason;
+};
+function isFunction(value) {
+  return typeof value === "function";
+}
+function isOptionalFunction(value) {
+  return value === void 0 || isFunction(value);
+}
+function annotateImportError(message) {
+  if (/needs an import attribute of.*type:\s*["']?json/i.test(message)) {
+    return message + "\n\nHint: Node ESM requires an import attribute for JSON modules. Change the import to:\n  import data from './file.json' with { type: 'json' }\nThis applies to your script and all of its transitive dependencies.";
+  }
+  return message;
+}
+async function loadScript(scriptPath) {
+  const absolutePath = isAbsolute(scriptPath) ? scriptPath : resolve(process.cwd(), scriptPath);
+  const fileUrl = pathToFileURL(absolutePath).href;
+  let module;
+  try {
+    module = await import(fileUrl);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new ScriptLoadError(scriptPath, `import failed: ${annotateImportError(message)}`);
+  }
+  if (module === null || typeof module !== "object") {
+    throw new ScriptLoadError(scriptPath, "module is not an object");
+  }
+  const mod = module;
+  if (!("default" in mod)) {
+    throw new ScriptLoadError(scriptPath, "missing default export");
+  }
+  if (!isFunction(mod.default)) {
+    throw new ScriptLoadError(scriptPath, "default export is not a function");
+  }
+  for (const name of HOOK_NAMES) {
+    if (!isOptionalFunction(mod[name])) {
+      throw new ScriptLoadError(scriptPath, `${name} hook is not a function`);
+    }
+  }
+  const validatedModule = mod;
+  return {
+    script: validatedModule.default,
+    hooks: {
+      prepare: validatedModule.prepare,
+      beforeRun: validatedModule.beforeRun,
+      afterRun: validatedModule.afterRun,
+      onError: validatedModule.onError,
+      beforeTerminal: validatedModule.beforeTerminal,
+      cleanup: validatedModule.cleanup
+    },
+    module: validatedModule
+  };
+}
+
+// src/executor.ts
+function resolvePeer(name, scriptPath) {
+  const require2 = createRequire(resolve2(scriptPath));
+  const nodePath = (process.env.NODE_PATH ?? "").split(delimiter);
+  const found = require2.resolve(name);
+  const permitted = (require2.resolve.paths(name) ?? []).filter((dir) => basename(dir) === "node_modules" || nodePath.includes(dir)).some((dir) => holds(join(dir, name), found));
+  if (!permitted) {
+    throw new Error(`Cannot find package '${name}' from ${resolve2(scriptPath)}: refused ${found}`);
+  }
+  return found;
+}
+function holds(dir, file) {
+  try {
+    return file.startsWith(dir + sep) || file.startsWith(realpathSync(dir) + sep);
+  } catch {
+    return false;
+  }
+}
+async function loadModule(name, scriptPath) {
+  let scriptError;
+  try {
+    const url = pathToFileURL2(resolvePeer(name, scriptPath)).href;
+    return { module: await import(url), url: () => url };
+  } catch (err) {
+    scriptError = err;
+  }
+  try {
+    const module = await import(name);
+    return { module, url: () => import.meta.resolve(name) };
+  } catch (err) {
+    throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
+      cause: err
+    });
+  }
+}
+async function resolveModule(name, scriptPath) {
+  return (await loadModule(name, scriptPath)).module;
+}
+function owningVersion(name, location) {
+  for (let dir = dirname(location); ; dir = dirname(dir)) {
+    let pkg = {};
+    try {
+      pkg = JSON.parse(readFileSync3(join(dir, "package.json"), "utf8"));
+    } catch {
+    }
+    if (typeof pkg.version === "string" && pkg.version !== "") return pkg.version;
+    const root = Object.keys(pkg).some((field) => field !== "type");
+    if (root || basename(dirname(dir)) === "node_modules" || dirname(dir) === dir)
+      throw new Error(`cannot identify the version of ${name} loaded from ${location}`);
+  }
+}
+function executableIdentity(path) {
+  if (!path.includes(sep) && process.env.PATH === void 0)
+    throw new Error(`cannot look up the Chrome executable ${path} without PATH`);
+  const candidates = path.includes(sep) ? [path] : (process.env.PATH ?? "").split(delimiter).map((dir) => `${dir || "."}${sep}${path}`);
+  for (const candidate of candidates) {
+    try {
+      accessSync(candidate, constants.X_OK);
+      const stat = statSync(candidate, { bigint: true });
+      if (!stat.isFile()) continue;
+      return {
+        file: realpathSync.native(candidate),
+        revision: [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join("-")
+      };
+    } catch {
+    }
+  }
+  throw new Error(`cannot find the Chrome executable ${path}`);
+}
+async function launchIdentity(scriptPath, plugins, args) {
+  const names = ["puppeteer"];
+  if (plugins.stealth || plugins.adblocker) names.push("puppeteer-extra");
+  if (plugins.stealth) names.push("puppeteer-extra-plugin-stealth");
+  if (plugins.adblocker) names.push("puppeteer-extra-plugin-adblocker");
+  const modules = {};
+  let puppeteer;
+  for (const name of names) {
+    const loaded = await loadModule(name, scriptPath);
+    const location = fileURLToPath(loaded.url());
+    modules[name] = { location, version: owningVersion(name, location) };
+    if (name === "puppeteer") puppeteer = loaded.module.default;
+  }
+  if (typeof puppeteer?.executablePath !== "function" || typeof puppeteer.defaultArgs !== "function") {
+    throw new Error(
+      "puppeteer exposes no executablePath() and defaultArgs() to identify its launch"
+    );
+  }
+  const configured = await puppeteer.executablePath();
+  if (typeof configured !== "string" || configured === "") {
+    throw new Error("puppeteer reported no Chrome executable");
+  }
+  return {
+    modules,
+    executablePath: configured,
+    executable: executableIdentity(configured),
+    plugins,
+    // Puppeteer 25 returns both as promises.
+    args: await puppeteer.defaultArgs({ headless: true, args })
+  };
+}
+var launching = new AsyncLocalStorage();
+var spawnFollowsLaunch = false;
+async function launchInGroup(launch) {
+  if (!spawnFollowsLaunch) {
+    spawnFollowsLaunch = true;
+    const spawn = childProcess.spawn;
+    childProcess.spawn = ((command, ...rest) => {
+      const options = rest.at(-1);
+      if (launching.getStore()?.pending && typeof options === "object" && !Array.isArray(options))
+        rest[rest.length - 1] = { ...options, detached: false };
+      return Reflect.apply(spawn, childProcess, [command, ...rest]);
+    });
+  }
+  const state = { pending: true };
+  try {
+    return await launching.run(state, launch);
+  } finally {
+    state.pending = false;
+  }
+}
+function errorMessage(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+async function resolveModuleOrThrow(name, scriptPath, hint) {
+  try {
+    return await resolveModule(name, scriptPath);
+  } catch (err) {
+    const scriptDir = dirname(resolve2(scriptPath));
+    throw new Error(
+      `Failed to load ${name}: ${errorMessage(err)}
+${hint}
+Install it in your project (${scriptDir}): npm install ${name}`
+    );
+  }
+}
+var puppeteerModule = null;
+var cachedPluginConfig = null;
+async function getPuppeteer(scriptPath, plugins) {
+  if (puppeteerModule && cachedPluginConfig) {
+    const configChanged = cachedPluginConfig.stealth !== plugins.stealth || cachedPluginConfig.adblocker !== plugins.adblocker;
+    if (!configChanged) return puppeteerModule;
+    puppeteerModule = null;
+    cachedPluginConfig = null;
+  }
+  const puppeteerMod = await resolveModuleOrThrow(
+    "puppeteer",
+    scriptPath,
+    "Puppeteer is a peer dependency of quarry-executor."
+  );
+  const vanillaPuppeteer = puppeteerMod.default;
+  if (!plugins.stealth && !plugins.adblocker) {
+    cachedPluginConfig = plugins;
+    puppeteerModule = vanillaPuppeteer;
+    return vanillaPuppeteer;
+  }
+  const extraMod = await resolveModuleOrThrow(
+    "puppeteer-extra",
+    scriptPath,
+    "puppeteer-extra is required while a plugin is enabled, and stealth is enabled by default.\nOr disable stealth with QUARRY_STEALTH=0"
+  );
+  const { addExtra } = extraMod;
+  const pptr = addExtra(vanillaPuppeteer);
+  if (plugins.stealth) {
+    const stealthMod = await resolveModuleOrThrow(
+      "puppeteer-extra-plugin-stealth",
+      scriptPath,
+      "Stealth is enabled by default.\nOr disable stealth with QUARRY_STEALTH=0"
+    );
+    const StealthPlugin = stealthMod.default;
+    pptr.use(StealthPlugin());
+  }
+  if (plugins.adblocker) {
+    const adblockerMod = await resolveModuleOrThrow(
+      "puppeteer-extra-plugin-adblocker",
+      scriptPath,
+      "Adblocker was enabled but the plugin is not installed."
+    );
+    const AdblockerPlugin = adblockerMod.default;
+    pptr.use(AdblockerPlugin({ blockTrackers: true }));
+  }
+  cachedPluginConfig = plugins;
+  puppeteerModule = pptr;
+  return pptr;
+}
+async function getVanillaPuppeteer(scriptPath) {
+  const puppeteerMod = await resolveModuleOrThrow(
+    "puppeteer",
+    scriptPath,
+    "Puppeteer is a peer dependency of quarry-executor."
+  );
+  return puppeteerMod.default;
+}
+function parseRunMeta(input) {
+  if (input === null || typeof input !== "object") {
+    throw new Error("run metadata must be an object");
+  }
+  const obj = input;
+  if (typeof obj.run_id !== "string" || obj.run_id === "") {
+    throw new Error("run_id must be a non-empty string");
+  }
+  if (typeof obj.attempt !== "number" || !Number.isInteger(obj.attempt) || obj.attempt < 1) {
+    throw new Error("attempt must be a positive integer");
+  }
+  const hasParentRunId = typeof obj.parent_run_id === "string" && obj.parent_run_id !== "";
+  if (obj.attempt === 1 && hasParentRunId) {
+    throw new Error("initial run (attempt=1) must not have parent_run_id");
+  }
+  if (obj.attempt > 1 && !hasParentRunId) {
+    throw new Error(`retry run (attempt=${obj.attempt}) must have parent_run_id`);
+  }
+  const run = {
+    run_id: obj.run_id,
+    attempt: obj.attempt,
+    ...typeof obj.job_id === "string" && obj.job_id !== "" && { job_id: obj.job_id },
+    ...hasParentRunId && { parent_run_id: obj.parent_run_id }
+  };
+  return run;
+}
+function buildPuppeteerLaunchOptions(baseOptions, proxy) {
+  if (!proxy) {
+    return baseOptions ?? {};
+  }
+  const proxyUrl = `${proxy.protocol}://${proxy.host}:${proxy.port}`;
+  const existingArgs = baseOptions?.args ?? [];
+  const proxyArgs = [`--proxy-server=${proxyUrl}`];
+  return {
+    ...baseOptions,
+    args: [...existingArgs, ...proxyArgs]
+  };
+}
+async function emitRunResult(stdioSink, outcome, proxy) {
+  try {
+    const runResultOutcome = toRunResultOutcome(outcome);
+    const proxyUsed = proxy ? redactProxy(proxy) : void 0;
+    await stdioSink.writeRunResult(runResultOutcome, proxyUsed);
+  } catch {
+  }
+}
+async function safeClose(resource) {
+  if (!resource) return;
+  try {
+    await resource.close();
+  } catch {
+  }
+}
+function toRunResultOutcome(outcome) {
+  switch (outcome.status) {
+    case "completed":
+      return {
+        status: "completed",
+        message: outcome.summary ? "run completed with summary" : "run completed"
+      };
+    case "error":
+      return {
+        status: "error",
+        message: outcome.message,
+        error_type: outcome.errorType,
+        stack: outcome.stack
+      };
+    case "crash":
+      return {
+        status: "crash",
+        message: outcome.message
+      };
+  }
+}
+function redactProxy(proxy) {
+  return {
+    protocol: proxy.protocol,
+    host: proxy.host,
+    port: proxy.port,
+    ...proxy.username && { username: proxy.username }
+  };
+}
+async function execute(config) {
+  const output = config.output ?? process.stdout;
+  const stdioSink = new StdioSink(output, config.outputWrite, config.ackReader);
+  const sink = new ObservingSink(stdioSink);
+  let browser = null;
+  let browserContext = null;
+  let page = null;
+  let script = null;
+  let ctx = null;
+  let scriptThrew = false;
+  let scriptError = null;
+  let isConnected = false;
+  function determineOutcome(sinkState) {
+    if (sinkState.isSinkFailed()) {
+      const failure = sinkState.getSinkFailure();
+      const message = errorMessage(failure);
+      return {
+        outcome: { status: "crash", message },
+        terminalEmitted: sinkState.getTerminalState() !== null
+      };
+    }
+    const terminalState = sinkState.getTerminalState();
+    if (terminalState !== null) {
+      if (terminalState.type === "run_error") {
+        return {
+          outcome: {
+            status: "error",
+            errorType: terminalState.errorType ?? "unknown",
+            message: terminalState.message ?? "Unknown error"
+          },
+          terminalEmitted: true
+        };
+      }
+      return {
+        outcome: { status: "completed", summary: terminalState.summary },
+        terminalEmitted: true
+      };
+    }
+    if (scriptThrew && scriptError) {
+      return {
+        outcome: {
+          status: "error",
+          errorType: "script_error",
+          message: scriptError.message,
+          stack: scriptError.stack
+        },
+        terminalEmitted: false
+      };
+    }
+    return {
+      outcome: { status: "completed" },
+      terminalEmitted: false
+    };
+  }
+  try {
+    try {
+      script = await loadScript(config.scriptPath);
+    } catch (err) {
+      if (err instanceof ScriptLoadError) {
+        return {
+          outcome: { status: "crash", message: err.message },
+          terminalEmitted: false
+        };
+      }
+      throw err;
+    }
+    let effectiveJob = config.job;
+    if (script.hooks.prepare) {
+      let prepareResult;
+      try {
+        prepareResult = await script.hooks.prepare(config.job, config.run);
+      } catch (err) {
+        const message = errorMessage(err);
+        const crashOutcome = { status: "crash", message };
+        await emitRunResult(stdioSink, crashOutcome, config.proxy);
+        return { outcome: crashOutcome, terminalEmitted: false };
+      }
+      if (prepareResult === null || prepareResult === void 0 || typeof prepareResult !== "object" || !("action" in prepareResult)) {
+        const crashOutcome = {
+          status: "crash",
+          message: `prepare hook must return { action: 'continue' | 'skip' }, got: ${String(prepareResult)}`
+        };
+        await emitRunResult(stdioSink, crashOutcome, config.proxy);
+        return { outcome: crashOutcome, terminalEmitted: false };
+      }
+      if (prepareResult.action === "skip") {
+        const { emit } = createAPIs(config.run, sink, config.storagePartition);
+        const summary = { skipped: true };
+        if (prepareResult.reason !== void 0) {
+          summary.reason = prepareResult.reason;
+        }
+        try {
+          await emit.runComplete({ summary });
+        } catch {
+        }
+        const result2 = determineOutcome(sink);
+        await emitRunResult(stdioSink, result2.outcome, config.proxy);
+        return result2;
+      }
+      if (prepareResult.action === "continue") {
+        if (prepareResult.job !== void 0) {
+          effectiveJob = prepareResult.job;
+        }
+      } else {
+        const crashOutcome = {
+          status: "crash",
+          message: `prepare hook returned unrecognized action: ${prepareResult.action}`
+        };
+        await emitRunResult(stdioSink, crashOutcome, config.proxy);
+        return { outcome: crashOutcome, terminalEmitted: false };
+      }
+    }
+    if (config.noBrowser === true) {
+    } else if (config.browserWSEndpoint) {
+      const puppeteer = await getVanillaPuppeteer(config.scriptPath);
+      browser = await puppeteer.connect({ browserWSEndpoint: config.browserWSEndpoint });
+      isConnected = true;
+    } else {
+      const plugins = {
+        stealth: config.stealth !== false,
+        adblocker: config.adblocker === true
+      };
+      const puppeteer = await getPuppeteer(config.scriptPath, plugins);
+      const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy);
+      browser = await launchInGroup(() => puppeteer.launch(launchOptions));
+    }
+    if (browser) {
+      browserContext = await browser.createBrowserContext();
+      page = await browserContext.newPage();
+    }
+    if (page && config.proxy?.username && config.proxy?.password) {
+      await page.authenticate({
+        username: config.proxy.username,
+        password: config.proxy.password
+      });
+    }
+    ctx = createContext({
+      job: effectiveJob,
+      run: config.run,
+      page: page ?? void 0,
+      browser: browser ?? void 0,
+      browserContext: browserContext ?? void 0,
+      noBrowser: config.noBrowser === true,
+      sink,
+      storagePartition: config.storagePartition
+    });
+    let rawScriptError = null;
+    try {
+      if (script.hooks.beforeRun) {
+        await script.hooks.beforeRun(ctx);
+      }
+      await script.script(ctx);
+      if (script.hooks.afterRun) {
+        await script.hooks.afterRun(ctx);
+      }
+    } catch (err) {
+      scriptThrew = true;
+      rawScriptError = err;
+      scriptError = {
+        message: errorMessage(err),
+        stack: err instanceof Error ? err.stack : void 0
+      };
+      if (script.hooks.onError && sink.getTerminalState() === null) {
+        try {
+          await script.hooks.onError(err, ctx);
+        } catch {
+        }
+      }
+    }
+    if (script.hooks.beforeTerminal && !sink.isSinkFailed() && sink.getTerminalState() === null) {
+      const signal = rawScriptError !== null ? { outcome: "error", error: rawScriptError } : { outcome: "completed" };
+      try {
+        await script.hooks.beforeTerminal(signal, ctx);
+      } catch {
+      }
+    }
+    if (!sink.isSinkFailed() && sink.getTerminalState() === null) {
+      try {
+        if (scriptThrew && scriptError) {
+          await ctx.emit.runError({
+            error_type: "script_error",
+            message: scriptError.message,
+            stack: scriptError.stack
+          });
+        } else {
+          await ctx.emit.runComplete();
+        }
+      } catch {
+      }
+    }
+    if (script.hooks.cleanup && ctx) {
+      try {
+        await script.hooks.cleanup(ctx);
+      } catch {
+      }
+    }
+    const result = determineOutcome(sink);
+    await emitRunResult(stdioSink, result.outcome, config.proxy);
+    return result;
+  } catch (err) {
+    const message = errorMessage(err);
+    const crashOutcome = { status: "crash", message };
+    await emitRunResult(stdioSink, crashOutcome, config.proxy);
+    return {
+      outcome: crashOutcome,
+      terminalEmitted: false
+    };
+  } finally {
+    await safeClose(page);
+    await safeClose(browserContext);
+    if (isConnected && browser) {
+      try {
+        await browser.disconnect();
+      } catch {
+      }
+    } else {
+      await safeClose(browser);
+    }
+  }
+}
 
 // src/ipc/ack-reader.ts
-init_dist();
-init_frame();
-var LENGTH_PREFIX_SIZE2 = 4;
 var AckReader = class {
   pending = /* @__PURE__ */ new Map();
   buffer = Buffer.alloc(0);
@@ -3760,13 +3676,13 @@ var AckReader = class {
   };
   /** Consume complete frames from the internal buffer. */
   drainBuffer() {
-    while (this.buffer.length >= LENGTH_PREFIX_SIZE2) {
+    while (this.buffer.length >= LENGTH_PREFIX_SIZE) {
       const payloadLen = this.buffer.readUInt32BE(0);
-      const totalLen = LENGTH_PREFIX_SIZE2 + payloadLen;
+      const totalLen = LENGTH_PREFIX_SIZE + payloadLen;
       if (this.buffer.length < totalLen) {
         return;
       }
-      const payload = this.buffer.subarray(LENGTH_PREFIX_SIZE2, totalLen);
+      const payload = this.buffer.subarray(LENGTH_PREFIX_SIZE, totalLen);
       this.buffer = this.buffer.subarray(totalLen);
       this.processPayload(payload);
     }
@@ -3841,9 +3757,6 @@ function pendingKey(kind, id) {
   return `${kind}:${id}`;
 }
 
-// src/bin/executor.ts
-init_sink();
-
 // src/ipc/stdout-guard.ts
 var installed = false;
 function installStdoutGuard() {
@@ -3869,9 +3782,6 @@ function installStdoutGuard() {
     ipcWrite: (data) => origWrite(data)
   };
 }
-
-// src/bin/executor.ts
-init_loader();
 
 // src/parse-storage-partition.ts
 function parseStoragePartition(input, onWarning) {
@@ -3910,23 +3820,14 @@ function fatalError(message) {
 `);
   process.exit(3);
 }
-var HOOK_NAMES = [
-  "prepare",
-  "beforeRun",
-  "afterRun",
-  "onError",
-  "beforeTerminal",
-  "cleanup"
-];
+function envPlugins() {
+  return {
+    stealth: process.env.QUARRY_STEALTH !== "0",
+    adblocker: process.env.QUARRY_ADBLOCKER === "1"
+  };
+}
 function currentLaunchIdentity(scriptPath) {
-  return launchIdentity(
-    scriptPath,
-    {
-      stealth: process.env.QUARRY_STEALTH !== "0",
-      adblocker: process.env.QUARRY_ADBLOCKER === "1"
-    },
-    chromiumArgs(browserProxyArgs())
-  );
+  return launchIdentity(scriptPath, envPlugins(), chromiumArgs(browserProxyArgs()));
 }
 async function validateScript(scriptPath) {
   let loaded;
@@ -4038,22 +3939,18 @@ async function browserServer(scriptPath) {
     );
     process.exit(3);
   }
-  const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer: getVanillaPuppeteer2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
   const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? ".";
   const recordPath = join2(reuseDir, "browser.json");
   const log = (message) => void process.stderr.write(`${message}
 `);
-  const vanilla = await getVanillaPuppeteer2(scriptPath);
+  const vanilla = await getVanillaPuppeteer(scriptPath);
   const stillListed = await closeRecordedBrowsers(
     recordPath,
     (options) => vanilla.connect(options),
     probeBrowser,
     log
   );
-  const puppeteer = await getBrowserPuppeteer(scriptPath, {
-    stealth: process.env.QUARRY_STEALTH !== "0",
-    adblocker: process.env.QUARRY_ADBLOCKER === "1"
-  });
+  const puppeteer = await getPuppeteer(scriptPath, envPlugins());
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: identity.executablePath,
@@ -4097,11 +3994,7 @@ async function browserServer(scriptPath) {
   process.exit(stop.code);
 }
 async function launchBrowserServer(scriptPath) {
-  const { getPuppeteer: getBrowserPuppeteer } = await Promise.resolve().then(() => (init_executor(), executor_exports));
-  const puppeteer = await getBrowserPuppeteer(scriptPath, {
-    stealth: process.env.QUARRY_STEALTH !== "0",
-    adblocker: process.env.QUARRY_ADBLOCKER === "1"
-  });
+  const puppeteer = await getPuppeteer(scriptPath, envPlugins());
   const browser = await puppeteer.launch({
     headless: true,
     args: chromiumArgs(browserProxyArgs())
@@ -4212,10 +4105,7 @@ async function main() {
       headless: true,
       args: chromiumArgs()
     },
-    // Stealth on by default; disable with QUARRY_STEALTH=0
-    stealth: process.env.QUARRY_STEALTH !== "0",
-    // Adblocker off by default; enable with QUARRY_ADBLOCKER=1
-    adblocker: process.env.QUARRY_ADBLOCKER === "1"
+    ...envPlugins()
   });
   ackReader.stop();
   await drainStdout();

@@ -33,7 +33,6 @@ import {
   type RunId,
   type RunMeta,
   type StoragePartitionMeta,
-  TerminalEventError,
   type TerminalSignal
 } from '@pithecene/quarry-sdk'
 import type { Browser, BrowserContext, LaunchOptions, Page } from 'puppeteer'
@@ -577,13 +576,6 @@ async function safeClose(resource: { close(): Promise<void> } | null): Promise<v
 }
 
 /**
- * Determine if an error is a sink failure (vs expected TerminalEventError).
- */
-function isSinkFailure(err: unknown): boolean {
-  return !(err instanceof TerminalEventError)
-}
-
-/**
  * Convert ExecutionOutcome to RunResultOutcome for IPC frame.
  */
 function toRunResultOutcome(outcome: ExecutionOutcome): RunResultOutcome {
@@ -904,13 +896,9 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
         } else {
           await ctx.emit.runComplete()
         }
-      } catch (err) {
-        // If this is a TerminalEventError, script already emitted terminal
-        // If this is a sink failure, determineOutcome will handle it
-        if (isSinkFailure(err)) {
-          // Sink failed during auto-emit - will be handled by determineOutcome
-        }
-        // TerminalEventError means script already emitted - that's fine
+      } catch {
+        // determineOutcome handles a sink failure, and a TerminalEventError means
+        // that the script already emitted its terminal.
       }
     }
 
