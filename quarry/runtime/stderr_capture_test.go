@@ -237,11 +237,13 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 		data, _ := io.ReadAll(m.Stdout())
 		stdout <- string(data)
 	}()
-	go func() {
-		<-m.exited
-		cancel() // the run ends while its output is still read
-	}()
 	limit := time.After(outputGrace + 15*time.Second)
+	select {
+	case <-m.exited:
+		cancel() // the run ends while its output is still read
+	case <-limit:
+		t.Fatal("the executor did not exit")
+	}
 	// As the runtime does: stdout to its end first, and then Wait.
 	select {
 	case out := <-stdout:
@@ -277,11 +279,21 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 	if err := m.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := io.Copy(io.Discard, m.Stdout()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.Wait(); err != nil {
-		t.Errorf("Wait for a later run = %v, want none of the first run's failure", err)
+	go func() {
+		if _, err := io.Copy(io.Discard, m.Stdout()); err != nil {
+			ended <- err
+			return
+		}
+		_, err := m.Wait()
+		ended <- err
+	}()
+	select {
+	case err := <-ended:
+		if err != nil {
+			t.Errorf("a later run ended with %v, want none of the first run's failure", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("a later run did not end")
 	}
 }
 
