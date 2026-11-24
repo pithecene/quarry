@@ -132,7 +132,7 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		return err
 	}
 	m.groupMu.Lock()
-	m.stopped = false
+	m.stopped, m.groupErr = false, nil
 	m.groupMu.Unlock()
 
 	m.cmd.Env = withResolveFrom(os.Environ(), m.config.ResolveFrom)

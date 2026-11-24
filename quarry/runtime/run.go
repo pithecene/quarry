@@ -498,8 +498,9 @@ func (r *RunOrchestrator) execute(ctx context.Context) *RunResult {
 		r.stoppedByDeadline = ingestionStoppedByDeadline
 	}
 	if group, ok := errors.AsType[*groupStopError](execErr); ok {
-		// Nor did one that passes while the output of the group is still read.
-		r.stoppedByDeadline = errors.Is(group.cause, ErrRunDeadline)
+		// Nor did one that passes while the output of the group is still read. The
+		// first failure decides, so the deadline must have passed at each.
+		r.stoppedByDeadline = errors.Is(group.cause, ErrRunDeadline) && (ingErr == nil || ingestionStoppedByDeadline)
 	}
 
 	// Always attempt policy flush (best effort) on all termination paths

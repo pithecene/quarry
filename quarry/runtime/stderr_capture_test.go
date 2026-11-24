@@ -237,14 +237,12 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 		data, _ := io.ReadAll(m.Stdout())
 		stdout <- string(data)
 	}()
-	ended := make(chan error, 1)
 	go func() {
 		<-m.exited
 		cancel() // the run ends while its output is still read
-		_, err := m.Wait()
-		ended <- err
 	}()
 	limit := time.After(outputGrace + 15*time.Second)
+	// As the runtime does: stdout to its end first, and then Wait.
 	select {
 	case out := <-stdout:
 		if out != "late\n" {
@@ -253,6 +251,11 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 	case <-limit:
 		t.Fatal("stdout did not end")
 	}
+	ended := make(chan error, 1)
+	go func() {
+		_, err := m.Wait()
+		ended <- err
+	}()
 	select {
 	case err := <-ended:
 		group, ok := errors.AsType[*groupStopError](err)
@@ -264,6 +267,21 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 	}
 	if text := string(m.stderr.wait()); text != "late\n" {
 		t.Errorf("stderr %q, want what the child wrote during the grace", text)
+	}
+
+	// A later run on the same manager does not keep the failure.
+	m.signalGroup = killGroup
+	if err := os.WriteFile(script, []byte("read -r input\nexit 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(io.Discard, m.Stdout()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Wait(); err != nil {
+		t.Errorf("Wait for a later run = %v, want none of the first run's failure", err)
 	}
 }
 
