@@ -203,7 +203,8 @@ no storage configured (as in unit tests), steps 1 and 3 write nothing.
   stderr, in `RunResult.RunRecordError`, and in the structured exit report
   (`run_record_error`). A write reported as failed may still have been
   persisted. `RunResult.Recorded` reports that the start record was written and
-  the end record confirmed, so that a reader finds the run complete.
+  the end record confirmed, so that a reader finds the run complete. The CLI
+  exits 4 for a `success` that is not recorded (CONTRACT_CLI.md §Exit Codes).
 
 ---
 
@@ -406,18 +407,20 @@ data fetching occurs.
     "username": "user (omitted if none)"
   },
   "stderr": "string (omitted if empty)",
-  "run_record_error": "string (omitted unless the end record failed)"
+  "run_record_error": "string (omitted unless the end record failed)",
+  "recorded": true
 }
 ```
 
 ### Field Rules
 
 - `run_id`, `attempt`, `outcome`, `message`, `exit_code`, `duration_ms`,
-  `event_count`, `policy`, `artifacts`, `metrics` are always present.
+  `event_count`, `policy`, `artifacts`, `metrics`, `recorded` are always present.
 - `job_id` is omitted when empty.
 - `terminal_summary` is omitted when no terminal event was received.
 - `proxy_used` is omitted when no proxy was configured.
 - `stderr` is omitted when empty.
+- `recorded` is `RunResult.Recorded` (§Failure Semantics).
 - `run_record_error` is omitted unless writing the end record failed
   (§Run Finalization).
 - `policy.flush_triggers` is omitted for non-streaming policies.

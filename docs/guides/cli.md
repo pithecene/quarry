@@ -201,11 +201,13 @@ spawned in validation mode, which loads the script module (including
 optional hook signatures, and exits. Exit code 0 = valid, 1 = load/validation
 failure, 2 = executor missing.
 
-Exit codes (per the [run contract](../contracts/CONTRACT_RUN.md)):
-- `0`: success (run_complete)
+Exit codes (per the [CLI contract](../contracts/CONTRACT_CLI.md)):
+- `0`: success (run_complete), with the run's records confirmed in storage
 - `1`: script error (run_error)
 - `2`: executor crash
-- `3`: policy failure
+- `3`: policy failure or version mismatch
+- `4`: storage error, or a success without its records confirmed
+- `5`: deadline exceeded
 
 Example:
 

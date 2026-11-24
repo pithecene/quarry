@@ -583,7 +583,7 @@ func (f *runFinalizer) writeReport(result *runtime.RunResult) {
 	if f.reportPath == "" {
 		return
 	}
-	exitCode := outcomeToExitCode(result.Outcome.Status)
+	exitCode := runExitCode(result)
 	report := runtime.BuildRunReport(result, f.collector.Snapshot(), f.policyChoice.name, exitCode)
 	if err := runtime.WriteRunReport(report, f.reportPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write report: %v\n", err)
@@ -927,7 +927,7 @@ func runAction(c *cli.Context) error {
 	}
 
 	finalizer.Finalize(ctx, result)
-	return cli.Exit("", outcomeToExitCode(result.Outcome.Status))
+	return cli.Exit("", runExitCode(result))
 }
 
 // runWithFanOut executes the root run with fan-out scheduling enabled.
@@ -982,8 +982,8 @@ func runWithFanOut(
 		runtime.PrintFanOutSummary(fanOutResult)
 	}
 
-	// Exit code is determined by root run outcome only
-	return cli.Exit("", outcomeToExitCode(rootResult.Outcome.Status))
+	// The root run alone determines the exit code.
+	return cli.Exit("", runExitCode(rootResult))
 }
 
 // runDryRun validates script loadability via the executor's --validate mode.
@@ -1845,6 +1845,15 @@ func buildEventSinkEntries(configs []eventSinkChoice, lodeSink policy.Sink, sour
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// runExitCode is the exit code of a run: its outcome's, or a storage error's when
+// it succeeded and its records are not confirmed in storage.
+func runExitCode(result *runtime.RunResult) int {
+	if result.Outcome.Status == types.OutcomeSuccess && !result.Recorded {
+		return exitStorageError
+	}
+	return outcomeToExitCode(result.Outcome.Status)
 }
 
 func outcomeToExitCode(status types.OutcomeStatus) int {

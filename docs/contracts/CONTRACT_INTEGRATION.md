@@ -258,8 +258,8 @@ have happened ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Run Finalization):
 3. The run's end record, which holds its metrics, is confirmed in storage
 
 A run whose records are not confirmed (`RunResult.Recorded`) is not notified,
-whatever its outcome, and a warning on stderr reports the skip. Its exit code and
-exit report carry its outcome, and the failure is surfaced as
+whatever its outcome, and a warning on stderr reports the skip. Its exit
+report carries its outcome and `recorded`, and the failure is surfaced as
 [CONTRACT_RUN.md](CONTRACT_RUN.md) requires. A write reported as failed may still
 have been persisted. Without an end record, the run's events and artifacts remain
 readable, and its metrics are only in the exit report, when one was requested.

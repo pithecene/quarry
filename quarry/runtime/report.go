@@ -31,6 +31,8 @@ type RunReport struct {
 	ProxyUsed       *types.ProxyEndpointRedacted `json:"proxy_used,omitempty"`
 	Stderr          string                       `json:"stderr,omitempty"`
 	RunRecordError  string                       `json:"run_record_error,omitempty"`
+	// Recorded reports that the run's records are confirmed in storage.
+	Recorded bool `json:"recorded"`
 }
 
 // ReportPolicy holds policy stats in the report.
@@ -81,6 +83,7 @@ func BuildRunReport(result *RunResult, snap metrics.Snapshot, policyName string,
 		ProxyUsed:      result.ProxyUsed,
 		Stderr:         result.StderrOutput,
 		RunRecordError: result.RunRecordError,
+		Recorded:       result.Recorded,
 	}
 
 	if result.RunMeta.JobID != nil {

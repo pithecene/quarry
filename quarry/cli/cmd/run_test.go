@@ -944,6 +944,49 @@ proxy:
 	}
 }
 
+// A success without confirmed records exits as a storage error, and a failure
+// keeps its own exit code. The report states both.
+func TestRunFinalizer_ExitCodeAndReport(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		status   types.OutcomeStatus
+		recorded bool
+		want     int
+	}{
+		{types.OutcomeSuccess, true, exitSuccess},
+		{types.OutcomeSuccess, false, exitStorageError},
+		{types.OutcomeScriptError, true, exitScriptError},
+		{types.OutcomeScriptError, false, exitScriptError},
+		{types.OutcomeExecutorCrash, false, exitExecutorCrash},
+		{types.OutcomePolicyFailure, false, exitPolicyFailure},
+		{types.OutcomeDeadlineExceeded, false, exitDeadline},
+	} {
+		t.Run(fmt.Sprintf("%s recorded=%t", tc.status, tc.recorded), func(t *testing.T) {
+			result := &runtime.RunResult{
+				RunMeta:  &types.RunMeta{RunID: "run-1", Attempt: 1},
+				Outcome:  &types.RunOutcome{Status: tc.status},
+				Recorded: tc.recorded,
+			}
+			if got := runExitCode(result); got != tc.want {
+				t.Errorf("exit code = %d, want %d", got, tc.want)
+			}
+			f := &runFinalizer{collector: &metrics.Collector{}, reportPath: filepath.Join(t.TempDir(), "report.json")}
+			f.writeReport(result)
+			data, err := os.ReadFile(f.reportPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var report map[string]any
+			if err := json.Unmarshal(data, &report); err != nil {
+				t.Fatal(err)
+			}
+			if report["recorded"] != tc.recorded || report["exit_code"] != float64(tc.want) || report["outcome"] != string(tc.status) {
+				t.Errorf("report = %s, want recorded %t, exit code %d, and the outcome", data, tc.recorded, tc.want)
+			}
+		})
+	}
+}
+
 // --- outcomeToExitCode ---
 
 func TestOutcomeToExitCode(t *testing.T) {

@@ -110,11 +110,14 @@ No other command may initiate or control execution.
 
 ### Exit Codes
 
-The `run` command exit code is determined by execution outcome:
+The `run` command exit code is determined by execution outcome, and for a `success`
+also by whether the run's records are confirmed in storage
+([CONTRACT_RUN.md](CONTRACT_RUN.md) §Failure Semantics):
 
 | Exit Code | OutcomeStatus | Meaning |
 |-----------|---------------|---------|
-| 0 | `success` | Run completed successfully |
+| 0 | `success` | Run completed successfully, with its records confirmed |
+| 4 | `success` | Run completed successfully, without its records confirmed |
 | 1 | `script_error` | Script emitted `run_error` |
 | 2 | `executor_crash` | Executor crashed or exited abnormally |
 | 3 | `policy_failure` | Ingestion policy failed (non-retryable) |
@@ -125,7 +128,12 @@ The `run` command exit code is determined by execution outcome:
 The outcomes `policy_failure` and `version_mismatch` share exit code 3 because both
 are non-retryable configuration errors that cannot be resolved by re-running.
 The outcome `storage_error` has its own exit code because a store's timeout or
-refusal is often transient, so a caller can retry on exit code 4 alone.
+refusal is often transient, so a caller can retry on exit code 4 alone. A `success`
+without confirmed records shares it. Its events are persisted, and its records can
+be, so a caller that must not extract twice first reads the run. The exit report
+tells the two apart by `outcome` and `recorded`. A failed run keeps the exit code of its outcome,
+whether or not its records are confirmed. In a fan-out, the root run alone
+determines the exit code.
 The outcome `deadline_exceeded` has its own exit code, so a caller can tell a
 run that its own `--max-duration` stopped from a crash.
 
