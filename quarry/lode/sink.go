@@ -1,7 +1,4 @@
-// Package lode provides Lode integration per CONTRACT_LODE.md.
-//
-// This package defines the interface and stub for Lode persistence.
-// Real implementations will connect to the actual Lode storage system.
+// Package lode persists runs in Lode and reads them back per CONTRACT_LODE.md.
 package lode
 
 import (
@@ -90,41 +87,3 @@ var (
 	_ policy.Sink      = (*Sink)(nil)
 	_ policy.EventSink = (*Sink)(nil)
 )
-
-// StubClient is a test client that accepts writes without persisting.
-// Use for integration testing before real Lode is available.
-type StubClient struct {
-	Events []StubEventRecord
-	Closed bool
-}
-
-// StubEventRecord is a recorded event write for testing.
-type StubEventRecord struct {
-	Dataset string
-	RunID   string
-	Events  []*types.EventEnvelope
-}
-
-// NewStubClient creates a new stub client.
-func NewStubClient() *StubClient {
-	return &StubClient{}
-}
-
-// WriteEvents implements Client.
-func (c *StubClient) WriteEvents(_ context.Context, dataset, runID string, events []*types.EventEnvelope) error {
-	c.Events = append(c.Events, StubEventRecord{
-		Dataset: dataset,
-		RunID:   runID,
-		Events:  events,
-	})
-	return nil
-}
-
-// Close implements Client.
-func (c *StubClient) Close() error {
-	c.Closed = true
-	return nil
-}
-
-// Verify StubClient implements Client.
-var _ Client = (*StubClient)(nil)

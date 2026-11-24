@@ -15,34 +15,18 @@ import (
 	"github.com/pithecene/quarry/types"
 )
 
-// =============================================================================
-// Phase 8 + Phase 10: Storage Failure Hardening Tests (Typed Assertions)
-// =============================================================================
-
 // FailingStore is a lode.RangeStore that returns configurable errors.
 type FailingStore struct {
-	PutErr    error
-	GetErr    error
-	ExistsErr error
-	ListErr   error
-	DeleteErr error
-
-	// Track calls for verification
-	PutCalls    int
-	PutPaths    []string
-	CloseCalled bool
+	PutErr   error
+	PutCalls int
 }
 
-func (s *FailingStore) Put(_ context.Context, path string, _ io.Reader) error {
+func (s *FailingStore) Put(_ context.Context, _ string, _ io.Reader) error {
 	s.PutCalls++
-	s.PutPaths = append(s.PutPaths, path)
 	return s.PutErr
 }
 
 func (s *FailingStore) Get(_ context.Context, _ string) (io.ReadCloser, error) {
-	if s.GetErr != nil {
-		return nil, s.GetErr
-	}
 	// FailingStore never stores data; return not-found so callers
 	// (e.g. Lode's readLatestPointer) handle the absence gracefully
 	// instead of receiving a nil reader with a nil error.
@@ -50,15 +34,15 @@ func (s *FailingStore) Get(_ context.Context, _ string) (io.ReadCloser, error) {
 }
 
 func (s *FailingStore) Exists(_ context.Context, _ string) (bool, error) {
-	return false, s.ExistsErr
+	return false, nil
 }
 
 func (s *FailingStore) List(_ context.Context, _ string) ([]string, error) {
-	return nil, s.ListErr
+	return nil, nil
 }
 
 func (s *FailingStore) Delete(_ context.Context, _ string) error {
-	return s.DeleteErr
+	return nil
 }
 
 func (s *FailingStore) ReadRange(_ context.Context, _ string, _, _ int64) ([]byte, error) {
@@ -69,12 +53,11 @@ func (s *FailingStore) ReaderAt(_ context.Context, _ string) (io.ReaderAt, error
 	return nil, errors.New("not implemented")
 }
 
-// CompareAndSwap is a write: it records the path like Put and returns PutErr,
+// CompareAndSwap is a write: it counts as a Put and returns PutErr,
 // so an injected write failure also fails the commit's latest-pointer swap.
 // FailingStore never stores data, so only an empty expected value matches.
-func (s *FailingStore) CompareAndSwap(_ context.Context, path, expected, _ string) error {
+func (s *FailingStore) CompareAndSwap(_ context.Context, _, expected, _ string) error {
 	s.PutCalls++
-	s.PutPaths = append(s.PutPaths, path)
 	if s.PutErr != nil {
 		return s.PutErr
 	}
@@ -88,16 +71,7 @@ var _ lode.RangeStore = (*FailingStore)(nil)
 
 // FailingStoreFactory creates a factory that returns a FailingStore.
 func FailingStoreFactory(store *FailingStore) lode.Factory[lode.RangeStore] {
-	return func() (lode.RangeStore, error) {
-		return store, nil
-	}
-}
-
-// FailingFactoryFactory creates a factory that fails to create a store.
-func FailingFactoryFactory(err error) lode.Factory[lode.RangeStore] {
-	return func() (lode.RangeStore, error) {
-		return nil, err
-	}
+	return lode.Use[lode.RangeStore](store)
 }
 
 // =============================================================================

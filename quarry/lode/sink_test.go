@@ -47,7 +47,7 @@ func TestDeriveDay(t *testing.T) {
 func TestSink_WriteEvents(t *testing.T) {
 	t.Parallel()
 
-	client := NewStubClient()
+	client := &fakeClient{}
 	sink := NewSink(Config{
 		Dataset: "test-dataset",
 		RunID:   "run-123",
@@ -63,32 +63,32 @@ func TestSink_WriteEvents(t *testing.T) {
 		t.Fatalf("WriteEvents failed: %v", err)
 	}
 
-	if len(client.Events) != 1 {
-		t.Fatalf("expected 1 event record, got %d", len(client.Events))
+	if len(client.writes) != 1 {
+		t.Fatalf("expected 1 event record, got %d", len(client.writes))
 	}
 
-	record := client.Events[0]
-	if record.Dataset != "test-dataset" {
-		t.Errorf("Dataset = %q, want %q", record.Dataset, "test-dataset")
+	record := client.writes[0]
+	if record.dataset != "test-dataset" {
+		t.Errorf("Dataset = %q, want %q", record.dataset, "test-dataset")
 	}
-	if record.RunID != "run-123" {
-		t.Errorf("RunID = %q, want %q", record.RunID, "run-123")
+	if record.runID != "run-123" {
+		t.Errorf("RunID = %q, want %q", record.runID, "run-123")
 	}
-	if len(record.Events) != 2 {
-		t.Errorf("len(Events) = %d, want 2", len(record.Events))
+	if len(record.events) != 2 {
+		t.Errorf("len(Events) = %d, want 2", len(record.events))
 	}
 }
 
 func TestSink_Close(t *testing.T) {
 	t.Parallel()
 
-	client := NewStubClient()
+	client := &fakeClient{}
 	sink := NewSink(Config{
 		Dataset: "test-dataset",
 		RunID:   "run-123",
 	}, client)
 
-	if client.Closed {
+	if client.closes != 0 {
 		t.Error("client should not be closed before Close()")
 	}
 
@@ -97,83 +97,49 @@ func TestSink_Close(t *testing.T) {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	if !client.Closed {
+	if client.closes != 1 {
 		t.Error("client should be closed after Close()")
 	}
 }
 
-// =============================================================================
-// Phase 5: Storage Write Error Tests
-// =============================================================================
-
-// FailingClient simulates storage write failures (disk full, permission errors, etc.)
-type FailingClient struct {
-	EventWriteErr   error
-	MetricsWriteErr error
-	CloseErr        error
-	// Track calls for verification
-	EventWriteCalls   int
-	MetricsWriteCalls int
-	CloseCalls        int
+// fakeClient records its calls and returns the errors it is given.
+type fakeClient struct {
+	writeErr, closeErr error
+	writes             []eventWrite
+	closes             int
 }
 
-func (c *FailingClient) WriteEvents(_ context.Context, _, _ string, _ []*types.EventEnvelope) error {
-	c.EventWriteCalls++
-	return c.EventWriteErr
+type eventWrite struct {
+	dataset, runID string
+	events         []*types.EventEnvelope
 }
 
-func (c *FailingClient) Close() error {
-	c.CloseCalls++
-	return c.CloseErr
+func (c *fakeClient) WriteEvents(_ context.Context, dataset, runID string, events []*types.EventEnvelope) error {
+	c.writes = append(c.writes, eventWrite{dataset, runID, events})
+	return c.writeErr
 }
 
-var _ Client = (*FailingClient)(nil)
+func (c *fakeClient) Close() error {
+	c.closes++
+	return c.closeErr
+}
 
-func TestSink_WriteEvents_DiskFullError(t *testing.T) {
+var _ Client = (*fakeClient)(nil)
+
+func TestSink_WriteEvents_PropagatesTheClientsError(t *testing.T) {
 	t.Parallel()
-
-	diskFullErr := &diskFullError{msg: "no space left on device"}
-	client := &FailingClient{EventWriteErr: diskFullErr}
-	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
-
-	events := []*types.EventEnvelope{
-		{Type: "item", RunID: "run-1", Seq: 1},
-	}
-
-	err := sink.WriteEvents(t.Context(), events)
-	if err == nil {
-		t.Fatal("expected error for disk full, got nil")
-	}
-
-	// Error should propagate
-	if !errors.Is(err, diskFullErr) {
-		t.Errorf("expected disk full error, got: %v", err)
-	}
-
-	// Write should have been attempted
-	if client.EventWriteCalls != 1 {
-		t.Errorf("expected 1 write call, got %d", client.EventWriteCalls)
-	}
-}
-
-func TestSink_WriteEvents_PermissionError(t *testing.T) {
-	t.Parallel()
-
-	permErr := &permissionError{msg: "permission denied"}
-	client := &FailingClient{EventWriteErr: permErr}
-	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
-
-	events := []*types.EventEnvelope{
-		{Type: "item", RunID: "run-1", Seq: 1},
-	}
-
-	err := sink.WriteEvents(t.Context(), events)
-	if err == nil {
-		t.Fatal("expected error for permission denied, got nil")
-	}
-
-	if !errors.Is(err, permErr) {
-		t.Errorf("expected permission error, got: %v", err)
+	for _, writeErr := range []error{
+		&diskFullError{msg: "no space left on device"},
+		&permissionError{msg: "permission denied"},
+	} {
+		t.Run(writeErr.Error(), func(t *testing.T) {
+			client := &fakeClient{writeErr: writeErr}
+			sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
+			err := sink.WriteEvents(t.Context(), []*types.EventEnvelope{{Type: "item", RunID: "run-1", Seq: 1}})
+			if !errors.Is(err, writeErr) || len(client.writes) != 1 {
+				t.Errorf("WriteEvents = %v after %d writes, want %v after one", err, len(client.writes), writeErr)
+			}
+		})
 	}
 }
 
@@ -181,7 +147,7 @@ func TestSink_Close_Error(t *testing.T) {
 	t.Parallel()
 
 	closeErr := &closeError{msg: "failed to close storage"}
-	client := &FailingClient{CloseErr: closeErr}
+	client := &fakeClient{closeErr: closeErr}
 	sink := NewSink(Config{Dataset: "test", RunID: "run-1"}, client)
 
 	err := sink.Close()
@@ -193,8 +159,8 @@ func TestSink_Close_Error(t *testing.T) {
 		t.Errorf("expected close error, got: %v", err)
 	}
 
-	if client.CloseCalls != 1 {
-		t.Errorf("expected 1 close call, got %d", client.CloseCalls)
+	if client.closes != 1 {
+		t.Errorf("expected 1 close call, got %d", client.closes)
 	}
 }
 

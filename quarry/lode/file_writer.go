@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pithecene/quarry/iox"
@@ -133,36 +132,3 @@ func SidecarFilesPrefix(cfg Config) string {
 	return fmt.Sprintf("datasets/%s/partitions/source=%s/category=%s/day=%s/run_id=%s/files/",
 		cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
 }
-
-// StubFileWriter records PutFile calls for testing.
-type StubFileWriter struct {
-	mu    sync.Mutex
-	Files []StubFileRecord
-}
-
-// StubFileRecord is a recorded file write for testing.
-type StubFileRecord struct {
-	Filename    string
-	ContentType string
-	Data        []byte
-}
-
-// NewStubFileWriter creates a new stub file writer.
-func NewStubFileWriter() *StubFileWriter {
-	return &StubFileWriter{}
-}
-
-// PutFile implements FileWriter by recording the call.
-func (w *StubFileWriter) PutFile(_ context.Context, filename, contentType string, data []byte) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.Files = append(w.Files, StubFileRecord{
-		Filename:    filename,
-		ContentType: contentType,
-		Data:        data,
-	})
-	return nil
-}
-
-// Verify StubFileWriter implements FileWriter.
-var _ FileWriter = (*StubFileWriter)(nil)
