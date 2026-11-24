@@ -285,7 +285,8 @@ as `readRun(locator.run, { storage: locator.storage })`:
 | `storage.endpoint` | `s3` only, when the run configured one, without user information, query, and fragment |
 | `storage.s3PathStyle` | `s3` only, when the run forced path-style addressing |
 
-The locator carries no credentials of the run's configuration. The path of an
+The locator states where the run is and authorizes no access: a consumer decides
+which storage it reads. The locator carries no credentials of the run's configuration. The path of an
 endpoint addresses the store and can also hold a secret, so a run with an adapter
 and an S3 endpoint whose path is neither empty nor `/` is a configuration error, unless
 `--adapter-publish-endpoint-path` allows the locator to carry the path.

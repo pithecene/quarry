@@ -21,7 +21,10 @@ go test ./policy/... -bench=BenchmarkBufferedPolicy -benchmem
 go test ./policy/... -bench=BenchmarkStreamingPolicy -benchmem -benchtime=100x
 ```
 
-## Latest Results
+## Historical Results
+
+These results predate the current policies and have not been measured again. Do not
+take them as the current performance.
 
 **Environment:** AMD Ryzen 9 5900XT (16-core), linux/amd64, Go 1.24
 

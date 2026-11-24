@@ -663,9 +663,7 @@ task examples
 
 ### Integration Pattern Examples
 
-See [`examples/integration-patterns/`](examples/integration-patterns/) for downstream ETL trigger examples:
-- Event-bus pattern (SNS/SQS, handler)
-- Polling pattern (filesystem, S3)
+See [`examples/integration-patterns/`](examples/integration-patterns/) for a polling example for downstream ETL.
 
 ### Example: Minimal Item Emission
 
@@ -972,7 +970,8 @@ do {
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
 - A notification's `locator` (`NotificationLocator`) reads its run unchanged:
   `readRun(event.locator.run, { storage: event.locator.storage })`. It carries no
-  credentials, which the reader's environment supplies.
+  credentials, which the reader's environment supplies, and authorizes no access:
+  check it against the storage that the consumer permits before reading.
 
 **Built-in adapters**: `--adapter webhook` sends an HTTP POST, and
 `--adapter redis` publishes to a Redis pub/sub channel, after each run whose records Quarry
