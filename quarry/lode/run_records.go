@@ -231,8 +231,13 @@ func EncodeTerminalSummary(payload map[string]any) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := json.Marshal(EndRecord{TerminalSummary: summary}); err != nil {
+	record, err := json.Marshal(EndRecord{TerminalSummary: summary})
+	if err != nil {
 		return nil, err
+	}
+	// Encoding checks the payload apart from the record, whose nesting it adds to.
+	if !json.Valid(record) {
+		return nil, errors.New("an end record with the payload could not be read back")
 	}
 	return summary, nil
 }
