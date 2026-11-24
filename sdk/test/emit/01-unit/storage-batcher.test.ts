@@ -431,11 +431,9 @@ describe('concurrent flush calls', () => {
       .result.catch(() => {})
     const flushes = [batcher.flush(), batcher.flush(), batcher.flush()]
     settle()
-    const outcomes = await Promise.allSettled(flushes)
-    expect(outcomes.map((o) => (o.status === 'rejected' ? o.reason : undefined))).toEqual([
-      failure,
-      failure,
-      failure
-    ])
+    const outcome = failure
+      ? { status: 'rejected', reason: failure }
+      : { status: 'fulfilled', value: undefined }
+    expect(await Promise.allSettled(flushes)).toEqual([outcome, outcome, outcome])
   })
 })
