@@ -292,7 +292,8 @@ Because polling may re-scan the same runs, processors must be idempotent:
 ### Example
 
 [`polling-runs.ts`](../../examples/integration-patterns/polling-runs.ts) polls
-filesystem or S3 storage with the SDK's `listRuns` and `readRun`. It takes completion
+filesystem storage with the SDK's `listRuns` and `readRun`. Its header states the change
+for S3. It takes completion
 from the run records. Storage paths and modification times do not establish it.
 
 ---
