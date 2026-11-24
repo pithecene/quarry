@@ -17,7 +17,7 @@ export type UploadPolicy = RetryPolicy & {
  *
  * Each attempt uploads only the files that the release does not hold, so
  * GitHub's record decides every outcome: one failed file does not withhold the
- * others, and a response lost after a stored upload costs nothing. Uploads
+ * others, and a file whose upload's response was lost does not upload twice. Uploads
  * replace, so only a draft takes them. A published release is read-only and
  * needs each file by name, because a re-run rebuilds archives with other bytes.
  */
@@ -29,22 +29,21 @@ export const uploadAssets = async (
 ): Promise<void> => {
   const files = await localDigests(dir)
   for (let attempt = 1; ; attempt++) {
-    let pending = await findPending(ctx, tag, files)
-    if (pending.reason === undefined) break
-    if (attempt > policy.attempts) throw new ReleaseError(pending.reason)
-    ctx.log(`attempt ${attempt}/${policy.attempts}: ${pending.reason}`)
-    if (attempt > 1) {
-      await ctx.sleep(retryDelay(policy, attempt - 1))
-      // The release may have changed meanwhile, and this read authorizes the uploads.
-      pending = await findPending(ctx, tag, files)
-      if (pending.reason === undefined) break
+    const { names, reason } = await findPending(ctx, tag, files)
+    if (reason === undefined) break
+    if (attempt > policy.attempts) throw new ReleaseError(reason)
+    ctx.log(`attempt ${attempt}/${policy.attempts}: ${reason}`)
+    // The read above authorizes these uploads, so any delay comes after them.
+    let failed = names.length === 0
+    for (const name of names) {
+      if (!(await upload(ctx, tag, join(dir, name), policy))) failed = true
     }
-    for (const name of pending.names) await upload(ctx, tag, join(dir, name), policy)
+    if (failed && attempt < policy.attempts) await ctx.sleep(retryDelay(policy, attempt))
   }
   ctx.log(`The release ${tag} holds all ${files.size} files`)
 }
 
-/** The files to upload and why the release is incomplete, with no reason when it is complete. */
+/** The files to upload (none after a failed read) and why the release is incomplete, with no reason when it is complete. */
 type Pending = { readonly names: readonly string[]; readonly reason?: string }
 
 const findPending = async (
@@ -60,8 +59,11 @@ const findPending = async (
       ? (name: string) => !digests.has(name)
       : (name: string) => digests.get(name) !== files.get(name)
   const names = [...files.keys()].filter(lacks)
-  if (state !== 'draft' && (state !== 'published' || names.length > 0)) {
-    throw new ReleaseError(`the release ${tag} is ${state}, and lacks: ${names.join(', ')}`)
+  if (state !== 'draft' && state !== 'published') {
+    throw new ReleaseError(`the GitHub release for ${tag} is ${state}`)
+  }
+  if (state === 'published' && names.length > 0) {
+    throw new ReleaseError(`the release ${tag} is published, and lacks: ${names.join(', ')}`)
   }
   return names.length === 0
     ? { names }
@@ -81,13 +83,14 @@ const upload = async (
   tag: string,
   path: string,
   { attemptTimeoutMs: timeoutMs }: UploadPolicy
-): Promise<void> => {
+): Promise<boolean> => {
   try {
     const args = ['release', 'upload', '--clobber', '--', tag, path]
     const { code, stderr, timedOut } = await ctx.run('gh', args, { timeoutMs })
-    if (timedOut) ctx.log(`uploading ${path} timed out`)
-    else if (code !== 0) ctx.log(`uploading ${path} failed: ${lastLine(stderr)}`)
+    if (code === 0 && !timedOut) return true
+    ctx.log(`uploading ${path} failed: ${timedOut ? 'timed out' : lastLine(stderr)}`)
   } catch (error) {
     ctx.log(`uploading ${path} failed: ${describeError(error)}`)
   }
+  return false
 }

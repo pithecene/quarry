@@ -6,6 +6,7 @@ import { uploadAssets } from '../src/commands/upload-assets.ts'
 import { writeChecksums } from '../src/commands/write-checksums.ts'
 import { fakeWorld, type WorldState } from './fake-world.ts'
 
+const OTHER = `sha256:${'0'.repeat(64)}`
 const POLICY = { attempts: 3, delayMs: 5000, attemptTimeoutMs: 1000 }
 
 const distWorld = (overrides: Partial<WorldState> = {}) => {
@@ -69,12 +70,12 @@ describe('upload-assets', () => {
   })
 
   it('replaces a differing file of a draft, and never one of a published release', async () => {
-    const assets = () => new Map([['a.tar.gz', 'sha256:other']])
+    const assets = () => new Map([['a.tar.gz', OTHER]])
     const draft = distWorld({ assets: assets() })
     await draft.upload()
     expect(draft.uploaded()).toContain('a.tar.gz')
 
-    const held = new Map([...assets(), ['b.tar.gz', 'sha256:other']])
+    const held = new Map([...assets(), ['b.tar.gz', OTHER]])
     const published = distWorld({ release: 'published', assets: held })
     await published.upload()
     expect(published.uploaded()).toEqual([])
@@ -83,7 +84,7 @@ describe('upload-assets', () => {
   it('fails on a published release that lacks a file, and uploads nothing', async () => {
     const { upload, uploaded } = distWorld({
       release: 'published',
-      assets: new Map([['a.tar.gz', 'sha256:other']])
+      assets: new Map([['a.tar.gz', OTHER]])
     })
     await expect(upload()).rejects.toThrow('is published, and lacks: b.tar.gz')
     expect(uploaded()).toEqual([])
@@ -99,7 +100,27 @@ describe('upload-assets', () => {
     expect(uploaded()).toEqual([])
   })
 
-  it('refuses a malformed asset list', async () => {
+  it('fails after its attempts when gh cannot start', async () => {
+    const { world, dir } = distWorld()
+    const calls: string[] = []
+    const ctx = {
+      ...world.ctx,
+      run: (_command: string, args: readonly string[]) => {
+        calls.push(args.slice(0, 2).join(' '))
+        return Promise.reject(new Error('spawn gh EAGAIN'))
+      }
+    }
+    await expect(uploadAssets(ctx, 'v1.2.3', dir, POLICY)).rejects.toThrow('spawn gh EAGAIN')
+    // One read for each attempt and one to verify, and no upload.
+    expect(calls).toEqual(Array(4).fill('release view'))
+    expect(world.sleeps).toEqual([5000, 10000])
+  })
+
+  it.each([
+    '[{}]',
+    '[{"name":"a.tar.gz","state":"uploaded"}]',
+    '[{"name":"a.tar.gz","state":"uploaded","digest":"sha256:"}]'
+  ])('refuses the malformed asset list %s', async (assets) => {
     const { world, uploaded } = distWorld()
     const run = world.ctx.run
     const ctx = {
@@ -108,7 +129,7 @@ describe('upload-assets', () => {
         args[1][1] === 'view'
           ? {
               code: 0,
-              stdout: '{"isDraft":true,"isPrerelease":false,"assets":[{}]}',
+              stdout: `{"isDraft":true,"isPrerelease":false,"assets":${assets}}`,
               stderr: '',
               timedOut: false
             }
@@ -128,10 +149,10 @@ describe('upload-assets', () => {
       ...world.ctx,
       sleep: async () => {
         world.state.release = 'published'
-        world.state.assets.set('a.tar.gz', 'sha256:other')
+        world.state.assets.set('a.tar.gz', OTHER)
       }
     }
-    // The first retry waits; by then someone published the release.
+    // The release is published during the delay that a failed upload causes.
     await uploadAssets(ctx, 'v1.2.3', dir, POLICY)
     expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz'])
   })
