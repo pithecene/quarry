@@ -123,12 +123,7 @@ export class ObservingSink implements EmitSink, SinkState {
    * @throws SinkAlreadyFailedError if the sink has previously failed
    */
   async writeEvent(envelope: EventEnvelope): Promise<void> {
-    // Fail-fast: don't attempt writes after failure
-    if (this.sinkFailure !== null) {
-      throw new SinkAlreadyFailedError(this.sinkFailure)
-    }
-
-    try {
+    await this.guard(async () => {
       await this.inner.writeEvent(envelope)
 
       // Only track terminal state if not already set (first terminal wins)
@@ -136,13 +131,7 @@ export class ObservingSink implements EmitSink, SinkState {
       if (this.terminalState === null && isTerminalType(envelope.type)) {
         this.terminalState = this.extractTerminalState(envelope.type, envelope.payload)
       }
-    } catch (err) {
-      // First failure wins: only set if not already set
-      if (this.sinkFailure === null) {
-        this.sinkFailure = err
-      }
-      throw err
-    }
+    })
   }
 
   /**
@@ -154,20 +143,7 @@ export class ObservingSink implements EmitSink, SinkState {
     sizeBytes: number,
     expectedSha256?: string
   ): Promise<void> {
-    // Fail-fast: don't attempt writes after failure
-    if (this.sinkFailure !== null) {
-      throw new SinkAlreadyFailedError(this.sinkFailure)
-    }
-
-    try {
-      await this.inner.openArtifact(artifactId, sizeBytes, expectedSha256)
-    } catch (err) {
-      // First failure wins: only set if not already set
-      if (this.sinkFailure === null) {
-        this.sinkFailure = err
-      }
-      throw err
-    }
+    await this.guard(() => this.inner.openArtifact(artifactId, sizeBytes, expectedSha256))
   }
 
   /**
@@ -181,20 +157,10 @@ export class ObservingSink implements EmitSink, SinkState {
     offset: number,
     data: Buffer | Uint8Array
   ): Promise<void> {
-    // Fail-fast: don't attempt writes after failure
-    if (this.sinkFailure !== null) {
-      throw new SinkAlreadyFailedError(this.sinkFailure)
-    }
-
-    try {
-      await this.inner.writeArtifactRange(artifactId, offset, data)
-    } catch (err) {
-      // First failure wins: only set if not already set
-      if (this.sinkFailure === null && !(err instanceof ArtifactRangeRefusedError)) {
-        this.sinkFailure = err
-      }
-      throw err
-    }
+    await this.guard(
+      () => this.inner.writeArtifactRange(artifactId, offset, data),
+      (err) => err instanceof ArtifactRangeRefusedError
+    )
   }
 
   /**
@@ -202,16 +168,24 @@ export class ObservingSink implements EmitSink, SinkState {
    * @throws SinkAlreadyFailedError if the sink has previously failed
    */
   async writeFile(filename: string, contentType: string, data: Buffer | Uint8Array): Promise<void> {
-    // Fail-fast: don't attempt writes after failure
+    await this.guard(() => this.inner.writeFile(filename, contentType, data))
+  }
+
+  /**
+   * Run a write unless the sink has failed, and keep its first failure, which
+   * a recoverable error is not.
+   */
+  private async guard(
+    write: () => Promise<void>,
+    isRecoverable: (err: unknown) => boolean = () => false
+  ): Promise<void> {
     if (this.sinkFailure !== null) {
       throw new SinkAlreadyFailedError(this.sinkFailure)
     }
-
     try {
-      await this.inner.writeFile(filename, contentType, data)
+      await write()
     } catch (err) {
-      // First failure wins: only set if not already set
-      if (this.sinkFailure === null) {
+      if (this.sinkFailure === null && !isRecoverable(err)) {
         this.sinkFailure = err
       }
       throw err

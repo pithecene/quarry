@@ -12,23 +12,7 @@ import {
   MAX_CHUNK_SIZE
 } from '../../src/ipc/frame.js'
 import { StdioSink, StreamClosedError } from '../../src/ipc/sink.js'
-
-/**
- * Helper to create a minimal valid event envelope for testing.
- */
-function makeEnvelope(overrides: Partial<EventEnvelope<'item'>> = {}): EventEnvelope<'item'> {
-  return {
-    contract_version: '0.1.0',
-    event_id: 'evt-123' as EventId,
-    run_id: 'run-456' as RunId,
-    seq: 1,
-    type: 'item',
-    ts: '2024-01-01T00:00:00.000Z',
-    payload: { item_type: 'test', data: {} },
-    attempt: 1,
-    ...overrides
-  }
-}
+import { makeEnvelope } from './helpers.js'
 
 /**
  * Helper to read a frame from collected buffer data.

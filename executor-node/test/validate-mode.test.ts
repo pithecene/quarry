@@ -8,50 +8,20 @@
  * - Missing default export → exit 1, JSON with error
  * - Bad hook type → exit 1, JSON with error
  */
-import { type ChildProcess, spawn } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { type ProcessResult, runProcess } from './run-process.js'
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 const tsxBin = resolve(testDir, '../../node_modules/.bin/tsx')
 const entrypoint = resolve(testDir, '../src/bin/executor.ts')
 
-type ValidateResult = {
-  stdout: string
-  stderr: string
-  exitCode: number | null
-}
-
 /**
  * Spawn the executor entrypoint with --validate and a script path.
  */
-function runValidate(scriptPath: string, env?: Record<string, string>): Promise<ValidateResult> {
-  return new Promise((resolve, reject) => {
-    let child: ChildProcess
-    try {
-      child = spawn(tsxBin, [entrypoint, '--validate', scriptPath], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, ...env }
-      })
-    } catch (err) {
-      reject(err)
-      return
-    }
-
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    child.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
-    child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      resolve({
-        stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-        exitCode: code
-      })
-    })
-  })
+function runValidate(...args: string[]): Promise<ProcessResult> {
+  return runProcess(tsxBin, [entrypoint, '--validate', ...args])
 }
 
 describe('executor --validate mode', () => {
@@ -61,7 +31,7 @@ describe('executor --validate mode', () => {
 
     expect(exitCode, `stderr: ${stderr}`).toBe(0)
 
-    const result = JSON.parse(stdout.trim())
+    const result = JSON.parse(stdout.toString())
     expect(result.valid).toBe(true)
     expect(result.exports.default).toBe(true)
     expect(result.exports.hooks).toEqual([])
@@ -73,7 +43,7 @@ describe('executor --validate mode', () => {
 
     expect(exitCode, `stderr: ${stderr}`).toBe(0)
 
-    const result = JSON.parse(stdout.trim())
+    const result = JSON.parse(stdout.toString())
     expect(result.valid).toBe(true)
     expect(result.exports.default).toBe(true)
     expect(result.exports.hooks).toContain('prepare')
@@ -85,7 +55,7 @@ describe('executor --validate mode', () => {
 
     expect(exitCode).toBe(1)
 
-    const result = JSON.parse(stdout.trim())
+    const result = JSON.parse(stdout.toString())
     expect(result.valid).toBe(false)
     expect(result.error).toBeTruthy()
   }, 15_000)
@@ -96,7 +66,7 @@ describe('executor --validate mode', () => {
 
     expect(exitCode).toBe(1)
 
-    const result = JSON.parse(stdout.trim())
+    const result = JSON.parse(stdout.toString())
     expect(result.valid).toBe(false)
     expect(result.error).toContain('missing default export')
   }, 15_000)
@@ -107,38 +77,14 @@ describe('executor --validate mode', () => {
 
     expect(exitCode).toBe(1)
 
-    const result = JSON.parse(stdout.trim())
+    const result = JSON.parse(stdout.toString())
     expect(result.valid).toBe(false)
     expect(result.error).toContain('prepare')
     expect(result.error).toContain('not a function')
   }, 15_000)
 
   it('exits 3 when no script path provided', async () => {
-    const result = await new Promise<ValidateResult>((resolve, reject) => {
-      let child: ChildProcess
-      try {
-        child = spawn(tsxBin, [entrypoint, '--validate'], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: process.env
-        })
-      } catch (err) {
-        reject(err)
-        return
-      }
-
-      const stdoutChunks: Buffer[] = []
-      const stderrChunks: Buffer[] = []
-      child.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
-      child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
-      child.on('error', reject)
-      child.on('close', (code) => {
-        resolve({
-          stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
-          stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-          exitCode: code
-        })
-      })
-    })
+    const result = await runValidate()
 
     expect(result.exitCode).toBe(3)
     expect(result.stderr).toContain('Usage')

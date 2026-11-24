@@ -9,12 +9,12 @@
  * - The module's export is usable (correct value on stdout)
  * - Without QUARRY_RESOLVE_FROM, the import fails (control case)
  */
-import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { type ProcessResult, runProcess } from './run-process.js'
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 const fixturePath = resolve(testDir, 'fixtures/resolve-from-child.ts')
@@ -59,37 +59,8 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
-/**
- * Spawn the fixture child process with optional env overrides.
- */
-function runFixture(
-  env?: Record<string, string>
-): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
-  return new Promise((resolve, reject) => {
-    let child: ChildProcess
-    try {
-      child = spawn(tsxBin, [fixturePath], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, ...env }
-      })
-    } catch (err) {
-      reject(err)
-      return
-    }
-
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    child.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
-    child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      resolve({
-        stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-        exitCode: code
-      })
-    })
-  })
+function runFixture(env?: Record<string, string>): Promise<ProcessResult> {
+  return runProcess(tsxBin, [fixturePath], env)
 }
 
 describe('resolve-from integration', () => {
@@ -103,7 +74,7 @@ describe('resolve-from integration', () => {
     expect(exitCode, `child stderr: ${stderr}`).toBe(0)
 
     // Should have resolved the module and received the ESM export
-    const parsed = JSON.parse(stdout.trim())
+    const parsed = JSON.parse(stdout.toString())
     expect(parsed.greeting).toBe('hello from esm')
 
     // Note: the stderr fallback message ("quarry: resolved ... via --resolve-from
@@ -125,7 +96,7 @@ describe('resolve-from integration', () => {
     })
 
     expect(exitCode, `child stderr: ${stderr}`).toBe(0)
-    const parsed = JSON.parse(stdout.trim())
+    const parsed = JSON.parse(stdout.toString())
     expect(parsed.greeting).toBe('hello from esm')
   }, 15_000)
 

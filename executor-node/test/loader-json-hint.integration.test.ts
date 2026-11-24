@@ -6,12 +6,12 @@
  * Vitest's Vite transform silently handles bare JSON imports, so only
  * a child process can exercise the actual Node ESM failure path.
  */
-import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { type ProcessResult, runProcess } from './run-process.js'
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 const fixturePath = resolve(testDir, 'fixtures/bare-json-import-child.mjs')
@@ -37,34 +37,8 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
-function runFixture(
-  env?: Record<string, string>
-): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
-  return new Promise((resolve, reject) => {
-    let child: ChildProcess
-    try {
-      child = spawn(process.execPath, [fixturePath], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, ...env }
-      })
-    } catch (err) {
-      reject(err)
-      return
-    }
-
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    child.stdout!.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
-    child.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code) => {
-      resolve({
-        stdout: Buffer.concat(stdoutChunks).toString('utf-8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-        exitCode: code
-      })
-    })
-  })
+function runFixture(env?: Record<string, string>): Promise<ProcessResult> {
+  return runProcess(process.execPath, [fixturePath], env)
 }
 
 describe('JSON import attribute hint (integration)', () => {
@@ -74,9 +48,11 @@ describe('JSON import attribute hint (integration)', () => {
     })
 
     expect(exitCode, `child stderr: ${stderr}`).toBe(0)
-    expect(stdout).toContain('Failed to load script')
-    expect(stdout).toContain('import failed:')
-    expect(stdout).toContain('Hint: Node ESM requires an import attribute for JSON modules.')
-    expect(stdout).toContain("with { type: 'json' }")
+    expect(stdout.toString()).toContain('Failed to load script')
+    expect(stdout.toString()).toContain('import failed:')
+    expect(stdout.toString()).toContain(
+      'Hint: Node ESM requires an import attribute for JSON modules.'
+    )
+    expect(stdout.toString()).toContain("with { type: 'json' }")
   }, 15_000)
 })

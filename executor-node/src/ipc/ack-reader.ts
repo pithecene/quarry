@@ -9,10 +9,7 @@
  */
 import type { Readable } from 'node:stream'
 import { ArtifactRangeRefusedError } from '@pithecene/quarry-sdk'
-import { decodeArtifactRangeAck, decodeFileWriteAck } from './frame.js'
-
-/** Minimum frame size: 4-byte length prefix + at least 1 byte payload. */
-const LENGTH_PREFIX_SIZE = 4
+import { decodeArtifactRangeAck, decodeFileWriteAck, LENGTH_PREFIX_SIZE } from './frame.js'
 
 /** The two acknowledgements the runtime sends, each with its own ID space. */
 type AckKind = 'file_write' | 'artifact_range'

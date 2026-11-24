@@ -48,11 +48,6 @@ export const MAX_CHUNK_SIZE = 8 * 1024 * 1024
 export const LENGTH_PREFIX_SIZE = 4
 
 /**
- * Frame type discriminant for run result control frames.
- */
-export type RunResultType = 'run_result'
-
-/**
  * Artifact open frame per CONTRACT_IPC.md §Artifact Frames: the artifact's
  * identity and size, sent before any of its bytes.
  */

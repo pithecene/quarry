@@ -10,6 +10,16 @@ import { isAbsolute, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { QuarryScript, QuarryScriptModule } from '@pithecene/quarry-sdk'
 
+/** The lifecycle hooks that a script may export. */
+export const HOOK_NAMES = [
+  'prepare',
+  'beforeRun',
+  'afterRun',
+  'onError',
+  'beforeTerminal',
+  'cleanup'
+] as const
+
 /**
  * Error thrown when a script module is invalid.
  */
@@ -30,14 +40,7 @@ export type LoadedScript<Job = unknown> = {
   /** The main script function */
   readonly script: QuarryScript<Job>
   /** Optional lifecycle hooks */
-  readonly hooks: {
-    readonly prepare?: QuarryScriptModule<Job>['prepare']
-    readonly beforeRun?: QuarryScriptModule<Job>['beforeRun']
-    readonly afterRun?: QuarryScriptModule<Job>['afterRun']
-    readonly onError?: QuarryScriptModule<Job>['onError']
-    readonly beforeTerminal?: QuarryScriptModule<Job>['beforeTerminal']
-    readonly cleanup?: QuarryScriptModule<Job>['cleanup']
-  }
+  readonly hooks: Readonly<Pick<QuarryScriptModule<Job>, (typeof HOOK_NAMES)[number]>>
   /** Original module for debugging */
   readonly module: QuarryScriptModule<Job>
 }
@@ -119,14 +122,6 @@ export async function loadScript<Job = unknown>(scriptPath: string): Promise<Loa
   }
 
   // Validate optional hooks
-  const HOOK_NAMES = [
-    'prepare',
-    'beforeRun',
-    'afterRun',
-    'onError',
-    'beforeTerminal',
-    'cleanup'
-  ] as const
   for (const name of HOOK_NAMES) {
     if (!isOptionalFunction(mod[name])) {
       throw new ScriptLoadError(scriptPath, `${name} hook is not a function`)
