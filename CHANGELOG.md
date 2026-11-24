@@ -24,6 +24,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Concurrent `flush()` calls on a storage batcher all settle**: each call now waits for the writes on its own. Before, a second call replaced the first one's wait, so the first never returned.
 - **The runtime retries a failed write of the end record**: it reads the record back after a failed write, and writes it again when it cannot confirm the record, at most three times in all. Before, one lost response or brief outage left a finished run without its end record. `CONTRACT_RUN.md` § Failure Semantics states the rule.
 - **A lost response no longer fails a sidecar file**: Quarry reads a file's `.meta.json` companion back when its write reports an error. The file succeeds with a logged warning when the bytes match. Before, the script's `storage.put()` failed although storage held both objects. The companion now also holds the `run_id`, so it never matches another run's. `CONTRACT_EMIT.md` § Content Type states the rule.
 - **Pruning removes the sidecar files that a run's end record names**: the end record now names each sidecar file the run wrote as `sidecar_files`, and `inspect run` and `quarry prune` read it beside the snapshots. Before, a file written after the last commit of a run with an encoded key stayed behind. A run without snapshots keeps such files, and the report lists them as skipped. Earlier records name none. `CONTRACT_LODE.md` § Sidecar File Inventory states the rule.
