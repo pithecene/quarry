@@ -179,6 +179,7 @@ Each stream entry contains flat fields: `run_id`, `event_type`, `seq`,
 | `--adapter-channel <name>` | Pub/sub channel name (redis only, default `quarry:run_completed`) |
 | `--adapter-timeout <duration>` | Notification timeout (default `10s`) |
 | `--adapter-retries <n>` | Retry attempts (default `3`) |
+| `--adapter-publish-endpoint-path` | Publish the path of `--storage-endpoint` (§Run Locator) |
 
 ### Event Sink CLI Flags
 
@@ -285,7 +286,9 @@ as `readRun(locator.run, { storage: locator.storage })`:
 | `storage.s3PathStyle` | `s3` only, when the run forced path-style addressing |
 
 The locator carries no credentials of the run's configuration. The path of an
-endpoint addresses the store, so the locator keeps it, and it must hold no secret.
+endpoint addresses the store and can also hold a secret, so a run with an adapter
+and an endpoint with a path is a configuration error, unless
+`--adapter-publish-endpoint-path` allows the locator to carry the path.
 A run is not notified when the working directory that its relative storage
 directory needs no longer resolves, and a warning on stderr reports it. The reader supplies its own credentials, and the
 reader's environment supplies a region or endpoint that the run did not configure.

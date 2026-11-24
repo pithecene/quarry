@@ -296,6 +296,10 @@ ADVANCED:
 				Usage: "Adapter retry attempts",
 				Value: webhook.DefaultRetries,
 			},
+			&cli.BoolFlag{
+				Name:  "adapter-publish-endpoint-path",
+				Usage: "Publish the path of --storage-endpoint in notifications",
+			},
 			&cli.StringFlag{
 				Name:  "adapter-channel",
 				Usage: "Pub/sub channel name for Redis adapter (default: quarry:run_completed)",
@@ -388,6 +392,9 @@ type adapterChoice struct {
 	headers     map[string]string
 	timeout     time.Duration
 	retries     int
+	// publishEndpointPath allows a notification to carry the path of the storage
+	// endpoint, which no parser can tell from a credential.
+	publishEndpointPath bool
 }
 
 // eventSinkChoice holds parsed event sink configuration.
@@ -734,6 +741,9 @@ func runAction(c *cli.Context) error {
 		ac, err := parseAdapterConfigWithPrecedence(c, cfg, adapterType)
 		if err != nil {
 			return cli.Exit(fmt.Sprintf("invalid adapter config: %v", err), exitConfigError)
+		}
+		if err := validateLocatorEndpoint(storageConfig, ac.publishEndpointPath); err != nil {
+			return cli.Exit(err.Error(), exitConfigError)
 		}
 		adptConfig = &ac
 	}
@@ -1125,6 +1135,8 @@ func parseAdapterConfigWithPrecedence(c *cli.Context, cfg *quarryconfig.Config, 
 		url:         resolveString(c, "adapter-url", configVal(cfg, func(c *quarryconfig.Config) string { return c.Adapter.URL })),
 		timeout:     resolveDuration(c, "adapter-timeout", configDurationVal(cfg)),
 		headers:     make(map[string]string),
+		publishEndpointPath: resolveBool(c, "adapter-publish-endpoint-path",
+			configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.Adapter.PublishEndpointPath })),
 	}
 
 	// Retries: CLI > config > urfave default
@@ -1656,6 +1668,23 @@ func storageRoot(path string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(wd, path), nil
+}
+
+// validateLocatorEndpoint rejects an S3 endpoint that a notification cannot carry:
+// one that is no URL with a host, or one with a path unless publishPath allows it.
+// The errors do not repeat the endpoint, which can hold a credential.
+func validateLocatorEndpoint(storageConfig storageChoice, publishPath bool) error {
+	if storageConfig.backend != "s3" || storageConfig.endpoint == "" {
+		return nil
+	}
+	u, err := url.Parse(storageConfig.endpoint)
+	if err != nil || u.Host == "" {
+		return errors.New("--storage-endpoint must be a URL with a host when --adapter is set")
+	}
+	if strings.Trim(u.Path, "/") != "" && !publishPath {
+		return errors.New("--storage-endpoint has a path, which notifications would publish: set --adapter-publish-endpoint-path if it holds no secret")
+	}
+	return nil
 }
 
 // redactEndpoint is the endpoint URL without its user information, query, and

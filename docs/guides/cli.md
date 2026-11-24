@@ -126,6 +126,7 @@ Adapter flags (event-bus notification):
 - `--adapter-channel <name>` (Redis pub/sub channel name, default: `quarry:run_completed`)
 - `--adapter-timeout <duration>` (per-request timeout, default: `10s`)
 - `--adapter-retries <n>` (retry attempts with exponential backoff, default: `3`)
+- `--adapter-publish-endpoint-path` (publish the path of `--storage-endpoint` in notifications)
 
 Fan-out flags (derived work execution):
 - `--depth <n>` (maximum recursion depth, 0 = disabled, default: `0`)

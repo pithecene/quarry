@@ -531,6 +531,7 @@ CLI flags always override config file values.
 | `--adapter-channel <name>` | `quarry:run_completed` | Pub/sub channel name (redis only) |
 | `--adapter-timeout <duration>` | `10s` | Notification timeout |
 | `--adapter-retries <n>` | `3` | Retry attempts |
+| `--adapter-publish-endpoint-path` | `false` | Publish the path of `--storage-endpoint` in notifications |
 
 **Event sink flags (real-time event delivery):**
 

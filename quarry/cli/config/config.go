@@ -70,6 +70,8 @@ type AdapterConfig struct {
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Timeout Duration          `yaml:"timeout,omitempty"`
 	Retries *int              `yaml:"retries,omitempty"`
+	// PublishEndpointPath allows notifications to carry the storage endpoint's path.
+	PublishEndpointPath bool `yaml:"publish_endpoint_path,omitempty"`
 }
 
 // EventSinksConfig holds the optional events.sinks configuration.

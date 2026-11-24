@@ -1190,6 +1190,54 @@ func TestBuildStorageLocator(t *testing.T) {
 	}
 }
 
+// A notification carries an endpoint's path only where the run allows it, and the
+// refusal does not repeat the endpoint.
+func TestValidateLocatorEndpoint(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		backend, endpoint string
+		publishPath, ok   bool
+	}{
+		{"s3", "", false, true},
+		{"s3", "https://host:9000", false, true},
+		{"s3", "https://host:9000/", false, true},
+		{"s3", "https://host:9000?x=1", false, true},
+		{"s3", "https://host/secret/s3", false, false},
+		{"s3", "https://host/%73ecret", false, false},
+		{"s3", "https://host/secret/s3", true, true},
+		{"s3", "host:9000/secret", true, false},
+		{"s3", "https://host:secret", true, false},
+		{"fs", "https://host/secret", false, true},
+	} {
+		t.Run(fmt.Sprintf("%s %s %t", tc.backend, tc.endpoint, tc.publishPath), func(t *testing.T) {
+			err := validateLocatorEndpoint(storageChoice{backend: tc.backend, endpoint: tc.endpoint}, tc.publishPath)
+			if (err == nil) != tc.ok || (err != nil && strings.Contains(err.Error(), "secret/")) {
+				t.Errorf("err = %v, want accepted %t and no endpoint", err, tc.ok)
+			}
+		})
+	}
+}
+
+// A run whose notifications would publish an endpoint path never starts.
+func TestRun_RefusesToPublishAnEndpointPath(t *testing.T) {
+	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
+	app := cli.NewApp()
+	app.Commands = []*cli.Command{RunCommand()}
+	app.ExitErrHandler = func(*cli.Context, error) {}
+	script := filepath.Join(t.TempDir(), "script.mjs")
+	if err := os.WriteFile(script, []byte("export default async () => {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := app.Run([]string{
+		"quarry", "run", "--script", script, "--run-id", "run-1", "--source", "s",
+		"--storage-backend", "s3", "--storage-path", "bucket", "--storage-endpoint", "https://host/token/s3",
+		"--adapter", "webhook", "--adapter-url", "http://127.0.0.1:1/",
+	})
+	if exit, ok := errors.AsType[cli.ExitCoder](err); !ok || exit.ExitCode() != exitConfigError || !strings.Contains(err.Error(), "--adapter-publish-endpoint-path") {
+		t.Errorf("err = %v, want the configuration error", err)
+	}
+}
+
 // notified returns the body of the completion event that the finalizer of a
 // recorded run publishes, or "" when it publishes none.
 func notified(t *testing.T, storagePath, runID string) string {
@@ -1448,6 +1496,7 @@ func newAdapterTestContext(t *testing.T, flags map[string]string, sliceFlags map
 		&cli.StringFlag{Name: "adapter-channel"},
 		&cli.DurationFlag{Name: "adapter-timeout", Value: 10 * time.Second},
 		&cli.IntFlag{Name: "adapter-retries", Value: 3},
+		&cli.BoolFlag{Name: "adapter-publish-endpoint-path"},
 		&cli.StringSliceFlag{Name: "adapter-header"},
 	}
 
@@ -1456,6 +1505,7 @@ func newAdapterTestContext(t *testing.T, flags map[string]string, sliceFlags map
 	fs.String("adapter-channel", "", "")
 	fs.Duration("adapter-timeout", 10*time.Second, "")
 	fs.Int("adapter-retries", 3, "")
+	fs.Bool("adapter-publish-endpoint-path", false, "")
 
 	// Register the string slice in the flagset via a multi-value approach.
 	// urfave/cli uses its own internal plumbing for slices, so we handle

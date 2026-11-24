@@ -313,6 +313,12 @@
           "description": "Adapter retry attempts",
           "dependsOn": ["adapter"]
         },
+        "adapter-publish-endpoint-path": {
+          "type": "bool",
+          "required": false,
+          "description": "Publish the path of --storage-endpoint in notifications",
+          "dependsOn": ["adapter"]
+        },
         "adapter-channel": {
           "type": "string",
           "required": false,
