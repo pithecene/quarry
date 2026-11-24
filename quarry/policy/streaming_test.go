@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -766,8 +767,8 @@ func TestStreamingPolicy_CountsTheBatchBeingWritten(t *testing.T) {
 			go func() { admitted <- pol.IngestEvent(t.Context(), bigFrame(seq)) }()
 		}
 		synctest.Wait()
-		if stats := pol.Stats(); stats.TotalEvents != 12 {
-			t.Errorf("admitted %d events, want the 12 being written", stats.TotalEvents)
+		if stats := pol.Stats(); stats.TotalEvents != 12 || stats.BufferSize != 12*(10<<20) {
+			t.Errorf("admitted %d events, %d bytes retained, want the 12 being written", stats.TotalEvents, stats.BufferSize)
 		}
 		release()
 		if err := <-first; err != nil {
@@ -827,7 +828,80 @@ func TestStreamingPolicy_FailedFlushStaysWithinBounds(t *testing.T) {
 		if stats := pol.Stats(); stats.EventsPersisted != 12 || stats.BufferSize != 10<<20 {
 			t.Errorf("persisted %d with %d bytes buffered, want 12 and one frame", stats.EventsPersisted, stats.BufferSize)
 		}
+		want := []string{"e0", "e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8", "e9", "e10", "e11"}
+		if len(sink.batches) != 1 || !slices.Equal(sink.batches[0], want) {
+			t.Errorf("wrote %v, want %v", sink.batches, want)
+		}
 	})
+}
+
+// A call that waited for a write writes nothing itself when that write made room.
+func TestStreamingPolicy_AdmitsAfterAWriteWithoutAnother(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		pol, release := heldFlushOf(t, 6)
+		if err := ingestFrames(t, pol, 6, 12); err != nil {
+			t.Fatal(err)
+		}
+		over := make(chan error, 1)
+		go func() { over <- pol.IngestEvent(t.Context(), bigFrame(12)) }()
+		synctest.Wait()
+		release()
+		if err := <-over; err != nil {
+			t.Fatal(err)
+		}
+		if stats := pol.Stats(); stats.EventsPersisted != 6 || stats.BufferSize != 7*(10<<20) {
+			t.Errorf("persisted %d with %d bytes retained, want 6 and seven frames", stats.EventsPersisted, stats.BufferSize)
+		}
+	})
+}
+
+// The append that reaches the bounds beside a batch being written flushes.
+func TestStreamingPolicy_FlushesAnExactFitBesideAWrite(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		pol, release := heldFlushOf(t, 6)
+		if err := ingestFrames(t, pol, 6, 12); err != nil {
+			t.Fatal(err)
+		}
+		last := bigFrame(12)
+		last.RawFrameBytes = 8 << 20 // 128 MiB in all
+		admitted := make(chan error, 1)
+		go func() { admitted <- pol.IngestEvent(t.Context(), last) }()
+		synctest.Wait()
+		release()
+		if err := <-admitted; err != nil {
+			t.Fatal(err)
+		}
+		if stats := pol.Stats(); stats.EventsPersisted != 13 || stats.BufferSize != 0 {
+			t.Errorf("persisted %d with %d bytes retained, want 13 and none", stats.EventsPersisted, stats.BufferSize)
+		}
+	})
+}
+
+// heldFlushOf starts a flush of n frames that the sink holds until release runs.
+func heldFlushOf(t *testing.T, n int) (*policy.StreamingPolicy, func()) {
+	t.Helper()
+	sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{})}
+	pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
+	release := sync.OnceFunc(func() { close(sink.release) })
+	t.Cleanup(release)
+	if err := ingestFrames(t, pol, 0, n); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = pol.Flush(t.Context()) }()
+	<-sink.started
+	return pol, release
+}
+
+func ingestFrames(t *testing.T, pol *policy.StreamingPolicy, from, to int) error {
+	t.Helper()
+	for seq := from; seq < to; seq++ {
+		if err := pol.IngestEvent(t.Context(), bigFrame(seq)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // A call whose context ends while its pre-append flush finishes is not
