@@ -168,24 +168,7 @@ func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 			if tc.cancel {
 				cancel()
 			}
-			// As the runtime does: stdout to its end first, and then Wait.
-			ended := make(chan error, 1)
-			go func() {
-				if _, err := io.Copy(io.Discard, m.Stdout()); err != nil {
-					ended <- err
-					return
-				}
-				_, err := m.Wait()
-				ended <- err
-			}()
-			select {
-			case err := <-ended:
-				if err != nil {
-					t.Fatalf("the run ended with %v", err)
-				}
-			case <-time.After(15 * time.Second):
-				t.Fatal("the run did not end")
-			}
+			endsCleanly(t, m)
 			deadline := time.Now().Add(5 * time.Second)
 			for running(t, pid) && time.Now().Before(deadline) {
 				time.Sleep(10 * time.Millisecond)
@@ -279,6 +262,14 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 	if err := m.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	endsCleanly(t, m)
+}
+
+// endsCleanly reads a started run as the runtime does, stdout to its end first
+// and then Wait, and fails the test unless it ends in time without an error.
+func endsCleanly(t *testing.T, m *ExecutorManager) {
+	t.Helper()
+	ended := make(chan error, 1)
 	go func() {
 		if _, err := io.Copy(io.Discard, m.Stdout()); err != nil {
 			ended <- err
@@ -290,10 +281,10 @@ func TestExecutorManager_UnstoppableGroup(t *testing.T) {
 	select {
 	case err := <-ended:
 		if err != nil {
-			t.Errorf("a later run ended with %v, want none of the first run's failure", err)
+			t.Fatalf("the run ended with %v", err)
 		}
 	case <-time.After(15 * time.Second):
-		t.Fatal("a later run did not end")
+		t.Fatal("the run did not end")
 	}
 }
 
@@ -312,25 +303,13 @@ func TestExecutorManager_StopsASecondRun(t *testing.T) {
 		ScriptPath:   script,
 		RunMeta:      &types.RunMeta{RunID: "run-1", Attempt: 1},
 	})
-	for run := range 2 {
+	for range 2 {
 		ctx, cancel := context.WithCancel(t.Context())
 		if err := m.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
 		cancel()
-		ended := make(chan error, 1)
-		go func() {
-			_, err := m.Wait()
-			ended <- err
-		}()
-		select {
-		case err := <-ended:
-			if err != nil {
-				t.Errorf("run %d: Wait: %v", run, err)
-			}
-		case <-time.After(15 * time.Second):
-			t.Fatalf("run %d did not end when it was cancelled", run)
-		}
+		endsCleanly(t, m)
 	}
 }
 
