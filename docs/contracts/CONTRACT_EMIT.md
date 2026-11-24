@@ -277,13 +277,9 @@ the key is an empty string.
 - Caller provides a `content_type` (MIME type) with each file.
 - Content type is persisted as a companion `.meta.json` sidecar file
   alongside the data file in storage.
-
-### Uncertain Writes
-
-A write can report an error after storage persisted it. Quarry then reads the
-object back, and the write succeeds when the stored bytes are its own. A
-script may retry a failed `storage.put()` with the same content and content
-type. A file that the run recorded cannot be written again.
+- A companion write can report an error after storage persisted it. Quarry
+  then reads the companion back, and the write succeeds with a logged warning
+  when the stored bytes are its own.
 
 ### Storage Batcher (`createStorageBatcher`)
 

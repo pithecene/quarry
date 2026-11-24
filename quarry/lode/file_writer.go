@@ -7,12 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/iox"
 )
@@ -49,16 +46,7 @@ const recoveryTimeout = 10 * time.Second
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
 	prefix := SidecarFilesPrefix(c.config)
 	key := collapseSidecarSlashes(prefix) + filename
-	// A file that the run has recorded is immutable. One that it has not can be
-	// an earlier attempt's, whose write reported an error and persisted.
-	put := putReconciled
-	c.mu.Lock()
-	recorded := slices.ContainsFunc(c.files, func(f SidecarFileRef) bool { return f.Path == prefix+filename })
-	c.mu.Unlock()
-	if recorded {
-		put = putObject
-	}
-	if err := put(ctx, c.store, key, data); err != nil {
+	if err := c.store.Put(ctx, key, bytes.NewReader(data)); err != nil {
 		return WrapWriteError(err, key)
 	}
 
@@ -70,7 +58,7 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 		return fmt.Errorf("file write metadata marshal failed: %w", err)
 	}
 	metaPath := key + ".meta.json"
-	if err := putReconciled(ctx, c.store, metaPath, meta); err != nil {
+	if err := c.putReconciled(ctx, metaPath, meta); err != nil {
 		// A file that was not written whole is no file of the run. The context
 		// may have ended the write, so the removal does not use its cancellation.
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
@@ -96,22 +84,17 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	return nil
 }
 
-// putObject writes data at key, create-only.
-func putObject(ctx context.Context, store lode.Store, key string, data []byte) error {
-	return store.Put(ctx, key, bytes.NewReader(data))
-}
-
 // putReconciled writes data at key, create-only. A write that reports an error
 // can have persisted, so it succeeds when the object reads back as data. The
 // error may be the context's, so the read does not use its cancellation.
-func putReconciled(ctx context.Context, store lode.Store, key string, data []byte) error {
-	putErr := putObject(ctx, store, key, data)
+func (c *LodeClient) putReconciled(ctx context.Context, key string, data []byte) error {
+	putErr := c.store.Put(ctx, key, bytes.NewReader(data))
 	if putErr == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
 	defer cancel()
-	rc, err := store.Get(ctx, key)
+	rc, err := c.store.Get(ctx, key)
 	if err != nil {
 		return putErr
 	}
@@ -119,6 +102,9 @@ func putReconciled(ctx context.Context, store lode.Store, key string, data []byt
 	stored, err := io.ReadAll(io.LimitReader(rc, int64(len(data))+1))
 	if err != nil || !bytes.Equal(stored, data) {
 		return putErr
+	}
+	if c.config.ReconcileObserver != nil {
+		c.config.ReconcileObserver(key, putErr)
 	}
 	return nil
 }

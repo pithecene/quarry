@@ -326,18 +326,17 @@ func (companionFailingStore) Delete(ctx context.Context, _ string) error {
 	return ctx.Err()
 }
 
-// uncertainStore reports an error after it persists a key with the suffix, and
-// its reads fail while unreadable is set.
+// uncertainStore reports an error after it persists a companion, and its reads
+// fail while unreadable is set.
 type uncertainStore struct {
 	lode.RangeStore
-	suffix     string
 	unreadable bool
 }
 
 var errUncertain = errors.New("no response")
 
 func (s *uncertainStore) Put(ctx context.Context, key string, r io.Reader) error {
-	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, s.suffix) {
+	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, ".meta.json") {
 		return err
 	}
 	return errUncertain
@@ -350,67 +349,47 @@ func (s *uncertainStore) Get(ctx context.Context, key string) (io.ReadCloser, er
 	return s.RangeStore.Get(ctx, key)
 }
 
-// A write that reports an error after it persisted leaves the file writable: the
-// readback settles it, or the next attempt does when the readback fails too.
-func TestPutFile_ReconcilesAnUncertainWrite(t *testing.T) {
+// A companion write that reports an error after it persisted succeeds by
+// readback, and one that the readback cannot settle leaves the file writable.
+func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	t.Parallel()
-	for _, suffix := range []string{"/page.png", ".meta.json"} {
-		for _, unreadable := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s unreadable=%t", suffix, unreadable), func(t *testing.T) {
-				store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: suffix, unreadable: unreadable}
-				client, err := NewLodeClientWithFactory(t.Context(), Config{
-					Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
-				}, sharedFactory(lode.NewMemory()))
-				if err != nil {
-					t.Fatal(err)
+	for _, unreadable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
+			store := &uncertainStore{RangeStore: lode.NewMemory(), unreadable: unreadable}
+			var observed []string
+			client, err := NewLodeClientWithFactory(t.Context(), Config{
+				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+				ReconcileObserver: func(key string, _ error) { observed = append(observed, key) },
+			}, sharedFactory(lode.NewMemory()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.store = store
+			put := func(contentType string) error {
+				return client.PutFile(t.Context(), "page.png", contentType, []byte("png"))
+			}
+			err = put("image/png")
+			if unreadable {
+				if !errors.Is(err, errUncertain) || len(client.files) != 0 {
+					t.Fatalf("first PutFile: %v with files %v, want the write's error and no file", err, client.files)
 				}
-				client.store = store
-				put := func() error {
-					return client.PutFile(t.Context(), "page.png", "image/png", []byte("png"))
+				store.unreadable = false
+				if err := put("image/gif"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+					t.Fatalf("other companion: %v with files %v, want ErrPathExists and no file", err, client.files)
 				}
-				err = put()
-				if unreadable {
-					if !errors.Is(err, errUncertain) {
-						t.Fatalf("first PutFile: %v, want the write's error", err)
-					}
-					store.unreadable = false
-					err = put()
-				}
-				if err != nil {
-					t.Fatalf("PutFile: %v", err)
-				}
-				if len(client.files) != 1 {
-					t.Errorf("files = %v, want one", client.files)
-				}
-				if err := put(); !errors.Is(err, ErrPathExists) {
-					t.Errorf("second write of a recorded file: %v, want ErrPathExists", err)
-				}
-			})
-		}
-	}
-}
-
-// Content other than this write's is never taken for it.
-func TestPutFile_RefusesOtherContent(t *testing.T) {
-	t.Parallel()
-	store := lode.NewMemory()
-	client, err := NewLodeClientWithFactory(t.Context(), Config{
-		Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
-	}, sharedFactory(store))
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := SidecarFilesPrefix(client.config) + "page.png"
-	for _, content := range []string{"pn", "pngx"} {
-		if err := store.Put(t.Context(), key, strings.NewReader(content)); err != nil {
-			t.Fatal(err)
-		}
-		if err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png")); !errors.Is(err, ErrPathExists) {
-			t.Errorf("over %q: %v, want ErrPathExists", content, err)
-		}
-		if err := store.Delete(t.Context(), key); err != nil {
-			t.Fatal(err)
-		}
+				err = put("image/png")
+			}
+			if err != nil {
+				t.Fatalf("PutFile: %v", err)
+			}
+			key := SidecarFilesPrefix(client.config) + "page.png"
+			if len(client.files) != 1 || len(observed) != 1 || observed[0] != key+".meta.json" {
+				t.Errorf("files = %v, observed = %v, want one file and its companion", client.files, observed)
+			}
+			if err := put("image/png"); !errors.Is(err, ErrPathExists) {
+				t.Errorf("second write: %v, want ErrPathExists", err)
+			}
+		})
 	}
 }
 
