@@ -422,6 +422,10 @@ async function main(): Promise<never> {
   // write text to stdout) but before any IPC framing begins.
   const { ipcOutput, ipcWrite } = installStdoutGuard()
 
+  // A cancelled run ends here. Puppeteer's own SIGTERM listener stops Node from
+  // ending, and its exit listener kills a browser it launched or is launching.
+  process.once('SIGTERM', () => process.exit(143))
+
   const scriptPath = args[0]
 
   // Read metadata from stdin (phase 1 of two-phase stdin).

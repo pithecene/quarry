@@ -374,6 +374,11 @@ the process group of every browser reported launched and not closed. A
 browser that the run connected to (a reusable or external browser) is never
 reported. The runtime ignores a line it cannot read.
 
+The executor leads a process group. A cancelled run sends that group
+`SIGTERM`, on which the executor exits, and `SIGKILL` 5 seconds later if the
+group still runs. Once the executor has ended, the runtime sends `SIGKILL` to
+what remains of the group.
+
 ## Backpressure Semantics
 
 - **Emit calls must block on backpressure.**

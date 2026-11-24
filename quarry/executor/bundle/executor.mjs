@@ -4141,6 +4141,7 @@ async function main() {
     process.exit(3);
   }
   const { ipcOutput, ipcWrite } = installStdoutGuard();
+  process.once("SIGTERM", () => process.exit(143));
   const scriptPath = args[0];
   let input;
   try {
