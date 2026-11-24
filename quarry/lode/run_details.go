@@ -12,8 +12,7 @@ import (
 
 // RunDetails holds a run's policy from its metrics and its sidecar inventory.
 // SidecarFiles keeps each path as the inventory records it, consecutive slashes
-// included (CONTRACT_LODE.md § Sidecar File Inventory). QuerySidecarFiles
-// returns the stored object's key instead.
+// included (CONTRACT_LODE.md § Sidecar File Inventory).
 type RunDetails struct {
 	Policy       *string
 	SidecarFiles []SidecarFileRef
@@ -49,7 +48,7 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 				return RunDetails{}, fmt.Errorf("read metrics: %w", err)
 			}
 		}
-		files, err = sidecarFiles(ctx, snapshots, "", runSidecarOwner(key, store))
+		files, err = sidecarFiles(ctx, snapshots, runSidecarOwner(key, store))
 		if err != nil {
 			return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 		}

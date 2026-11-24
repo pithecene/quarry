@@ -9,17 +9,9 @@ import (
 	"github.com/pithecene/lode/lode"
 )
 
-// openReadView creates the store and opens a read-only view of the dataset
-// over it. ok is false when the dataset has no snapshot, which a reader
-// reports as an empty result rather than an error.
-func openReadView(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view *lode.RecordView[lode.D], ok bool, err error) {
-	view, _, ok, err = openReadStore(ctx, dataset, factory)
-	return view, ok, err
-}
-
-// openReadStore is openReadView that also returns the store it built, for a
-// caller that reads more of the same dataset. It returns the store of a dataset
-// without a snapshot too.
+// openReadStore creates the store and opens a read-only view of the dataset over
+// it. ok is false when the dataset has no snapshot, which a reader reports as an
+// empty result rather than an error. The store is returned then too.
 func openReadStore(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (view *lode.RecordView[lode.D], store lode.RangeStore, ok bool, err error) {
 	if factory == nil {
 		return nil, nil, false, errors.New("read: nil store factory")
@@ -33,23 +25,6 @@ func openReadStore(ctx context.Context, dataset string, factory lode.Factory[lod
 		return nil, store, false, nil
 	}
 	return view, store, err == nil, err
-}
-
-// readSnapshots returns a read view and its snapshot catalog. A nil view
-// means the dataset has no snapshots.
-func readSnapshots(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore]) (*lode.RecordView[lode.D], []*lode.Snapshot, error) {
-	ds, ok, err := openReadView(ctx, dataset, factory)
-	if err != nil {
-		return nil, nil, WrapReadError(err, "datasets/"+dataset)
-	}
-	if !ok {
-		return nil, nil, nil
-	}
-	snapshots, err := ds.Snapshots(ctx)
-	if err != nil {
-		return nil, nil, WrapReadError(err, "quarry/snapshots")
-	}
-	return ds, snapshots, nil
 }
 
 // isMetricsSnapshot checks if a snapshot contains metrics data

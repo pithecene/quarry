@@ -3,7 +3,6 @@ package lode
 import (
 	"maps"
 	"math"
-	"time"
 
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
@@ -16,58 +15,6 @@ const (
 	RecordKindArtifactChunk = "artifact_chunk"
 	RecordKindMetrics       = "metrics"
 )
-
-// EventRecord is the storage format for non-artifact events.
-// Includes record_kind discriminator and partition keys per CONTRACT_LODE.md.
-type EventRecord struct {
-	// Record discriminator
-	RecordKind string `json:"record_kind"`
-
-	// Event envelope fields
-	ContractVersion string         `json:"contract_version"`
-	EventID         string         `json:"event_id"`
-	RunID           string         `json:"run_id"`
-	Seq             int64          `json:"seq"`
-	Type            string         `json:"type"`
-	Ts              string         `json:"ts"`
-	Payload         map[string]any `json:"payload"`
-	JobID           *string        `json:"job_id,omitempty"`
-	ParentRunID     *string        `json:"parent_run_id,omitempty"`
-	Attempt         int            `json:"attempt"`
-
-	// Partition keys (used by Lode HiveLayout)
-	Source   string `json:"source"`
-	Category string `json:"category"`
-	Day      string `json:"day"`
-}
-
-// ArtifactCommitRecord is the storage format for artifact commit events.
-// Marks an artifact as complete per CONTRACT_LODE.md.
-type ArtifactCommitRecord struct {
-	// Record discriminator
-	RecordKind string `json:"record_kind"`
-
-	// Artifact commit fields
-	ArtifactID  string `json:"artifact_id"`
-	Name        string `json:"name"`
-	ContentType string `json:"content_type"`
-	SizeBytes   int64  `json:"size_bytes"`
-
-	// Event metadata (from envelope)
-	ContractVersion string  `json:"contract_version"`
-	EventID         string  `json:"event_id"`
-	RunID           string  `json:"run_id"`
-	Seq             int64   `json:"seq"`
-	Ts              string  `json:"ts"`
-	JobID           *string `json:"job_id,omitempty"`
-	ParentRunID     *string `json:"parent_run_id,omitempty"`
-	Attempt         int     `json:"attempt"`
-
-	// Partition keys
-	Source   string `json:"source"`
-	Category string `json:"category"`
-	Day      string `json:"day"`
-}
 
 // artifactPayload holds fields extracted from an artifact event's payload.
 type artifactPayload struct {
@@ -212,20 +159,6 @@ func addArtifactStorageFields(m map[string]any, s *types.ArtifactStorage) {
 	}
 }
 
-// toMetricsRecordMap converts a metrics.Snapshot to a map for Lode storage.
-// Written to event_type=metrics partition with record_kind=metrics.
-// Key names use _total suffix to match CONTRACT_METRICS.md naming.
-func toMetricsRecordMap(snap metrics.Snapshot, cfg Config, completedAt time.Time) map[string]any {
-	m := metricsFields(snap)
-	m["record_kind"] = RecordKindMetrics
-	m["event_type"] = "metrics" // partition key
-	m["ts"] = completedAt.UTC().Format(time.RFC3339)
-	m["source"] = cfg.Source
-	m["category"] = cfg.Category
-	m["day"] = cfg.Day
-	return m
-}
-
 // metricsFields returns the snapshot's counters and dimensions under their
 // CONTRACT_METRICS.md names.
 func metricsFields(snap metrics.Snapshot) map[string]any {
@@ -273,46 +206,4 @@ func metricsFields(snap metrics.Snapshot) map[string]any {
 	}
 
 	return m
-}
-
-// Legacy struct-based conversion for testing (not used with Lode)
-func toEventRecord(e *types.EventEnvelope, cfg Config) EventRecord {
-	return EventRecord{
-		RecordKind:      RecordKindEvent,
-		ContractVersion: e.ContractVersion,
-		EventID:         e.EventID,
-		RunID:           e.RunID,
-		Seq:             e.Seq,
-		Type:            string(e.Type),
-		Ts:              e.Ts,
-		Payload:         e.Payload,
-		JobID:           e.JobID,
-		ParentRunID:     e.ParentRunID,
-		Attempt:         e.Attempt,
-		Source:          cfg.Source,
-		Category:        cfg.Category,
-		Day:             cfg.Day,
-	}
-}
-
-func toArtifactCommitRecord(e *types.EventEnvelope, cfg Config) ArtifactCommitRecord {
-	ap := extractArtifactPayload(e.Payload)
-	return ArtifactCommitRecord{
-		RecordKind:      RecordKindArtifactEvent,
-		ArtifactID:      ap.artifactID,
-		Name:            ap.name,
-		ContentType:     ap.contentType,
-		SizeBytes:       ap.sizeBytes,
-		ContractVersion: e.ContractVersion,
-		EventID:         e.EventID,
-		RunID:           e.RunID,
-		Seq:             e.Seq,
-		Ts:              e.Ts,
-		JobID:           e.JobID,
-		ParentRunID:     e.ParentRunID,
-		Attempt:         e.Attempt,
-		Source:          cfg.Source,
-		Category:        cfg.Category,
-		Day:             cfg.Day,
-	}
 }

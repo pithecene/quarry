@@ -13,6 +13,7 @@ import (
 	lodelib "github.com/pithecene/lode/lode"
 	"github.com/urfave/cli/v2"
 
+	"github.com/pithecene/quarry/internal/legacydata"
 	"github.com/pithecene/quarry/internal/testutil"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/lode"
@@ -99,7 +100,12 @@ func writeInspectDetails(t *testing.T, root string, key lode.Config, filename, p
 	if err := client.PutFile(ctx, filename, "image/png", []byte("png")); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.WriteMetrics(ctx, metrics.Snapshot{RunID: key.RunID, Policy: policy}, time.Now()); err != nil {
+	// The commit of an event records the file in its snapshot.
+	ev := &types.EventEnvelope{ContractVersion: types.ContractVersion, EventID: "e", RunID: key.RunID, Seq: 1, Type: types.EventTypeItem, Ts: "2026-10-22T00:00:00Z", Payload: map[string]any{}, Attempt: 1}
+	if err := client.WriteEvents(ctx, key.Dataset, key.RunID, []*types.EventEnvelope{ev}); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacydata.WriteMetrics(ctx, lodelib.FS(root), key, metrics.Snapshot{RunID: key.RunID, Policy: policy}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 }

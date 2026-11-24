@@ -36,7 +36,7 @@ func writeLegacyRun(t *testing.T, factory lode.Factory[lode.RangeStore], source,
 			t.Fatalf("events: %v", err)
 		}
 	}
-	if err := c.WriteMetrics(t.Context(), metrics.Snapshot{RunID: runID, Policy: "strict"}, time.Now()); err != nil {
+	if err := writeLegacyMetrics(t.Context(), c, metrics.Snapshot{RunID: runID, Policy: "strict"}, time.Now()); err != nil {
 		t.Fatalf("metrics: %v", err)
 	}
 	return cfg

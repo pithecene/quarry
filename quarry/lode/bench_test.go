@@ -8,6 +8,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/internal/legacydata"
 	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
@@ -89,7 +90,7 @@ func benchDataset(b *testing.B, runs, events int) lode.Factory[lode.RangeStore] 
 				b.Fatal(err)
 			}
 		}
-		if err := c.WriteMetrics(b.Context(), metrics.Snapshot{RunID: cfg.RunID}, started); err != nil {
+		if err := legacydata.WriteMetrics(b.Context(), factory, cfg, metrics.Snapshot{RunID: cfg.RunID}, started); err != nil {
 			b.Fatal(err)
 		}
 	}
