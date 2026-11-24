@@ -287,7 +287,7 @@ as `readRun(locator.run, { storage: locator.storage })`:
 
 The locator carries no credentials of the run's configuration. The path of an
 endpoint addresses the store and can also hold a secret, so a run with an adapter
-and an endpoint with a path is a configuration error, unless
+and an S3 endpoint whose path is neither empty nor `/` is a configuration error, unless
 `--adapter-publish-endpoint-path` allows the locator to carry the path.
 A run is not notified when the working directory that its relative storage
 directory needs no longer resolves, and a warning on stderr reports it. The reader supplies its own credentials, and the

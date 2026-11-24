@@ -1213,7 +1213,7 @@ func TestValidateLocatorEndpoint(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s %s %t", tc.backend, tc.endpoint, tc.publishPath), func(t *testing.T) {
 			err := validateLocatorEndpoint(storageChoice{backend: tc.backend, endpoint: tc.endpoint}, tc.publishPath)
-			if (err == nil) != tc.ok || (err != nil && strings.Contains(err.Error(), tc.endpoint)) {
+			if (err == nil) != tc.ok || (err != nil && (strings.Contains(err.Error(), tc.endpoint) || strings.Contains(err.Error(), "ecret/"))) {
 				t.Errorf("err = %v, want accepted %t and no endpoint", err, tc.ok)
 			}
 		})

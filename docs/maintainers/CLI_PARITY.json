@@ -317,7 +317,8 @@
           "type": "bool",
           "required": false,
           "description": "Publish the path of --storage-endpoint in notifications",
-          "dependsOn": ["adapter"]
+          "dependsOn": ["adapter", "storage-backend=s3"],
+          "notes": "Without it, a run with an adapter and an endpoint path other than / does not start"
         },
         "adapter-channel": {
           "type": "string",
