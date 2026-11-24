@@ -362,6 +362,18 @@ acknowledgement before stdin EOF rejects.
 
 ---
 
+## Browser Process Reports (Executor → Runtime)
+
+The runtime starts the executor with a pipe on file descriptor 4 and sets
+`QUARRY_BROWSER_PID_FD=4`. When the executor launches a browser for its run,
+it writes `launched <pid>` and a newline there; once that browser's process
+has exited, it writes `closed <pid>`. Puppeteer starts the browser in a
+process group of its own, outside the executor's. Once the executor has
+ended, the runtime reads the reports already written and sends `SIGKILL` to
+the process group of every browser reported launched and not closed. A
+browser that the run connected to (a reusable or external browser) is never
+reported. The runtime ignores a line it cannot read.
+
 ## Backpressure Semantics
 
 - **Emit calls must block on backpressure.**

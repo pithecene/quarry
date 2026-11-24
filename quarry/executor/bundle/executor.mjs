@@ -2849,9 +2849,10 @@ __export(executor_exports, {
   getVanillaPuppeteer: () => getVanillaPuppeteer,
   launchIdentity: () => launchIdentity,
   parseRunMeta: () => parseRunMeta,
+  reportBrowser: () => reportBrowser,
   resolvePeer: () => resolvePeer
 });
-import { accessSync, constants, readFileSync as readFileSync3, realpathSync } from "node:fs";
+import { accessSync, constants, readFileSync as readFileSync3, realpathSync, writeSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, dirname, isAbsolute as isAbsolute2, join, resolve as resolve2, sep } from "node:path";
 import { fileURLToPath, pathToFileURL as pathToFileURL2 } from "node:url";
@@ -2944,6 +2945,18 @@ async function launchIdentity(scriptPath, plugins, args) {
     // Puppeteer 25 returns both as promises.
     args: await puppeteer.defaultArgs({ headless: true, args })
   };
+}
+function reportBrowser(event, browser) {
+  const fd = Number.parseInt(process.env.QUARRY_BROWSER_PID_FD ?? "", 10);
+  if (!Number.isInteger(fd)) return;
+  const child = browser.process();
+  if (child?.pid === void 0) return;
+  if (event === "closed" && child.exitCode === null && child.signalCode === null) return;
+  try {
+    writeSync(fd, `${event} ${child.pid}
+`);
+  } catch {
+  }
 }
 function errorMessage(err) {
   return err instanceof Error ? err.message : String(err);
@@ -3229,6 +3242,7 @@ async function execute(config) {
       const puppeteer = await getPuppeteer(config.scriptPath, plugins);
       const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy);
       browser = await puppeteer.launch(launchOptions);
+      reportBrowser("launched", browser);
     }
     if (browser) {
       browserContext = await browser.createBrowserContext();
@@ -3321,8 +3335,9 @@ async function execute(config) {
         await browser.disconnect();
       } catch {
       }
-    } else {
+    } else if (browser) {
       await safeClose(browser);
+      reportBrowser("closed", browser);
     }
   }
 }

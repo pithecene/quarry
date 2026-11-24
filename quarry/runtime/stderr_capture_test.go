@@ -3,11 +3,14 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -119,4 +122,96 @@ echo done
 	if remaining, err := io.ReadAll(m.Stderr()); err != nil || !bytes.Equal(remaining, tail) {
 		t.Errorf("read after falling behind returned %d stderr bytes and error %v, want the tail", len(remaining), err)
 	}
+}
+
+// A process that the executor starts does not outlive the run, whether the
+// run is cancelled or the executor exits first: a child in the executor's own
+// process group, and a browser that the executor launches in a process group
+// of its own, as Puppeteer launches Chromium, and reports on fd 4.
+func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
+	t.Parallel()
+	if goruntime.GOOS == "windows" {
+		t.Skip("the fake executor is a POSIX shell script")
+	}
+	// spawn starts the child; set -m gives a background job a group of its own.
+	inGroup := "sleep 300 </dev/null >/dev/null 2>&1 &\n"
+	ownGroup := "set -m\nsleep 300 </dev/null >/dev/null 2>&1 &\necho \"launched $!\" >&4\n"
+	// A child that ignores SIGTERM and holds the executor's output keeps the
+	// run from ending until the group is killed.
+	holdsOutput := "(trap '' TERM; exec sleep 300) &\n"
+	cases := []struct {
+		name, spawn, last string
+		cancel            bool
+	}{
+		{"a child in the group, the run cancelled", inGroup, "read -r ack", true},
+		{"a child in the group, the executor exiting first", inGroup, "exit 0", false},
+		{"a child that ignores SIGTERM and holds the output, the run cancelled", holdsOutput, "read -r ack", true},
+		{"a reported browser, the run cancelled", ownGroup, "read -r ack", true},
+		{"a reported browser, the executor exiting first", ownGroup, "exit 0", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			pidFile := filepath.Join(dir, "child.pid")
+			script := filepath.Join(dir, "spawn.sh")
+			body := "read -r input\n" + tc.spawn + "echo $! > '" + pidFile + "'\n" + tc.last + "\n"
+			if err := os.WriteFile(script, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			m := NewExecutorManager(&ExecutorConfig{
+				ExecutorPath: "/bin/sh",
+				ScriptPath:   script,
+				RunMeta:      &types.RunMeta{RunID: "run-1", Attempt: 1},
+			})
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if err := m.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			pid := readPID(t, pidFile)
+			t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+			if tc.cancel {
+				cancel()
+			}
+			go func() { _, _ = io.Copy(io.Discard, m.Stdout()) }()
+			waited := make(chan error, 1)
+			go func() {
+				_, err := m.Wait()
+				waited <- err
+			}()
+			select {
+			case err := <-waited:
+				if err != nil {
+					t.Fatalf("Wait: %v", err)
+				}
+			case <-time.After(15 * time.Second):
+				t.Fatal("Wait did not return")
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for syscall.Kill(pid, 0) == nil && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+				t.Errorf("the executor's child %d is still running after Wait", pid)
+			}
+		})
+	}
+}
+
+// readPID waits for the fake executor to write its child's PID.
+func readPID(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(path); err == nil && strings.HasSuffix(string(data), "\n") {
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return pid
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the fake executor never wrote its child's PID")
+	return 0
 }

@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -11,7 +19,8 @@ import {
   type ExecutorConfig,
   execute,
   launchIdentity,
-  parseRunMeta
+  parseRunMeta,
+  reportBrowser
 } from '../src/executor.js'
 import type { RunResultFrame } from '../src/ipc/frame.js'
 import { SinkAlreadyFailedError } from '../src/ipc/observing-sink.js'
@@ -1361,5 +1370,37 @@ describe('launchIdentity', () => {
     await expect(
       launchIdentity(project('1.0.0', '/no/such/chrome'), noPlugins, [])
     ).rejects.toThrow()
+  })
+})
+
+describe('reportBrowser', () => {
+  // A browser whose process has the given state.
+  const browserWith = (exitCode: number | null) =>
+    ({ process: () => ({ pid: 4242, exitCode, signalCode: null }) }) as unknown as Parameters<
+      typeof reportBrowser
+    >[1]
+
+  it('reports a launch, and a close only once the process has exited', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'quarry-report-')), 'reports')
+    const fd = openSync(file, 'w')
+    vi.stubEnv('QUARRY_BROWSER_PID_FD', String(fd))
+    try {
+      reportBrowser('launched', browserWith(null))
+      reportBrowser('closed', browserWith(null))
+      reportBrowser('closed', browserWith(0))
+    } finally {
+      vi.unstubAllEnvs()
+      closeSync(fd)
+    }
+    expect(readFileSync(file, 'utf8')).toBe('launched 4242\nclosed 4242\n')
+  })
+
+  it('reports nothing without the descriptor', () => {
+    vi.stubEnv('QUARRY_BROWSER_PID_FD', '')
+    try {
+      expect(() => reportBrowser('launched', browserWith(null))).not.toThrow()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

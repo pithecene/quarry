@@ -11,8 +11,10 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/pithecene/quarry/executor"
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -60,6 +62,11 @@ type ExecutorManager struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	stderr *stderrCapture
+	// browsers reports the per-run browsers that the executor launched.
+	browsers *browserReports
+	// escalation kills the executor's group when a cancelled run outlasts
+	// its grace period. Only Cancel arms it.
+	escalation *time.Timer
 }
 
 // NewExecutorManager creates a new executor manager.
@@ -101,6 +108,16 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	// Build command: quarry-executor <script-path>
 	m.cmd = executor.Command(ctx, m.config.ExecutorPath, m.config.ScriptPath)
 	m.stderr = nil
+	// The executor leads its own process group, so Quarry can stop the group.
+	// A child can hold a pipe that ingestion reads to its end, so the whole
+	// group is killed when the grace period ends, before Wait.
+	m.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	m.escalation = time.AfterFunc(time.Hour, func() { _ = m.Kill() })
+	m.escalation.Stop()
+	m.cmd.Cancel = func() error {
+		m.escalation.Reset(executorStopGrace)
+		return signalGroup(m.cmd.Process, syscall.SIGTERM)
+	}
 
 	m.cmd.Env = withResolveFrom(os.Environ(), m.config.ResolveFrom)
 
@@ -123,9 +140,20 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	}
 
 	// Start process
-	if err := m.cmd.Start(); err != nil {
+	reports, reportPipe, err := newBrowserReports()
+	if err != nil {
+		return err
+	}
+	// Descriptor 3 belongs to the embedded bundle, so reports use 4.
+	m.cmd.ExtraFiles = []*os.File{nil, reportPipe}
+	m.cmd.Env = append(m.cmd.Env, browserReportEnv)
+	err = m.cmd.Start()
+	iox.DiscardClose(reportPipe) // the child holds its own descriptor
+	if err != nil {
+		reports.close()
 		return fmt.Errorf("failed to start executor: %w", err)
 	}
+	m.browsers = reports
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
 	// an executor blocked on a full stderr pipe would never end it.
 	m.stderr = startStderrCapture(stderr)
@@ -189,6 +217,12 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 
 	// Wait for exit
 	err := m.cmd.Wait()
+	m.escalation.Stop()
+	// The executor has ended: what remains of its group, and every browser it
+	// reported launched and not closed, belongs to this run alone.
+	_ = m.Kill()
+	m.browsers.killOpen()
+	m.browsers.close()
 
 	result := &ExecutorResult{
 		StderrBytes: stderrBytes,
@@ -212,10 +246,28 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 	return result, nil
 }
 
-// Kill terminates the executor process.
+// Kill terminates the executor and every process in its group. Wait then
+// terminates the browsers that the executor launched.
 func (m *ExecutorManager) Kill() error {
 	if m.cmd != nil && m.cmd.Process != nil {
-		return m.cmd.Process.Kill()
+		return signalGroup(m.cmd.Process, syscall.SIGKILL)
+	}
+	return nil
+}
+
+// executorStopGrace is how long a cancelled executor has to exit after
+// SIGTERM before its group is killed.
+const executorStopGrace = 5 * time.Second
+
+// signalGroup sends sig to the process group that p leads. A group with no
+// process left is os.ErrProcessDone, as exec.Cmd.Cancel expects.
+func signalGroup(p *os.Process, sig syscall.Signal) error {
+	err := syscall.Kill(-p.Pid, sig)
+	if errors.Is(err, syscall.ESRCH) {
+		return os.ErrProcessDone
+	}
+	if err != nil {
+		return fmt.Errorf("signal the executor's process group: %w", err)
 	}
 	return nil
 }

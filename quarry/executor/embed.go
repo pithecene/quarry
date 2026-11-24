@@ -70,7 +70,8 @@ type Process struct {
 
 // Command returns the process that runs the executor at path with args:
 // the embedded bundle for Embedded, and otherwise the file at path. The
-// embedded bundle uses descriptor 3, so stdin stays free for IPC.
+// embedded bundle uses descriptor 3, so stdin stays free for IPC. A caller that
+// passes ExtraFiles leaves the first entry nil, whichever executor it runs.
 func Command(ctx context.Context, path string, args ...string) *Process {
 	if path != Embedded {
 		return &Process{Cmd: exec.CommandContext(ctx, path, args...)}
@@ -84,14 +85,17 @@ func (p *Process) Start() error {
 	if p.bundle == nil {
 		return p.Cmd.Start()
 	}
-	if len(p.ExtraFiles) > 0 {
+	if len(p.ExtraFiles) == 0 {
+		p.ExtraFiles = make([]*os.File, 1)
+	}
+	if p.ExtraFiles[0] != nil {
 		return errors.New("the embedded executor reserves descriptor 3")
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		return fmt.Errorf("executor bundle pipe: %w", err)
 	}
-	p.ExtraFiles = []*os.File{r}
+	p.ExtraFiles[0] = r
 	err = p.Cmd.Start()
 	iox.DiscardClose(r) // the child holds its own descriptor
 	if err != nil {
