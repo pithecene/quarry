@@ -80,7 +80,11 @@ sink's error shows that end: the context's error, or a cause whose value can
 be compared. Every other failure is a store's refusal, including a write
 under a termination or close-time flush context, which records no run and
 has a deadline of its own. A fan-out marks each mandatory sink on its
-own, so a refusal beside another sink's cancellation stays a refusal. A
+own, so a refusal beside another sink's cancellation stays a refusal. A context
+does not record which of two ends came first, so once
+the run has ended, a write that its own deadline or cause ended counts as ended
+with the run when its context's cause and its error match the run's end, as when
+both deadlines passed with one cause. A
 refusal that decides the run's outcome makes it `storage_error`; a refusal
 after the run has already failed changes no outcome (CONTRACT_RUN.md §Run
 Finalization).
