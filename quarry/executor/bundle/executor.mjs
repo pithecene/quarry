@@ -2848,11 +2848,12 @@ __export(executor_exports, {
   getPuppeteer: () => getPuppeteer,
   getVanillaPuppeteer: () => getVanillaPuppeteer,
   launchIdentity: () => launchIdentity,
+  launchInGroup: () => launchInGroup,
   parseRunMeta: () => parseRunMeta,
-  reportBrowser: () => reportBrowser,
   resolvePeer: () => resolvePeer
 });
-import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync, writeSync } from "node:fs";
+import childProcess from "node:child_process";
+import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
 import { fileURLToPath, pathToFileURL as pathToFileURL2 } from "node:url";
@@ -2953,16 +2954,13 @@ async function launchIdentity(scriptPath, plugins, args) {
     args: await puppeteer.defaultArgs({ headless: true, args })
   };
 }
-function reportBrowser(event, browser) {
-  const fd = Number.parseInt(process.env.QUARRY_BROWSER_PID_FD ?? "", 10);
-  if (!Number.isInteger(fd)) return;
-  const child = browser.process();
-  if (child?.pid === void 0) return;
-  if (event === "closed" && child.exitCode === null && child.signalCode === null) return;
+async function launchInGroup(launch) {
+  const spawn = childProcess.spawn;
+  childProcess.spawn = ((command, args, options) => spawn(command, args, { ...options, detached: false }));
   try {
-    writeSync(fd, `${event} ${child.pid}
-`);
-  } catch {
+    return await launch();
+  } finally {
+    childProcess.spawn = spawn;
   }
 }
 function errorMessage(err) {
@@ -3248,8 +3246,7 @@ async function execute(config) {
       };
       const puppeteer = await getPuppeteer(config.scriptPath, plugins);
       const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy);
-      browser = await puppeteer.launch(launchOptions);
-      reportBrowser("launched", browser);
+      browser = await launchInGroup(() => puppeteer.launch(launchOptions));
     }
     if (browser) {
       browserContext = await browser.createBrowserContext();
@@ -3342,9 +3339,8 @@ async function execute(config) {
         await browser.disconnect();
       } catch {
       }
-    } else if (browser) {
+    } else {
       await safeClose(browser);
-      reportBrowser("closed", browser);
     }
   }
 }
@@ -4149,7 +4145,6 @@ async function main() {
     process.exit(3);
   }
   const { ipcOutput, ipcWrite } = installStdoutGuard();
-  process.once("SIGTERM", () => process.exit(143));
   const scriptPath = args[0];
   let input;
   try {

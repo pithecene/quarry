@@ -17,7 +17,8 @@
  *
  * @module
  */
-import { accessSync, constants, readFileSync, realpathSync, statSync, writeSync } from 'node:fs'
+import childProcess, { type SpawnOptions } from 'node:child_process'
+import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
 import type { Writable } from 'node:stream'
@@ -236,26 +237,21 @@ export async function launchIdentity(
 }
 
 /**
- * Report a per-run browser to the runtime on the descriptor that
- * QUARRY_BROWSER_PID_FD names. Puppeteer starts Chromium in a process group of
- * its own, so a signal to this executor's group does not reach it: the runtime
- * stops every reported browser that was not reported closed once this process
- * ends. A browser is reported closed only after its process has exited.
+ * Launch a browser in this process's own group. Puppeteer starts Chromium as
+ * the leader of another group, which a signal to this one would not reach: the
+ * runtime stops a run by its group, and the browser must stop with it, even
+ * while it is still starting. Puppeteer has no option for this, so its spawn is
+ * adjusted for the time that the launch takes to spawn.
  * @internal
  */
-export function reportBrowser(
-  event: 'launched' | 'closed',
-  browser: Pick<Browser, 'process'>
-): void {
-  const fd = Number.parseInt(process.env.QUARRY_BROWSER_PID_FD ?? '', 10)
-  if (!Number.isInteger(fd)) return
-  const child = browser.process()
-  if (child?.pid === undefined) return
-  if (event === 'closed' && child.exitCode === null && child.signalCode === null) return
+export async function launchInGroup<T>(launch: () => Promise<T>): Promise<T> {
+  const spawn = childProcess.spawn
+  childProcess.spawn = ((command: string, args: readonly string[], options: SpawnOptions) =>
+    spawn(command, args, { ...options, detached: false })) as typeof spawn
   try {
-    writeSync(fd, `${event} ${child.pid}\n`)
-  } catch {
-    // The runtime has closed its end: it no longer supervises this run.
+    return await launch()
+  } finally {
+    childProcess.spawn = spawn
   }
 }
 
@@ -805,8 +801,7 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
       }
       const puppeteer = await getPuppeteer(config.scriptPath, plugins)
       const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy)
-      browser = await puppeteer.launch(launchOptions)
-      reportBrowser('launched', browser)
+      browser = await launchInGroup(() => puppeteer.launch(launchOptions))
     }
     if (browser) {
       browserContext = await browser.createBrowserContext()
@@ -945,9 +940,8 @@ export async function execute<Job = unknown>(config: ExecutorConfig<Job>): Promi
       } catch {
         // Ignore disconnect errors
       }
-    } else if (browser) {
+    } else {
       await safeClose(browser)
-      reportBrowser('closed', browser)
     }
   }
 }

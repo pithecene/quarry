@@ -124,30 +124,24 @@ echo done
 	}
 }
 
-// A process that the executor starts does not outlive the run, whether the
-// run is cancelled or the executor exits first: a child in the executor's own
-// process group, and a browser that the executor launches in a process group
-// of its own, as Puppeteer launches Chromium, and reports on fd 4.
+// A process that the executor starts in its group does not outlive the run,
+// whether the run is cancelled or the executor exits first, and one that holds
+// the executor's output does not keep the run from ending.
 func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 	t.Parallel()
 	if goruntime.GOOS == "windows" {
 		t.Skip("the fake executor is a POSIX shell script")
 	}
-	// spawn starts the child; set -m gives a background job a group of its own.
-	inGroup := "sleep 300 </dev/null >/dev/null 2>&1 &\n"
-	ownGroup := "set -m\nsleep 300 </dev/null >/dev/null 2>&1 &\necho \"launched $!\" >&4\n"
-	// A child that ignores SIGTERM and holds the executor's output keeps the
-	// run from ending until the group is killed.
+	quiet := "sleep 300 </dev/null >/dev/null 2>&1 &\n"
 	holdsOutput := "(trap '' TERM; exec sleep 300) &\n"
 	cases := []struct {
 		name, spawn, last string
 		cancel            bool
 	}{
-		{"a child in the group, the run cancelled", inGroup, "read -r ack", true},
-		{"a child in the group, the executor exiting first", inGroup, "exit 0", false},
-		{"a child that ignores SIGTERM and holds the output, the run cancelled", holdsOutput, "read -r ack", true},
-		{"a reported browser, the run cancelled", ownGroup, "read -r ack", true},
-		{"a reported browser, the executor exiting first", ownGroup, "exit 0", false},
+		{"the run cancelled", quiet, "read -r ack", true},
+		{"the executor exiting first", quiet, "exit 0", false},
+		{"a child that holds the output, the run cancelled", holdsOutput, "read -r ack", true},
+		{"a child that holds the output, the executor exiting first", holdsOutput, "exit 0", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

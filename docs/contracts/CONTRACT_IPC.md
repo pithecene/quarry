@@ -362,22 +362,13 @@ acknowledgement before stdin EOF rejects.
 
 ---
 
-## Browser Process Reports (Executor → Runtime)
+## Executor Process Group
 
-The runtime starts the executor with a pipe on file descriptor 4 and sets
-`QUARRY_BROWSER_PID_FD=4`. When the executor launches a browser for its run,
-it writes `launched <pid>` and a newline there; once that browser's process
-has exited, it writes `closed <pid>`. Puppeteer starts the browser in a
-process group of its own, outside the executor's. Once the executor has
-ended, the runtime reads the reports already written and sends `SIGKILL` to
-the process group of every browser reported launched and not closed. A
-browser that the run connected to (a reusable or external browser) is never
-reported. The runtime ignores a line it cannot read.
-
-The executor leads a process group. A cancelled run sends that group
-`SIGTERM`, on which the executor exits, and `SIGKILL` 5 seconds later if the
-group still runs. Once the executor has ended, the runtime sends `SIGKILL` to
-what remains of the group.
+The runtime starts the executor as the leader of a process group. A browser
+that the executor launches for its run joins that group, so it is never outside
+the run. When the run is cancelled, the runtime sends `SIGKILL` to the group.
+When the executor exits by itself, the runtime sends `SIGKILL` to what remains
+of the group. A child that the script moves to another group is its own.
 
 ## Backpressure Semantics
 

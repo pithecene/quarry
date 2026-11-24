@@ -1,9 +1,7 @@
+import childProcess from 'node:child_process'
 import {
-  closeSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
-  readFileSync,
   realpathSync,
   renameSync,
   symlinkSync,
@@ -21,8 +19,8 @@ import {
   type ExecutorConfig,
   execute,
   launchIdentity,
-  parseRunMeta,
-  reportBrowser
+  launchInGroup,
+  parseRunMeta
 } from '../src/executor.js'
 import type { RunResultFrame } from '../src/ipc/frame.js'
 import { SinkAlreadyFailedError } from '../src/ipc/observing-sink.js'
@@ -1405,34 +1403,22 @@ describe('launchIdentity', () => {
   })
 })
 
-describe('reportBrowser', () => {
-  // A browser whose process has the given state.
-  const browserWith = (exitCode: number | null) =>
-    ({ process: () => ({ pid: 4242, exitCode, signalCode: null }) }) as unknown as Parameters<
-      typeof reportBrowser
-    >[1]
-
-  it('reports a launch, and a close only once the process has exited', () => {
-    const file = join(mkdtempSync(join(tmpdir(), 'quarry-report-')), 'reports')
-    const fd = openSync(file, 'w')
-    vi.stubEnv('QUARRY_BROWSER_PID_FD', String(fd))
+describe('launchInGroup', () => {
+  it('spawns in the group of this process, and only for the launch', async () => {
+    const groupOf = (pid: number | undefined) =>
+      childProcess
+        .execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)])
+        .toString()
+        .trim()
+    const spawn = childProcess.spawn
+    const child = await launchInGroup(async () =>
+      childProcess.spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+    )
     try {
-      reportBrowser('launched', browserWith(null))
-      reportBrowser('closed', browserWith(null))
-      reportBrowser('closed', browserWith(0))
+      expect(groupOf(child.pid)).toBe(groupOf(process.pid))
+      expect(childProcess.spawn).toBe(spawn)
     } finally {
-      vi.unstubAllEnvs()
-      closeSync(fd)
-    }
-    expect(readFileSync(file, 'utf8')).toBe('launched 4242\nclosed 4242\n')
-  })
-
-  it('reports nothing without the descriptor', () => {
-    vi.stubEnv('QUARRY_BROWSER_PID_FD', '')
-    try {
-      expect(() => reportBrowser('launched', browserWith(null))).not.toThrow()
-    } finally {
-      vi.unstubAllEnvs()
+      child.kill('SIGKILL')
     }
   })
 })
