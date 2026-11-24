@@ -482,14 +482,20 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	broken := client("c", "run-broken", "2026-02-06")
 	record = toMetricsRecordMap(metrics.Snapshot{RunID: "run-broken", Policy: "strict"}, broken.config, at(6, 1))
 	record["ts"] = "not-a-time"
-	if _, err := broken.dataset.Write(t.Context(), lode.R(record), map[string]any{}); err != nil {
+	brokenSnap, err := broken.dataset.Write(t.Context(), lode.R(record), map[string]any{})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
 		t.Error("QueryLatestMetrics skipped a broken record that may be the latest")
 	}
-	// One that committed before the latest end is not read.
-	end("c", "run-future-a", "2026-02-07", time.Now().Add(time.Hour).Truncate(time.Second), true)
+	// A clock may step back an hour between a run's end and its commit, so a record
+	// that committed within that of the latest end is read, and an earlier one is not.
+	end("c", "run-near", "2026-02-07", brokenSnap.CreatedAt.Add(time.Hour), true)
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
+		t.Error("QueryLatestMetrics skipped a broken record within a clock step of the latest end")
+	}
+	end("c", "run-future-a", "2026-02-07", brokenSnap.CreatedAt.Add(time.Hour+time.Nanosecond), true)
 	if got := latest("", ""); got != "run-future-a" {
 		t.Errorf("latest = %s, want an end after every commit", got)
 	}

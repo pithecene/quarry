@@ -13,10 +13,13 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Runs no longer write metrics into the dataset**: the end record holds a run's metrics, and the runtime writes no `event_type=metrics` partition. `stats metrics` and `inspect run` read both, so earlier runs stay readable. A consumer that reads the partition itself must read `metrics` from `end.json`. `CONTRACT_LODE.md` § Metrics Record Storage states the rule.
 - **Adapters notify only for confirmed runs**: `quarry run` sends no notification, and warns on stderr, when the start record failed or Quarry could not confirm the end record. Before, it sent one for every run, so a consumer could receive a run that readers call unterminated or do not find. `CONTRACT_INTEGRATION.md` § Invocation Ordering states the rule.
+- **`quarry run` exits 4 for a success without confirmed records**: the run succeeded, and Quarry could not confirm its end record. Before, it exited 0, so a caller that read only the exit code took the run as durable. A failed run keeps its exit code. `CONTRACT_CLI.md` § Exit Codes states the rule.
+- **An adapter with an endpoint path needs consent**: `quarry run` refuses to start with `--adapter` and a `--storage-endpoint` that has a path, unless `--adapter-publish-endpoint-path` is set. Notifications now carry the endpoint, and a path can hold a secret. `CONTRACT_INTEGRATION.md` § Run Locator states the rule.
 
 ### Added
 
 - **A notification carries the locator that reads its run**: the payload's `locator` holds the run's key and its storage in the shapes that the SDK's `readRun` takes, so a consumer passes both on unchanged. The SDK exports its type as `NotificationLocator`. It carries no credentials. `CONTRACT_INTEGRATION.md` § Run Locator states the fields.
+- **The exit report states `recorded`**: it reports whether Quarry confirmed both of the run's records in storage, for a success and for a failure. `CONTRACT_RUN.md` § Structured Exit Report states the field.
 - **The end record holds the run's metrics and terminal summary**: `end.json` now carries the run's final counters and dimensions as `metrics`, and the terminal event's payload as `terminal_summary`. A consumer reads what a run did from one object. `CONTRACT_RUN.md` § End Record states the fields, and earlier records omit them.
 
 ### Fixed
@@ -30,7 +33,9 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Upgrade Notes
 
-- **Missing notifications**: take the outcome of a run without a notification from its exit code or its exit report. `list runs` shows what storage holds of it: nothing without a start record, an unterminated run without an end record, and a finished run when both persisted unconfirmed.
+- **Endpoint paths**: set `--adapter-publish-endpoint-path`, or `adapter.publish_endpoint_path` in the config file, when the path of your S3 endpoint holds no secret. Otherwise, run without an adapter.
+- **Missing notifications**: take the outcome of a run without a notification from its exit report. `list runs` shows what storage holds of it: nothing without a start record, an unterminated run without an end record, and a finished run when both persisted unconfirmed.
+- **Exit code 4**: a caller that retries on it now also retries a success without confirmed records. To extract once, read `outcome` and `recorded` from the exit report, and look the run up first.
 - **Reading metrics**: read `metrics` from a run's `end.json` in place of the `event_type=metrics` partition. `quarry stats metrics` and `quarry inspect run` need no change, and runs of earlier releases stay readable.
 
 ---
