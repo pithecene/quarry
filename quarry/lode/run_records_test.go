@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
@@ -323,6 +324,94 @@ func (s companionFailingStore) Put(ctx context.Context, key string, r io.Reader)
 func (companionFailingStore) Delete(ctx context.Context, _ string) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+// uncertainStore reports an error after it persists a key with the suffix, and
+// its reads fail while unreadable is set.
+type uncertainStore struct {
+	lode.RangeStore
+	suffix     string
+	unreadable bool
+}
+
+var errUncertain = errors.New("no response")
+
+func (s *uncertainStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, s.suffix) {
+		return err
+	}
+	return errUncertain
+}
+
+func (s *uncertainStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if s.unreadable {
+		return nil, errUncertain
+	}
+	return s.RangeStore.Get(ctx, key)
+}
+
+// A write that reports an error after it persisted leaves the file writable: the
+// readback settles it, or the next attempt does when the readback fails too.
+func TestPutFile_ReconcilesAnUncertainWrite(t *testing.T) {
+	t.Parallel()
+	for _, suffix := range []string{"/page.png", ".meta.json"} {
+		for _, unreadable := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s unreadable=%t", suffix, unreadable), func(t *testing.T) {
+				store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: suffix, unreadable: unreadable}
+				client, err := NewLodeClientWithFactory(t.Context(), Config{
+					Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+				}, sharedFactory(lode.NewMemory()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				client.store = store
+				put := func() error {
+					return client.PutFile(t.Context(), "page.png", "image/png", []byte("png"))
+				}
+				err = put()
+				if unreadable {
+					if !errors.Is(err, errUncertain) {
+						t.Fatalf("first PutFile: %v, want the write's error", err)
+					}
+					store.unreadable = false
+					err = put()
+				}
+				if err != nil {
+					t.Fatalf("PutFile: %v", err)
+				}
+				if len(client.files) != 1 {
+					t.Errorf("files = %v, want one", client.files)
+				}
+				if err := put(); !errors.Is(err, ErrPathExists) {
+					t.Errorf("second write of a recorded file: %v, want ErrPathExists", err)
+				}
+			})
+		}
+	}
+}
+
+// Content other than this write's is never taken for it.
+func TestPutFile_RefusesOtherContent(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	client, err := NewLodeClientWithFactory(t.Context(), Config{
+		Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+	}, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := SidecarFilesPrefix(client.config) + "page.png"
+	for _, content := range []string{"pn", "pngx"} {
+		if err := store.Put(t.Context(), key, strings.NewReader(content)); err != nil {
+			t.Fatal(err)
+		}
+		if err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png")); !errors.Is(err, ErrPathExists) {
+			t.Errorf("over %q: %v, want ErrPathExists", content, err)
+		}
+		if err := store.Delete(t.Context(), key); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // A file whose companion fails is removed within a bound, and is no file of the
