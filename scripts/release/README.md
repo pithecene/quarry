@@ -17,7 +17,7 @@ node scripts/release/src/cli.ts <command> [arguments]
 | `upload-assets <tag> <dir>` | `release.yml` Draft Release and GitHub Release |
 | `publish-release <tag>` | `release.yml` GitHub Release, last |
 | `publish-npm <package-dir>` | `release.yml` publish to GitHub Packages |
-| `publish-jsr <package-dir> <version>` | `release.yml` publish to JSR |
+| `publish-jsr <package-dir> <tag>` | `release.yml` publish to JSR |
 | `converge-pointers <npm-package-dir> <image>` | `release.yml` Release Pointers |
 
 Exit codes are 0 for success, 1 when a release step fails (reported as a

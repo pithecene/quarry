@@ -210,8 +210,10 @@ artifacts only; npm `latest` and GHCR `:latest` / `:slim` are owned by a
 single serialized job that points them at the highest published release, so
 they are correct whichever run finishes last. Re-running a release is safe (publishing skips versions that
 already exist). Republishing an older version is a deliberate
-manual operation, never a tag push. Release-workflow logic lives in
-`scripts/release/` with tests, not inline in workflow YAML.
+manual operation, never a tag push. Release decisions (what to
+upload, publish, or refuse) live in `scripts/release/` with tests. Other shell
+logic that workflows and tasks run lives in `scripts/ci/`. Use only plain
+commands and actions in workflow and task YAML.
 
 ---
 

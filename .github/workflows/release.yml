@@ -58,26 +58,8 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: 🔒 Check All Version Targets
-        run: scripts/version-check.sh
-
-      - name: 🔒 Check Version Matches Tag
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          GO_VERSION=$(grep -oP 'const Version = "\K[^"]+' quarry/types/version.go)
-          SDK_VERSION=$(jq -r '.version' sdk/package.json)
-          echo "Tag version: $TAG_VERSION"
-          echo "Go version: $GO_VERSION"
-          echo "SDK version: $SDK_VERSION"
-          if [ "$GO_VERSION" != "$SDK_VERSION" ]; then
-            echo "::error::Version mismatch! quarry/types/version.go ($GO_VERSION) != sdk/package.json ($SDK_VERSION)"
-            exit 1
-          fi
-          if [ "$GO_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Tag mismatch! Tag ($TAG_VERSION) != code version ($GO_VERSION)"
-            exit 1
-          fi
-          echo "✅ All versions match: $TAG_VERSION"
+      - name: 🔒 Check All Versions Match Tag
+        run: scripts/version-check.sh "$GITHUB_REF_NAME"
 
   lint:
     name: 🧹 Lint
@@ -181,21 +163,11 @@ jobs:
       - name: 📦 Bundle executor
         run: task executor:bundle
 
-      - name: 🔨 Build
-        working-directory: quarry
+      - name: 📦 Build & Archive
         env:
-          CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -ldflags "-X main.commit=$(git rev-parse --short HEAD)" -o quarry ./cmd/quarry
-
-      - name: 📦 Archive
-        run: |
-          mkdir -p dist
-          VERSION="${GITHUB_REF_NAME}"
-          ARCHIVE="quarry_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-          tar -czf "dist/${ARCHIVE}" -C quarry quarry
-          node scripts/release/src/cli.ts write-checksums dist
+        run: scripts/ci/package-binary.sh "$GITHUB_REF_NAME"
 
       - name: ⬆️ Upload
         uses: actions/upload-artifact@v4
@@ -222,16 +194,7 @@ jobs:
         run: pnpm run build
 
       - name: 📦 Package source & SDK
-        run: |
-          mkdir -p dist
-          VERSION="${GITHUB_REF_NAME}"
-          git archive --format=tar.gz --output="dist/quarry-${VERSION}.tar.gz" HEAD
-          cd sdk
-          pnpm pack
-          SDK_TARBALL="$(ls -t *.tgz | head -n 1)"
-          cd ..
-          mv "sdk/${SDK_TARBALL}" "dist/quarry-sdk-${VERSION}.tgz"
-          node scripts/release/src/cli.ts write-checksums dist
+        run: scripts/ci/package-source.sh "$GITHUB_REF_NAME"
 
       - name: ⬇️ Download platform binaries
         uses: actions/download-artifact@v4
@@ -241,10 +204,7 @@ jobs:
           merge-multiple: true
 
       - name: 📋 Generate checksums manifest
-        run: |
-          cd dist
-          sha256sum quarry_*.tar.gz > checksums.txt
-          cat checksums.txt
+        run: scripts/ci/checksums-manifest.sh
 
       - name: ⬆️ Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -260,7 +220,7 @@ jobs:
       name: release
     steps:
       - name: ✅ Await Approval
-        run: echo "Release approved; continuing."
+        run: 'true'
 
   release:
     name: 📝 Draft Release
@@ -314,24 +274,7 @@ jobs:
           scope: "@pithecene"
 
       - name: 📦 Setup pnpm via Corepack
-        run: |
-          EXPECTED_PNPM=$(jq -r '.packageManager' package.json | sed 's/pnpm@\([^+]*\).*/\1/')
-          echo "🔧 Preparing pnpm@${EXPECTED_PNPM} via Corepack"
-          corepack enable
-          corepack prepare "pnpm@${EXPECTED_PNPM}" --activate
-
-      - name: 🔍 Verify Toolchain Pinning
-        run: |
-          echo "🔧 Node version: $(node --version)"
-          ACTUAL_PNPM=$(pnpm --version)
-          EXPECTED_PNPM=$(jq -r '.packageManager' package.json | sed 's/pnpm@\([^+]*\).*/\1/')
-          echo "🔧 pnpm version (actual): $ACTUAL_PNPM"
-          echo "🔧 pnpm version (pinned): $EXPECTED_PNPM"
-          if [ "$ACTUAL_PNPM" != "$EXPECTED_PNPM" ]; then
-            echo "::error::pnpm version mismatch! Actual ($ACTUAL_PNPM) != Pinned ($EXPECTED_PNPM)"
-            exit 1
-          fi
-          echo "✅ pnpm version matches pin"
+        run: scripts/ci/setup-pnpm.sh
 
       - name: 📦 Install dependencies
         run: pnpm install --frozen-lockfile
@@ -341,12 +284,7 @@ jobs:
         run: pnpm run build
 
       - name: 🔍 Publish Diagnostics
-        working-directory: sdk
-        run: |
-          echo "📦 Package: $(jq -r '.name' package.json)"
-          echo "📦 Version: $(jq -r '.version' package.json)"
-          echo "📦 Registry: $(npm config get registry)"
-          echo "📦 Scope registry: $(npm config get @pithecene:registry || echo 'not set')"
+        run: scripts/ci/publish-diagnostics.sh sdk
 
       - name: 📦 Publish
         env:
@@ -373,7 +311,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: 📦 Publish
-        run: node scripts/release/src/cli.ts publish-jsr sdk "${GITHUB_REF_NAME#v}"
+        run: node scripts/release/src/cli.ts publish-jsr sdk "$GITHUB_REF_NAME"
 
   container:
     name: 🐳 Container Images
@@ -398,9 +336,7 @@ jobs:
 
       - name: 🏷️ Extract metadata
         id: meta
-        run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: scripts/ci/image-metadata.sh "$GITHUB_REF_NAME"
 
       - name: 🐳 Build & push (slim)
         uses: docker/build-push-action@v6

@@ -35,17 +35,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: 📋 Check CLI Parity
-        run: |
-          cd quarry
-          # Guard: ensure at least one parity test exists (prevents false-pass)
-          PARITY_TESTS=$(go test ./cli/cmd -list 'TestCLIParity' 2>/dev/null | grep -c 'TestCLIParity' || true)
-          if [ "$PARITY_TESTS" -eq 0 ]; then
-            echo "::error::No TestCLIParity* tests found - strict parity gate requires at least one"
-            exit 1
-          fi
-          echo "Found $PARITY_TESTS parity tests"
-          go test ./cli/cmd -run Parity -v
-          echo "✅ CLI parity artifact is in sync"
+        run: scripts/ci/cli-parity.sh
 
   lint:
     name: 🧹 Lint
@@ -96,12 +86,7 @@ jobs:
         run: task executor:bundle
 
       - name: 🔍 Check for drift
-        run: |
-          if ! git diff --exit-code quarry/executor/bundle/executor.mjs; then
-            echo "::error::Embedded executor bundle is stale. Run 'task executor:bundle' and commit the result."
-            exit 1
-          fi
-          echo "✅ Bundle is fresh"
+        run: scripts/ci/bundle-fresh.sh
 
   sdk-lockstep:
     name: 🔒 SDK Build Lockstep
@@ -120,17 +105,7 @@ jobs:
         run: pnpm -C sdk run build
 
       - name: 🔍 Verify CONTRACT_VERSION matches source
-        run: |
-          SOURCE_VERSION=$(grep -oP "export const CONTRACT_VERSION = '\K[^']+" sdk/src/types/events.ts)
-          BUILT_VERSION=$(grep -oP 'const CONTRACT_VERSION = "\K[^"]+' sdk/dist/index.mjs)
-          echo "Source CONTRACT_VERSION: $SOURCE_VERSION"
-          echo "Built CONTRACT_VERSION:  $BUILT_VERSION"
-          if [ "$SOURCE_VERSION" != "$BUILT_VERSION" ]; then
-            echo "::error::SDK build CONTRACT_VERSION mismatch!" \
-              "Source ($SOURCE_VERSION) != Built ($BUILT_VERSION)"
-            exit 1
-          fi
-          echo "✅ SDK build lockstep verified"
+        run: scripts/ci/sdk-lockstep.sh
 
   build:
     name: 🏗️ Build
@@ -199,23 +174,5 @@ jobs:
           load: true
           tags: quarry:ci
 
-      # A numeric UID has no account, home, or cache in the image. The browser
-      # run proves that the embedded executor needs none of them.
       - name: 🧪 Run as an Unmapped UID
-        run: |
-          mkdir -p smoke/scripts smoke/data
-          chmod 777 smoke/data
-          cat > smoke/scripts/page.mjs <<'SCRIPT'
-          export default async function run(ctx) {
-            await ctx.page.goto('data:text/html,<title>container</title>')
-            await ctx.emit.item({ item_type: 'title', data: { title: await ctx.page.title() } })
-          }
-          SCRIPT
-          docker run --rm --user 54321:54321 --read-only \
-            --tmpfs /tmp:mode=1777 --shm-size 1g -e HOME=/tmp \
-            -v "$PWD/smoke/scripts:/work/scripts:ro" \
-            -v "$PWD/smoke/data:/work/data" \
-            quarry:ci run --script ./scripts/page.mjs --run-id smoke \
-            --source ci --category smoke --no-browser-reuse \
-            --storage-backend fs --storage-path ./data
-          find smoke/data -name end.json -exec jq -e '.outcome == "success"' {} + | grep -qx true
+        run: scripts/ci/container-smoke.sh quarry:ci
