@@ -1313,9 +1313,10 @@ describe('launchIdentity', () => {
       join(pkg, 'package.json'),
       JSON.stringify({ name: 'puppeteer', main: 'index.js', ...pkgFields })
     )
+    writeFileSync(join(pkg, 'chrome.json'), JSON.stringify(chrome))
     writeFileSync(
       join(pkg, 'index.js'),
-      `module.exports = { executablePath: async () => ${JSON.stringify(chrome)}, defaultArgs: async (o) => ['--puppeteer-default', ...o.args] }\n`
+      "module.exports = { executablePath: async () => require('./chrome.json'), defaultArgs: async (o) => ['--puppeteer-default', ...o.args] }\n"
     )
     return join(dir, 'script.ts')
   }
@@ -1376,6 +1377,27 @@ describe('launchIdentity', () => {
     const script = project('1.0.0', chrome, {})
     writeFileSync(join(dirname(script), 'package.json'), '{"name":"app","version":"9.9.9"}')
     await expect(launchIdentity(script, noPlugins, [])).rejects.toThrow(/version/)
+  })
+
+  it('ends the version lookup at a linked package that has no name', async () => {
+    const chrome = chromeAt(mkdtempSync(join(tmpdir(), 'quarry-chrome-')), 'chrome')
+    const script = project('1.0.0', chrome, { name: undefined })
+    const enclosing = mkdtempSync(join(tmpdir(), 'quarry-linked-'))
+    writeFileSync(join(enclosing, 'package.json'), '{"name":"app","version":"9.9.9"}')
+    const installed = join(dirname(script), 'node_modules', 'puppeteer')
+    renameSync(installed, join(enclosing, 'linked'))
+    symlinkSync(join(enclosing, 'linked'), installed)
+    await expect(launchIdentity(script, noPlugins, [])).rejects.toThrow(/version/)
+  })
+
+  it('declines to look up a bare Chrome name without PATH', async () => {
+    const script = project('1.0.0', 'quarry-test-chrome')
+    vi.stubEnv('PATH', undefined)
+    try {
+      await expect(launchIdentity(script, noPlugins, [])).rejects.toThrow(/without PATH/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('differs once the Chrome at the same path is replaced', async () => {

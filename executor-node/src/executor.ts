@@ -136,20 +136,20 @@ export type LaunchIdentity = {
 
 /**
  * The version of the package that owns `location`. The search passes a nested
- * package.json that only sets a module format, and ends at the package's own,
- * so it never reports the version of a project that encloses the package.
+ * package.json that only sets a module format, and ends at the first that says
+ * more, so it never reports the version of a project that encloses the package.
  */
 function owningVersion(name: string, location: string): string {
   for (let dir = dirname(location); ; dir = dirname(dir)) {
-    let pkg: { name?: unknown; version?: unknown } = {}
+    let pkg: { readonly version?: unknown } = {}
     try {
       pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
     } catch {
       // No package.json here; keep walking up.
     }
     if (typeof pkg.version === 'string' && pkg.version !== '') return pkg.version
-    const installed = basename(dirname(dir)) === 'node_modules'
-    if (pkg.name !== undefined || installed || dirname(dir) === dir)
+    const root = Object.keys(pkg).some((field) => field !== 'type')
+    if (root || basename(dirname(dir)) === 'node_modules' || dirname(dir) === dir)
       throw new Error(`cannot identify the version of ${name} loaded from ${location}`)
   }
 }
@@ -167,6 +167,8 @@ type ExecutableIdentity = { readonly file: string; readonly revision: string }
  * for one binary agree and one name for two binaries does not.
  */
 function executableIdentity(path: string): ExecutableIdentity {
+  if (!path.includes(sep) && process.env.PATH === undefined)
+    throw new Error(`cannot look up the Chrome executable ${path} without PATH`)
   // Each candidate stays unnormalized: the filesystem follows a symlink before
   // the `..` after it, and path.join and path.resolve would not.
   const candidates = path.includes(sep)

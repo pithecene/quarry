@@ -2902,12 +2902,14 @@ function owningVersion(name, location) {
     } catch {
     }
     if (typeof pkg.version === "string" && pkg.version !== "") return pkg.version;
-    const installed2 = basename(dirname(dir)) === "node_modules";
-    if (pkg.name !== void 0 || installed2 || dirname(dir) === dir)
+    const root = Object.keys(pkg).some((field) => field !== "type");
+    if (root || basename(dirname(dir)) === "node_modules" || dirname(dir) === dir)
       throw new Error(`cannot identify the version of ${name} loaded from ${location}`);
   }
 }
 function executableIdentity(path) {
+  if (!path.includes(sep) && process.env.PATH === void 0)
+    throw new Error(`cannot look up the Chrome executable ${path} without PATH`);
   const candidates = path.includes(sep) ? [path] : (process.env.PATH ?? "").split(delimiter).map((dir) => `${dir || "."}${sep}${path}`);
   for (const candidate of candidates) {
     try {
