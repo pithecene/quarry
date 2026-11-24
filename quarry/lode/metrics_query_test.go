@@ -485,8 +485,26 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	if _, err := broken.dataset.Write(t.Context(), lode.R(record), map[string]any{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := latest("run-second", ""); got != "run-second" {
-		t.Errorf("latest = %s, want a named run beside a broken record", got)
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
+		t.Error("QueryLatestMetrics skipped a broken record that may be the latest")
+	}
+	// One that committed before the latest end is not read.
+	end("c", "run-future-a", "2026-02-07", time.Now().Add(time.Hour).Truncate(time.Second), true)
+	if got := latest("", ""); got != "run-future-a" {
+		t.Errorf("latest = %s, want an end after every commit", got)
+	}
+	// Of two ends at one instant the greater run ID is taken.
+	record, err = QueryLatestMetrics(t.Context(), factory, "quarry", "run-future-a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := time.Parse(time.RFC3339Nano, toString(record["ts"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	end("c", "run-future-b", "2026-02-07", same, true)
+	if got := latest("", ""); got != "run-future-b" {
+		t.Errorf("latest = %s, want run-future-b", got)
 	}
 	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-broken", ""); err == nil || errors.Is(err, ErrNoMetricsFound) {
 		t.Errorf("a broken time gave %v, want its parse error", err)

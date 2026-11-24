@@ -36,33 +36,31 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 	if err != nil {
 		return nil, err
 	}
-	records, err := readEndMetrics(ctx, store, runs)
-	if err != nil {
-		return nil, err
-	}
 	var latest map[string]any
 	var latestAt time.Time
+	reading := true // the end records
 	consider := func(record map[string]any) error {
 		at, err := time.Parse(time.RFC3339Nano, toString(record["ts"]))
 		if err != nil {
 			return fmt.Errorf("metrics of run %v: %w", record["run_id"], err)
 		}
-		if latest == nil || at.After(latestAt) {
+		// End records arrive in no order, so of two at one instant the greater run
+		// ID is taken. A metrics record displaces no end record of its instant.
+		if latest == nil || at.After(latestAt) || at.Equal(latestAt) && reading && toString(record["run_id"]) > toString(latest["run_id"]) {
 			latest, latestAt = record, at
 		}
 		return nil
 	}
 	// The end record of a run is its source, and a metrics record only without one.
 	ended := make(map[string]bool) // by record directory
-	for i, record := range records {
-		if record == nil {
-			continue
-		}
-		ended[RunRecordDir(runs[i])] = true
-		if err := consider(record); err != nil {
-			return nil, err
-		}
+	err = readEndMetrics(ctx, store, runs, func(run Config, record map[string]any) error {
+		ended[RunRecordDir(run)] = true
+		return consider(record)
+	})
+	if err != nil {
+		return nil, err
 	}
+	reading = false
 	// The end record of a named run decides, without its metrics records.
 	if ok && (runID == "" || latest == nil) {
 		snapshots, err := ds.Snapshots(ctx)
@@ -102,35 +100,38 @@ func QueryLatestMetrics(ctx context.Context, factory lode.Factory[lode.RangeStor
 	return latest, nil
 }
 
-// readEndMetrics returns the metrics of each run's end record, nil where it has
-// none.
-func readEndMetrics(ctx context.Context, store lode.Store, runs []Config) ([]map[string]any, error) {
-	records := make([]map[string]any, len(runs))
-	errs := make([]error, len(runs))
+// readEndMetrics calls consider, one call at a time and in no order, with the
+// metrics of each run's end record that has any.
+func readEndMetrics(ctx context.Context, store lode.Store, runs []Config, consider func(Config, map[string]any) error) error {
 	var next atomic.Int64
-	var failed atomic.Bool
+	var mu sync.Mutex // guards failure and consider
+	var failure error
 	var wg sync.WaitGroup
 	for range min(endRecordReads, len(runs)) {
 		wg.Go(func() {
-			for i := next.Add(1) - 1; i < int64(len(runs)) && !failed.Load(); i = next.Add(1) - 1 {
+			for i := next.Add(1) - 1; i < int64(len(runs)); i = next.Add(1) - 1 {
 				rec, err := readEndFields(ctx, store, runs[i])
+				var record map[string]any
 				if err == nil {
-					records[i], err = endMetrics(rec, runs[i])
+					record, err = endMetrics(rec, runs[i])
 				}
-				if err != nil {
-					errs[i] = err
-					failed.Store(true)
+				mu.Lock()
+				if err == nil && record != nil {
+					err = consider(runs[i], record)
+				}
+				if failure == nil {
+					failure = err
+				}
+				stop := failure != nil
+				mu.Unlock()
+				if stop {
+					return
 				}
 			}
 		})
 	}
 	wg.Wait()
-	for _, err := range errs {
-		if err != nil {
-			return nil, err
-		}
-	}
-	return records, nil
+	return failure
 }
 
 // endedRuns returns the runs that match filter, have a start record, and have
