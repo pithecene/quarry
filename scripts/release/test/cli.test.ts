@@ -58,7 +58,9 @@ describe('main', () => {
   ])('exits 2 for an invalid %s of %j', async (name, value) => {
     const world = fakeWorld({ jsrPublished: true })
     const output = stderr()
-    expect(await main(['publish-jsr', world.pkgDir, 'v1.2.3'], { [name]: value }, world.ctx)).toBe(2)
+    expect(await main(['publish-jsr', world.pkgDir, 'v1.2.3'], { [name]: value }, world.ctx)).toBe(
+      2
+    )
     expect(output()).toContain(`${name} must be`)
   })
 
