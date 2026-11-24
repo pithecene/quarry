@@ -237,28 +237,6 @@ func TestWriteRunReport_EmptyPath(t *testing.T) {
 	}
 }
 
-func TestWriteRunReportTo_Writer(t *testing.T) {
-	t.Parallel()
-
-	result := newTestRunResult()
-	snap := newTestSnapshot()
-	report := BuildRunReport(result, snap, "strict", 0)
-
-	var buf bytes.Buffer
-	if err := writeRunReportTo(report, &buf); err != nil {
-		t.Fatalf("writeRunReportTo failed: %v", err)
-	}
-
-	var decoded RunReport
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
-	}
-
-	if decoded.RunID != "run-001" {
-		t.Errorf("decoded RunID = %q, want %q", decoded.RunID, "run-001")
-	}
-}
-
 func TestRunReport_JSONRoundTrip(t *testing.T) {
 	t.Parallel()
 

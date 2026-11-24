@@ -634,11 +634,6 @@ func (e *IngestionEngine) GetTerminalEvent() (*types.EventEnvelope, bool) {
 	return e.terminalEvent, e.terminalSeen
 }
 
-// HasTerminal returns true if a terminal event has been seen.
-func (e *IngestionEngine) HasTerminal() bool {
-	return e.terminalSeen
-}
-
 // CurrentSeq returns the current sequence number.
 func (e *IngestionEngine) CurrentSeq() int64 {
 	return e.currentSeq

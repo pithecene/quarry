@@ -28,11 +28,19 @@ import type { ProxyEndpoint } from '@pithecene/quarry-sdk'
 import { browserProxyArgs, chromiumArgs } from '../browser-args.js'
 import { isBrowserKey, serveLeases } from '../browser-lease-server.js'
 import { closeRecordedBrowsers, probeBrowser, recordBrowsers } from '../browser-record.js'
-import { errorMessage, execute, launchIdentity, parseRunMeta } from '../executor.js'
+import {
+  errorMessage,
+  execute,
+  getPuppeteer,
+  getVanillaPuppeteer,
+  launchIdentity,
+  type PluginConfig,
+  parseRunMeta
+} from '../executor.js'
 import { AckReader } from '../ipc/ack-reader.js'
 import { drainStdout } from '../ipc/sink.js'
 import { installStdoutGuard } from '../ipc/stdout-guard.js'
-import { type LoadedScript, loadScript, ScriptLoadError } from '../loader.js'
+import { HOOK_NAMES, type LoadedScript, loadScript, ScriptLoadError } from '../loader.js'
 import { parseStoragePartition } from '../parse-storage-partition.js'
 
 /**
@@ -43,29 +51,20 @@ function fatalError(message: string): never {
   process.exit(3)
 }
 
-/** Known lifecycle hook names to report. */
-const HOOK_NAMES = [
-  'prepare',
-  'beforeRun',
-  'afterRun',
-  'onError',
-  'beforeTerminal',
-  'cleanup'
-] as const
+/** The Puppeteer plugins that the environment selects: stealth on and adblocker off by default. */
+function envPlugins(): PluginConfig {
+  return {
+    stealth: process.env.QUARRY_STEALTH !== '0',
+    adblocker: process.env.QUARRY_ADBLOCKER === '1'
+  }
+}
 
 /**
  * The identity of the browser that this process would launch for scriptPath,
  * with the plugins and arguments that the environment selects.
  */
 function currentLaunchIdentity(scriptPath: string): ReturnType<typeof launchIdentity> {
-  return launchIdentity(
-    scriptPath,
-    {
-      stealth: process.env.QUARRY_STEALTH !== '0',
-      adblocker: process.env.QUARRY_ADBLOCKER === '1'
-    },
-    chromiumArgs(browserProxyArgs())
-  )
+  return launchIdentity(scriptPath, envPlugins(), chromiumArgs(browserProxyArgs()))
 }
 
 /**
@@ -252,7 +251,6 @@ async function browserServer(scriptPath: string): Promise<never> {
     )
     process.exit(3)
   }
-  const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer } = await import('../executor.js')
   const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? '.'
   const recordPath = join(reuseDir, 'browser.json')
   const log = (message: string): void => void process.stderr.write(`${message}\n`)
@@ -265,10 +263,7 @@ async function browserServer(scriptPath: string): Promise<never> {
     log
   )
 
-  const puppeteer = await getBrowserPuppeteer(scriptPath, {
-    stealth: process.env.QUARRY_STEALTH !== '0',
-    adblocker: process.env.QUARRY_ADBLOCKER === '1'
-  })
+  const puppeteer = await getPuppeteer(scriptPath, envPlugins())
 
   // The proxy applies at the browser level, to every run that connects.
   // The launch takes the executable it verified, so a configuration edited since
@@ -336,12 +331,7 @@ type Stop = { reason: string; code: number }
  * The script path is used to resolve puppeteer from the user's project.
  */
 async function launchBrowserServer(scriptPath: string): Promise<never> {
-  const { getPuppeteer: getBrowserPuppeteer } = await import('../executor.js')
-
-  const puppeteer = await getBrowserPuppeteer(scriptPath, {
-    stealth: process.env.QUARRY_STEALTH !== '0',
-    adblocker: process.env.QUARRY_ADBLOCKER === '1'
-  })
+  const puppeteer = await getPuppeteer(scriptPath, envPlugins())
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -503,10 +493,7 @@ async function main(): Promise<never> {
       headless: true,
       args: chromiumArgs()
     },
-    // Stealth on by default; disable with QUARRY_STEALTH=0
-    stealth: process.env.QUARRY_STEALTH !== '0',
-    // Adblocker off by default; enable with QUARRY_ADBLOCKER=1
-    adblocker: process.env.QUARRY_ADBLOCKER === '1'
+    ...envPlugins()
   })
 
   // Stop AckReader after execution completes

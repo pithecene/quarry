@@ -90,8 +90,8 @@ func TestQueryLatestMetrics_WriteAndRead(t *testing.T) {
 	}
 
 	completedAt := time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)
-	if err := client.WriteMetrics(t.Context(), snap, completedAt); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(t.Context(), client, snap, completedAt); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 
 	// Read via QueryLatestMetrics
@@ -173,7 +173,7 @@ func TestQueryLatestMetrics_Filters(t *testing.T) {
 					t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 				}
 				snap := metrics.Snapshot{RunsStarted: int64(i + 1), RunID: w.runID, Policy: "strict", Executor: "executor.js", StorageBackend: "fs"}
-				if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
+				if err := writeLegacyMetrics(t.Context(), client, snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
 					t.Fatalf("WriteMetrics for %+v failed: %v", w, err)
 				}
 			}
@@ -239,7 +239,7 @@ func TestQueryLatestMetrics_RunIDSubstringNoCollision(t *testing.T) {
 			StorageBackend: "fs",
 		}
 
-		if err := client.WriteMetrics(t.Context(), snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
+		if err := writeLegacyMetrics(t.Context(), client, snap, completedAt.Add(time.Duration(i)*time.Minute)); err != nil {
 			t.Fatalf("WriteMetrics for %s failed: %v", runID, err)
 		}
 	}
@@ -290,8 +290,8 @@ func TestQueryLatestMetrics_RecordLevelFiltering(t *testing.T) {
 		StorageBackend: "fs",
 	}
 
-	if err := client.WriteMetrics(t.Context(), snap, completedAt); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(t.Context(), client, snap, completedAt); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 
 	// Filter by a run_id that doesn't exist — should get ErrNoMetricsFound
@@ -333,8 +333,8 @@ func TestQueryLatestMetrics_TsRoundTrip(t *testing.T) {
 		StorageBackend: "fs",
 	}
 
-	if err := client.WriteMetrics(t.Context(), snap, completedAt); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(t.Context(), client, snap, completedAt); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 
 	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", "")
@@ -359,8 +359,8 @@ func TestQueryLatestMetrics_FiltersOnEscapedValues(t *testing.T) {
 		t.Fatalf("NewLodeClientWithFactory failed: %v", err)
 	}
 	snap := metrics.Snapshot{RunsStarted: 1, Policy: "strict", RunID: cfg.RunID}
-	if err := client.WriteMetrics(t.Context(), snap, time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(t.Context(), client, snap, time.Date(2026, 2, 3, 15, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", cfg.RunID, cfg.Source)
 	if err != nil {
@@ -405,7 +405,7 @@ func TestQueryLatestMetrics_EndRecords(t *testing.T) {
 	}
 	legacy := func(source, runID, day string, ended time.Time) {
 		t.Helper()
-		if err := client(source, runID, day).WriteMetrics(t.Context(), metrics.Snapshot{RunID: runID, Policy: "strict"}, ended); err != nil {
+		if err := writeLegacyMetrics(t.Context(), client(source, runID, day), metrics.Snapshot{RunID: runID, Policy: "strict"}, ended); err != nil {
 			t.Fatal(err)
 		}
 	}

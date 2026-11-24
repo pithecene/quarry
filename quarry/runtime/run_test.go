@@ -16,6 +16,7 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
+	"github.com/pithecene/quarry/ipc"
 	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/types"
 )
@@ -652,7 +653,7 @@ func TestRunOrchestrator_VersionMismatch_OutcomeMapping(t *testing.T) {
 // encodeTestRunResultFrame creates a framed run_result control frame.
 func encodeTestRunResultFrame(status types.RunResultStatus, message *string) []byte {
 	frame := &types.RunResultFrame{
-		Type: types.RunResultType,
+		Type: ipc.RunResultType,
 		Outcome: types.RunResultOutcome{
 			Status:  status,
 			Message: message,

@@ -27,14 +27,6 @@ type BufferedConfig struct {
 	Logger *log.Logger
 }
 
-// DefaultBufferedConfig returns sensible defaults for buffered policy.
-func DefaultBufferedConfig() BufferedConfig {
-	return BufferedConfig{
-		MaxBufferEvents: 1000,
-		MaxBufferBytes:  10 * 1024 * 1024, // 10 MB
-	}
-}
-
 // ErrBufferFull is returned when buffer is full and event is non-droppable.
 var ErrBufferFull = errors.New("buffer full: cannot accept non-droppable event")
 

@@ -56,8 +56,8 @@ func TestOpenView_WriteReadRoundTrip(t *testing.T) {
 	}
 
 	completedAt := time.Date(2026, 2, 4, 10, 0, 0, 0, time.UTC)
-	if err := client.WriteMetrics(t.Context(), snap, completedAt); err != nil {
-		t.Fatalf("WriteMetrics failed: %v", err)
+	if err := writeLegacyMetrics(t.Context(), client, snap, completedAt); err != nil {
+		t.Fatalf("write metrics: %v", err)
 	}
 
 	// Read through a view, as the read path does

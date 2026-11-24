@@ -54,7 +54,7 @@ func TestQueryRunDetails_ScopesSnapshotReads(t *testing.T) {
 		if err := client.PutFile(t.Context(), policy+".txt", "text/plain", []byte(policy)); err != nil {
 			t.Fatal(err)
 		}
-		if err := client.WriteMetrics(t.Context(), metrics.Snapshot{RunID: cfg.RunID, Policy: policy}, time.Now()); err != nil {
+		if err := writeLegacyMetrics(t.Context(), client, metrics.Snapshot{RunID: cfg.RunID, Policy: policy}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}

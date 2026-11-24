@@ -5,12 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/pithecene/lode/lode"
 
-	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -36,31 +33,10 @@ type LodeClient struct { //nolint:revive // intentional naming for clarity
 	mu           sync.Mutex       // guards pendingFiles
 	pendingFiles []SidecarFileRef // sidecar files written since last snapshot flush
 	files        []SidecarFileRef // every sidecar file the run wrote
-
-	retryGate *retryGate // suppresses the retry observer during WriteMetrics
-}
-
-// retryGate suppresses Config.RetryObserver while the metrics record itself
-// is being persisted. A retry incurred writing the snapshot cannot be
-// reflected in that snapshot, and counting it would make the persisted
-// record disagree with the in-memory collector the CLI prints.
-// Lode invokes the observer synchronously on the committing goroutine, so
-// the flag is read on the same goroutine that set it.
-type retryGate struct {
-	suppressed atomic.Bool
-}
-
-func (g *retryGate) wrap(fn func(attempt int)) func(attempt int) {
-	return func(attempt int) {
-		if !g.suppressed.Load() {
-			fn(attempt)
-		}
-	}
 }
 
 // openClient creates the store once, opens the dataset over it, and returns
-// a client that writes sidecar files and run records to the same store. The
-// retry gate is installed on the dataset's observer when one is configured.
+// a client that writes sidecar files and run records to the same store.
 // All constructors must use this to ensure consistent initialization.
 func openClient(ctx context.Context, cfg Config, factory lode.Factory[lode.RangeStore]) (*LodeClient, error) {
 	if factory == nil {
@@ -70,20 +46,18 @@ func openClient(ctx context.Context, cfg Config, factory lode.Factory[lode.Range
 	if err != nil {
 		return nil, err
 	}
-	gate := &retryGate{}
 	var opts []lode.DatasetOption
 	if cfg.RetryObserver != nil {
-		opts = append(opts, lode.WithRetryObserver(gate.wrap(cfg.RetryObserver)))
+		opts = append(opts, lode.WithRetryObserver(cfg.RetryObserver))
 	}
 	ds, err := OpenDataset(ctx, cfg.Dataset, store, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return &LodeClient{
-		dataset:   ds,
-		config:    cfg,
-		store:     store,
-		retryGate: gate,
+		dataset: ds,
+		config:  cfg,
+		store:   store,
 	}, nil
 }
 
@@ -105,8 +79,8 @@ func NewLodeClientWithFactory(ctx context.Context, cfg Config, factory lode.Fact
 }
 
 // WriteEvents writes a batch of events to Lode.
-// Artifact events (type=artifact) are converted to ArtifactCommitRecord format.
-// Other events use EventRecord format.
+// Artifact events (type=artifact) are written as artifact commit records, and other
+// events as event records.
 // Events are partitioned by event_type (included in each record).
 //
 // Enforces "chunks before commit" invariant: artifact commit events are rejected
@@ -160,30 +134,6 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 	return nil
 }
 
-// WriteMetrics writes a metrics record as releases that kept metrics in the
-// dataset did. The runtime keeps them in the end record instead, so only the
-// tests of reading such data write one.
-// Written to event_type=metrics partition with record_kind=metrics.
-// This is a standalone write (not part of the event/chunk pipeline).
-// Retries incurred by this write are not observed: the snapshot being
-// persisted was taken before the write began, so counting them would make
-// the persisted record and the live collector disagree (CONTRACT_LODE.md).
-func (c *LodeClient) WriteMetrics(ctx context.Context, snap metrics.Snapshot, completedAt time.Time) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.retryGate.suppressed.Store(true)
-	defer c.retryGate.suppressed.Store(false)
-
-	record := toMetricsRecordMap(snap, c.config, completedAt)
-	_, err := c.dataset.Write(ctx, lode.R(record), c.snapshotMetadata())
-	if err != nil {
-		return WrapWriteError(err, buildPartitionPath(c.config, "metrics"))
-	}
-	c.drainPendingFiles()
-	return nil
-}
-
 // Close releases client resources.
 func (c *LodeClient) Close() error {
 	// Dataset doesn't require explicit close in current Lode API
@@ -197,8 +147,7 @@ const MetadataKeySidecarFiles = "sidecar_files"
 // snapshotMetadata returns metadata containing any pending sidecar file refs,
 // or an empty object if no files are pending. The empty case must be a
 // non-nil map: a nil map encodes as JSON null, which Lode rejects.
-// Only called from WriteEvents and WriteMetrics — chunk writes do not flush
-// file refs because chunks are not consumer-facing commit boundaries.
+// Only WriteEvents calls it.
 // Must be called under c.mu.
 func (c *LodeClient) snapshotMetadata() map[string]any {
 	if len(c.pendingFiles) == 0 {

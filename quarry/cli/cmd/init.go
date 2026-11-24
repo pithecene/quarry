@@ -18,9 +18,9 @@ import (
 
 // InitResponse is the response for the init command.
 type InitResponse struct {
-	Directory string   `json:"directory"`
-	Created   []string `json:"created"`
-	Next      []string `json:"next"`
+	Directory string   `json:"directory" yaml:"directory"`
+	Created   []string `json:"created" yaml:"created"`
+	Next      []string `json:"next" yaml:"next"`
 }
 
 // initNodeRange is the Node.js range of a generated project: native type

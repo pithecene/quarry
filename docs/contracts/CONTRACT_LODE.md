@@ -107,10 +107,6 @@ times with jittered exponential backoff (10ms base, 2s max).
   `WithRetryObserver` callback. The counter records retries, not write
   calls: an uncontended write contributes 0. A write that conflicts once
   and then succeeds contributes 1.
-- Retries incurred by the metrics write itself (`WriteMetrics`) are NOT
-  counted. The persisted metrics record is a snapshot taken before that
-  write begins and cannot contain the count of its own retries. Excluding
-  them keeps the persisted record identical to the collector's final value.
 
 ---
 

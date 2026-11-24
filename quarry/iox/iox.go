@@ -16,9 +16,3 @@ func DiscardClose(c io.Closer) { _ = c.Close() }
 func CloseFunc(c io.Closer) func() {
 	return func() { _ = c.Close() }
 }
-
-// DiscardErr calls fn and discards the returned error.
-// Use for non-Close cleanup calls (e.g. Flush) where errors are unactionable:
-//
-//	defer iox.DiscardErr(w.Flush)
-func DiscardErr(fn func() error) { _ = fn() }

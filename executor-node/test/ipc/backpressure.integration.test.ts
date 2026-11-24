@@ -24,30 +24,14 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { decode as msgpackDecode } from '@msgpack/msgpack'
 import { describe, expect, it } from 'vitest'
-import { LENGTH_PREFIX_SIZE } from '../../src/ipc/frame.js'
+import { decodeFrames } from './helpers.js'
 
 const FRAME_COUNT = 50
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 const fixturePath = resolve(testDir, 'fixtures/backpressure-child.ts')
 const tsxBin = resolve(testDir, '../../../node_modules/.bin/tsx')
-
-/**
- * Decode all length-prefixed msgpack frames from a buffer.
- */
-function decodeFrames(data: Buffer): unknown[] {
-  const frames: unknown[] = []
-  let offset = 0
-  while (offset + LENGTH_PREFIX_SIZE <= data.length) {
-    const payloadLen = data.readUInt32BE(offset)
-    offset += LENGTH_PREFIX_SIZE
-    frames.push(msgpackDecode(data.subarray(offset, offset + payloadLen)))
-    offset += payloadLen
-  }
-  return frames
-}
 
 /**
  * Parse `backpressure_events=N` from child stderr output.

@@ -409,3 +409,31 @@ describe('createStorageBatcher', () => {
     })
   })
 })
+
+describe('concurrent flush calls', () => {
+  it.each([
+    ['resolve', undefined],
+    ['reject', new Error('refused')]
+  ])('all %s when the writes settle', async (_, failure) => {
+    let settle = () => {}
+    const written = new Promise<void>((resolve) => {
+      settle = resolve
+    })
+    const batcher = createStorageBatcher({
+      put: async () => {
+        await written
+        if (failure) throw failure
+        return { key: 'k' }
+      }
+    })
+    batcher
+      .add({ filename: 'a', content_type: 'text/plain', data: Buffer.from('a') })
+      .result.catch(() => {})
+    const flushes = [batcher.flush(), batcher.flush(), batcher.flush()]
+    settle()
+    const outcome = failure
+      ? { status: 'rejected', reason: failure }
+      : { status: 'fulfilled', value: undefined }
+    expect(await Promise.allSettled(flushes)).toEqual([outcome, outcome, outcome])
+  })
+})

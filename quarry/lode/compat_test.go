@@ -143,9 +143,9 @@ func checkOKRun(t *testing.T, rd *reader.Reader, factory lode.Factory[lode.Range
 	if err != nil || m["run_id"] != "run-ok-1" || m["events_persisted_total"] != float64(5) {
 		t.Errorf("metrics of run-ok-1 = %v, %v; want 5 events persisted", m, err)
 	}
-	files, err := qlode.QuerySidecarFiles(ctx, factory, "quarry", "run-ok-1")
-	if err != nil || len(files) != 1 || files[0].Filename != "page.png" {
-		t.Errorf("sidecar files of run-ok-1 = %+v, %v; want page.png", files, err)
+	details, err := qlode.QueryRunDetails(ctx, factory, qlode.Config{Dataset: "quarry", Source: ok.Source, Category: ok.Category, Day: ok.Day, RunID: ok.RunID})
+	if err != nil || len(details.SidecarFiles) != 1 || details.SidecarFiles[0].Filename != "page.png" {
+		t.Errorf("sidecar files of run-ok-1 = %+v, %v; want page.png", details.SidecarFiles, err)
 	}
 }
 

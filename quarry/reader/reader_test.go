@@ -12,6 +12,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/internal/legacydata"
 	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/ipc"
 	qlode "github.com/pithecene/quarry/lode"
@@ -143,7 +144,7 @@ func (f *fixture) writeRun(spec runSpec, chunks []chunkRecord, commit *types.Eve
 	if commit != nil {
 		f.writeLegacyCommit(cfg, commit)
 	}
-	if err := c.WriteMetrics(ctx, metricsSnapshot(spec.runID), time.Now()); err != nil {
+	if err := legacydata.WriteMetrics(ctx, f.factory, cfg, metricsSnapshot(spec.runID), time.Now()); err != nil {
 		f.t.Fatalf("metrics: %v", err)
 	}
 	if spec.end != nil {

@@ -10,32 +10,7 @@ import (
 	"github.com/pithecene/lode/lode"
 )
 
-// QuerySidecarFiles collects all sidecar file refs from snapshot metadata
-// for a given run of the dataset stored behind factory. Returns the union of
-// sidecar_files across all snapshots that match the runID filter.
-// Each path is the stored object's key: consecutive slashes collapsed, as
-// Quarry stores the object. QueryRunDetails keeps the path that the inventory
-// records.
-//
-// Returns a nil slice if no sidecar files are found, and an error if a
-// matching snapshot contains malformed sidecar metadata.
-func QuerySidecarFiles(ctx context.Context, factory lode.Factory[lode.RangeStore], dataset, runID string) ([]SidecarFileRef, error) {
-	_, snapshots, err := readSnapshots(ctx, dataset, factory)
-	if err != nil {
-		return nil, err
-	}
-	files, err := sidecarFiles(ctx, snapshots, runID, sidecarOwner{})
-	if err != nil {
-		return nil, err
-	}
-	for i := range files {
-		files[i].Path = collapseSidecarSlashes(files[i].Path)
-	}
-	return files, nil
-}
-
-// sidecarOwner selects the inventory entries of one run. Its zero value
-// selects every entry.
+// sidecarOwner selects the inventory entries of one run.
 type sidecarOwner struct {
 	// prefix is the run's sidecar prefix as the writer records it,
 	// consecutive slashes included (CONTRACT_LODE.md § Sidecar File Inventory).
@@ -98,18 +73,15 @@ func (o sidecarOwner) runPrefixes(ctx context.Context, snap *lode.Snapshot) (map
 	return prefixes, nil
 }
 
-// sidecarFiles returns the union of the matching snapshots' inventories. A
+// sidecarFiles returns the union of the snapshots' inventories. A
 // write that reached storage but returned an error leaves its refs pending
 // for the next snapshot, so two snapshots can record the same file once each
 // (CONTRACT_LODE.md § Sidecar File Inventory).
-func sidecarFiles(ctx context.Context, snapshots []*lode.Snapshot, runID string, owner sidecarOwner) ([]SidecarFileRef, error) {
+func sidecarFiles(ctx context.Context, snapshots []*lode.Snapshot, owner sidecarOwner) ([]SidecarFileRef, error) {
 	var result []SidecarFileRef
 	seen := make(map[SidecarFileRef]bool)
 
 	for _, snap := range snapshots {
-		if !snapshotMatchesFilter(snap, "run_id", runID) {
-			continue
-		}
 		files, err := owner.ownedFiles(ctx, snap)
 		if err != nil {
 			return nil, WrapReadError(err, "quarry/snapshot/"+string(snap.ID))
@@ -133,8 +105,8 @@ func (o sidecarOwner) ownedFiles(ctx context.Context, snap *lode.Snapshot) ([]Si
 		return nil, err
 	}
 	files, err := decodeSidecarFiles(meta)
-	if err != nil || o.prefix == "" {
-		return files, err
+	if err != nil {
+		return nil, err
 	}
 	var others map[string]bool
 	owned := files[:0]

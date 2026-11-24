@@ -70,6 +70,14 @@ func TestToArtifactCommitRecordMap_IncludesPolicy(t *testing.T) {
 
 	record := toArtifactCommitRecordMap(envelope, cfg)
 
+	for field, want := range map[string]any{
+		"record_kind": RecordKindArtifactEvent, "artifact_id": "art-001", "name": "screenshot.png", "content_type": "image/png", "size_bytes": int64(1024),
+	} {
+		if record[field] != want {
+			t.Errorf("%s = %v, want %v", field, record[field], want)
+		}
+	}
+
 	got, ok := record["policy"]
 	if !ok {
 		t.Fatal("record missing 'policy' key")

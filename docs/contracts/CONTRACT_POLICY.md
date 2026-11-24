@@ -103,7 +103,8 @@ write overhead of `strict`.
 ### Semantics
 
 - **No drops**: all event types are persisted. Same guarantee as `strict`.
-- **Bounded buffer**: events accumulate in a bounded in-memory buffer.
+- **Bounded buffer**: events accumulate in a bounded in-memory buffer. The bounds
+  also count the batch that a flush is writing, because a failed write returns it.
 - **Periodic flush**: buffer is flushed to storage when any trigger fires.
 - **Blocking on full**: if the next event would exceed the buffer's bounds,
   ingestion flushes the buffered events and blocks until the flush
