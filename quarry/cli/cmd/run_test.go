@@ -602,7 +602,7 @@ func TestExitCodeConstants(t *testing.T) {
 // An explicit flag wins, its zero value included, then a nonzero configured
 // value, then the flag's default.
 func TestResolve_Precedence(t *testing.T) {
-	testutil.Serial(t, "flag.Apply mutates the package-level flag definitions")
+	t.Parallel()
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "string", Value: "default"},
 		&cli.IntFlag{Name: "int", Value: 1},
@@ -1461,21 +1461,19 @@ func newAdapterTestContext(t *testing.T, flags map[string]string, sliceFlags map
 	return c
 }
 
-func TestParseAdapterConfig_WebhookValid(t *testing.T) {
+func TestParseAdapterConfig_Valid(t *testing.T) {
 	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newAdapterTestContext(t, map[string]string{
-		"adapter-url": "https://hooks.example.com/quarry",
-	}, nil)
-
-	ac, err := parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, "webhook")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ac.adapterType != "webhook" {
-		t.Errorf("adapterType = %q, want %q", ac.adapterType, "webhook")
-	}
-	if ac.url != "https://hooks.example.com/quarry" {
-		t.Errorf("url = %q, want %q", ac.url, "https://hooks.example.com/quarry")
+	for _, want := range []adapterChoice{
+		{adapterType: "webhook", url: "https://hooks.example.com/quarry"},
+		{adapterType: "redis", url: "redis://localhost:6379", channel: "my-channel"},
+	} {
+		t.Run(want.adapterType, func(t *testing.T) {
+			flags := map[string]string{"adapter-url": want.url, "adapter-channel": want.channel}
+			got, err := parseAdapterConfigWithPrecedence(newAdapterTestContext(t, flags, nil), &quarryconfig.Config{}, want.adapterType)
+			if err != nil || got.adapterType != want.adapterType || got.url != want.url || got.channel != want.channel {
+				t.Errorf("got %+v, %v, want %+v", got, err, want)
+			}
+		})
 	}
 }
 
@@ -1495,25 +1493,6 @@ func TestParseAdapterConfig_MissingURL(t *testing.T) {
 				t.Errorf("error should mention %q, got: %v", tc.mention, err)
 			}
 		})
-	}
-}
-
-func TestParseAdapterConfig_RedisValid(t *testing.T) {
-	testutil.Serial(t, "runs a urfave/cli app, which mutates the package-level flag definitions")
-	c := newAdapterTestContext(t, map[string]string{
-		"adapter-url":     "redis://localhost:6379",
-		"adapter-channel": "my-channel",
-	}, nil)
-
-	ac, err := parseAdapterConfigWithPrecedence(c, &quarryconfig.Config{}, "redis")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ac.adapterType != "redis" {
-		t.Errorf("adapterType = %q, want %q", ac.adapterType, "redis")
-	}
-	if ac.channel != "my-channel" {
-		t.Errorf("channel = %q, want %q", ac.channel, "my-channel")
 	}
 }
 
