@@ -17,7 +17,7 @@ export type UploadPolicy = RetryPolicy & {
  *
  * Each attempt uploads only the files that the release does not hold, so
  * GitHub's record decides every outcome: one failed file does not withhold the
- * others, and a response lost after a stored upload costs nothing. Uploads
+ * others, and a file whose upload's response was lost does not upload twice. Uploads
  * replace, so only a draft takes them. A published release is read-only and
  * needs each file by name, because a re-run rebuilds archives with other bytes.
  */
@@ -60,7 +60,7 @@ const findPending = async (
       : (name: string) => digests.get(name) !== files.get(name)
   const names = [...files.keys()].filter(lacks)
   if (state !== 'draft' && state !== 'published') {
-    throw new ReleaseError(`the GitHub release for ${tag} is ${state}, not a draft`)
+    throw new ReleaseError(`the GitHub release for ${tag} is ${state}`)
   }
   if (state === 'published' && names.length > 0) {
     throw new ReleaseError(`the release ${tag} is published, and lacks: ${names.join(', ')}`)

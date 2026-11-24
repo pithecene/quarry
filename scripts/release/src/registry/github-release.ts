@@ -44,16 +44,18 @@ export const githubReleaseState = async (ctx: Context, tag: string): Promise<Rel
   return read.release.state
 }
 
-type Asset = { name: string; state: string; digest: string }
+const DIGEST = /^sha256:[0-9a-f]{64}$/
 
-const isAsset = (value: unknown): value is Asset => {
+// Only a complete asset has a digest, and without one nothing can be decided.
+type Asset =
+  | { name: string; state: 'uploaded'; digest: string }
+  | { name: string; state: 'incomplete' }
+
+const parseAsset = (value: unknown): Asset | undefined => {
   const { name, state, digest } = (value ?? {}) as Record<string, unknown>
-  // Only a complete asset has a digest, and without one nothing can be decided.
-  return (
-    typeof name === 'string' &&
-    typeof state === 'string' &&
-    (state !== 'uploaded' || (typeof digest === 'string' && digest !== ''))
-  )
+  if (typeof name !== 'string' || typeof state !== 'string') return undefined
+  if (state !== 'uploaded') return { name, state: 'incomplete' }
+  return typeof digest === 'string' && DIGEST.test(digest) ? { name, state, digest } : undefined
 }
 
 const parseRelease = (stdout: string): Release | undefined => {
@@ -65,11 +67,12 @@ const parseRelease = (stdout: string): Release | undefined => {
   }
   const { isDraft, isPrerelease, assets } = (parsed ?? {}) as Record<string, unknown>
   if (typeof isDraft !== 'boolean' || typeof isPrerelease !== 'boolean') return undefined
-  if (!Array.isArray(assets) || !assets.every(isAsset)) return undefined
-  const digests = assets
-    .filter((a) => a.state === 'uploaded')
-    .map((a) => [a.name, a.digest] as const)
+  if (!Array.isArray(assets)) return undefined
+  const records = assets.map(parseAsset)
+  if (!records.every((a) => a !== undefined)) return undefined
+  const complete = records.filter((a) => a.state === 'uploaded')
+  const digests = new Map(complete.map((a) => [a.name, a.digest] as const))
   // A draft can also be a prerelease, which no stable tag may publish.
   const state = isPrerelease ? 'prerelease' : isDraft ? 'draft' : 'published'
-  return { state, digests: new Map(digests) }
+  return { state, digests }
 }
