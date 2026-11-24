@@ -248,6 +248,8 @@ existed receive backfilled records (§Backfilled Run Records).
 | `message`           | string         | no       | Outcome message, omitted when empty |
 | `event_count`       | int \| null    | yes      | Events processed, `null` on a backfilled record |
 | `metrics_persisted` | bool           | yes      | Whether the metrics record was written |
+| `metrics`           | object         | no       | The run's final counters and dimensions, under the names of [CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record Schema. It carries no `record_kind`, `event_type`, `ts`, or partition key. Omitted on a backfilled record and by releases before v0.20.0 |
+| `terminal_summary`  | object         | no       | Payload of the terminal event, as the exit report gives it. Omitted without a terminal event, when the payload is empty, on a backfilled record, and by releases before v0.20.0 |
 | `backfilled`        | bool           | yes      | As on the start record |
 
 ### Backfilled Run Records

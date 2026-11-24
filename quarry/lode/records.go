@@ -216,11 +216,20 @@ func addArtifactStorageFields(m map[string]any, s *types.ArtifactStorage) {
 // Written to event_type=metrics partition with record_kind=metrics.
 // Key names use _total suffix to match CONTRACT_METRICS.md naming.
 func toMetricsRecordMap(snap metrics.Snapshot, cfg Config, completedAt time.Time) map[string]any {
-	m := map[string]any{
-		"record_kind": RecordKindMetrics,
-		"event_type":  "metrics", // partition key
-		"ts":          completedAt.UTC().Format(time.RFC3339),
+	m := metricsFields(snap)
+	m["record_kind"] = RecordKindMetrics
+	m["event_type"] = "metrics" // partition key
+	m["ts"] = completedAt.UTC().Format(time.RFC3339)
+	m["source"] = cfg.Source
+	m["category"] = cfg.Category
+	m["day"] = cfg.Day
+	return m
+}
 
+// metricsFields returns the snapshot's counters and dimensions under their
+// CONTRACT_METRICS.md names.
+func metricsFields(snap metrics.Snapshot) map[string]any {
+	m := map[string]any{
 		// Run lifecycle (CONTRACT_METRICS names)
 		"runs_started_total":   snap.RunsStarted,
 		"runs_completed_total": snap.RunsCompleted,
@@ -249,11 +258,6 @@ func toMetricsRecordMap(snap metrics.Snapshot, cfg Config, completedAt time.Time
 		"executor":        snap.Executor,
 		"storage_backend": snap.StorageBackend,
 		"run_id":          snap.RunID,
-
-		// Partition keys
-		"source":   cfg.Source,
-		"category": cfg.Category,
-		"day":      cfg.Day,
 	}
 
 	// Optional: only include job_id when non-empty

@@ -11,6 +11,7 @@ import (
 	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/iox"
+	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -112,6 +113,8 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	end := RunEnd{
 		EndedAt: startedAt.Add(time.Minute), Outcome: types.OutcomeScriptError,
 		Terminal: types.EventTypeRunError, Message: "boom", EventCount: 7, MetricsPersisted: true,
+		Metrics:         metrics.Snapshot{EventsPersisted: 7, Policy: "strict", DroppedByType: map[string]int64{"log": 2}},
+		TerminalSummary: map[string]any{"error_type": "fetch"},
 	}
 	if err := client.WriteEndRecord(t.Context(), end); err != nil {
 		t.Fatalf("WriteEndRecord: %v", err)
@@ -146,6 +149,19 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 		if endRec[k] != want {
 			t.Errorf("end[%q] = %v, want %v", k, endRec[k], want)
 		}
+	}
+	recorded, _ := endRec["metrics"].(map[string]any)
+	dropped, _ := recorded["dropped_by_type"].(map[string]any)
+	if recorded["events_persisted_total"] != float64(7) || recorded["policy"] != "strict" || dropped["log"] != float64(2) {
+		t.Errorf("end metrics = %v, want the run's counters and dimensions", recorded)
+	}
+	for _, key := range []string{"record_kind", "event_type", "ts"} {
+		if _, ok := recorded[key]; ok {
+			t.Errorf("end metrics carry %q, which belongs to the metrics record", key)
+		}
+	}
+	if summary, _ := endRec["terminal_summary"].(map[string]any); summary["error_type"] != "fetch" {
+		t.Errorf("end terminal_summary = %v, want the terminal event's payload", endRec["terminal_summary"])
 	}
 }
 

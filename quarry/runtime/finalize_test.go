@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -128,6 +129,7 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	config := finalizeConfig(t, storage, exec)
 	startedAt := time.Date(2026, 10, 21, 23, 59, 59, 0, time.UTC)
 	config.StartedAt = startedAt
+	config.Collector = metrics.NewCollector("strict", "/fake/executor", "fs", "run-fin", "")
 
 	result := executeRun(t, config)
 
@@ -147,6 +149,12 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	}
 	if !end.MetricsPersisted {
 		t.Error("end record should report metrics persisted")
+	}
+	if !reflect.DeepEqual(end.Metrics, config.Collector.Snapshot()) || end.Metrics.RunsCompleted != 1 {
+		t.Errorf("end record metrics = %+v, want the run's final snapshot", end.Metrics)
+	}
+	if !reflect.DeepEqual(end.TerminalSummary, result.TerminalSummary) || end.TerminalSummary == nil {
+		t.Errorf("end record terminal summary = %v, want the result's %v", end.TerminalSummary, result.TerminalSummary)
 	}
 	if result.RunRecordError != "" {
 		t.Errorf("unexpected RunRecordError %q", result.RunRecordError)

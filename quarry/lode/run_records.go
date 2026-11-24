@@ -12,6 +12,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -174,6 +175,10 @@ type RunEnd struct {
 	Message          string
 	EventCount       int64
 	MetricsPersisted bool
+	// Metrics is the run's final snapshot.
+	Metrics metrics.Snapshot
+	// TerminalSummary is the payload of the terminal event received, or nil.
+	TerminalSummary map[string]any
 }
 
 // EndRecord is a run's end record (CONTRACT_RUN.md §End Record).
@@ -189,7 +194,12 @@ type EndRecord struct {
 	Message          string  `json:"message,omitempty"`
 	EventCount       *int64  `json:"event_count"`
 	MetricsPersisted bool    `json:"metrics_persisted"`
-	Backfilled       bool    `json:"backfilled"`
+	// Metrics has the counters and dimensions of the metrics record. It is
+	// omitted on a backfilled record and by releases before v0.20.0.
+	Metrics map[string]any `json:"metrics,omitempty"`
+	// TerminalSummary is omitted without a terminal event or when it is empty.
+	TerminalSummary map[string]any `json:"terminal_summary,omitempty"`
+	Backfilled      bool           `json:"backfilled"`
 }
 
 // NewStartRecord builds the start record for the run cfg describes.
@@ -222,6 +232,8 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		Message:          end.Message,
 		EventCount:       new(end.EventCount),
 		MetricsPersisted: end.MetricsPersisted,
+		Metrics:          metricsFields(end.Metrics),
+		TerminalSummary:  end.TerminalSummary,
 	}
 	if end.Terminal != "" {
 		t := string(end.Terminal)
