@@ -9,20 +9,27 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.20.0] - 2026-11-24
+
 ### Breaking Changes
 
-- **The Go module drops identifiers that nothing in Quarry calls**: the `log.SugaredLogger` API, the typed event payloads in `types`, `policy.DroppableTypes`, `policy.DefaultBufferedConfig`, and a few helpers. The Go packages are not a public API.
 - **Runs no longer write metrics into the dataset**: the end record holds a run's metrics, and the runtime writes no `event_type=metrics` partition. `stats metrics` and `inspect run` read both, so earlier runs stay readable. A consumer that reads the partition itself must read `metrics` from `end.json`. `CONTRACT_LODE.md` § Metrics Record Storage states the rule.
 - **Adapters notify only for confirmed runs**: `quarry run` sends no notification, and warns on stderr, when the start record failed or Quarry could not confirm the end record. Before, it sent one for every run, so a consumer could receive a run that readers call unterminated or do not find. `CONTRACT_INTEGRATION.md` § Invocation Ordering states the rule.
 - **`quarry run` exits 4 for a success without confirmed records**: the run succeeded, and Quarry could not confirm its end record. Before, it exited 0, so a caller that read only the exit code took the run as durable. A failed run keeps its exit code. `CONTRACT_CLI.md` § Exit Codes states the rule.
 - **An adapter with an endpoint path needs consent**: `quarry run` refuses to start with `--adapter` and a `--storage-endpoint` that has a path, without `--adapter-publish-endpoint-path`. Notifications now carry the endpoint, and a path can hold a secret. `CONTRACT_INTEGRATION.md` § Run Locator states the rule.
-- **The Go module drops APIs that nothing in Quarry uses**: `qlode.QuerySidecarFiles`, `LodeClient.WriteMetrics`, `EventRecord`, and `ArtifactCommitRecord`. Read a run's sidecar files with `qlode.QueryRunDetails`, which returns each path as recorded. Collapse its consecutive slashes to look the object up.
+- **The Go module drops identifiers that nothing in Quarry calls**: `qlode.QuerySidecarFiles`, `LodeClient.WriteMetrics`, `EventRecord`, `ArtifactCommitRecord`, `log.SugaredLogger`, the typed event payloads in `types`, the storage test doubles, and a few helpers. The Go packages are not a public API. Read a run's sidecar files with `qlode.QueryRunDetails`, which returns each path as recorded. Collapse its consecutive slashes to look the object up.
 
 ### Added
 
 - **A notification carries the locator that reads its run**: the payload's `locator` holds the run's key and its storage in the shapes that the SDK's `readRun` takes, so a consumer passes both on unchanged. The SDK exports its type as `NotificationLocator`. It carries no credentials. `CONTRACT_INTEGRATION.md` § Run Locator states the fields.
 - **The exit report states `recorded`**: it reports whether Quarry confirmed both of the run's records in storage, for a success and for a failure. `CONTRACT_RUN.md` § Structured Exit Report states the field.
 - **The end record holds the run's metrics and terminal summary**: `end.json` now carries the run's final counters and dimensions as `metrics`, and the terminal event's payload as `terminal_summary`. A consumer reads what a run did from one object. `CONTRACT_RUN.md` § End Record states the fields, and earlier records omit them.
+
+### Changed
+
+- **`stats metrics` selects the run that ended last**: it orders runs by `ended_at` of their end records, or by `ts` of an earlier release's metrics records. Before, it took the most recently committed metrics record. It reads every end record that matches its filters, so its cost grows with their number. `CONTRACT_CLI.md` § `stats metrics` states the rule.
 
 ### Fixed
 
@@ -876,7 +883,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 <!-- jscpd:ignore-start -->
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/pithecene/quarry/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/pithecene/quarry/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/pithecene/quarry/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/pithecene/quarry/compare/v0.16.1...v0.17.0
