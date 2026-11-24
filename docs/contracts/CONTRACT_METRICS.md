@@ -118,8 +118,8 @@ Optional dimensions:
 
 - CLI `stats` commands must surface stable, aggregated views of required metrics.
 - Metrics must be derived from runtime-owned sources, not executor counters.
-- Metrics snapshots must be persisted as Lode `record_kind=metrics` records
-  (see [CONTRACT_LODE.md](CONTRACT_LODE.md)) to support stats reads across processes.
+- A run's metrics must be persisted in its end record
+  ([CONTRACT_RUN.md](CONTRACT_RUN.md) §End Record) to support stats reads across processes.
 - No exporter is required. Exposure via CLI is mandatory.
 
 ### Data Sources
@@ -129,13 +129,14 @@ Without `--storage-backend` and `--storage-path`, each exits 1. None of them
 answers for data that Quarry does not persist, such as proxy usage or IPC
 state, and none substitutes a stub response for a read of storage.
 
-- `stats metrics` reads the latest metrics record from storage
+- `stats metrics` reads the metrics of the run in storage that ended last,
+  from its end record or a metrics record
   ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`stats metrics`).
 - `list runs` lists run records ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list runs`), and
   `list events` reads one run's events ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`list events`).
-- `inspect run` reads the selected run's ingestion policy from the latest
-  metrics record visible in the run's indexed partitions. The policy is null
-  when none is visible ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`inspect run`).
+- `inspect run` reads the selected run's ingestion policy from its end record,
+  or from the latest metrics record visible in the run's indexed partitions
+  when the end record holds no metrics. The policy is null when neither does ([CONTRACT_CLI.md](CONTRACT_CLI.md) §`inspect run`).
 - No global reader configuration exists, and the commands read storage only
   through their own storage flags.
 

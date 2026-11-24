@@ -117,7 +117,7 @@ func TestWriteStartAndEndRecords(t *testing.T) {
 	}
 	end := RunEnd{
 		EndedAt: startedAt.Add(time.Minute), Outcome: types.OutcomeScriptError,
-		Terminal: types.EventTypeRunError, Message: "boom", EventCount: 7, MetricsPersisted: true,
+		Terminal: types.EventTypeRunError, Message: "boom", EventCount: 7,
 		Metrics: &metrics.Snapshot{
 			EventsPersisted: 7, Policy: "strict",
 			DroppedByType: map[string]int64{"log": 2}, FlushTriggers: map[string]int64{"count": 4},

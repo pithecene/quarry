@@ -158,12 +158,10 @@ The runtime owns a run's whole lifecycle. `Execute`
    unpersisted, a run that would otherwise succeed fails, and a run that has
    already failed retains its outcome. The failure is `storage_error` when
    the sink refused the data, and `policy_failure` otherwise.
-   Policy statistics are taken after the close, so the metrics record and
+   Policy statistics are taken after the close, so the end record and
    the exit report match what was persisted.
-3. Persist the run's metrics record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record
-   Storage).
-4. Write the run's **end record**.
-5. Return.
+3. Write the run's **end record**, which holds its metrics.
+4. Return.
 
 Nothing is written for the run after the end record, so a present end
 record means every other object of the run is final.
@@ -177,7 +175,7 @@ filesystem and S3 stores return, and S3 calls also honor cancellation.
 Finalization happens inside `Execute` for every caller: the CLI, fan-out
 child runs, and any embedding host ([CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) §Activity
 Boundary). Callers do not persist metrics themselves. When `Execute` has
-no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
+no storage configured (as in unit tests), steps 1 and 3 write nothing.
 
 ### Failure Semantics
 
@@ -197,9 +195,6 @@ no storage configured (as in unit tests), steps 1, 3, and 4 write nothing.
   - Values that can never form a valid key are rejected earlier, as a
     configuration error, before `Execute` ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Key
     Encoding).
-- **Metrics record.** Best-effort, as before: a failure is a warning, does
-  not change the outcome, and is recorded in the end record
-  (`metrics_persisted: false`).
 - **End record.** Failure does not change the outcome. It is surfaced on
   stderr, in `RunResult.RunRecordError`, and in the structured exit report
   (`run_record_error`). As with the start record, a write reported as
@@ -247,7 +242,7 @@ existed receive backfilled records (§Backfilled Run Records).
 | `terminal`          | string \| null | yes      | Type of the terminal event the runtime received (`run_complete` or `run_error`), `null` when none was received |
 | `message`           | string         | no       | Outcome message, omitted when empty |
 | `event_count`       | int \| null    | yes      | Events processed, `null` on a backfilled record |
-| `metrics_persisted` | bool           | yes      | Whether the metrics record was written |
+| `metrics_persisted` | bool           | yes      | Whether the run's metrics are stored: in this record, or in a metrics record ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record Storage) when it holds none |
 | `metrics`           | object         | no       | The run's final counters and dimensions, under the names of [CONTRACT_LODE.md](CONTRACT_LODE.md) §Metrics Record Schema, `run_id` among the dimensions, and `flush_triggers` ([CONTRACT_METRICS.md](CONTRACT_METRICS.md)) when the policy counts them. It carries no `record_kind`, `event_type`, `ts`, `source`, `category`, or `day`. It can be absent, as on a backfilled record or a run that collects no metrics |
 | `terminal_summary`  | object         | no       | Payload of the terminal event, as the exit report gives it, `{}` when it is empty. It can be absent, as on a backfilled record, without a terminal event, or when JSON cannot represent the payload |
 | `sidecar_files`     | array          | no       | Every sidecar file the run wrote, as the `SidecarFileRef` of [CONTRACT_LODE.md](CONTRACT_LODE.md) §Sidecar File Inventory. Absent when the run wrote none and on a backfilled record |

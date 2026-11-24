@@ -9,6 +9,7 @@ import (
 	"github.com/pithecene/lode/lode"
 
 	"github.com/pithecene/quarry/metrics"
+	"github.com/pithecene/quarry/types"
 )
 
 // toInt64 converts a value to int64 for test assertions on raw map fields.
@@ -367,5 +368,162 @@ func TestQueryLatestMetrics_FiltersOnEscapedValues(t *testing.T) {
 	}
 	if v := toString(record["run_id"]); v != cfg.RunID {
 		t.Errorf("run_id = %q, want %q", v, cfg.RunID)
+	}
+}
+
+// The latest run's metrics come from its end record or from a metrics record of
+// an earlier release, whichever run ended later.
+func TestQueryLatestMetrics_EndRecords(t *testing.T) {
+	t.Parallel()
+	factory := sharedMemoryFactory()
+	at := func(day, hour int) time.Time { return time.Date(2026, 2, day, hour, 0, 0, 0, time.UTC) }
+	client := func(source, runID, day string) *LodeClient {
+		t.Helper()
+		c, err := NewLodeClientWithFactory(t.Context(), Config{Dataset: "quarry", Source: source, Category: "cat", Day: day, RunID: runID}, factory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	end := func(source, runID, day string, ended time.Time, collected bool) {
+		t.Helper()
+		rec := RunEnd{EndedAt: ended}
+		if collected {
+			rec.Metrics = &metrics.Snapshot{RunID: runID, Policy: "strict", Executor: "e", StorageBackend: "fs"}
+		}
+		c := client(source, runID, day)
+		started, err := time.Parse(time.DateOnly, day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.WriteStartRecord(t.Context(), &types.RunMeta{RunID: runID, Attempt: 1}, started, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.WriteEndRecord(t.Context(), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy := func(source, runID, day string, ended time.Time) {
+		t.Helper()
+		if err := client(source, runID, day).WriteMetrics(t.Context(), metrics.Snapshot{RunID: runID, Policy: "strict"}, ended); err != nil {
+			t.Fatal(err)
+		}
+	}
+	latest := func(runID, source string) string {
+		t.Helper()
+		record, err := QueryLatestMetrics(t.Context(), factory, "quarry", runID, source)
+		if errors.Is(err, ErrNoMetricsFound) {
+			return "none"
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return toString(record["run_id"])
+	}
+
+	end("a b", "run-none", "2026-02-05", at(5, 1), false)
+	if got := latest("", ""); got != "none" {
+		t.Errorf("latest = %s, want none from a run that collects none", got)
+	}
+	end("a b", "run-1", "2026-02-03", at(3, 1), true)
+	end("c", "run-2", "2026-02-03", at(3, 2), true)
+	legacy("c", "run-old", "2026-02-02", at(2, 5))
+	for _, tc := range []struct{ name, runID, source, want string }{
+		{"no filter", "", "", "run-2"},
+		{"an escaped source", "", "a b", "run-1"},
+		{"a run", "run-1", "", "run-1"},
+		{"a run of an earlier release", "run-old", "", "run-old"},
+		{"a run that collects none", "run-none", "", "none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := latest(tc.runID, tc.source); got != tc.want {
+				t.Errorf("latest = %s, want %s", got, tc.want)
+			}
+		})
+	}
+	// An end record without a start record names no run.
+	if err := client("c", "run-pruned", "2026-02-09").WriteEndRecord(t.Context(), RunEnd{EndedAt: at(9, 1), Metrics: &metrics.Snapshot{RunID: "run-pruned"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := latest("", ""); got != "run-2" {
+		t.Errorf("latest = %s, want no run without a start record", got)
+	}
+	// Times compare as instants, not as text.
+	end("c", "run-tenth", "2026-02-03", at(3, 3).Add(100*time.Millisecond), true)
+	end("c", "run-later", "2026-02-03", at(3, 3).Add(110*time.Millisecond), true)
+	if got := latest("", ""); got != "run-later" {
+		t.Errorf("latest = %s, want the later instant", got)
+	}
+	// The run that ended last is the latest, whatever its day and commit order.
+	legacy("c", "run-slow", "2026-02-01", at(4, 2))
+	legacy("c", "run-late", "2026-02-04", at(4, 1))
+	if got := latest("", ""); got != "run-slow" {
+		t.Errorf("latest = %s, want the metrics record that ended last", got)
+	}
+	end("c", "run-long", "2026-02-01", at(5, 1), true)
+	end("c", "run-short", "2026-02-04", at(4, 23), true)
+	if got := latest("", ""); got != "run-long" {
+		t.Errorf("latest = %s, want the end record that ended last", got)
+	}
+	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-2", "")
+	if err != nil || record["ts"] != "2026-02-03T02:00:00Z" || record["source"] != "c" || record["day"] != "2026-02-03" || record["event_type"] != "metrics" {
+		t.Errorf("record = %v, %v, want the fields of a metrics record", record, err)
+	}
+	// A run's end record is its source, whatever a metrics record of it says, and
+	// of two metrics records in one second the later snapshot is taken.
+	end("c", "run-both", "2026-02-07", at(7, 10), true)
+	legacy("c", "run-both", "2026-02-07", at(7, 12))
+	legacy("c", "run-first", "2026-02-07", at(7, 11))
+	legacy("c", "run-second", "2026-02-07", at(7, 11))
+	if got := latest("", ""); got != "run-second" {
+		t.Errorf("latest = %s, want run-second", got)
+	}
+	// A metrics record whose time does not parse fails the queries that read it.
+	broken := client("c", "run-broken", "2026-02-06")
+	record = toMetricsRecordMap(metrics.Snapshot{RunID: "run-broken", Policy: "strict"}, broken.config, at(6, 1))
+	record["ts"] = "not-a-time"
+	brokenSnap, err := broken.dataset.Write(t.Context(), lode.R(record), map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
+		t.Error("QueryLatestMetrics skipped a broken record that may be the latest")
+	}
+	// A clock may step back an hour between a run's end and its commit, so a record
+	// that committed within that of the latest end is read, and an earlier one is not.
+	end("c", "run-near", "2026-02-07", brokenSnap.CreatedAt.Add(time.Hour), true)
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "", ""); err == nil {
+		t.Error("QueryLatestMetrics skipped a broken record within a clock step of the latest end")
+	}
+	end("c", "run-future-a", "2026-02-07", brokenSnap.CreatedAt.Add(time.Hour+time.Nanosecond), true)
+	if got := latest("", ""); got != "run-future-a" {
+		t.Errorf("latest = %s, want an end after every commit", got)
+	}
+	// Of two ends at one instant the greater run ID is taken.
+	record, err = QueryLatestMetrics(t.Context(), factory, "quarry", "run-future-a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := time.Parse(time.RFC3339Nano, toString(record["ts"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	end("c", "run-future-b", "2026-02-07", same, true)
+	if got := latest("", ""); got != "run-future-b" {
+		t.Errorf("latest = %s, want run-future-b", got)
+	}
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-broken", ""); err == nil || errors.Is(err, ErrNoMetricsFound) {
+		t.Errorf("a broken time gave %v, want its parse error", err)
+	}
+	// Metrics of another run are refused.
+	foreign := client("c", "run-foreign", "2026-02-03")
+	if err := foreign.WriteStartRecord(t.Context(), &types.RunMeta{RunID: "run-foreign", Attempt: 1}, at(3, 0), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := foreign.WriteEndRecord(t.Context(), RunEnd{EndedAt: at(3, 1), Metrics: &metrics.Snapshot{RunID: "run-2"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-foreign", ""); err == nil {
+		t.Error("QueryLatestMetrics returned another run's metrics")
 	}
 }

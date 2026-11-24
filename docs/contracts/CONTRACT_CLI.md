@@ -516,8 +516,8 @@ The command discovers the selected run's snapshots through Lode's partition
 manifest index. The response reflects snapshots indexed in at least one
 partition of that run.
 
-The `policy` field comes from the run's latest visible metrics record and
-is null when none is visible. A metrics record without a recognized policy
+The `policy` field comes from the metrics of the run's end record, or from its
+latest visible metrics record, and is null without either. Metrics without a recognized policy
 name makes the command exit 1 with an error on stderr.
 
 The `sidecar_files` field lists files written via `storage.put()` during the
@@ -535,7 +535,13 @@ internal counters from executors. Stats are derived from Lode.
 
 ### `stats metrics`
 
-Returns the most recent metrics snapshot, read from storage.
+Returns the metrics of the run in storage that ended last: by `ended_at` of its
+end record, or by `ts` of a metrics record of an earlier release. The command
+reads each end record that matches its filters, so its cost grows with their number.
+A record that it cannot read fails the command, because that run may be the latest.
+It skips a metrics record that committed more than one hour before the latest end
+it has read. A writer whose clock steps back further between a run's end and that
+commit can hide the record.
 
 Required flags:
 - `--storage-backend=fs|s3`: storage backend for Lode reads

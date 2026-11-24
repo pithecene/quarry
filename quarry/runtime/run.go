@@ -78,9 +78,9 @@ type RunConfig struct {
 	// Collector is the metrics collector for this run per CONTRACT_METRICS.md.
 	// If nil, no metrics are recorded (all Collector methods are nil-safe).
 	Collector *metrics.Collector
-	// Storage persists the run's finalization: start record, metrics record,
-	// and end record (CONTRACT_RUN.md §Run Finalization). If nil, nothing is
-	// persisted outside the policy (unit tests).
+	// Storage persists the run's start record and end record (CONTRACT_RUN.md
+	// §Run Finalization). If nil, nothing is persisted outside the policy (unit
+	// tests).
 	Storage RunStorage
 	// StartedAt is the run start time the partition day was derived from.
 	// Recorded in the start record so started_at and day agree. Required
@@ -96,7 +96,6 @@ type RunConfig struct {
 // implements it.
 type RunStorage interface {
 	WriteStartRecord(ctx context.Context, meta *types.RunMeta, startedAt time.Time, deadlineAt *time.Time) error
-	WriteMetrics(ctx context.Context, snap metrics.Snapshot, completedAt time.Time) error
 	WriteEndRecord(ctx context.Context, end lode.RunEnd) error
 }
 
@@ -104,7 +103,7 @@ type RunStorage interface {
 // passes (RunConfig.MaxDuration).
 var ErrRunDeadline = errors.New("run deadline exceeded")
 
-// finalizeTimeout bounds the metrics and end-record writes after a run.
+// finalizeTimeout bounds each write after a run.
 const finalizeTimeout = 30 * time.Second
 
 // RunResult represents the result of a run.
@@ -240,14 +239,14 @@ func (r *RunOrchestrator) Execute(ctx context.Context) (*RunResult, error) {
 		// attempted, unless a start record already existed: then the records
 		// belong to another execution with this run ID and must not be touched.
 		if !errors.Is(err, lode.ErrPathExists) {
-			r.writeEndRecord(ctx, result, false)
+			r.writeEndRecord(ctx, result)
 		}
 		return result, nil
 	}
 
 	result := r.execute(runCtx)
 	r.closePolicy(result)
-	r.finalize(ctx, result)
+	r.writeEndRecord(ctx, result)
 	return result, nil
 }
 
@@ -317,28 +316,9 @@ func (r *RunOrchestrator) writeStartRecord(ctx context.Context, deadlineAt *time
 	return r.config.Storage.WriteStartRecord(ctx, r.config.RunMeta, r.config.StartedAt, deadlineAt)
 }
 
-// finalize persists the metrics record and then the end record. Neither
-// failure changes the outcome: a metrics failure is a warning, and an
-// end-record failure is also reported on the result.
-func (r *RunOrchestrator) finalize(ctx context.Context, result *RunResult) {
-	if r.config.Storage == nil {
-		return
-	}
-	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
-	defer cancel()
-
-	metricsPersisted := true
-	if err := r.config.Storage.WriteMetrics(fctx, r.config.Collector.Snapshot(), time.Now()); err != nil {
-		metricsPersisted = false
-		r.logger.Warn("failed to persist metrics", map[string]any{
-			"error": err.Error(),
-		})
-	}
-	r.writeEndRecord(fctx, result, metricsPersisted)
-}
-
-// writeEndRecord writes the end record; a failure is reported on the result.
-func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult, metricsPersisted bool) {
+// writeEndRecord writes the end record; a failure is reported on the result and
+// does not change the outcome.
+func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult) {
 	if r.config.Storage == nil {
 		return
 	}
@@ -346,12 +326,11 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult,
 	defer cancel()
 
 	end := lode.RunEnd{
-		EndedAt:          time.Now(),
-		Outcome:          result.Outcome.Status,
-		Terminal:         result.TerminalType,
-		Message:          result.Outcome.Message,
-		EventCount:       result.EventCount,
-		MetricsPersisted: metricsPersisted,
+		EndedAt:    time.Now(),
+		Outcome:    result.Outcome.Status,
+		Terminal:   result.TerminalType,
+		Message:    result.Outcome.Message,
+		EventCount: result.EventCount,
 	}
 	if result.TerminalSummary != nil {
 		summary, err := lode.EncodeTerminalSummary(result.TerminalSummary)

@@ -163,7 +163,7 @@ func (f *fixture) reader() *Reader {
 }
 
 func ended(outcome types.OutcomeStatus, terminal types.EventType) *qlode.RunEnd {
-	return &qlode.RunEnd{EndedAt: time.Date(2026, 10, 21, 2, 0, 0, 0, time.UTC), Outcome: outcome, Terminal: terminal, EventCount: 2, MetricsPersisted: true}
+	return &qlode.RunEnd{EndedAt: time.Date(2026, 10, 21, 2, 0, 0, 0, time.UTC), Outcome: outcome, Terminal: terminal, EventCount: 2}
 }
 
 func seedRuns(t *testing.T) *fixture {

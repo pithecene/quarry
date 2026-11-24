@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Runs no longer write metrics into the dataset**: the end record holds a run's metrics, and the runtime writes no `event_type=metrics` partition. `stats metrics` and `inspect run` read both, so earlier runs stay readable. A consumer that reads the partition itself must read `metrics` from `end.json`. `CONTRACT_LODE.md` § Metrics Record Storage states the rule.
+
 ### Added
 
 - **The end record holds the run's metrics and terminal summary**: `end.json` now carries the run's final counters and dimensions as `metrics`, and the terminal event's payload as `terminal_summary`. A consumer reads what a run did from one object. `CONTRACT_RUN.md` § End Record states the fields, and earlier records omit them.
@@ -20,6 +24,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **A run's browser no longer outlives the run**: the executor now leads a process group that holds the browser it launches, and the runtime kills that group when the run ends. Before, a cancelled run killed only the executor process, so its Chromium kept running. A child process that held the executor's output could also keep a finished run open. `CONTRACT_IPC.md` § Executor Process Group states the rule.
 - **A run shares the reusable browser only when its launch settings match**: the server now compares the browser that the run would launch with its own. The executor reports that browser's Puppeteer modules and versions, Chrome binary, plugins, and launch arguments, and the runtime adds the executor's digest and the proxy. Before, it compared only the proxy, so a run with `QUARRY_STEALTH=0` could receive a browser launched with other settings. A run whose settings differ launches its own browser (`CONTRACT_CLI.md` § Transparent Browser Reuse).
 - **Release checksum files verify beside a download**: each `.sha256` file now names the bare file. Before, it named a path under `dist/`, so `sha256sum -c` failed on a downloaded file.
+
+### Upgrade Notes
+
+- **Reading metrics**: read `metrics` from a run's `end.json` in place of the `event_type=metrics` partition. `quarry stats metrics` and `quarry inspect run` need no change, and runs of earlier releases stay readable.
 
 ---
 

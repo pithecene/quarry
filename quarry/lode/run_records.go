@@ -175,10 +175,9 @@ type RunEnd struct {
 	Outcome types.OutcomeStatus
 	// Terminal is the terminal event type received, or "" when none was
 	// received.
-	Terminal         types.EventType
-	Message          string
-	EventCount       int64
-	MetricsPersisted bool
+	Terminal   types.EventType
+	Message    string
+	EventCount int64
 	// Metrics is the run's final snapshot, or nil when the run collects none.
 	Metrics *metrics.Snapshot
 	// TerminalSummary is the encoded payload of the terminal event received
@@ -194,11 +193,13 @@ type EndRecord struct {
 	EndedAt       string `json:"ended_at"`
 	// Outcome and EventCount are null on a backfilled record: the stored data
 	// establishes neither the runtime's outcome nor the events it processed.
-	Outcome          *string `json:"outcome"`
-	Terminal         *string `json:"terminal"`
-	Message          string  `json:"message,omitempty"`
-	EventCount       *int64  `json:"event_count"`
-	MetricsPersisted bool    `json:"metrics_persisted"`
+	Outcome    *string `json:"outcome"`
+	Terminal   *string `json:"terminal"`
+	Message    string  `json:"message,omitempty"`
+	EventCount *int64  `json:"event_count"`
+	// MetricsPersisted reports whether the run's metrics were stored, in this
+	// record or in a metrics record.
+	MetricsPersisted bool `json:"metrics_persisted"`
 	// Metrics is omitted on a backfilled record and when the run collects none.
 	Metrics map[string]any `json:"metrics,omitempty"`
 	// TerminalSummary is omitted without a terminal event, and when JSON cannot
@@ -257,7 +258,7 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		Outcome:          new(string(end.Outcome)),
 		Message:          end.Message,
 		EventCount:       new(end.EventCount),
-		MetricsPersisted: end.MetricsPersisted,
+		MetricsPersisted: end.Metrics != nil,
 	}
 	if end.Metrics != nil {
 		rec.Metrics = metricsFields(*end.Metrics)
@@ -304,14 +305,12 @@ func (c *LodeClient) putRecord(ctx context.Context, name string, record any) err
 	return putRunRecord(ctx, c.store, c.config, name, record)
 }
 
-// ErrMalformedSidecars marks an end record whose sidecar files cannot be read as
-// the run's, as against a record that could not be fetched.
-var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
+// errMalformedRecord marks a run record that was read and is not its JSON form.
+var errMalformedRecord = errors.New("malformed run record")
 
-// ReadEndSidecars returns the sidecar files that the run's end record holds, each
-// once, or
-// none when the run has no end record or its record holds none.
-func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]SidecarFileRef, error) {
+// readEndFields returns the fields of the run's end record, or nil when the run
+// has none.
+func readEndFields(ctx context.Context, store lode.Store, cfg Config) (map[string]json.RawMessage, error) {
 	key := RunRecordDir(cfg) + EndRecordName
 	rc, err := store.Get(ctx, key)
 	if errors.Is(err, lode.ErrNotFound) {
@@ -327,8 +326,31 @@ func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]Sidec
 	}
 	var rec map[string]json.RawMessage
 	if err := json.Unmarshal(data, &rec); err != nil {
-		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)
+		return nil, fmt.Errorf("%w %s: %w", errMalformedRecord, key, err)
 	}
+	return rec, nil
+}
+
+// ErrMalformedSidecars marks an end record whose sidecar files cannot be read as
+// the run's, as against a record that could not be fetched.
+var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
+
+// ReadEndSidecars returns the sidecar files that the run's end record holds, each
+// once, or none when the run has no end record or its record holds none.
+func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]SidecarFileRef, error) {
+	rec, err := readEndFields(ctx, store, cfg)
+	if errors.Is(err, errMalformedRecord) {
+		return nil, fmt.Errorf("%w: %w", ErrMalformedSidecars, err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return endSidecars(rec, cfg)
+}
+
+// endSidecars returns the sidecar files of an end record, each once.
+func endSidecars(rec map[string]json.RawMessage, cfg Config) ([]SidecarFileRef, error) {
+	key := RunRecordDir(cfg) + EndRecordName
 	files, err := decodeSidecarFiles(rec)
 	if err != nil {
 		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)
