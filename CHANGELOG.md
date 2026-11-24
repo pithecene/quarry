@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The end record holds the run's metrics and terminal summary**: `end.json` now carries the run's final counters and dimensions as `metrics`, and the terminal event's payload as `terminal_summary`. A consumer reads what a run did from one object. `CONTRACT_RUN.md` § End Record states the fields, and earlier records omit them.
+
 ### Fixed
 
 - **A run's browser no longer outlives the run**: the executor now leads a process group that holds the browser it launches, and the runtime kills that group when the run ends. Before, a cancelled run killed only the executor process, so its Chromium kept running. A child process that held the executor's output could also keep a finished run open. `CONTRACT_IPC.md` § Executor Process Group states the rule.

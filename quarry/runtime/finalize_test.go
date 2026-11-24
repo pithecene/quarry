@@ -2,14 +2,21 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/internal/testutil"
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/lode"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/policy"
@@ -128,6 +135,7 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	config := finalizeConfig(t, storage, exec)
 	startedAt := time.Date(2026, 10, 21, 23, 59, 59, 0, time.UTC)
 	config.StartedAt = startedAt
+	config.Collector = metrics.NewCollector("strict", "/fake/executor", "fs", "run-fin", "")
 
 	result := executeRun(t, config)
 
@@ -148,8 +156,61 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	if !end.MetricsPersisted {
 		t.Error("end record should report metrics persisted")
 	}
+	if end.Metrics == nil || !reflect.DeepEqual(*end.Metrics, config.Collector.Snapshot()) || end.Metrics.RunsCompleted != 1 {
+		t.Errorf("end record metrics = %+v, want the run's final snapshot", end.Metrics)
+	}
+	if want, err := json.Marshal(result.TerminalSummary); err != nil || string(end.TerminalSummary) != string(want) {
+		t.Errorf("end record terminal summary = %s, want the result's %s (%v)", end.TerminalSummary, want, err)
+	}
 	if result.RunRecordError != "" {
 		t.Errorf("unexpected RunRecordError %q", result.RunRecordError)
+	}
+}
+
+// An end record is written without a payload that it cannot hold, with a warning.
+func TestWriteEndRecord_OmitsAnUnencodableSummary(t *testing.T) {
+	testutil.Serial(t, "swaps the process-wide os.Stderr")
+	// The logger takes os.Stderr when it is built, with the run's identity.
+	logFile, err := os.Create(filepath.Join(t.TempDir(), "log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() {
+		os.Stderr = original
+		iox.DiscardClose(logFile)
+	})
+	storage := &recordingStorage{}
+	config := finalizeConfig(t, storage, newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0))
+	orchestrator, err := NewRunOrchestrator(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := &RunResult{Outcome: &types.RunOutcome{}, TerminalSummary: map[string]any{"ratio": math.NaN()}}
+	orchestrator.writeEndRecord(t.Context(), result, true)
+	if storage.end == nil || storage.end.TerminalSummary != nil || result.RunRecordError != "" {
+		t.Errorf("end = %+v, error %q, want a record without a summary", storage.end, result.RunRecordError)
+	}
+	logged, err := os.ReadFile(logFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line struct {
+		Level   string `json:"level"`
+		Message string `json:"message"`
+		RunID   string `json:"run_id"`
+		Attempt int    `json:"attempt"`
+		Fields  struct {
+			Error string `json:"error"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(logged, &line); err != nil {
+		t.Fatalf("log %q: %v", logged, err)
+	}
+	if line.Level != "warn" || !strings.Contains(line.Message, "omits the terminal summary") ||
+		line.RunID != "run-fin" || line.Attempt != 1 || !strings.Contains(line.Fields.Error, "NaN") {
+		t.Errorf("logged %q, want one warning with the run's identity and the encoding error", logged)
 	}
 }
 

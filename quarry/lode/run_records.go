@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -174,6 +176,11 @@ type RunEnd struct {
 	Message          string
 	EventCount       int64
 	MetricsPersisted bool
+	// Metrics is the run's final snapshot, or nil when the run collects none.
+	Metrics *metrics.Snapshot
+	// TerminalSummary is the encoded payload of the terminal event received
+	// (EncodeTerminalSummary), or nil.
+	TerminalSummary json.RawMessage
 }
 
 // EndRecord is a run's end record (CONTRACT_RUN.md §End Record).
@@ -189,7 +196,12 @@ type EndRecord struct {
 	Message          string  `json:"message,omitempty"`
 	EventCount       *int64  `json:"event_count"`
 	MetricsPersisted bool    `json:"metrics_persisted"`
-	Backfilled       bool    `json:"backfilled"`
+	// Metrics is omitted on a backfilled record and when the run collects none.
+	Metrics map[string]any `json:"metrics,omitempty"`
+	// TerminalSummary is omitted without a terminal event, and when JSON cannot
+	// represent the payload.
+	TerminalSummary json.RawMessage `json:"terminal_summary,omitempty"`
+	Backfilled      bool            `json:"backfilled"`
 }
 
 // NewStartRecord builds the start record for the run cfg describes.
@@ -211,6 +223,25 @@ func NewStartRecord(cfg Config, meta *types.RunMeta, startedAt time.Time) StartR
 	}
 }
 
+// EncodeTerminalSummary encodes a terminal event's payload for RunEnd. It
+// refuses one that an end record cannot hold, such as one with a NaN or nested
+// too deeply to read back, because the record must be written without it.
+func EncodeTerminalSummary(payload map[string]any) (json.RawMessage, error) {
+	summary, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	record, err := json.Marshal(EndRecord{TerminalSummary: summary})
+	if err != nil {
+		return nil, err
+	}
+	// Encoding checks the payload apart from the record, whose nesting it adds to.
+	if !json.Valid(record) {
+		return nil, errors.New("an end record with the payload could not be read back")
+	}
+	return summary, nil
+}
+
 // NewEndRecord builds the end record for the run cfg describes.
 func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 	rec := EndRecord{
@@ -223,6 +254,13 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		EventCount:       new(end.EventCount),
 		MetricsPersisted: end.MetricsPersisted,
 	}
+	if end.Metrics != nil {
+		rec.Metrics = metricsFields(*end.Metrics)
+		if len(end.Metrics.FlushTriggers) > 0 {
+			rec.Metrics["flush_triggers"] = maps.Clone(end.Metrics.FlushTriggers)
+		}
+	}
+	rec.TerminalSummary = end.TerminalSummary
 	if end.Terminal != "" {
 		t := string(end.Terminal)
 		rec.Terminal = &t

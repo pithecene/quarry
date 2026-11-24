@@ -293,7 +293,7 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 	}
 
 	endKey := strings.TrimSuffix(startKey, qlode.StartRecordName) + qlode.EndRecordName
-	var end qlode.EndRecord
+	var end endFields
 	err := r.getJSON(ctx, endKey, &end)
 	switch {
 	case errors.Is(err, lode.ErrNotFound):
@@ -317,10 +317,21 @@ func (r *Reader) readRun(ctx context.Context, startKey string) (Run, error) {
 	return run, nil
 }
 
+// endFields are the fields of an end record that a run needs. Its metrics and
+// terminal payload can be large, and a listing would decode them for nothing.
+type endFields struct {
+	RunID      string  `json:"run_id"`
+	EndedAt    string  `json:"ended_at"`
+	Outcome    *string `json:"outcome"`
+	Terminal   *string `json:"terminal"`
+	Message    string  `json:"message"`
+	EventCount *int64  `json:"event_count"`
+}
+
 // endState is the state an end record gives a run. A backfilled record has
 // no outcome, so its state follows the terminal event: run_complete reads as
 // succeeded and run_error as failed (CONTRACT_RUN.md §Reading Run Records).
-func endState(end qlode.EndRecord) State {
+func endState(end endFields) State {
 	succeeded := end.Terminal != nil && *end.Terminal == string(types.EventTypeRunComplete)
 	if end.Outcome != nil {
 		succeeded = *end.Outcome == string(types.OutcomeSuccess)
