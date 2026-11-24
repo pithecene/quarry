@@ -146,6 +146,12 @@ tasks:
     cmds:
       - go test ./...
 
+  go:test:oldest-node:
+    desc: Test what starts Node on the oldest Node that SUPPORT.md lists
+    dir: quarry
+    cmds:
+      - mise exec node@22.6.0 -- go test -count=1 ./executor ./runtime ./cli/cmd
+
   cli:parity:
     desc: Validate CLI/config parity artifact
     cmds:
