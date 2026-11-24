@@ -29,10 +29,7 @@ type eventSinkChoice struct {
 // buildPolicy to use the default Lode-only path.
 func parseEventSinkConfig(c *cli.Context, cfg *quarryconfig.Config) ([]eventSinkChoice, error) {
 	cliSinks := c.StringSlice("event-sink")
-	var configSinks []quarryconfig.EventSinkConfig
-	if cfg != nil {
-		configSinks = cfg.Events.Sinks
-	}
+	configSinks := cfg.Events.Sinks
 
 	// No CLI flags and no config → nil (default Lode-only behavior)
 	if len(cliSinks) == 0 && len(configSinks) == 0 {

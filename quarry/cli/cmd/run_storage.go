@@ -70,21 +70,18 @@ Valid options:
 
 // buildStorageSink creates a Lode storage sink based on CLI configuration.
 // Storage backend and path are required - no silent fallback to stub.
-// If collector is non-nil, wraps the sink with metrics instrumentation.
-// Returns the sink, the underlying client (for run finalization),
-// a FileWriter for sidecar file uploads, and any error.
-func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, lode.FileWriter, error) {
+// It returns the sink, instrumented by the collector, and the client, which also
+// writes the run's sidecar files, artifacts, and records.
+func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, policy string, startTime time.Time, collector *metrics.Collector) (policy.Sink, *lode.LodeClient, error) {
 	logger := log.NewLogger(runMeta)
 	// Build Lode config with partition keys
 	cfg := lode.Config{
-		Dataset:  dataset,
-		Source:   source,
-		Category: category,
-		Day:      lode.DeriveDay(startTime),
-		RunID:    runMeta.RunID,
-		Policy:   policy,
-		// Collector increments are nil-receiver safe, so this is harmless
-		// when metrics are disabled.
+		Dataset:              dataset,
+		Source:               source,
+		Category:             category,
+		Day:                  lode.DeriveDay(startTime),
+		RunID:                runMeta.RunID,
+		Policy:               policy,
 		RetryObserver:        func(int) { collector.IncLodeWriteRetry() },
 		IndexFailureObserver: func(string, error) { collector.IncArtifactIndexWriteFailure() },
 		ReconcileObserver: func(key string, err error) {
@@ -95,8 +92,6 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 		},
 	}
 
-	// LodeClient implements both lode.Client and lode.FileWriter.
-	// Capture as concrete type so we can return both interfaces.
 	var lc *lode.LodeClient
 	var err error
 
@@ -104,7 +99,7 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 	case "fs":
 		lc, err = lode.NewLodeClient(ctx, cfg, storageConfig.path)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("filesystem storage initialization failed: %w (ensure directory %s exists and is writable)", err, storageConfig.path)
+			return nil, nil, fmt.Errorf("filesystem storage initialization failed: %w (ensure directory %s exists and is writable)", err, storageConfig.path)
 		}
 	case "s3":
 		bucket, prefix := lode.ParseS3Path(storageConfig.path)
@@ -118,28 +113,14 @@ func buildStorageSink(ctx context.Context, storageConfig storageChoice, dataset,
 		}
 		lc, err = lode.NewLodeS3Client(ctx, cfg, s3cfg)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("S3 storage initialization failed: %w (check AWS credentials and bucket permissions)", err)
+			return nil, nil, fmt.Errorf("S3 storage initialization failed: %w (check AWS credentials and bucket permissions)", err)
 		}
 	default:
 		// Should not reach here due to validateStorageConfig
-		return nil, nil, nil, fmt.Errorf("unknown storage-backend: %s", storageConfig.backend)
+		return nil, nil, fmt.Errorf("unknown storage-backend: %s", storageConfig.backend)
 	}
 
-	sink := lode.NewSink(cfg, lc)
-	if collector != nil {
-		return lode.NewInstrumentedSink(sink, collector), lc, lc, nil
-	}
-	return sink, lc, lc, nil
-}
-
-// artifactStoreOf is the client as the run's artifact store, or a nil
-// interface when the run has no storage, so the runtime sees no store
-// rather than a typed nil.
-func artifactStoreOf(client *lode.LodeClient) lode.ArtifactStore {
-	if client == nil {
-		return nil
-	}
-	return client
+	return lode.NewInstrumentedSink(lode.NewSink(cfg, lc), collector), lc, nil
 }
 
 // storageRoot is the absolute directory that Lode's filesystem store opens for

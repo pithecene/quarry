@@ -62,7 +62,7 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 	}
 
 	childStartTime := time.Now()
-	childPol, childLodeClient, childFileWriter, err := buildPolicy(ctx,
+	childPol, childLodeClient, err := buildPolicy(ctx,
 		cf.policyChoice, cf.storage, cf.storageDataset,
 		childSource, childCategory, childMeta,
 		childStartTime, childCollector, cf.eventSinks,
@@ -79,8 +79,8 @@ func (cf *childFactory) Run(ctx context.Context, item runtime.WorkItem, observer
 		RunMeta:           childMeta,
 		Policy:            childPol,
 		Proxy:             cf.proxy,
-		FileWriter:        childFileWriter,
-		ArtifactStore:     artifactStoreOf(childLodeClient),
+		FileWriter:        childLodeClient,
+		ArtifactStore:     childLodeClient,
 		EnqueueObserver:   observer,
 		BrowserWSEndpoint: cf.browserWSEndpoint,
 		NoBrowser:         cf.noBrowser,

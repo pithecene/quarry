@@ -419,7 +419,7 @@ Valid options:
 
 func runAction(c *cli.Context) error {
 	// Load config file if --config is provided
-	var cfg *quarryconfig.Config
+	cfg := &quarryconfig.Config{}
 	if configPath := c.String("config"); configPath != "" {
 		loaded, err := quarryconfig.Load(configPath)
 		if err != nil {
@@ -429,15 +429,15 @@ func runAction(c *cli.Context) error {
 	}
 
 	// Resolve values with precedence: CLI flag > config file > flag default
-	source := resolveString(c, "source", configVal(cfg, func(c *quarryconfig.Config) string { return c.Source }))
-	category := resolveString(c, "category", configVal(cfg, func(c *quarryconfig.Config) string { return c.Category }))
-	executor := resolveString(c, "executor", configVal(cfg, func(c *quarryconfig.Config) string { return c.Executor }))
-	browserWSEndpoint := resolveString(c, "browser-ws-endpoint", configVal(cfg, func(c *quarryconfig.Config) string { return c.BrowserWSEndpoint }))
+	source := resolve(c, "source", cfg.Source, (*cli.Context).String)
+	category := resolve(c, "category", cfg.Category, (*cli.Context).String)
+	executor := resolve(c, "executor", cfg.Executor, (*cli.Context).String)
+	browserWSEndpoint := resolve(c, "browser-ws-endpoint", cfg.BrowserWSEndpoint, (*cli.Context).String)
 	noBrowser := c.Bool("no-browser")
 	if noBrowser && browserWSEndpoint != "" {
 		return cli.Exit("--no-browser cannot be combined with --browser-ws-endpoint", exitConfigError)
 	}
-	resolveFrom := resolveString(c, "resolve-from", configVal(cfg, func(c *quarryconfig.Config) string { return c.ResolveFrom }))
+	resolveFrom := resolve(c, "resolve-from", cfg.ResolveFrom, (*cli.Context).String)
 
 	dryRun := c.Bool("dry-run")
 
@@ -478,11 +478,11 @@ func runAction(c *cli.Context) error {
 
 	// Parse policy config with precedence
 	choice := policyChoice{
-		name:          resolveString(c, "policy", configVal(cfg, func(c *quarryconfig.Config) string { return c.Policy.Name })),
-		maxEvents:     resolveInt(c, "buffer-events", configIntVal(cfg, func(c *quarryconfig.Config) int { return c.Policy.BufferEvents })),
-		maxBytes:      resolveInt64(c, "buffer-bytes", configInt64Val(cfg, func(c *quarryconfig.Config) int64 { return c.Policy.BufferBytes })),
-		flushCount:    resolveInt(c, "flush-count", configIntVal(cfg, func(c *quarryconfig.Config) int { return c.Policy.FlushCount })),
-		flushInterval: resolveDuration(c, "flush-interval", configPolicyDurationVal(cfg)),
+		name:          resolve(c, "policy", cfg.Policy.Name, (*cli.Context).String),
+		maxEvents:     resolve(c, "buffer-events", cfg.Policy.BufferEvents, (*cli.Context).Int),
+		maxBytes:      resolve(c, "buffer-bytes", cfg.Policy.BufferBytes, (*cli.Context).Int64),
+		flushCount:    resolve(c, "flush-count", cfg.Policy.FlushCount, (*cli.Context).Int),
+		flushInterval: resolve(c, "flush-interval", cfg.Policy.FlushInterval.Duration, (*cli.Context).Duration),
 	}
 
 	// Validate policy config
@@ -509,8 +509,8 @@ func runAction(c *cli.Context) error {
 	}
 
 	// Parse and validate storage config with precedence
-	storageBackend := resolveString(c, "storage-backend", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Backend }))
-	storagePath := resolveString(c, "storage-path", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Path }))
+	storageBackend := resolve(c, "storage-backend", cfg.Storage.Backend, (*cli.Context).String)
+	storagePath := resolve(c, "storage-path", cfg.Storage.Path, (*cli.Context).String)
 
 	if storageBackend == "" {
 		return cli.Exit("--storage-backend is required (provide via CLI flag or config file)", exitConfigError)
@@ -520,29 +520,25 @@ func runAction(c *cli.Context) error {
 	}
 
 	storageConfig := storageChoice{
-		backend:      storageBackend,
-		path:         storagePath,
-		region:       resolveString(c, "storage-region", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Region })),
-		endpoint:     resolveString(c, "storage-endpoint", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Endpoint })),
-		usePathStyle: resolveBool(c, "storage-s3-path-style", configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.Storage.S3PathStyle })),
+		backend:        storageBackend,
+		path:           storagePath,
+		region:         resolve(c, "storage-region", cfg.Storage.Region, (*cli.Context).String),
+		endpoint:       resolve(c, "storage-endpoint", cfg.Storage.Endpoint, (*cli.Context).String),
+		usePathStyle:   resolve(c, "storage-s3-path-style", cfg.Storage.S3PathStyle, (*cli.Context).Bool),
+		attemptTimeout: resolve(c, "storage-attempt-timeout", cfg.Storage.AttemptTimeout.Duration, (*cli.Context).Duration),
 	}
-	var configAttemptTimeout time.Duration
-	if cfg != nil {
-		configAttemptTimeout = cfg.Storage.AttemptTimeout.Duration
-	}
-	storageConfig.attemptTimeout = resolveDuration(c, "storage-attempt-timeout", configAttemptTimeout)
 	if err := validateStorageConfig(storageConfig); err != nil {
 		return cli.Exit(err.Error(), exitConfigError)
 	}
 
-	storageDataset := resolveString(c, "storage-dataset", configVal(cfg, func(c *quarryconfig.Config) string { return c.Storage.Dataset }))
+	storageDataset := resolve(c, "storage-dataset", cfg.Storage.Dataset, (*cli.Context).String)
 	if err := lode.ValidateRunKey(storageDataset, source, category, runMeta.RunID); err != nil {
 		return cli.Exit(err.Error(), exitConfigError)
 	}
 
 	// Parse and validate adapter config (pre-execution: fail fast on bad config)
 	var adptConfig *adapterChoice
-	adapterType := resolveString(c, "adapter", configVal(cfg, func(c *quarryconfig.Config) string { return c.Adapter.Type }))
+	adapterType := resolve(c, "adapter", cfg.Adapter.Type, (*cli.Context).String)
 	if adapterType != "" {
 		ac, err := parseAdapterConfigWithPrecedence(c, cfg, adapterType)
 		if err != nil {
@@ -590,17 +586,14 @@ func runAction(c *cli.Context) error {
 	// Build policy with storage sink and optional event sinks
 	// Start time is "now" - used to derive partition day
 	startTime := time.Now()
-	pol, lodeClient, fileWriter, err := buildPolicy(c.Context, choice, storageConfig, storageDataset, source, category, runMeta, startTime, collector, eventSinks)
+	pol, lodeClient, err := buildPolicy(c.Context, choice, storageConfig, storageDataset, source, category, runMeta, startTime, collector, eventSinks)
 	if err != nil {
 		return fmt.Errorf("failed to create policy: %w", err)
 	}
 	defer iox.DiscardClose(pol)
 
 	// Resolve proxy pools from config file (inline proxies: key)
-	var configPools []types.ProxyPool
-	if cfg != nil {
-		configPools = cfg.ProxyPools()
-	}
+	configPools := cfg.ProxyPools()
 
 	// Conflict check: --proxy-config and config proxies: cannot both be present
 	cliProxyConfig := c.String("proxy-config")
@@ -616,8 +609,8 @@ func runAction(c *cli.Context) error {
 	// Parse proxy config with precedence
 	proxyConfig := proxyChoice{
 		configPath: cliProxyConfig,
-		poolName:   resolveString(c, "proxy-pool", configVal(cfg, func(c *quarryconfig.Config) string { return c.Proxy.Pool })),
-		strategy:   resolveString(c, "proxy-strategy", configVal(cfg, func(c *quarryconfig.Config) string { return c.Proxy.Strategy })),
+		poolName:   resolve(c, "proxy-pool", cfg.Proxy.Pool, (*cli.Context).String),
+		strategy:   resolve(c, "proxy-strategy", cfg.Proxy.Strategy, (*cli.Context).String),
 		stickyKey:  c.String("proxy-sticky-key"),
 		domain:     c.String("proxy-domain"),
 		origin:     c.String("proxy-origin"),
@@ -651,7 +644,7 @@ func runAction(c *cli.Context) error {
 
 	// Resolve browser reuse:
 	// Priority: explicit --browser-ws-endpoint > browser reuse > per-run launch
-	noBrowserReuse := resolveBool(c, "no-browser-reuse", configBoolVal(cfg, func(c *quarryconfig.Config) bool { return c.NoBrowserReuse }))
+	noBrowserReuse := resolve(c, "no-browser-reuse", cfg.NoBrowserReuse, (*cli.Context).Bool)
 	if browserWSEndpoint == "" && !noBrowserReuse && !noBrowser {
 		idleTimeout := runtime.IdleTimeoutFromEnv()
 		reuseCfg := runtime.ReusableBrowserConfig{
@@ -690,8 +683,8 @@ func runAction(c *cli.Context) error {
 		RunMeta:           runMeta,
 		Policy:            pol,
 		Proxy:             resolvedProxy,
-		FileWriter:        fileWriter,
-		ArtifactStore:     artifactStoreOf(lodeClient),
+		FileWriter:        lodeClient,
+		ArtifactStore:     lodeClient,
 		BrowserWSEndpoint: browserWSEndpoint,
 		NoBrowser:         noBrowser,
 		ResolveFrom:       resolveFrom,
@@ -808,20 +801,20 @@ func runWithFanOut(
 	return cli.Exit("", runExitCode(rootResult))
 }
 
-func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, lode.FileWriter, error) {
-	lodeSink, client, fw, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runMeta, choice.name, startTime, collector)
+func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storageChoice, dataset, source, category string, runMeta *types.RunMeta, startTime time.Time, collector *metrics.Collector, eventSinkConfigs []eventSinkChoice) (policy.Policy, *lode.LodeClient, error) {
+	lodeSink, client, err := buildStorageSink(ctx, storageConfig, dataset, source, category, runMeta, choice.name, startTime, collector)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create storage sink: %w", err)
+		return nil, nil, fmt.Errorf("failed to create storage sink: %w", err)
 	}
 
 	sink, err := buildEffectiveSink(eventSinkConfigs, lodeSink, source, category)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	switch choice.name {
 	case "strict":
-		return policy.NewStrictPolicy(sink), client, fw, nil
+		return policy.NewStrictPolicy(sink), client, nil
 
 	case "buffered":
 		config := policy.BufferedConfig{
@@ -830,7 +823,7 @@ func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storage
 			Logger:          log.NewLogger(runMeta),
 		}
 		p, err := policy.NewBufferedPolicy(sink, config)
-		return p, client, fw, err
+		return p, client, err
 
 	case "streaming":
 		config := policy.StreamingConfig{
@@ -839,9 +832,9 @@ func buildPolicy(ctx context.Context, choice policyChoice, storageConfig storage
 			Logger:        log.NewLogger(runMeta),
 		}
 		p, err := policy.NewStreamingPolicy(sink, config)
-		return p, client, fw, err
+		return p, client, err
 
 	default:
-		return nil, nil, nil, fmt.Errorf("unknown policy: %s", choice.name)
+		return nil, nil, fmt.Errorf("unknown policy: %s", choice.name)
 	}
 }
