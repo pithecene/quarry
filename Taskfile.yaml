@@ -147,10 +147,13 @@ tasks:
       - go test ./...
 
   go:test:oldest-node:
-    desc: Test what starts Node on the oldest Node that SUPPORT.md lists
+    desc: Test what starts Node, without a browser, on the oldest Node that SUPPORT.md lists
     dir: quarry
+    env:
+      # SUPPORT.md requires the option on this release.
+      NODE_OPTIONS: --experimental-strip-types
     cmds:
-      - mise exec node@22.6.0 -- go test -count=1 ./executor ./runtime ./cli/cmd
+      - mise exec node@22.6.0 -- go test -count=1 ./executor ./runtime ./cli/cmd ./ipc
 
   cli:parity:
     desc: Validate CLI/config parity artifact
