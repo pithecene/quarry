@@ -157,6 +157,20 @@ describe('upload-assets', () => {
     expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz'])
   })
 
+  it('uploads only a file whose earlier upload never completed', async () => {
+    const { world, upload, uploaded } = distWorld()
+    await upload()
+    world.calls.length = 0
+    world.state.assets.set(
+      'a.tar.gz',
+      world.state.assets.get('a.tar.gz')?.toUpperCase().replace('SHA256', 'sha256') ?? ''
+    )
+    world.state.assets.delete('b.tar.gz')
+    world.state.incomplete = ['b.tar.gz']
+    await upload()
+    expect(uploaded()).toEqual(['b.tar.gz'])
+  })
+
   it('fails on a missing release', async () => {
     await expect(distWorld({ release: 'missing' }).upload()).rejects.toThrow()
   })
