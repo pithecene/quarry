@@ -160,7 +160,9 @@ func (c *LodeClient) WriteEvents(ctx context.Context, _, _ string, events []*typ
 	return nil
 }
 
-// WriteMetrics writes a metrics snapshot to Lode.
+// WriteMetrics writes a metrics record as releases that kept metrics in the
+// dataset did. The runtime keeps them in the end record instead, so only the
+// tests of reading such data write one.
 // Written to event_type=metrics partition with record_kind=metrics.
 // This is a standalone write (not part of the event/chunk pipeline).
 // Retries incurred by this write are not observed: the snapshot being

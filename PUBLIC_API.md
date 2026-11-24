@@ -400,8 +400,7 @@ files for a run via `snapshot.Manifest.Metadata["sidecar_files"]` instead of
 prefix-scanning storage.
 
 Each entry includes `path`, `filename`, `content_type`, and `size`. File refs
-are flushed into the snapshot on event and metrics writes only (not chunk
-writes). The end record of a run names every file the run wrote. For a run
+are flushed into the snapshot on event writes only (not chunk writes). The end record of a run names every file the run wrote. For a run
 whose end record names none, union `sidecar_files` from all snapshots for that
 `run_id`.
 

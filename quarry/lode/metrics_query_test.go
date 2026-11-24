@@ -369,3 +369,75 @@ func TestQueryLatestMetrics_FiltersOnEscapedValues(t *testing.T) {
 		t.Errorf("run_id = %q, want %q", v, cfg.RunID)
 	}
 }
+
+// The latest run's metrics come from its end record or from a metrics record of
+// an earlier release, whichever run is later by its day and then its end.
+func TestQueryLatestMetrics_EndRecords(t *testing.T) {
+	t.Parallel()
+	factory := sharedMemoryFactory()
+	at := func(day, hour int) time.Time { return time.Date(2026, 2, day, hour, 0, 0, 0, time.UTC) }
+	client := func(source, runID, day string) *LodeClient {
+		t.Helper()
+		c, err := NewLodeClientWithFactory(t.Context(), Config{Dataset: "quarry", Source: source, Category: "cat", Day: day, RunID: runID}, factory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	end := func(source, runID, day string, ended time.Time, collected bool) {
+		t.Helper()
+		rec := RunEnd{EndedAt: ended}
+		if collected {
+			rec.Metrics = &metrics.Snapshot{RunID: runID, Policy: "strict", Executor: "e", StorageBackend: "fs"}
+		}
+		if err := client(source, runID, day).WriteEndRecord(t.Context(), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy := func(source, runID, day string, ended time.Time) {
+		t.Helper()
+		if err := client(source, runID, day).WriteMetrics(t.Context(), metrics.Snapshot{RunID: runID, Policy: "strict"}, ended); err != nil {
+			t.Fatal(err)
+		}
+	}
+	latest := func(runID, source string) string {
+		t.Helper()
+		record, err := QueryLatestMetrics(t.Context(), factory, "quarry", runID, source)
+		if errors.Is(err, ErrNoMetricsFound) {
+			return "none"
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return toString(record["run_id"])
+	}
+
+	end("a b", "run-none", "2026-02-05", at(5, 1), false)
+	if got := latest("", ""); got != "none" {
+		t.Errorf("latest = %s, want none from a run that collects none", got)
+	}
+	end("a b", "run-1", "2026-02-03", at(3, 1), true)
+	end("c", "run-2", "2026-02-03", at(3, 2), true)
+	legacy("c", "run-old", "2026-02-02", at(2, 5))
+	for _, tc := range []struct{ name, runID, source, want string }{
+		{"no filter", "", "", "run-2"},
+		{"an escaped source", "", "a b", "run-1"},
+		{"a run", "run-1", "", "run-1"},
+		{"a run of an earlier release", "run-old", "", "run-old"},
+		{"a run that collects none", "run-none", "", "none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := latest(tc.runID, tc.source); got != tc.want {
+				t.Errorf("latest = %s, want %s", got, tc.want)
+			}
+		})
+	}
+	legacy("c", "run-late", "2026-02-04", at(4, 1))
+	if got := latest("", ""); got != "run-late" {
+		t.Errorf("latest = %s, want the later metrics record", got)
+	}
+	record, err := QueryLatestMetrics(t.Context(), factory, "quarry", "run-2", "")
+	if err != nil || record["ts"] != "2026-02-03T02:00:00Z" || record["source"] != "c" || record["day"] != "2026-02-03" {
+		t.Errorf("record = %v, %v, want the fields of a metrics record", record, err)
+	}
+}

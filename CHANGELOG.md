@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Runs no longer write metrics into the dataset**: the end record holds a run's metrics, and the runtime writes no `event_type=metrics` partition. `stats metrics` and `inspect run` read both, so earlier runs stay readable. A consumer that reads the partition itself must read `metrics` from `end.json`. `CONTRACT_LODE.md` § Metrics Record Storage states the rule.
+
 ### Added
 
 - **The end record holds the run's metrics and terminal summary**: `end.json` now carries the run's final counters and dimensions as `metrics`, and the terminal event's payload as `terminal_summary`. A consumer reads what a run did from one object. `CONTRACT_RUN.md` § End Record states the fields, and earlier records omit them.

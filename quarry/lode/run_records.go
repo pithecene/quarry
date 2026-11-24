@@ -175,10 +175,9 @@ type RunEnd struct {
 	Outcome types.OutcomeStatus
 	// Terminal is the terminal event type received, or "" when none was
 	// received.
-	Terminal         types.EventType
-	Message          string
-	EventCount       int64
-	MetricsPersisted bool
+	Terminal   types.EventType
+	Message    string
+	EventCount int64
 	// Metrics is the run's final snapshot, or nil when the run collects none.
 	Metrics *metrics.Snapshot
 	// TerminalSummary is the encoded payload of the terminal event received
@@ -194,11 +193,13 @@ type EndRecord struct {
 	EndedAt       string `json:"ended_at"`
 	// Outcome and EventCount are null on a backfilled record: the stored data
 	// establishes neither the runtime's outcome nor the events it processed.
-	Outcome          *string `json:"outcome"`
-	Terminal         *string `json:"terminal"`
-	Message          string  `json:"message,omitempty"`
-	EventCount       *int64  `json:"event_count"`
-	MetricsPersisted bool    `json:"metrics_persisted"`
+	Outcome    *string `json:"outcome"`
+	Terminal   *string `json:"terminal"`
+	Message    string  `json:"message,omitempty"`
+	EventCount *int64  `json:"event_count"`
+	// MetricsPersisted reports whether the run's metrics were stored, in this
+	// record or in a metrics record.
+	MetricsPersisted bool `json:"metrics_persisted"`
 	// Metrics is omitted on a backfilled record and when the run collects none.
 	Metrics map[string]any `json:"metrics,omitempty"`
 	// TerminalSummary is omitted without a terminal event, and when JSON cannot
@@ -257,7 +258,7 @@ func NewEndRecord(cfg Config, end RunEnd) EndRecord {
 		Outcome:          new(string(end.Outcome)),
 		Message:          end.Message,
 		EventCount:       new(end.EventCount),
-		MetricsPersisted: end.MetricsPersisted,
+		MetricsPersisted: end.Metrics != nil,
 	}
 	if end.Metrics != nil {
 		rec.Metrics = metricsFields(*end.Metrics)
@@ -304,6 +305,31 @@ func (c *LodeClient) putRecord(ctx context.Context, name string, record any) err
 	return putRunRecord(ctx, c.store, c.config, name, record)
 }
 
+// errMalformedRecord marks a run record that was read and is not its JSON form.
+var errMalformedRecord = errors.New("malformed run record")
+
+// readEndRecord decodes the run's end record into v. It is false when the run
+// has none.
+func readEndRecord(ctx context.Context, store lode.Store, cfg Config, v any) (bool, error) {
+	key := RunRecordDir(cfg) + EndRecordName
+	rc, err := store.Get(ctx, key)
+	if errors.Is(err, lode.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, WrapReadError(err, key)
+	}
+	defer iox.DiscardClose(rc)
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return false, WrapReadError(err, key)
+	}
+	if err := json.Unmarshal(data, v); err != nil {
+		return false, fmt.Errorf("%w %s: %w", errMalformedRecord, key, err)
+	}
+	return true, nil
+}
+
 // ErrMalformedSidecars marks an end record whose sidecar files cannot be read as
 // the run's, as against a record that could not be fetched.
 var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
@@ -313,21 +339,13 @@ var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
 // none when the run has no end record or its record holds none.
 func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]SidecarFileRef, error) {
 	key := RunRecordDir(cfg) + EndRecordName
-	rc, err := store.Get(ctx, key)
-	if errors.Is(err, lode.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, WrapReadError(err, key)
-	}
-	defer iox.DiscardClose(rc)
-	data, err := io.ReadAll(rc)
-	if err != nil {
-		return nil, WrapReadError(err, key)
-	}
 	var rec map[string]json.RawMessage
-	if err := json.Unmarshal(data, &rec); err != nil {
-		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)
+	found, err := readEndRecord(ctx, store, cfg, &rec)
+	if errors.Is(err, errMalformedRecord) {
+		return nil, fmt.Errorf("%w: %w", ErrMalformedSidecars, err)
+	}
+	if err != nil || !found {
+		return nil, err
 	}
 	files, err := decodeSidecarFiles(rec)
 	if err != nil {

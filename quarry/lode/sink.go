@@ -8,7 +8,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/types"
 )
@@ -61,10 +60,6 @@ type Client interface {
 	// Must preserve ordering within the batch.
 	WriteEvents(ctx context.Context, dataset, runID string, events []*types.EventEnvelope) error
 
-	// WriteMetrics writes a metrics snapshot to Lode.
-	// Written to event_type=metrics partition with record_kind=metrics.
-	WriteMetrics(ctx context.Context, snap metrics.Snapshot, completedAt time.Time) error
-
 	// Close releases client resources.
 	Close() error
 }
@@ -96,9 +91,8 @@ var (
 // StubClient is a test client that accepts writes without persisting.
 // Use for integration testing before real Lode is available.
 type StubClient struct {
-	Events  []StubEventRecord
-	Metrics []StubMetricsRecord
-	Closed  bool
+	Events []StubEventRecord
+	Closed bool
 }
 
 // StubEventRecord is a recorded event write for testing.
@@ -106,12 +100,6 @@ type StubEventRecord struct {
 	Dataset string
 	RunID   string
 	Events  []*types.EventEnvelope
-}
-
-// StubMetricsRecord is a recorded metrics write for testing.
-type StubMetricsRecord struct {
-	Snapshot    metrics.Snapshot
-	CompletedAt time.Time
 }
 
 // NewStubClient creates a new stub client.
@@ -125,15 +113,6 @@ func (c *StubClient) WriteEvents(_ context.Context, dataset, runID string, event
 		Dataset: dataset,
 		RunID:   runID,
 		Events:  events,
-	})
-	return nil
-}
-
-// WriteMetrics implements Client.
-func (c *StubClient) WriteMetrics(_ context.Context, snap metrics.Snapshot, completedAt time.Time) error {
-	c.Metrics = append(c.Metrics, StubMetricsRecord{
-		Snapshot:    snap,
-		CompletedAt: completedAt,
 	})
 	return nil
 }

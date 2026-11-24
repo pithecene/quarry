@@ -305,10 +305,10 @@ Checksum validation is a downstream consumer responsibility.
 
 ## Metrics Record Storage
 
-A metrics snapshot is written at run completion under `event_type=metrics`,
-by the runtime inside `Execute`, before the end record ([CONTRACT_RUN.md](CONTRACT_RUN.md)
-§Run Finalization).
-Write is best-effort. Failure produces a warning but does not change run outcome.
+The runtime writes a run's metrics in its end record
+([CONTRACT_RUN.md](CONTRACT_RUN.md) §End Record) and writes no metrics record. A dataset can
+hold metrics records under `event_type=metrics`, and Quarry reads them. A
+metrics record is never the source for a run whose end record holds metrics.
 
 ### Metrics Record Schema
 
@@ -562,8 +562,9 @@ Quarry tracks sidecar files in Lode snapshot `Metadata` under the
 ### Flush Semantics
 
 - File refs accumulate in the client as files are written via `PutFile`.
-- Refs are flushed into snapshot `Metadata` on `WriteEvents` and
-  `WriteMetrics` calls only. These are consumer-facing commit boundaries.
+- Refs are flushed into snapshot `Metadata` on `WriteEvents` calls only,
+  which are consumer-facing commit boundaries. The end record names a file
+  written after the last of them.
 - Chunk writes (`WriteChunks`) do **not** flush file refs, because chunk
   snapshots are intermediate and not inspected by downstream consumers.
 - On successful write, pending refs are drained. On write failure, pending

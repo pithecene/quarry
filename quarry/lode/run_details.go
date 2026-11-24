@@ -10,7 +10,7 @@ import (
 	"github.com/pithecene/lode/lode"
 )
 
-// RunDetails holds a run's policy from its latest metrics and its sidecar inventory.
+// RunDetails holds a run's policy from its metrics and its sidecar inventory.
 // SidecarFiles keeps each path as the inventory records it, consecutive slashes
 // included (CONTRACT_LODE.md § Sidecar File Inventory). QuerySidecarFiles
 // returns the stored object's key instead.
@@ -26,29 +26,34 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 	if err != nil {
 		return RunDetails{}, WrapReadError(err, "datasets/"+key.Dataset)
 	}
-	if !ok {
-		// A run can write files and its end record without a snapshot.
-		if store == nil {
-			return RunDetails{}, nil
+	record, err := readEndMetrics(ctx, store, key)
+	if err != nil {
+		return RunDetails{}, fmt.Errorf("read metrics: %w", err)
+	}
+	var details RunDetails
+	var files []SidecarFileRef
+	// A run can write files and its end record without a snapshot.
+	if ok {
+		prefix := PartitionPrefix(key)
+		snapshots, err := readRunSnapshots(ctx, ds, prefix)
+		if err != nil {
+			return RunDetails{}, err
 		}
-		files, err := ReadEndSidecars(ctx, store, key)
+		if record == nil {
+			record, err = latestRunMetrics(ctx, ds, snapshots, key, prefix)
+			if err != nil && !errors.Is(err, ErrNoMetricsFound) {
+				return RunDetails{}, fmt.Errorf("read metrics: %w", err)
+			}
+		}
+		files, err = sidecarFiles(ctx, snapshots, "", runSidecarOwner(key, store))
 		if err != nil {
 			return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 		}
-		return RunDetails{SidecarFiles: files}, nil
 	}
-	prefix := PartitionPrefix(key)
-	snapshots, err := readRunSnapshots(ctx, ds, prefix)
-	if err != nil {
-		return RunDetails{}, err
-	}
-	metrics, err := latestRunMetrics(ctx, ds, snapshots, key, prefix)
-	var details RunDetails
-	switch {
-	case err == nil:
-		policy, ok := metrics["policy"].(string)
+	if record != nil {
+		policy, ok := record["policy"].(string)
 		if !ok {
-			return RunDetails{}, fmt.Errorf("read metrics: expected string policy for run %q, got %T", key.RunID, metrics["policy"])
+			return RunDetails{}, fmt.Errorf("read metrics: expected string policy for run %q, got %T", key.RunID, record["policy"])
 		}
 		switch policy {
 		case "strict", "buffered", "streaming":
@@ -56,12 +61,6 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 		default:
 			return RunDetails{}, fmt.Errorf("read metrics: unknown policy %q for run %q", policy, key.RunID)
 		}
-	case !errors.Is(err, ErrNoMetricsFound):
-		return RunDetails{}, fmt.Errorf("read metrics: %w", err)
-	}
-	files, err := sidecarFiles(ctx, snapshots, "", runSidecarOwner(key, store))
-	if err != nil {
-		return RunDetails{}, fmt.Errorf("read sidecar files: %w", err)
 	}
 	recorded, err := ReadEndSidecars(ctx, store, key)
 	if err != nil {

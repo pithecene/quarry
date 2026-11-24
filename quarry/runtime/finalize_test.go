@@ -30,7 +30,6 @@ type recordingStorage struct {
 	calls      []string
 	startErr   error
 	endErr     error
-	metricErr  error
 	end        *lode.RunEnd
 	startedAt  time.Time
 	deadlineAt *time.Time
@@ -51,11 +50,6 @@ func (s *recordingStorage) WriteStartRecord(ctx context.Context, _ *types.RunMet
 	s.startedAt = startedAt
 	s.deadlineAt = deadlineAt
 	return s.startErr
-}
-
-func (s *recordingStorage) WriteMetrics(_ context.Context, _ metrics.Snapshot, _ time.Time) error {
-	s.record("metrics")
-	return s.metricErr
 }
 
 func (s *recordingStorage) WriteEndRecord(_ context.Context, end lode.RunEnd) error {
@@ -140,7 +134,7 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	result := executeRun(t, config)
 
 	// The policy is closed (its last chance to flush) before the end record.
-	if got, want := storage.sequence(), "start,executor,close,metrics,end"; got != want {
+	if got, want := storage.sequence(), "start,executor,close,end"; got != want {
 		t.Fatalf("call order = %q, want %q", got, want)
 	}
 	if result.Outcome.Status != types.OutcomeSuccess {
@@ -152,9 +146,6 @@ func TestExecute_FinalizationOrder(t *testing.T) {
 	end := storage.end
 	if end.Outcome != types.OutcomeSuccess || end.Terminal != types.EventTypeRunComplete {
 		t.Errorf("end record = outcome %q terminal %q, want success/run_complete", end.Outcome, end.Terminal)
-	}
-	if !end.MetricsPersisted {
-		t.Error("end record should report metrics persisted")
 	}
 	if end.Metrics == nil || !reflect.DeepEqual(*end.Metrics, config.Collector.Snapshot()) || end.Metrics.RunsCompleted != 1 {
 		t.Errorf("end record metrics = %+v, want the run's final snapshot", end.Metrics)
@@ -188,7 +179,7 @@ func TestWriteEndRecord_OmitsAnUnencodableSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := &RunResult{Outcome: &types.RunOutcome{}, TerminalSummary: map[string]any{"ratio": math.NaN()}}
-	orchestrator.writeEndRecord(t.Context(), result, true)
+	orchestrator.writeEndRecord(t.Context(), result)
 	if storage.end == nil || storage.end.TerminalSummary != nil || result.RunRecordError != "" {
 		t.Errorf("end = %+v, error %q, want a record without a summary", storage.end, result.RunRecordError)
 	}
@@ -251,22 +242,6 @@ func TestExecute_EndRecordFailure_ReportedOutcomeUnchanged(t *testing.T) {
 	}
 	if !strings.Contains(result.RunRecordError, "put failed") {
 		t.Errorf("RunRecordError = %q, want the write error", result.RunRecordError)
-	}
-}
-
-func TestExecute_MetricsFailure_RecordedInEndRecord(t *testing.T) {
-	t.Parallel()
-
-	storage := &recordingStorage{metricErr: errors.New("metrics write failed")}
-	exec := newMockExecutor(makeValidEventStream(&types.RunMeta{RunID: "run-fin", Attempt: 1}), 0)
-
-	result := executeRun(t, finalizeConfig(t, storage, exec))
-
-	if result.Outcome.Status != types.OutcomeSuccess {
-		t.Fatalf("outcome = %s, want success", result.Outcome.Status)
-	}
-	if storage.end.MetricsPersisted {
-		t.Error("end record should report metrics not persisted")
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -121,11 +120,6 @@ type FailingClient struct {
 func (c *FailingClient) WriteEvents(_ context.Context, _, _ string, _ []*types.EventEnvelope) error {
 	c.EventWriteCalls++
 	return c.EventWriteErr
-}
-
-func (c *FailingClient) WriteMetrics(_ context.Context, _ metrics.Snapshot, _ time.Time) error {
-	c.MetricsWriteCalls++
-	return c.MetricsWriteErr
 }
 
 func (c *FailingClient) Close() error {

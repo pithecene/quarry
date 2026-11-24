@@ -204,7 +204,7 @@ func appendRun(t *testing.T, root string) {
 	if err := c.WriteMetrics(ctx, metrics.Snapshot{RunID: cfg.RunID}, started); err != nil {
 		t.Fatalf("write metrics: %v", err)
 	}
-	end := qlode.RunEnd{EndedAt: started, Outcome: types.OutcomeSuccess, Terminal: types.EventTypeRunComplete, EventCount: 1, MetricsPersisted: true}
+	end := qlode.RunEnd{EndedAt: started, Outcome: types.OutcomeSuccess, Terminal: types.EventTypeRunComplete, EventCount: 1}
 	if err := c.WriteEndRecord(ctx, end); err != nil {
 		t.Fatalf("end record: %v", err)
 	}
