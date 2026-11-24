@@ -26,9 +26,9 @@
 import { join } from 'node:path'
 import type { ProxyEndpoint } from '@pithecene/quarry-sdk'
 import { browserProxyArgs, chromiumArgs } from '../browser-args.js'
-import { serveLeases } from '../browser-lease-server.js'
+import { isBrowserKey, serveLeases } from '../browser-lease-server.js'
 import { closeRecordedBrowsers, probeBrowser, recordBrowsers } from '../browser-record.js'
-import { errorMessage, execute, parseRunMeta } from '../executor.js'
+import { errorMessage, execute, launchIdentity, parseRunMeta } from '../executor.js'
 import { AckReader } from '../ipc/ack-reader.js'
 import { drainStdout } from '../ipc/sink.js'
 import { installStdoutGuard } from '../ipc/stdout-guard.js'
@@ -52,6 +52,21 @@ const HOOK_NAMES = [
   'beforeTerminal',
   'cleanup'
 ] as const
+
+/**
+ * The identity of the browser that this process would launch for scriptPath,
+ * with the plugins and arguments that the environment selects.
+ */
+function currentLaunchIdentity(scriptPath: string): ReturnType<typeof launchIdentity> {
+  return launchIdentity(
+    scriptPath,
+    {
+      stealth: process.env.QUARRY_STEALTH !== '0',
+      adblocker: process.env.QUARRY_ADBLOCKER === '1'
+    },
+    chromiumArgs(browserProxyArgs())
+  )
+}
 
 /**
  * Validate a script module without executing it.
@@ -219,6 +234,24 @@ async function readStdinMetadata(): Promise<string> {
  *    browser closes or crashes, or on SIGTERM or SIGINT
  */
 async function browserServer(scriptPath: string): Promise<never> {
+  // The runtime always supplies the key of its launch settings; a server
+  // without one could match no run correctly, so it does not start.
+  const browserKey = process.env.QUARRY_BROWSER_KEY ?? ''
+  if (!isBrowserKey(browserKey)) {
+    process.stderr.write('QUARRY_BROWSER_KEY must be the sha256: key of the launch settings\n')
+    process.exit(3)
+  }
+  // The runtime keyed this server on the identity it saw before it took the
+  // lock. Launching only if this process sees the same one keeps a change in
+  // between, such as an edited .puppeteerrc, from serving the old key.
+  const expected = process.env.QUARRY_BROWSER_IDENTITY ?? ''
+  const identity = await currentLaunchIdentity(scriptPath)
+  if (expected === '' || JSON.stringify(JSON.parse(expected)) !== JSON.stringify(identity)) {
+    process.stderr.write(
+      'the launch identity changed after the runtime keyed this server; not starting\n'
+    )
+    process.exit(3)
+  }
   const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer } = await import('../executor.js')
   const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? '.'
   const recordPath = join(reuseDir, 'browser.json')
@@ -238,8 +271,11 @@ async function browserServer(scriptPath: string): Promise<never> {
   })
 
   // The proxy applies at the browser level, to every run that connects.
+  // The launch takes the executable it verified, so a configuration edited since
+  // cannot select another.
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: identity.executablePath,
     args: chromiumArgs(browserProxyArgs())
   })
   // In the same tick as the launch, so that a server killed from here on
@@ -267,7 +303,7 @@ async function browserServer(scriptPath: string): Promise<never> {
   const leases = await serveLeases({
     socketPath: join(reuseDir, 'server.sock'),
     wsEndpoint: browser.wsEndpoint(),
-    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? '',
+    browserKey,
     idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? '60', 10) * 1000
   }).catch(async (err: unknown) => {
     await browser.close()
@@ -329,10 +365,23 @@ async function launchBrowserServer(scriptPath: string): Promise<never> {
   process.exit(0)
 }
 
+/**
+ * Print what a browser launched for this run would be, so the runtime keys
+ * browser reuse on what Puppeteer actually resolves.
+ */
+async function reportLaunchIdentity(scriptPath: string): Promise<never> {
+  const report = `${JSON.stringify(await currentLaunchIdentity(scriptPath))}\n`
+  // Exit only once the report has left: a pipe can take a write in parts.
+  await new Promise<void>((done) => process.stdout.write(report, () => done()))
+  process.exit(0)
+}
+
 /** The modes that replace a run, by flag. */
 const MODES = new Map<string, (scriptPath: string) => Promise<never>>([
   // Reusable browser server: self-managing lifetime with idle timeout
   ['--browser-server', browserServer],
+  // Report the browser that a launch for this run would start
+  ['--launch-identity', reportLaunchIdentity],
   // Load the script and check its shape without executing
   ['--validate', validateScript],
   // Fan-out browser server: stdin-managed lifetime

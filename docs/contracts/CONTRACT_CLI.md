@@ -321,9 +321,17 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   message.
 - Fan-out (`--depth > 0`) uses the reusable browser if available and falls back
   to `LaunchManagedBrowser` when reuse is disabled. The managed browser routes
-  its traffic through the run's resolved proxy, as the reusable browser does.
-- Proxy mismatch between runs causes a graceful fallback to per-run browser
-  launch (the reusable browser is not killed).
+  its traffic through the run's resolved proxy and falls back to the run's
+  `--resolve-from` to resolve puppeteer, as the reusable browser does.
+- A run shares the reusable browser only when its launch settings match the
+  server's. Before it asks for a lease, the runtime runs the executor's
+  `--launch-identity` mode in the environment the server would get, which
+  reports the browser that this run would launch: where each Puppeteer
+  module resolves and its version, the Chrome file Puppeteer would start and
+  its revision, the plugins, and Puppeteer's launch arguments before the
+  plugins change them. The key digests that report, the executor's SHA-256,
+  and the run's resolved proxy (never its password). A run whose key differs, or whose identity cannot be
+  reported, launches its own browser (the reusable browser is not killed).
 - The runtime and the server keep their state in the discovery directory,
   `$XDG_RUNTIME_DIR/quarry/browser-reuse/`, or
   `$TMPDIR/quarry-$UID/browser-reuse/` when `XDG_RUNTIME_DIR` is unset, as
@@ -338,9 +346,9 @@ on the first run and self-terminates after an idle timeout (default: 60s).
 
 **Server lifetime:**
 - A run reaches the server through the Unix socket `server.sock` in the
-  discovery directory. The run connects, sends a hash of its proxy
-  configuration, and receives the browser's endpoint, or a refusal when
-  the proxy differs from the server's. The run keeps the connection open
+  discovery directory. The run connects, sends the key of its launch
+  settings (a SHA-256 of the settings above), and receives the browser's
+  endpoint, or a refusal when the key differs from the server's. The run keeps the connection open
   until it ends.
 - Each open connection is a reference to the server. The operating system
   closes a connection when its process ends, however the process ends, so
@@ -375,7 +383,7 @@ on the first run and self-terminates after an idle timeout (default: 60s).
   reason, the server does not reply within 5 seconds, or the browser it
   grants does not answer the health check (`/json/version`). In the last
   case the run releases its lease at once. The run launches
-  its own browser, as on a proxy mismatch, and its stderr gives the
+  its own browser, as on a launch mismatch, and its stderr gives the
   reason. No such failure stops a server or closes a browser.
 
 **Reconciliation with "no background process" invariant:**

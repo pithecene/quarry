@@ -133,6 +133,16 @@ func (mb *ManagedBrowser) Close() error {
 
 // browserProxyEnv keeps the runtime's proxy selection authoritative for
 // shared browsers. Each run applies credentials to its own pages.
+// unbracketHost returns host without the brackets that existing proxy
+// configurations can put around an IPv6 address, so both spellings name the
+// same proxy.
+func unbracketHost(host string) string {
+	if strings.Contains(host, ":") && strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		return host[1 : len(host)-1]
+	}
+	return host
+}
+
 func browserProxyEnv(proxy *types.ProxyEndpoint) []string {
 	const key = "QUARRY_BROWSER_PROXY="
 	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
@@ -142,11 +152,6 @@ func browserProxyEnv(proxy *types.ProxyEndpoint) []string {
 		return env
 	}
 
-	// Existing proxy configurations can already have brackets around IPv6 hosts.
-	host := proxy.Host
-	if strings.Contains(host, ":") && strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		host = host[1 : len(host)-1]
-	}
-	authority := net.JoinHostPort(host, strconv.Itoa(proxy.Port))
+	authority := net.JoinHostPort(unbracketHost(proxy.Host), strconv.Itoa(proxy.Port))
 	return append(env, key+string(proxy.Protocol)+"://"+authority)
 }

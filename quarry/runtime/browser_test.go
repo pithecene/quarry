@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/pithecene/quarry/internal/testutil"
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -68,5 +70,31 @@ func TestLaunchManagedBrowser_PassesTheProxy(t *testing.T) {
 				t.Errorf("endpoint %q, want %q", mb.WSEndpoint, tc.want)
 			}
 		})
+	}
+}
+
+// The managed fan-out browser resolves modules as the run does: it receives
+// the run's module root for the ESM hook and ahead of NODE_PATH for require.
+func TestLaunchManagedBrowser_PassesTheModuleRoot(t *testing.T) {
+	testutil.Serial(t, "sets NODE_PATH in the process environment")
+	if goruntime.GOOS == "windows" {
+		t.Skip("the fake executor is a POSIX shell script")
+	}
+	t.Setenv("NODE_PATH", "/inherited")
+	path := filepath.Join(t.TempDir(), "executor")
+	script := "#!/bin/sh\necho \"ws://127.0.0.1:1/devtools/browser/root=${QUARRY_RESOLVE_FROM-none},path=${NODE_PATH-none}\"\ncat >/dev/null\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	mb, err := LaunchManagedBrowser(ctx, path, "script.js", "/opt/quarry", nil)
+	if err != nil {
+		t.Fatalf("LaunchManagedBrowser: %v", err)
+	}
+	defer iox.DiscardClose(mb)
+	want := "root=/opt/quarry,path=/opt/quarry" + string(os.PathListSeparator) + "/inherited"
+	if !strings.HasSuffix(mb.WSEndpoint, want) {
+		t.Errorf("endpoint %q, want it to end in %q", mb.WSEndpoint, want)
 	}
 }

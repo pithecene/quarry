@@ -2847,13 +2847,14 @@ __export(executor_exports, {
   execute: () => execute,
   getPuppeteer: () => getPuppeteer,
   getVanillaPuppeteer: () => getVanillaPuppeteer,
+  launchIdentity: () => launchIdentity,
   parseRunMeta: () => parseRunMeta,
   resolvePeer: () => resolvePeer
 });
-import { realpathSync } from "node:fs";
+import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
-import { pathToFileURL as pathToFileURL2 } from "node:url";
+import { fileURLToPath, pathToFileURL as pathToFileURL2 } from "node:url";
 function resolvePeer(name, scriptPath) {
   const require2 = createRequire(resolve2(scriptPath));
   const nodePath = (process.env.NODE_PATH ?? "").split(delimiter);
@@ -2871,20 +2872,87 @@ function holds(dir, file) {
     return false;
   }
 }
-async function resolveModule(name, scriptPath) {
+async function loadModule(name, scriptPath) {
   let scriptError;
   try {
-    return await import(pathToFileURL2(resolvePeer(name, scriptPath)).href);
+    const url = pathToFileURL2(resolvePeer(name, scriptPath)).href;
+    return { module: await import(url), url: () => url };
   } catch (err) {
     scriptError = err;
   }
   try {
-    return await import(name);
+    const module = await import(name);
+    return { module, url: () => import.meta.resolve(name) };
   } catch (err) {
     throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
       cause: err
     });
   }
+}
+async function resolveModule(name, scriptPath) {
+  return (await loadModule(name, scriptPath)).module;
+}
+function owningVersion(name, location) {
+  for (let dir = dirname(location); ; dir = dirname(dir)) {
+    let pkg = {};
+    try {
+      pkg = JSON.parse(readFileSync3(join(dir, "package.json"), "utf8"));
+    } catch {
+    }
+    if (typeof pkg.version === "string" && pkg.version !== "") return pkg.version;
+    const root = Object.keys(pkg).some((field) => field !== "type");
+    if (root || basename(dirname(dir)) === "node_modules" || dirname(dir) === dir)
+      throw new Error(`cannot identify the version of ${name} loaded from ${location}`);
+  }
+}
+function executableIdentity(path) {
+  if (!path.includes(sep) && process.env.PATH === void 0)
+    throw new Error(`cannot look up the Chrome executable ${path} without PATH`);
+  const candidates = path.includes(sep) ? [path] : (process.env.PATH ?? "").split(delimiter).map((dir) => `${dir || "."}${sep}${path}`);
+  for (const candidate of candidates) {
+    try {
+      accessSync(candidate, constants.X_OK);
+      const stat = statSync(candidate, { bigint: true });
+      if (!stat.isFile()) continue;
+      return {
+        file: realpathSync.native(candidate),
+        revision: [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join("-")
+      };
+    } catch {
+    }
+  }
+  throw new Error(`cannot find the Chrome executable ${path}`);
+}
+async function launchIdentity(scriptPath, plugins, args) {
+  const names = ["puppeteer"];
+  if (plugins.stealth || plugins.adblocker) names.push("puppeteer-extra");
+  if (plugins.stealth) names.push("puppeteer-extra-plugin-stealth");
+  if (plugins.adblocker) names.push("puppeteer-extra-plugin-adblocker");
+  const modules = {};
+  let puppeteer;
+  for (const name of names) {
+    const loaded = await loadModule(name, scriptPath);
+    const location = fileURLToPath(loaded.url());
+    modules[name] = { location, version: owningVersion(name, location) };
+    if (name === "puppeteer") puppeteer = loaded.module.default;
+  }
+  if (typeof puppeteer?.executablePath !== "function" || typeof puppeteer.defaultArgs !== "function") {
+    throw new Error(
+      "puppeteer exposes no executablePath() and defaultArgs() to identify its launch"
+    );
+  }
+  const configured = await puppeteer.executablePath();
+  if (typeof configured !== "string" || configured === "") {
+    throw new Error("puppeteer reported no Chrome executable");
+  }
+  return {
+    modules,
+    executablePath: configured,
+    executable: executableIdentity(configured),
+    plugins,
+    // Puppeteer 25 returns both as promises.
+    args: await puppeteer.defaultArgs({ headless: true, args })
+  };
 }
 function errorMessage(err) {
   return err instanceof Error ? err.message : String(err);
@@ -3382,6 +3450,9 @@ function browserProxyArgs() {
 // src/browser-lease-server.ts
 import { once } from "node:events";
 import { createServer } from "node:net";
+function isBrowserKey(key) {
+  return /^sha256:[0-9a-f]{64}$/.test(key);
+}
 var MAX_REQUEST_BYTES = 4096;
 async function serveLeases(options) {
   const connections = /* @__PURE__ */ new Set();
@@ -3425,7 +3496,7 @@ async function answer(socket, options) {
 function replyTo(line, options) {
   const request = parseRequest(line);
   if (request === void 0) return { refused: "malformed request" };
-  if (request.proxy_hash !== options.proxyHash) return { refused: "proxy mismatch" };
+  if (request.browser_key !== options.browserKey) return { refused: "launch mismatch" };
   return { ws_endpoint: options.wsEndpoint, pid: process.pid };
 }
 function firstLine(socket) {
@@ -3451,8 +3522,8 @@ function firstLine(socket) {
 function parseRequest(line) {
   if (line === void 0) return void 0;
   try {
-    const hash = JSON.parse(line)?.proxy_hash;
-    return typeof hash === "string" ? { proxy_hash: hash } : void 0;
+    const key = JSON.parse(line)?.browser_key;
+    return typeof key === "string" && key !== "" ? { browser_key: key } : void 0;
   } catch {
     return void 0;
   }
@@ -3825,6 +3896,16 @@ var HOOK_NAMES = [
   "beforeTerminal",
   "cleanup"
 ];
+function currentLaunchIdentity(scriptPath) {
+  return launchIdentity(
+    scriptPath,
+    {
+      stealth: process.env.QUARRY_STEALTH !== "0",
+      adblocker: process.env.QUARRY_ADBLOCKER === "1"
+    },
+    chromiumArgs(browserProxyArgs())
+  );
+}
 async function validateScript(scriptPath) {
   let loaded;
   try {
@@ -3922,6 +4003,19 @@ async function readStdinMetadata() {
   });
 }
 async function browserServer(scriptPath) {
+  const browserKey = process.env.QUARRY_BROWSER_KEY ?? "";
+  if (!isBrowserKey(browserKey)) {
+    process.stderr.write("QUARRY_BROWSER_KEY must be the sha256: key of the launch settings\n");
+    process.exit(3);
+  }
+  const expected = process.env.QUARRY_BROWSER_IDENTITY ?? "";
+  const identity = await currentLaunchIdentity(scriptPath);
+  if (expected === "" || JSON.stringify(JSON.parse(expected)) !== JSON.stringify(identity)) {
+    process.stderr.write(
+      "the launch identity changed after the runtime keyed this server; not starting\n"
+    );
+    process.exit(3);
+  }
   const { getPuppeteer: getBrowserPuppeteer, getVanillaPuppeteer: getVanillaPuppeteer2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
   const reuseDir = process.env.QUARRY_BROWSER_REUSE_DIR ?? ".";
   const recordPath = join2(reuseDir, "browser.json");
@@ -3940,6 +4034,7 @@ async function browserServer(scriptPath) {
   });
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: identity.executablePath,
     args: chromiumArgs(browserProxyArgs())
   });
   try {
@@ -3961,7 +4056,7 @@ async function browserServer(scriptPath) {
   const leases = await serveLeases({
     socketPath: join2(reuseDir, "server.sock"),
     wsEndpoint: browser.wsEndpoint(),
-    proxyHash: process.env.QUARRY_BROWSER_PROXY_HASH ?? "",
+    browserKey,
     idleTimeoutMs: Number.parseInt(process.env.QUARRY_BROWSER_IDLE_TIMEOUT ?? "60", 10) * 1e3
   }).catch(async (err) => {
     await browser.close();
@@ -4002,9 +4097,17 @@ async function launchBrowserServer(scriptPath) {
   await browser.close();
   process.exit(0);
 }
+async function reportLaunchIdentity(scriptPath) {
+  const report = `${JSON.stringify(await currentLaunchIdentity(scriptPath))}
+`;
+  await new Promise((done) => process.stdout.write(report, () => done()));
+  process.exit(0);
+}
 var MODES = /* @__PURE__ */ new Map([
   // Reusable browser server: self-managing lifetime with idle timeout
   ["--browser-server", browserServer],
+  // Report the browser that a launch for this run would start
+  ["--launch-identity", reportLaunchIdentity],
   // Load the script and check its shape without executing
   ["--validate", validateScript],
   // Fan-out browser server: stdin-managed lifetime
