@@ -10,6 +10,7 @@ image="$1"
 data=$(mktemp -d)
 # The container's UID owns what it writes, so it also deletes it.
 cleanup() {
+  rmdir "$data" 2> /dev/null && return
   docker run --rm --user 54321:54321 --entrypoint find -v "$data:/data" "$image" /data -mindepth 1 -delete
   rmdir "$data"
 }

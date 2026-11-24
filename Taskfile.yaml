@@ -3,7 +3,7 @@ version: '3'
 vars:
   # The internal check's image, as CI's check job names it.
   BOSUN_IMAGE:
-    sh: grep -m1 -oE 'ghcr.io/pithecene/bosun:[^ "]+' .github/workflows/check.yaml
+    sh: scripts/ci/bosun-image.sh
   TS_PACKAGES: sdk executor-node
   COMMIT:
     sh: scripts/ci/commit.sh
@@ -93,7 +93,7 @@ tasks:
       # contract version; the ipc fixture test fails on a stale one.
       - pnpm -C executor-node exec tsx testdata/generate-e2e-fixture.ts
       - task: version:check
-      - echo "✅ All lockstep targets updated to {{.V}}"
+      - echo "All lockstep targets updated to {{.V}}"
 
   # ==========
   # Go tasks
@@ -173,9 +173,9 @@ tasks:
     desc: Lint shell scripts (shellcheck), examples, and the release tool (tsc, biome)
     cmds:
       - shellcheck -x scripts/*.sh scripts/ci/*.sh
-      - scripts/ci/no-inline-shell.sh
+      - node scripts/ci/no-inline-shell.ts
       - pnpm exec tsc -p scripts/release
-      - pnpm exec biome check --error-on-warnings scripts/release examples
+      - pnpm exec biome check --error-on-warnings scripts/release scripts/ci examples
 
   scripts:test:
     desc: Test the release tool against a fake world of registries

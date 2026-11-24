@@ -16,7 +16,7 @@ if [[ $# -gt 0 && "$1" != "v$EXPECTED" ]]; then
   exit 1
 fi
 # The targets pin text; this reads the version that a publish would use.
-SDK_VERSION=$(jq -r .version sdk/package.json)
+SDK_VERSION=$(node -p 'JSON.parse(fs.readFileSync("sdk/package.json", "utf8")).version')
 if [[ "$SDK_VERSION" != "$EXPECTED" ]]; then
   echo "::error::Version mismatch! sdk/package.json ($SDK_VERSION) != code version $EXPECTED"
   exit 1

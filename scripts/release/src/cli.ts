@@ -24,7 +24,7 @@ import type { Context } from './context.ts'
 import { describeError, ReleaseError, UsageError } from './errors.ts'
 import type { RetryPolicy } from './lookup.ts'
 import { spawnRun } from './process.ts'
-import { parseReleaseTag, type Version } from './versions.ts'
+import { formatVersion, parseReleaseTag, type Version } from './versions.ts'
 
 type Env = Readonly<Record<string, string | undefined>>
 
@@ -140,7 +140,7 @@ const COMMANDS: ReadonlyMap<string, Command> = new Map(
             envInt(env, 'JSR_ATTEMPT_TIMEOUT', { min: 1, max: 3600, fallback: 480 }) * 1000,
           retryDelayMs: envInt(env, 'JSR_RETRY_DELAY', { ...DELAY_SECONDS, fallback: 10 }) * 1000
         }
-        return publishJsr(ctx, dir, checkedTag(tag).slice(1), policy, lookupPolicy(env))
+        return publishJsr(ctx, dir, formatVersion(releaseTag(tag)), policy, lookupPolicy(env))
       }
     },
     'converge-pointers': {

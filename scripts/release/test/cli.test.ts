@@ -40,7 +40,8 @@ describe('main', () => {
     [['assert-highest-tag'], /expected <tag>/],
     [['assert-highest-tag', 'v1.2.3', 'extra'], /expected <tag>/],
     [['assert-highest-tag', '1.2.3'], /not a release tag: 1\.2\.3/],
-    [['publish-jsr', 'sdk'], /expected <package-dir> <tag>/]
+    [['publish-jsr', 'sdk'], /expected <package-dir> <tag>/],
+    [['publish-jsr', 'sdk', '1.2.3'], /not a release tag/]
   ])('exits 2 for invalid arguments %j', async (argv, message) => {
     const output = stderr()
     expect(await main(argv, {}, fakeWorld().ctx)).toBe(2)
@@ -69,6 +70,9 @@ describe('main', () => {
     stderr()
     const env = { PROBE_ATTEMPTS: '2', PROBE_RETRY_DELAY: '7' }
     expect(await main(['publish-jsr', world.pkgDir, 'v1.2.3'], env, world.ctx)).toBe(0)
+    // JSR versions carry no v.
+    expect(world.fetches[0]).toContain('1.2.3_meta.json')
+    expect(world.linesOf('npx').join()).not.toContain('v1.2.3')
     expect(world.sleeps).toEqual([7000])
   })
 
