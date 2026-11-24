@@ -78,7 +78,8 @@ describe('main', () => {
   it('publishes to JSR the version without the v of its tag', async () => {
     const world = fakeWorld()
     expect(await main(['publish-jsr', world.pkgDir, 'v1.2.3'], {}, world.ctx)).toBe(0)
-    expect(world.linesOf('npx')).toEqual(['npx --yes jsr publish --set-version 1.2.3'])
+    const published = world.calls.filter((c) => c.command === 'npx').map((c) => c.args)
+    expect(published).toEqual([['--yes', 'jsr', 'publish', '--set-version', '1.2.3']])
   })
 
   it('exits 1 with an error annotation when a release step fails', async () => {

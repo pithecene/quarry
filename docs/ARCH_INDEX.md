@@ -224,7 +224,7 @@ Developer tooling and test harnesses.
 - [`run-examples.ts`](../scripts/run-examples.ts) — manifest-driven example runner
 - [`version-targets.txt`](../scripts/version-targets.txt) — single list of every place the product version is written
 - [`version-bump.sh`](../scripts/version-bump.sh), [`version-check.sh`](../scripts/version-check.sh), [`version-targets.sh`](../scripts/version-targets.sh) — lockstep bump and drift check over that list
-- [`ci/`](../scripts/ci/) — the shell logic that workflows and tasks run, so YAML invokes only plain commands and actions
+- [`ci/`](../scripts/ci/) — the shell logic that workflows and tasks run. Use only plain commands and actions in workflow and task YAML
 - [`release/`](../scripts/release/) — release tool (TypeScript, run directly by the pinned Node): the tag gates, checksums, the GitHub release and its assets, idempotent npm and JSR publishing, and convergence of the npm `latest` and GHCR `:latest`/`:slim` pointers, with vitest tests against a fake world of registries (see [`release/README.md`](../scripts/release/README.md))
 
 ---

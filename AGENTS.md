@@ -212,8 +212,8 @@ they are correct whichever run finishes last. Re-running a release is safe (publ
 already exist). Republishing an older version is a deliberate
 manual operation, never a tag push. Release decisions (what to
 upload, publish, or refuse) live in `scripts/release/` with tests. Other shell
-logic that workflows and tasks run lives in `scripts/ci/`. YAML invokes only
-plain commands and actions.
+logic that workflows and tasks run lives in `scripts/ci/`. Use only plain
+commands and actions in workflow and task YAML.
 
 ---
 
