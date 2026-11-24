@@ -386,6 +386,11 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 			if len(client.files) != 1 || len(observed) != 1 || observed[0] != key+".meta.json" {
 				t.Errorf("files = %v, observed = %v, want one file and its companion", client.files, observed)
 			}
+			var companion map[string]any
+			readJSON(t, store.RangeStore, key+".meta.json", &companion)
+			if companion["content_type"] != "image/png" || companion["run_id"] != "run-1" {
+				t.Errorf("companion = %v, want the content type and the run's ID", companion)
+			}
 			if err := put("image/png"); !errors.Is(err, ErrPathExists) {
 				t.Errorf("second write: %v, want ErrPathExists", err)
 			}
