@@ -143,6 +143,10 @@ run exits with its normal outcome code.
 A consumer reads the run with the SDK's
 `readRun(event.locator.run, { storage: event.locator.storage })`.
 
+The locator carries `--storage-endpoint`. With either adapter, `quarry run` refuses to start when
+that endpoint has a path, because a path can hold a secret. Set
+`--adapter-publish-endpoint-path` when yours holds none.
+
 #### Adapter Options
 
 | Flag | Default | Description |

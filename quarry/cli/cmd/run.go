@@ -1681,7 +1681,8 @@ func validateLocatorEndpoint(storageConfig storageChoice, publishPath bool) erro
 	if err != nil || u.Host == "" {
 		return errors.New("--storage-endpoint must be a URL with a host when --adapter is set")
 	}
-	if strings.Trim(u.Path, "/") != "" && !publishPath {
+	// The path as redactEndpoint publishes it.
+	if path := u.EscapedPath(); path != "" && path != "/" && !publishPath {
 		return errors.New("--storage-endpoint has a path, which notifications would publish: set --adapter-publish-endpoint-path if it holds no secret")
 	}
 	return nil

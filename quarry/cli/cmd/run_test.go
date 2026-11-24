@@ -1204,6 +1204,8 @@ func TestValidateLocatorEndpoint(t *testing.T) {
 		{"s3", "https://host:9000?x=1", false, true},
 		{"s3", "https://host/secret/s3", false, false},
 		{"s3", "https://host/%73ecret", false, false},
+		{"s3", "https://host/%2F", false, false},
+		{"s3", "https://host//", false, false},
 		{"s3", "https://host/secret/s3", true, true},
 		{"s3", "host:9000/secret", true, false},
 		{"s3", "https://host:secret", true, false},
@@ -1211,8 +1213,43 @@ func TestValidateLocatorEndpoint(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s %s %t", tc.backend, tc.endpoint, tc.publishPath), func(t *testing.T) {
 			err := validateLocatorEndpoint(storageChoice{backend: tc.backend, endpoint: tc.endpoint}, tc.publishPath)
-			if (err == nil) != tc.ok || (err != nil && strings.Contains(err.Error(), "secret/")) {
+			if (err == nil) != tc.ok || (err != nil && strings.Contains(err.Error(), tc.endpoint)) {
 				t.Errorf("err = %v, want accepted %t and no endpoint", err, tc.ok)
+			}
+		})
+	}
+}
+
+// Consent comes from the flag, or from the config file when the flag is not set.
+func TestParseAdapterConfig_PublishEndpointPath(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		flag string
+		yaml bool
+		want bool
+	}{
+		{"", false, false},
+		{"", true, true},
+		{"true", false, true},
+		{"false", true, false},
+	} {
+		t.Run(fmt.Sprintf("flag=%q yaml=%t", tc.flag, tc.yaml), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "quarry.yaml")
+			content := fmt.Sprintf("adapter:\n  type: webhook\n  url: http://host/\n  publish_endpoint_path: %t\n", tc.yaml)
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := quarryconfig.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			flags := map[string]string{}
+			if tc.flag != "" {
+				flags["adapter-publish-endpoint-path"] = tc.flag
+			}
+			ac, err := parseAdapterConfigWithPrecedence(newAdapterTestContext(t, flags, nil), cfg, "webhook")
+			if err != nil || ac.publishEndpointPath != tc.want {
+				t.Errorf("consent = %t, %v, want %t", ac.publishEndpointPath, err, tc.want)
 			}
 		})
 	}
