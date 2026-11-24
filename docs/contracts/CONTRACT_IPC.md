@@ -362,6 +362,14 @@ acknowledgement before stdin EOF rejects.
 
 ---
 
+## Executor Process Group
+
+The runtime starts the executor as the leader of a process group. A browser
+that the executor launches for its run joins that group, so it is never outside
+the run. When the run is cancelled, the runtime sends `SIGKILL` to the group.
+When the executor exits by itself, the runtime sends `SIGKILL` to what remains
+of the group. A child that the script moves to another group is its own.
+
 ## Backpressure Semantics
 
 - **Emit calls must block on backpressure.**

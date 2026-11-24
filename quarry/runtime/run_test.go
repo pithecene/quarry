@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -1859,6 +1860,34 @@ func (p *deadlineWaitingPolicy) IngestEvent(ctx context.Context, _ *types.EventE
 	return p.err
 }
 
+// groupFailingExecutor reports a group that could not be stopped.
+type groupFailingExecutor struct {
+	Executor
+	err *groupStopError
+}
+
+// Stdout stays open past the run's deadline when the group failed before it, as
+// the grace for its output can.
+func (e *groupFailingExecutor) Stdout() io.Reader {
+	if e.err.cause == nil {
+		return lateReadError{}
+	}
+	return e.Executor.Stdout()
+}
+
+// lateReadError blocks past the test's deadline and then fails the read.
+type lateReadError struct{}
+
+func (lateReadError) Read([]byte) (int, error) {
+	time.Sleep(90 * time.Second)
+	return 0, os.ErrDeadlineExceeded
+}
+
+func (e *groupFailingExecutor) Wait() (*ExecutorResult, error) {
+	_, _ = e.Executor.Wait()
+	return nil, e.err
+}
+
 // The max duration takes the outcome only of a run whose execution stopped
 // after it: an ingestion failure before the deadline keeps its own outcome
 // although the executor is reaped after the deadline.
@@ -1872,18 +1901,25 @@ func TestRunOrchestrator_DeadlineDuringReapKeepsTheOutcome(t *testing.T) {
 		stdout []byte
 		exit   int
 		want   types.OutcomeStatus
+		group  *groupStopError
 	}{
-		{"a refusal before the deadline", &sinkErrPolicy{newFlushTrackingPolicy(), refusal}, valid, 0, types.OutcomeStorageError},
-		{"a policy failure before the deadline", &sinkErrPolicy{newFlushTrackingPolicy(), policy.ErrBufferFull}, valid, 0, types.OutcomePolicyFailure},
-		{"a refusal after the deadline", &deadlineWaitingPolicy{newFlushTrackingPolicy(), refusal}, valid, 0, types.OutcomeDeadlineExceeded},
-		{"a truncated frame before the deadline", newFlushTrackingPolicy(), []byte{0, 0, 1}, 1, types.OutcomeExecutorCrash},
-		{"a clean end of stream, the process exiting after the deadline", newFlushTrackingPolicy(), nil, 2, types.OutcomeDeadlineExceeded},
+		{"a refusal before the deadline", &sinkErrPolicy{newFlushTrackingPolicy(), refusal}, valid, 0, types.OutcomeStorageError, nil},
+		{"a policy failure before the deadline", &sinkErrPolicy{newFlushTrackingPolicy(), policy.ErrBufferFull}, valid, 0, types.OutcomePolicyFailure, nil},
+		{"a refusal after the deadline", &deadlineWaitingPolicy{newFlushTrackingPolicy(), refusal}, valid, 0, types.OutcomeDeadlineExceeded, nil},
+		{"a truncated frame before the deadline", newFlushTrackingPolicy(), []byte{0, 0, 1}, 1, types.OutcomeExecutorCrash, nil},
+		{"a clean end of stream, the process exiting after the deadline", newFlushTrackingPolicy(), nil, 2, types.OutcomeDeadlineExceeded, nil},
+		{"a policy failure before the deadline, the group failing after it", &sinkErrPolicy{newFlushTrackingPolicy(), policy.ErrBufferFull}, valid, 0, types.OutcomeExecutorCrash, &groupStopError{refusal, ErrRunDeadline}},
+		{"a group failure before the deadline, its output read after it", newFlushTrackingPolicy(), nil, 0, types.OutcomeExecutorCrash, &groupStopError{refusal, nil}},
+		{"a group failure after the deadline", newFlushTrackingPolicy(), nil, 0, types.OutcomeDeadlineExceeded, &groupStopError{refusal, ErrRunDeadline}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				runMeta := &types.RunMeta{RunID: "run-reap", Attempt: 1}
-				exec := &slowReapExecutor{newMockExecutor(tc.stdout, tc.exit), 2 * time.Minute}
+				var exec Executor = &slowReapExecutor{newMockExecutor(tc.stdout, tc.exit), 2 * time.Minute}
+				if tc.group != nil {
+					exec = &groupFailingExecutor{exec, tc.group}
+				}
 				o, err := NewRunOrchestrator(&RunConfig{
 					ExecutorPath:    "/fake/executor",
 					ScriptPath:      "/fake/script.js",

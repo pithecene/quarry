@@ -2851,6 +2851,8 @@ __export(executor_exports, {
   parseRunMeta: () => parseRunMeta,
   resolvePeer: () => resolvePeer
 });
+import { AsyncLocalStorage } from "node:async_hooks";
+import childProcess from "node:child_process";
 import { accessSync, constants, readFileSync as readFileSync3, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, dirname, join, resolve as resolve2, sep } from "node:path";
@@ -2953,6 +2955,24 @@ async function launchIdentity(scriptPath, plugins, args) {
     // Puppeteer 25 returns both as promises.
     args: await puppeteer.defaultArgs({ headless: true, args })
   };
+}
+async function launchInGroup(launch) {
+  if (!spawnFollowsLaunch) {
+    spawnFollowsLaunch = true;
+    const spawn = childProcess.spawn;
+    childProcess.spawn = ((command, ...rest) => {
+      const options = rest.at(-1);
+      if (launching.getStore()?.pending && typeof options === "object" && !Array.isArray(options))
+        rest[rest.length - 1] = { ...options, detached: false };
+      return Reflect.apply(spawn, childProcess, [command, ...rest]);
+    });
+  }
+  const state = { pending: true };
+  try {
+    return await launching.run(state, launch);
+  } finally {
+    state.pending = false;
+  }
 }
 function errorMessage(err) {
   return err instanceof Error ? err.message : String(err);
@@ -3237,7 +3257,7 @@ async function execute(config) {
       };
       const puppeteer = await getPuppeteer(config.scriptPath, plugins);
       const launchOptions = buildPuppeteerLaunchOptions(config.puppeteerOptions, config.proxy);
-      browser = await puppeteer.launch(launchOptions);
+      browser = await launchInGroup(() => puppeteer.launch(launchOptions));
     }
     if (browser) {
       browserContext = await browser.createBrowserContext();
@@ -3335,7 +3355,7 @@ async function execute(config) {
     }
   }
 }
-var puppeteerModule, cachedPluginConfig;
+var launching, spawnFollowsLaunch, puppeteerModule, cachedPluginConfig;
 var init_executor = __esm({
   "src/executor.ts"() {
     "use strict";
@@ -3343,6 +3363,8 @@ var init_executor = __esm({
     init_observing_sink();
     init_sink();
     init_loader();
+    launching = new AsyncLocalStorage();
+    spawnFollowsLaunch = false;
     puppeteerModule = null;
     cachedPluginConfig = null;
   }

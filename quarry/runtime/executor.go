@@ -8,11 +8,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	goruntime "runtime"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/pithecene/quarry/executor"
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -60,12 +64,26 @@ type ExecutorManager struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	stderr *stderrCapture
+	// exited closes once the executor has exited and its group has been
+	// stopped; waitErr and groupErr then hold how each ended.
+	exited   chan struct{}
+	waitErr  error
+	groupErr error
+	// signalGroup kills a process group; a test replaces it.
+	signalGroup func(pgid int) error
+	// stderrPipe is what stderr drains.
+	stderrPipe io.Closer
+
+	// groupMu guards stopped, after which the group's number may be another's.
+	groupMu sync.Mutex
+	stopped bool
 }
 
 // NewExecutorManager creates a new executor manager.
 func NewExecutorManager(config *ExecutorConfig) *ExecutorManager {
 	return &ExecutorManager{
-		config: config,
+		config:      config,
+		signalGroup: killGroup,
 	}
 }
 
@@ -101,6 +119,21 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	// Build command: quarry-executor <script-path>
 	m.cmd = executor.Command(ctx, m.config.ExecutorPath, m.config.ScriptPath)
 	m.stderr = nil
+	// The executor leads a process group that holds everything it starts, its
+	// browser among them, so one signal stops all of it.
+	m.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	m.cmd.Cancel = func() error {
+		err := m.Kill()
+		if goruntime.GOOS == "darwin" && errors.Is(err, syscall.EPERM) {
+			// Darwin reports EPERM for an executor that has exited and is not yet
+			// reaped. stopGroup reports a group that does remain.
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	m.groupMu.Lock()
+	m.stopped, m.groupErr = false, nil
+	m.groupMu.Unlock()
 
 	m.cmd.Env = withResolveFrom(os.Environ(), m.config.ResolveFrom)
 
@@ -111,21 +144,49 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 	}
 	m.stdin = stdin
 
-	stdout, err := m.cmd.StdoutPipe()
+	// The output pipes are the runtime's own, so that waiting for the executor
+	// neither closes them nor waits for a child that holds one.
+	stdout, stdoutWrite, err := newOutputPipe()
 	if err != nil {
+		iox.DiscardClose(stdin)
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-	m.stdout = stdout
-
-	stderr, err := m.cmd.StderrPipe()
+	stderr, stderrWrite, err := newOutputPipe()
 	if err != nil {
+		iox.DiscardClose(stdin)
+		iox.DiscardClose(stdout)
+		iox.DiscardClose(stdoutWrite)
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
+	m.cmd.Stdout, m.cmd.Stderr = stdoutWrite, stderrWrite
 
 	// Start process
-	if err := m.cmd.Start(); err != nil {
+	err = m.cmd.Start()
+	// The child holds its own ends.
+	iox.DiscardClose(stdoutWrite)
+	iox.DiscardClose(stderrWrite)
+	if err != nil {
+		iox.DiscardClose(stdin)
+		iox.DiscardClose(stdout)
+		iox.DiscardClose(stderr)
 		return fmt.Errorf("failed to start executor: %w", err)
 	}
+	m.stdout, m.stderrPipe = stdout, stderr
+	// Stopping what the executor leaves behind also ends the output pipes that
+	// ingestion and the stderr capture read to their end.
+	m.exited = make(chan struct{})
+	go func() {
+		defer close(m.exited)
+		m.waitErr = m.cmd.Wait()
+		if err := m.stopGroup(); err != nil {
+			m.groupErr = &groupStopError{err: err, cause: context.Cause(ctx)}
+			// What remains can hold the output open: its readers end after a
+			// grace, so that the run ends and reports the group.
+			deadline := time.Now().Add(outputGrace)
+			_ = stdout.SetReadDeadline(deadline) // newOutputPipe showed that it can
+			_ = stderr.SetReadDeadline(deadline)
+		}
+	}()
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
 	// an executor blocked on a full stderr pipe would never end it.
 	m.stderr = startStderrCapture(stderr)
@@ -145,6 +206,7 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 
 	if err := json.NewEncoder(stdin).Encode(input); err != nil {
 		_ = m.Kill()
+		_, _ = m.Wait()
 		return fmt.Errorf("failed to write input: %w", err)
 	}
 
@@ -183,12 +245,14 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 		return nil, errors.New("executor not started")
 	}
 
-	// The capture ends when the executor closes stderr, and the pipe must be
-	// drained before cmd.Wait closes it.
+	<-m.exited
 	stderrBytes := m.stderr.wait()
-
-	// Wait for exit
-	err := m.cmd.Wait()
+	iox.DiscardClose(m.stdout)
+	iox.DiscardClose(m.stderrPipe)
+	if m.groupErr != nil {
+		return nil, m.groupErr
+	}
+	err := m.waitErr
 
 	result := &ExecutorResult{
 		StderrBytes: stderrBytes,
@@ -212,10 +276,85 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 	return result, nil
 }
 
-// Kill terminates the executor process.
+// Kill terminates the executor and every process in its group. A group with no
+// process left is os.ErrProcessDone, as exec.Cmd.Cancel expects.
 func (m *ExecutorManager) Kill() error {
-	if m.cmd != nil && m.cmd.Process != nil {
-		return m.cmd.Process.Kill()
+	if m.cmd == nil || m.cmd.Process == nil {
+		return nil
+	}
+	m.groupMu.Lock()
+	defer m.groupMu.Unlock()
+	if m.stopped {
+		return os.ErrProcessDone
+	}
+	return m.signalGroup(m.cmd.Process.Pid)
+}
+
+// groupStopError reports an executor's group that could not be stopped, and the
+// cause that had ended the run by then, if any.
+type groupStopError struct {
+	err   error
+	cause error
+}
+
+func (e *groupStopError) Error() string { return "stop what the executor started: " + e.err.Error() }
+func (e *groupStopError) Unwrap() error { return e.err }
+
+// outputGrace is how long the output of a group that could not be stopped is
+// still read.
+const outputGrace = 5 * time.Second
+
+// newOutputPipe returns a pipe for the executor's output whose reads can be
+// given a deadline.
+func newOutputPipe() (r, w *os.File, err error) {
+	r, w, err = os.Pipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := r.SetReadDeadline(time.Time{}); err != nil {
+		iox.DiscardClose(r)
+		iox.DiscardClose(w)
+		return nil, nil, err
+	}
+	return r, w, nil
+}
+
+// zombieGrace bounds the wait for the system to reap a group's zombies.
+const zombieGrace = time.Second
+
+// stopGroup kills what remains of the group of an executor that has exited.
+// Kill signals nothing afterward.
+func (m *ExecutorManager) stopGroup() error {
+	m.groupMu.Lock()
+	defer m.groupMu.Unlock()
+	m.stopped = true
+	pgid := m.cmd.Process.Pid
+	err := m.signalGroup(pgid)
+	if goruntime.GOOS == "darwin" && errors.Is(err, syscall.EPERM) {
+		// Darwin reports EPERM for a group that holds only zombies, until they
+		// are reaped, and for one that Quarry may not signal. The check signals
+		// nothing, because the number may be another group's once they are.
+		for deadline := time.Now().Add(zombieGrace); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+			if errors.Is(syscall.Kill(-pgid, 0), syscall.ESRCH) {
+				return nil
+			}
+		}
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return nil
+	}
+	return err
+}
+
+// killGroup kills the process group pgid. A group with no process left is
+// os.ErrProcessDone.
+func killGroup(pgid int) error {
+	err := syscall.Kill(-pgid, syscall.SIGKILL)
+	if errors.Is(err, syscall.ESRCH) {
+		return os.ErrProcessDone
+	}
+	if err != nil {
+		return fmt.Errorf("kill the process group %d: %w", pgid, err)
 	}
 	return nil
 }
