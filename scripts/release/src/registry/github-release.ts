@@ -26,15 +26,16 @@ export const githubReleaseState = async (ctx: Context, tag: string): Promise<Rel
   return state
 }
 
-/** The digest of each complete asset that the GitHub release for `tag` holds. */
+/**
+ * The digest of each complete asset that the GitHub release for `tag` holds, or
+ * `undefined` when it cannot be read, which says nothing about the assets.
+ */
 export const releaseDigests = async (
   ctx: Context,
   tag: string
-): Promise<ReadonlyMap<string, string | undefined>> => {
+): Promise<ReadonlyMap<string, string | undefined> | undefined> => {
   const result = await ctx.run('gh', ['release', 'view', tag, '--json', 'assets'])
-  if (result.code !== 0) {
-    throw new ReleaseError(`could not read the assets of ${tag}: ${lastLine(result.stderr)}`)
-  }
+  if (result.code !== 0) return undefined
   const { assets } = JSON.parse(result.stdout) as {
     assets: { name: string; digest?: string; state: string }[]
   }
@@ -51,7 +52,8 @@ const parseState = (stdout: string): ReleaseState | undefined => {
   if (typeof parsed !== 'object' || parsed === null) return undefined
   const { isDraft, isPrerelease } = parsed as Record<string, unknown>
   if (typeof isDraft !== 'boolean' || typeof isPrerelease !== 'boolean') return undefined
-  if (isDraft) return 'draft'
+  // A draft can also be a prerelease, which no stable tag may publish.
   if (isPrerelease) return 'prerelease'
+  if (isDraft) return 'draft'
   return 'published'
 }

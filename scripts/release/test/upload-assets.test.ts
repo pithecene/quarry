@@ -39,7 +39,9 @@ describe('upload-assets', () => {
       })
       await upload()
       expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz', 'a.tar.gz', 'a.tar.gz'])
-      expect(world.sleeps).toEqual([5000, 10000])
+      expect(world.sleeps).toEqual([5000, 10000, 20000])
+      const uploads = world.calls.filter((c) => c.args[1] === 'upload')
+      expect(uploads.every((c) => c.options.timeoutMs === POLICY.attemptTimeoutMs)).toBe(true)
     }
   )
 
@@ -73,8 +75,14 @@ describe('upload-assets', () => {
     expect(draft.uploaded()).toContain('a.tar.gz')
 
     const published = distWorld({ release: 'published', assets: assets() })
-    await expect(published.upload()).rejects.toThrow('is not a draft')
+    await published.upload()
     expect(published.uploaded()).toEqual([])
+  })
+
+  it('does not take an unreadable asset list for missing assets', async () => {
+    const { upload, uploaded } = distWorld({ assetReadErrors: 1 })
+    await upload()
+    expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz'])
   })
 
   it('fails on a missing release', async () => {

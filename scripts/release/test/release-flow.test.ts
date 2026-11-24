@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { main } from '../src/cli.ts'
 import { assertReleaseNotes } from '../src/commands/assert-release-notes.ts'
 import { draftRelease } from '../src/commands/draft-release.ts'
@@ -19,6 +19,7 @@ describe('assert-release-notes', () => {
 
   it.each([
     ['a lightweight tag', { tagType: 'commit' }, /lightweight tag/],
+    ['a tag that moved off the checked-out commit', { tagCommit: 'c1' }, /no longer names/],
     ['an empty message', { tagMessage: '\n' }, /holds no release notes/],
     [
       'a message that is only a signature',
@@ -48,15 +49,21 @@ describe('draft-release', () => {
     ])
   })
 
-  it.each(['draft', 'published'] as const)('keeps a %s release on a re-run', async (release) => {
-    const world = fakeWorld({ release })
+  it('leaves a published release alone', async () => {
+    const world = fakeWorld({ release: 'published' })
     await draftRelease(world.ctx, TAG)
-    expect(world.state.release).toBe(release)
     expect(world.linesOf('gh')).toHaveLength(1)
   })
 
-  it('rejects a prerelease', async () => {
-    const world = fakeWorld({ release: 'prerelease' })
+  it('gives an existing draft the notes of the tag', async () => {
+    const world = fakeWorld({ release: 'draft', tagMessage: 'Notes' })
+    await draftRelease(world.ctx, TAG)
+    expect(world.linesOf('gh').at(-1)).toBe('gh release edit v1.2.3 --title v1.2.3 --notes Notes')
+    expect(world.state.release).toBe('draft')
+  })
+
+  it.each(['prerelease', 'draft prerelease'] as const)('rejects a %s', async (release) => {
+    const world = fakeWorld({ release })
     await expect(draftRelease(world.ctx, TAG)).rejects.toThrow(/prerelease/)
   })
 })
@@ -64,7 +71,10 @@ describe('draft-release', () => {
 describe('cli', () => {
   it('refuses a tag that reads as an option', async () => {
     const world = fakeWorld({ release: 'draft' })
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    onTestFinished(() => stderr.mockRestore())
     expect(await main(['upload-assets', '--help', world.pkgDir], {}, world.ctx)).toBe(2)
+    expect(String(stderr.mock.calls[0]?.[0])).toContain('not a release tag: --help')
     expect(world.linesOf('gh')).toEqual([])
   })
 })

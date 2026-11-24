@@ -24,6 +24,10 @@ export const tagNotes = async (ctx: Context, tag: string): Promise<string> => {
       `${tag} is a lightweight tag, which holds no release notes; tag with bosun release`
     )
   }
+  // The artifacts come from the checkout, so a tag that moved since is refused.
+  if ((await git(['rev-parse', `${ref}^{commit}`])) !== (await git(['rev-parse', 'HEAD']))) {
+    throw new ReleaseError(`the tag ${tag} no longer names the commit being released`)
+  }
   const message = await git([
     'tag',
     '-l',

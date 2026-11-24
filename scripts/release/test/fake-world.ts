@@ -18,7 +18,7 @@ export type WorldState = {
   /** Whether the version is on JSR. */
   jsrPublished: boolean
   /** State of the GitHub release, or `missing`. */
-  release: 'published' | 'draft' | 'prerelease' | 'missing'
+  release: 'published' | 'draft' | 'prerelease' | 'draft prerelease' | 'missing'
   releaseLookupFails: boolean
   /** What each upload of a file does, by file name, before uploads succeed. */
   uploads: Map<string, ('fail' | 'stored' | 'hang' | 'unstartable')[]>
@@ -27,6 +27,10 @@ export type WorldState = {
   /** Object type of the tag, and its message when annotated. */
   tagType: 'tag' | 'commit'
   tagMessage: string
+  /** The commit that the tag names; the checkout is at `c0`. */
+  tagCommit: string
+  /** Reads of the assets that fail before one succeeds. */
+  assetReadErrors: number
   /** How `pnpm publish` behaves: publishes, fails, or loses a race. */
   pnpmMode: 'ok' | 'fail' | 'race'
   /** How `npx jsr publish` behaves; `poll_fail` uploads but exits non-zero. */
@@ -80,6 +84,8 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
     assets: new Map(),
     tagType: 'tag',
     tagMessage: 'Title\n\n## Summary\n',
+    tagCommit: 'c0',
+    assetReadErrors: 0,
     pnpmMode: 'ok',
     npxMode: 'ok',
     npmDistTagFails: false,
@@ -107,6 +113,7 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
     switch (command) {
       case 'git':
         if (args[0] === 'fetch') return ok()
+        if (args[0] === 'rev-parse') return ok(args[1] === 'HEAD' ? 'c0' : state.tagCommit)
         if (args[0] === 'cat-file') return ok(`${state.tagType}\n`)
         if (args[0] === 'tag') return ok(state.tagMessage)
         if (state.tagsUnreadable) return fail('fatal: could not read from remote repository')
@@ -167,10 +174,11 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
           return ok()
         }
         if (args[1] === 'edit') {
-          state.release = 'published'
+          if (args.includes('--draft=false')) state.release = 'published'
           return ok()
         }
         if (args[4] === 'assets') {
+          if (state.assetReadErrors-- > 0) return fail('HTTP 502')
           const assets = [...state.assets].map(([name, digest]) => ({
             name,
             digest,
@@ -182,8 +190,8 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
         if (state.release === 'missing') return fail('release not found')
         return ok(
           JSON.stringify({
-            isDraft: state.release === 'draft',
-            isPrerelease: state.release === 'prerelease'
+            isDraft: state.release.startsWith('draft'),
+            isPrerelease: state.release.endsWith('prerelease')
           })
         )
     }
