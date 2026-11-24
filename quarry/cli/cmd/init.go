@@ -114,7 +114,7 @@ func initAction(c *cli.Context) error {
 
 // initStep is one next command, as a table row.
 type initStep struct {
-	Next string `json:"next" yaml:"next"`
+	Next string `json:"next"`
 }
 
 // renderInit renders the response. The table prints the files created to
@@ -172,12 +172,12 @@ func initPackageJSON(name string) (string, error) {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	err := enc.Encode(struct {
-		Name         string            `json:"name" yaml:"name"`
-		Private      bool              `json:"private" yaml:"private"`
-		Type         string            `json:"type" yaml:"type"`
-		Engines      map[string]string `json:"engines" yaml:"engines"`
-		Dependencies map[string]string `json:"dependencies" yaml:"dependencies"`
-		AllowScripts map[string]bool   `json:"allowScripts" yaml:"allowScripts"`
+		Name         string            `json:"name"`
+		Private      bool              `json:"private"`
+		Type         string            `json:"type"`
+		Engines      map[string]string `json:"engines"`
+		Dependencies map[string]string `json:"dependencies"`
+		AllowScripts map[string]bool   `json:"allowScripts"`
 	}{name, true, "module", map[string]string{"node": initNodeRange}, deps, map[string]bool{"puppeteer": true}})
 	if err != nil {
 		return "", fmt.Errorf("render package.json: %w", err)

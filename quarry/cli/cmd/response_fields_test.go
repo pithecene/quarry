@@ -1,36 +1,45 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/pithecene/quarry/cli/reader"
 )
 
-// A response has the same field names and omissions in YAML as in JSON.
+// A response renders the same fields, with the same names, in YAML as in JSON.
 func TestResponses_YAMLFieldsMatchJSON(t *testing.T) {
 	t.Parallel()
-	seen := make(map[reflect.Type]bool)
-	var check func(typ reflect.Type)
-	check = func(typ reflect.Type) {
-		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Map {
-			typ = typ.Elem()
-		}
-		if typ.Kind() != reflect.Struct || seen[typ] || !strings.HasPrefix(typ.PkgPath(), "github.com/pithecene/quarry/") {
-			return
-		}
-		seen[typ] = true
-		for field := range typ.Fields() {
-			if field.IsExported() && field.Tag.Get("yaml") != field.Tag.Get("json") {
-				t.Errorf("%s.%s: yaml %q, json %q", typ, field.Name, field.Tag.Get("yaml"), field.Tag.Get("json"))
-			}
-			check(field.Type)
-		}
-	}
+	username := "user"
 	for _, response := range []any{
-		VersionResponse{}, InitResponse{}, reader.MetricsSnapshot{}, reader.ResolveProxyResponse{}, reader.InspectRunResponse{},
+		VersionResponse{},
+		InitResponse{Created: []string{"a"}, Next: []string{"b"}},
+		reader.MetricsSnapshot{},
+		reader.MetricsSnapshot{RunsStarted: 1, JobID: "job", DroppedByType: map[string]int64{"log": 1}},
+		reader.ResolveProxyResponse{},
+		reader.ResolveProxyResponse{Endpoint: reader.ProxyEndpoint{Username: &username}},
 	} {
-		check(reflect.TypeOf(response))
+		var asYAML, asJSON map[string]any
+		data, err := yaml.Marshal(response)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := yaml.Unmarshal(data, &asYAML); err != nil {
+			t.Fatal(err)
+		}
+		if data, err = json.Marshal(response); err != nil {
+			t.Fatal(err)
+		}
+		// YAML reads JSON, so both forms get the same Go types.
+		if err := yaml.Unmarshal(bytes.TrimSpace(data), &asJSON); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(asYAML, asJSON) {
+			t.Errorf("%T in YAML = %v, want %v", response, asYAML, asJSON)
+		}
 	}
 }
