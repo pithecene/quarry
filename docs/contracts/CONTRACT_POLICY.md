@@ -83,7 +83,8 @@ has a deadline of its own. A fan-out marks each mandatory sink on its
 own, so a refusal beside another sink's cancellation stays a refusal. A context
 does not record which of two ends came first, so once
 the run has ended, a write that its own deadline or cause ended counts as ended
-with the run when its error shows the run's end as well, as when both deadlines passed. A
+with the run when its context's cause and its error match the run's end, as when
+both deadlines passed with one cause. A
 refusal that decides the run's outcome makes it `storage_error`; a refusal
 after the run has already failed changes no outcome (CONTRACT_RUN.md §Run
 Finalization).
