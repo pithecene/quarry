@@ -56,14 +56,18 @@ func TestBrowserKey(t *testing.T) {
 	emptyReport := report("empty", "{}")
 	const plain = `{"modules":{"puppeteer":{"location":"/a","version":"1"}},"executablePath":"/c","executable":{"file":"/c","revision":"1"},"plugins":{"stealth":false,"adblocker":false},"args":[]}`
 	const reordered = `{"args":[],"plugins":{"adblocker":false,"stealth":false},"executable":{"revision":"1","file":"/c"},"executablePath":"/c","modules":{"puppeteer":{"version":"1","location":"/a"}}}`
-	// Padded past both limits, on both streams.
+	// Two numbers that a float64 cannot tell apart.
+	numbered := strings.Replace(plain, `"args":[]`, `"args":[],"n":9007199254740992`, 1)
+	numberedNext := strings.Replace(plain, `"args":[]`, `"args":[],"n":9007199254740993`, 1)
+	// Padded past the report's limit.
 	noisyReport := report("noisy", plain+"'; head -c 2000000 /dev/zero | tr '\\0' ' '; echo '")
 	noPluginModules := report("no-plugin-modules", strings.Replace(plain, `"stealth":false`, `"stealth":true`, 1))
+	unknownModule := report("unknown-module", strings.Replace(plain, `"modules":{`, `"modules":{"puppeteer-core":{"location":"","version":""},`, 1))
 	noRevision := report("no-revision", strings.Replace(plain, `"revision":"1"`, `"revision":""`, 1))
 	unresolvedReport := report("unresolved", `{"modules":{"puppeteer":{"location":"/a","version":"1"}},"executablePath":{},"plugins":{"stealth":false,"adblocker":false},"args":[]}`)
 	// One executor, so that its digest stays the same, reports either order.
 	ordered := filepath.Join(dir, "ordered")
-	if err := os.WriteFile(ordered, []byte("#!/bin/sh\nif [ \"$FAKE_IDENTITY\" = reordered ]; then echo '"+reordered+"'; else echo '"+plain+"'; fi\n"), 0o700); err != nil {
+	if err := os.WriteFile(ordered, []byte("#!/bin/sh\nif [ \"$FAKE_IDENTITY\" = reordered ]; then echo '"+reordered+"'; elif [ \"$FAKE_IDENTITY\" = number ]; then echo '"+numbered+"'; elif [ \"$FAKE_IDENTITY\" = next ]; then echo '"+numberedNext+"'; else echo '"+plain+"'; fi\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	user, pass1, pass2 := "admin", "secret1", "secret2"
@@ -122,6 +126,33 @@ func TestBrowserKey(t *testing.T) {
 			t.Errorf("keys %q (%v) and %q (%v), want equal", first, err1, second, err2)
 		}
 	})
+	t.Run("numbers that a float64 cannot tell apart", func(t *testing.T) {
+		cfg := with(func(c *ReusableBrowserConfig) { c.ExecutorPath = ordered })
+		first, err1 := key(t, cfg, "number")
+		second, err2 := key(t, cfg, "next")
+		if err1 != nil || err2 != nil || first == second {
+			t.Errorf("keys %q (%v) and %q (%v), want different", first, err1, second, err2)
+		}
+	})
+	t.Run("two spellings of one IPv6 proxy", func(t *testing.T) {
+		at := func(host string) ReusableBrowserConfig {
+			return with(func(c *ReusableBrowserConfig) {
+				c.Proxy = &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: host, Port: 8080}
+			})
+		}
+		first, err1 := key(t, at("::1"), "a")
+		second, err2 := key(t, at("[::1]"), "a")
+		if err1 != nil || err2 != nil || first != second {
+			t.Errorf("keys %q (%v) and %q (%v), want equal", first, err1, second, err2)
+		}
+	})
+	t.Run("diagnostics past their size limit", func(t *testing.T) {
+		noisy := fake("noisy-diagnostics", "{ echo first; head -c 100000 /dev/zero | tr '\\0' x; echo last; } >&2\nexit 1\n")
+		_, err := key(t, with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noisy }), "a")
+		if err == nil || !strings.Contains(err.Error(), "first") || strings.Contains(err.Error(), "last") || len(err.Error()) > 2*maxIdentityDiagnostic {
+			t.Errorf("error %.80v, want only the start of the diagnostics", err)
+		}
+	})
 	fifo := filepath.Join(dir, "fifo")
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
@@ -137,6 +168,7 @@ func TestBrowserKey(t *testing.T) {
 		{"an identity with an unresolved executable path", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = unresolvedReport })},
 		{"a report past its size limit", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noisyReport })},
 		{"an enabled plugin without its modules", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noPluginModules })},
+		{"an unidentified module", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = unknownModule })},
 		{"an executable without a revision", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = noRevision })},
 		{"a missing executor", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = filepath.Join(dir, "missing") })},
 		{"a FIFO in place of the executor", with(func(c *ReusableBrowserConfig) { c.ExecutorPath = fifo })},

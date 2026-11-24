@@ -227,12 +227,16 @@ func browserKey(ctx context.Context, cfg ReusableBrowserConfig) (string, json.Ra
 		return "", nil, err
 	}
 	settings := launchSettings{ExecutorSHA256: executorSum}
-	// Decoded, so that the key does not depend on the order of object members.
-	if err := json.Unmarshal(identity, &settings.Identity); err != nil {
+	// Decoded, so that the key does not depend on the order of object members,
+	// with each number kept as it is written.
+	decoder := json.NewDecoder(bytes.NewReader(identity))
+	decoder.UseNumber()
+	if err := decoder.Decode(&settings.Identity); err != nil {
 		return "", nil, fmt.Errorf("read the launch identity: %w", err)
 	}
 	if cfg.Proxy != nil {
 		redacted := cfg.Proxy.Redact()
+		redacted.Host = unbracketHost(redacted.Host) // as the launch spells it
 		settings.Proxy = &redacted
 	}
 	encoded, err := json.Marshal(settings)
@@ -243,7 +247,8 @@ func browserKey(ctx context.Context, cfg ReusableBrowserConfig) (string, json.Ra
 }
 
 // launchIdentity runs the executor's --launch-identity mode in the
-// environment that the browser server would get, and returns its report.
+// environment that the browser server would get, and returns its report,
+// compacted to fit the server's environment.
 func launchIdentity(ctx context.Context, cfg ReusableBrowserConfig) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, launchIdentityTimeout)
 	defer cancel()
@@ -264,7 +269,11 @@ func launchIdentity(ctx context.Context, cfg ReusableBrowserConfig) (json.RawMes
 	if err := validIdentity(report); err != nil {
 		return nil, err
 	}
-	return report, nil
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, report); err != nil {
+		return nil, fmt.Errorf("read the launch identity: %w", err)
+	}
+	return compact.Bytes(), nil
 }
 
 // maxIdentityReport and maxIdentityDiagnostic bound what the runtime keeps of
@@ -316,7 +325,12 @@ func validIdentity(report []byte) error {
 		required = append(required, "puppeteer-extra-plugin-adblocker")
 	}
 	for _, name := range required {
-		if m := id.Modules[name]; m.Location == "" || m.Version == "" {
+		if _, reported := id.Modules[name]; !reported {
+			return incomplete
+		}
+	}
+	for _, m := range id.Modules {
+		if m.Location == "" || m.Version == "" {
 			return incomplete
 		}
 	}
