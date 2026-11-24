@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/pithecene/lode/lode"
@@ -287,6 +289,15 @@ func TestEndRecord_SidecarFiles(t *testing.T) {
 
 	other := cfg
 	other.RunID = "run-2"
+	twice := cfg
+	twice.RunID = "run-3"
+	ref := SidecarFileRef{Path: SidecarFilesPrefix(twice) + "a.txt", Filename: "a.txt", ContentType: "text/plain"}
+	if err := putRunRecord(t.Context(), store, twice, EndRecordName, EndRecord{SidecarFiles: []SidecarFileRef{ref, ref}}); err != nil {
+		t.Fatal(err)
+	}
+	if files, err := ReadEndSidecars(t.Context(), store, twice); err != nil || names(files) != "a.txt" {
+		t.Errorf("a repeated entry gave %s, %v, want it once", names(files), err)
+	}
 	foreign := EndRecord{RunID: other.RunID, SidecarFiles: recorded}
 	if err := putRunRecord(t.Context(), store, other, EndRecordName, foreign); err != nil {
 		t.Fatal(err)
@@ -294,6 +305,46 @@ func TestEndRecord_SidecarFiles(t *testing.T) {
 	if _, err := ReadEndSidecars(t.Context(), store, other); !errors.Is(err, ErrMalformedSidecars) {
 		t.Errorf("a foreign path gave %v, want ErrMalformedSidecars", err)
 	}
+}
+
+// companionFailingStore fails each companion write, and its Delete waits for the
+// context to end.
+type companionFailingStore struct{ lode.RangeStore }
+
+var errCompanion = errors.New("companion refused")
+
+func (s companionFailingStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if strings.HasSuffix(key, ".meta.json") {
+		return errCompanion
+	}
+	return s.RangeStore.Put(ctx, key, r)
+}
+
+func (companionFailingStore) Delete(ctx context.Context, _ string) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// A file whose companion fails is removed within a bound, and is no file of the
+// run.
+func TestPutFile_BoundsTheRemovalOfAnIncompleteFile(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
+		client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		store, err := lode.Memory()()
+		if err != nil {
+			t.Fatal(err)
+		}
+		client.store = companionFailingStore{store}
+		err = client.PutFile(t.Context(), "a.txt", "text/plain", []byte("x"))
+		if !errors.Is(err, errCompanion) || !errors.Is(err, context.DeadlineExceeded) || len(client.files) != 0 {
+			t.Errorf("PutFile = %v with files %v, want both failures and no file", err, client.files)
+		}
+	})
 }
 
 func TestWriteEndRecord_NoTerminalIsNull(t *testing.T) {

@@ -668,7 +668,8 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    prefix is not listed. The end record names the files of such a run, and
    the prune uses it only while the run has snapshots: without them, an
    interrupted prune may have removed a file whose place another run's file
-   has taken since. A file that no source names remains. A path that a snapshot records outside the run's sidecar prefix is reported
+   has taken since, so its files stay and are reported. A file that no source
+   names remains. A path that a snapshot records outside the run's sidecar prefix is reported
    and left in place. A recorded inventory in any other form, or an end
    record that names a path outside the prefix, names files
    that cannot be found, so the prune keeps the run, deletes nothing of it,

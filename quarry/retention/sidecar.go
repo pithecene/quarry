@@ -38,17 +38,21 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition s
 	// the end record is used only while the run has snapshots. They expire before
 	// any sidecar goes, so each path still holds the run's own object: without
 	// them, an interrupted prune may have removed it, and another run may have
-	// written the path since.
-	if committed && !unambiguous(cfg) {
-		ended, err := qlode.ReadEndSidecars(ctx, p.store, cfg)
-		if errors.Is(err, qlode.ErrMalformedSidecars) {
-			err = fmt.Errorf("%w: %w", errMalformedInventory, err)
-		}
-		if err != nil {
-			return nil, nil, err
-		}
+	// written the path since. The path is then left in place and reported.
+	ended, err := qlode.ReadEndSidecars(ctx, p.store, cfg)
+	if errors.Is(err, qlode.ErrMalformedSidecars) {
+		err = fmt.Errorf("%w: %w", errMalformedInventory, err)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if !unambiguous(cfg) {
 		for _, file := range ended {
-			recorded = append(recorded, file.Path)
+			if committed {
+				recorded = append(recorded, file.Path)
+			} else {
+				skipped = append(skipped, file.Path)
+			}
 		}
 	}
 	for _, recordedPath := range recorded {

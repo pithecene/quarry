@@ -1,7 +1,9 @@
 package retention
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -335,6 +337,31 @@ func TestPrune_EncodedKeyUsesRecordedSidecars(t *testing.T) {
 	}
 }
 
+// An end record that names a path outside the run's prefix keeps the run, also
+// when the run's prefix is listed.
+func TestPrune_KeepsARunWithAForeignEndPath(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	cfg := f.write(runSpec{source: "src", runID: "r1", day: oldDay})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
+	outcome := string(types.OutcomeScriptError)
+	data, err := json.Marshal(qlode.EndRecord{
+		RecordKind: qlode.RecordKindRunEnd, SchemaVersion: qlode.RunRecordSchemaVersion, RunID: cfg.RunID,
+		EndedAt: oldDay + "T02:00:00Z", Outcome: &outcome,
+		SidecarFiles: []qlode.SidecarFileRef{{Path: "elsewhere/a.txt", Filename: "a.txt", ContentType: "text/plain"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Put(t.Context(), qlode.RunRecordDir(cfg)+qlode.EndRecordName, bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:kept]"; got != want || report.Runs[0].Kept != keptInventory {
+		t.Fatalf("runs = %s (%q), want %s for its inventory", got, report.Runs[0].Kept, want)
+	}
+}
+
 // A run without snapshots can be one whose prune was interrupted, so a path its
 // end record names can hold another run's file by now. An ambiguous key's paths
 // then stay: source "a//b" and source "a/b" store their files at one place.
@@ -344,8 +371,8 @@ func TestPrune_LeavesAmbiguousSidecarsWithoutSnapshots(t *testing.T) {
 	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError, noEvents: true})
 	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
 	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
-	if got, want := outcomes(report), "[r1:pruned]"; got != want || report.SidecarObjects != 0 {
-		t.Fatalf("runs = %s with %d sidecar objects, want %s with none", got, report.SidecarObjects, want)
+	if got, want := outcomes(report), "[r1:pruned]"; got != want || report.SidecarObjects != 0 || len(report.Runs[0].Skipped) != 1 {
+		t.Fatalf("runs = %s with %d sidecar objects and %v skipped, want %s with none and the file skipped", got, report.SidecarObjects, report.Runs[0].Skipped, want)
 	}
 	left, err := f.store.List(t.Context(), "datasets/quarry/partitions/source=a/b/category=cat/day="+oldDay+"/run_id=r1/files/")
 	if err != nil || len(left) != 2 {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SidecarFileRef describes a sidecar file written via PutFile.
@@ -32,6 +33,9 @@ type FileWriter interface {
 // Verify LodeClient implements FileWriter.
 var _ FileWriter = (*LodeClient)(nil)
 
+// incompleteFileTimeout bounds the removal of a file whose companion failed.
+const incompleteFileTimeout = 10 * time.Second
+
 // PutFile writes a sidecar file to Lode Store at the computed Hive path.
 // Writes the data file and a companion .meta.json with content type, to the
 // dataset's store.
@@ -53,7 +57,9 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	if err := c.store.Put(ctx, metaPath, bytes.NewReader(meta)); err != nil {
 		// A file that was not written whole is no file of the run. The context
 		// may have ended the write, so the removal does not use its cancellation.
-		if delErr := c.store.Delete(context.WithoutCancel(ctx), key); delErr != nil {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), incompleteFileTimeout)
+		defer cancel()
+		if delErr := c.store.Delete(cleanup, key); delErr != nil {
 			err = errors.Join(err, fmt.Errorf("remove the incomplete file: %w", delErr))
 		}
 		return WrapWriteError(err, metaPath)

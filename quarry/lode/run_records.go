@@ -308,7 +308,8 @@ func (c *LodeClient) putRecord(ctx context.Context, name string, record any) err
 // the run's, as against a record that could not be fetched.
 var ErrMalformedSidecars = errors.New("malformed sidecar files in end record")
 
-// ReadEndSidecars returns the sidecar files that the run's end record holds, or
+// ReadEndSidecars returns the sidecar files that the run's end record holds, each
+// once, or
 // none when the run has no end record or its record holds none.
 func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]SidecarFileRef, error) {
 	key := RunRecordDir(cfg) + EndRecordName
@@ -332,12 +333,18 @@ func ReadEndSidecars(ctx context.Context, store lode.Store, cfg Config) ([]Sidec
 	if err != nil {
 		return nil, fmt.Errorf("%w %s: %w", ErrMalformedSidecars, key, err)
 	}
+	seen := make(map[SidecarFileRef]bool, len(files))
+	unique := files[:0]
 	for i, file := range files {
 		if file.Path != SidecarFilesPrefix(cfg)+file.Filename {
 			return nil, fmt.Errorf("%w %s: entry %d: path %q is not the run's", ErrMalformedSidecars, key, i, file.Path)
 		}
+		if !seen[file] {
+			seen[file] = true
+			unique = append(unique, file)
+		}
 	}
-	return files, nil
+	return unique, nil
 }
 
 // validateRecordKey rejects a run whose components cannot form a safe
