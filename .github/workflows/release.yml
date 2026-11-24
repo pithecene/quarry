@@ -369,6 +369,12 @@ jobs:
     name: 🚀 GitHub Release
     runs-on: ubuntu-latest
     needs: [release, publish_ghpr, publish_jsr, container, pointers]
+    # A newer release's pointer job can replace this one in its queue, which
+    # cancels it harmlessly, so only its failure withholds this release.
+    if: >-
+      ${{ !cancelled() && needs.release.result == 'success'
+      && needs.publish_ghpr.result == 'success' && needs.publish_jsr.result == 'success'
+      && needs.container.result == 'success' && needs.pointers.result != 'failure' }}
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
@@ -383,6 +389,10 @@ jobs:
         with:
           name: release-dist
           path: dist
+
+      # The packages took a while, and the tag may have moved meanwhile.
+      - name: 🔎 Tag Names This Commit
+        run: node scripts/release/src/cli.ts assert-release-notes "$GITHUB_REF_NAME"
 
       - name: 📎 Verify Assets
         env:

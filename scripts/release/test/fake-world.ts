@@ -113,7 +113,10 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
     switch (command) {
       case 'git':
         if (args[0] === 'fetch') return ok()
-        if (args[0] === 'rev-parse') return ok(args[1] === 'HEAD' ? 'c0' : state.tagCommit)
+        if (args[0] === 'rev-parse')
+          return ok(
+            args[1] === 'HEAD' ? 'c0' : args[1]?.endsWith('^{commit}') ? state.tagCommit : 't0'
+          )
         if (args[0] === 'cat-file') return ok(`${state.tagType}\n`)
         if (args[0] === 'tag') return ok(state.tagMessage)
         if (state.tagsUnreadable) return fail('fatal: could not read from remote repository')
@@ -177,21 +180,14 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
           if (args.includes('--draft=false')) state.release = 'published'
           return ok()
         }
-        if (args[4] === 'assets') {
-          if (state.assetReadErrors-- > 0) return fail('HTTP 502')
-          const assets = [...state.assets].map(([name, digest]) => ({
-            name,
-            digest,
-            state: 'uploaded'
-          }))
-          return ok(JSON.stringify({ assets }))
-        }
+        if (state.assetReadErrors-- > 0) return fail('HTTP 502: Bad Gateway')
         if (state.releaseLookupFails) return fail('HTTP 401: Bad credentials')
         if (state.release === 'missing') return fail('release not found')
         return ok(
           JSON.stringify({
             isDraft: state.release.startsWith('draft'),
-            isPrerelease: state.release.endsWith('prerelease')
+            isPrerelease: state.release.endsWith('prerelease'),
+            assets: [...state.assets].map(([name, digest]) => ({ name, digest, state: 'uploaded' }))
           })
         )
     }

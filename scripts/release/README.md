@@ -11,10 +11,10 @@ node scripts/release/src/cli.ts <command> [arguments]
 | Command | Used by |
 |---|---|
 | `assert-highest-tag <tag>` | `release.yml` Tag Check, `release-dry-run.yml` |
-| `assert-release-notes <tag>` | `release.yml` Tag Check |
+| `assert-release-notes <tag>` | `release.yml` Tag Check and GitHub Release |
 | `write-checksums <dir>` | `release.yml` Archive and Package, `release-dry-run.yml` |
 | `draft-release <tag>` | `release.yml` Draft Release |
-| `upload-assets <tag> <dir>` | `release.yml` Draft Release |
+| `upload-assets <tag> <dir>` | `release.yml` Draft Release and GitHub Release |
 | `publish-release <tag>` | `release.yml` GitHub Release, last |
 | `publish-npm <package-dir>` | `release.yml` publish to GitHub Packages |
 | `publish-jsr <package-dir> <version>` | `release.yml` publish to JSR |
@@ -47,8 +47,9 @@ Environment tunables:
 
 - Registry lookups: `PROBE_ATTEMPTS` (3) and `PROBE_RETRY_DELAY` (5 s,
   doubled per retry).
-- Asset uploads: `UPLOAD_ATTEMPTS` (3), `UPLOAD_ATTEMPT_TIMEOUT` (300 s),
-  and `UPLOAD_RETRY_DELAY` (5 s, doubled per retry), counted per file.
+- Asset uploads: `UPLOAD_ATTEMPTS` (3) and `UPLOAD_RETRY_DELAY` (5 s, doubled
+  per retry) for all files together, and `UPLOAD_ATTEMPT_TIMEOUT` (300 s) for each
+  upload. A failed read of the release uses an attempt and uploads nothing.
 - JSR publishing: `JSR_ATTEMPTS` (3), `JSR_ATTEMPT_TIMEOUT` (480 s), and
   `JSR_RETRY_DELAY` (10 s, doubled per retry).
 
