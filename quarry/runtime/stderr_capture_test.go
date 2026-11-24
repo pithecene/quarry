@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -199,72 +198,6 @@ func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 			}
 			if _, err := m.Wait(); err != nil {
 				t.Errorf("a second Wait = %v, want the same result", err)
-			}
-		})
-	}
-}
-
-// An ended pipe gives what it holds and then its end, although a writer still
-// holds it open and may write more, and ending it wakes a read that waits.
-func TestOutputPipe_EndsAfterWhatItHolds(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name, held  string
-		readFirst   bool
-		keepWriting bool
-	}{
-		{"an empty pipe", "", false, false},
-		{"buffered output", "buffered frames", false, false},
-		{"a read that already waits", "", true, false},
-		{"a writer that keeps writing", "", false, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			pipe, w, err := newOutputPipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() {
-				iox.DiscardClose(pipe)
-				iox.DiscardClose(w)
-			})
-			if _, err := io.WriteString(w, tc.held); err != nil {
-				t.Fatal(err)
-			}
-			if tc.keepWriting {
-				go func() {
-					for {
-						if _, err := w.Write(make([]byte, 4096)); err != nil {
-							return
-						}
-					}
-				}()
-			}
-			if !tc.readFirst {
-				if err := pipe.end(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// The capture copies as the runtime does.
-			capture := startStderrCapture(pipe)
-			if tc.readFirst {
-				time.Sleep(50 * time.Millisecond)
-				if err := pipe.end(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			got := make(chan []byte, 1)
-			go func() { got <- capture.wait() }()
-			select {
-			case data := <-got:
-				if tc.keepWriting && len(data) > drainLimit {
-					t.Errorf("read %d bytes, want at most %d", len(data), drainLimit)
-				}
-				if !tc.keepWriting && string(data) != tc.held {
-					t.Errorf("read %q, want %q", data, tc.held)
-				}
-			case <-time.After(10 * time.Second):
-				t.Fatal("the read did not end")
 			}
 		})
 	}

@@ -177,9 +177,10 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		m.waitErr = m.cmd.Wait()
 		m.groupErr = m.stopGroup()
 		if m.groupErr != nil {
-			// What remains can hold the output open: its readers take what the
-			// pipes hold and end, so that the run ends and reports the group.
-			m.groupErr = errors.Join(m.groupErr, stdout.end(), stderr.end())
+			// What remains can hold the output open: its readers end after a
+			// grace, so that the run ends and reports the group.
+			deadline := time.Now().Add(outputGrace)
+			m.groupErr = errors.Join(m.groupErr, stdout.SetReadDeadline(deadline), stderr.SetReadDeadline(deadline))
 		}
 	}()
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
@@ -283,6 +284,25 @@ func (m *ExecutorManager) Kill() error {
 		return os.ErrProcessDone
 	}
 	return killGroup(m.cmd.Process.Pid)
+}
+
+// outputGrace is how long the output of a group that could not be stopped is
+// still read.
+const outputGrace = 5 * time.Second
+
+// newOutputPipe returns a pipe for the executor's output whose reads can be
+// given a deadline.
+func newOutputPipe() (r, w *os.File, err error) {
+	r, w, err = os.Pipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := r.SetReadDeadline(time.Time{}); err != nil {
+		iox.DiscardClose(r)
+		iox.DiscardClose(w)
+		return nil, nil, err
+	}
+	return r, w, nil
 }
 
 // zombieGrace bounds the wait for the system to reap a group's zombies.
