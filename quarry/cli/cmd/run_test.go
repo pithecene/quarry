@@ -13,12 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/pithecene/quarry/adapter"
 	"github.com/pithecene/quarry/executor"
 	"github.com/pithecene/quarry/internal/testutil"
 
@@ -1145,83 +1145,117 @@ func TestBuildStorageLocator(t *testing.T) {
 			}
 		})
 	}
-	if _, err := buildStorageLocator(storageChoice{backend: "fs", path: filepath.Join(t.TempDir(), "missing")}, "d"); err == nil {
-		t.Error("buildStorageLocator located a directory that does not exist")
-	}
 }
 
-// A relative directory resolves as the operating system opens it, where the
-// working directory is a symbolic link.
-func TestBuildStorageLocator_PhysicalDirectory(t *testing.T) {
-	testutil.Serial(t, "changes the process working directory and $PWD")
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, dir := range []string{"real/r1", "real/data", "data"} {
-		if err := os.MkdirAll(filepath.Join(root, dir), 0o750); err != nil {
-			t.Fatal(err)
-		}
-	}
-	link := filepath.Join(root, "current")
-	if err := os.Symlink(filepath.Join(root, "real", "r1"), link); err != nil {
-		t.Skipf("no symbolic links: %v", err)
-	}
-	t.Chdir(link)
-	locator, err := buildStorageLocator(storageChoice{backend: "fs", path: "../data", endpoint: "https://ignored"}, "d")
-	want := adapter.StorageLocator{Backend: "fs", Path: filepath.Join(root, "real", "data"), Dataset: "d"}
-	if err != nil || locator != want {
-		t.Errorf("locator = %+v, %v, want %+v", locator, err, want)
-	}
-}
-
-// A run written to storage is read through the locator of its notification.
-func TestRunFinalizer_LocatorReadsTheRun(t *testing.T) {
-	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
-	root := t.TempDir()
-	writeFSRun(t, root, "run 1")
-	received := make(chan []byte, 1)
+// notified returns the body of the completion event that the finalizer of a
+// recorded run publishes, or "" when it publishes none.
+func notified(t *testing.T, storagePath, runID string) string {
+	t.Helper()
+	received := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		received <- body
+		received <- string(body)
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	t.Cleanup(srv.Close)
+	defer srv.Close()
 	f := &runFinalizer{
 		adapter:        &adapterChoice{adapterType: "webhook", url: srv.URL, timeout: 5 * time.Second},
-		storage:        storageChoice{backend: "fs", path: root},
+		storage:        storageChoice{backend: "fs", path: storagePath},
 		storageDataset: "quarry",
 		source:         "demo",
 		category:       "default",
 		startTime:      time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC),
 	}
 	f.notifyAdapter(t.Context(), &runtime.RunResult{
-		RunMeta:  &types.RunMeta{RunID: "run 1", Attempt: 1},
+		RunMeta:  &types.RunMeta{RunID: runID, Attempt: 1},
 		Outcome:  &types.RunOutcome{Status: types.OutcomeSuccess},
 		Recorded: true,
 	}, time.Second)
-	var event struct {
-		Locator struct {
-			Run     map[string]string `json:"run"`
-			Storage map[string]any    `json:"storage"`
-		} `json:"locator"`
-	}
 	select {
 	case body := <-received:
-		if err := json.Unmarshal(body, &event); err != nil {
-			t.Fatalf("decode %s: %v", body, err)
-		}
+		return body
 	default:
-		t.Fatal("no notification")
+		return ""
 	}
-	// The flags that the SDK's readRun passes.
-	run, storage := event.Locator.Run, event.Locator.Storage
-	out, err := runListCLI(t, "events", "--format=json",
-		fmt.Sprintf("--storage-backend=%v", storage["backend"]), fmt.Sprintf("--storage-path=%v", storage["path"]),
-		fmt.Sprintf("--storage-dataset=%v", storage["dataset"]),
-		"--source="+run["source"], "--category="+run["category"], "--day="+run["day"], "--run-id="+run["runId"])
-	if err != nil || !strings.Contains(out, `"run 1"`) || !strings.Contains(out, `"run_complete"`) {
-		t.Errorf("list events = %s, %v, want the run's events", out, err)
+}
+
+// A run written to storage is read through the locator of its notification from
+// another directory, whatever symbolic links lead to the storage directory.
+func TestRunFinalizer_LocatorReadsTheRun(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout, and the test changes the working directory")
+	root := t.TempDir()
+	for _, dir := range []string{"real/r1", "real/data", "data", "real/r1/data"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(root, "real", "r1"), filepath.Join(root, "current")); err != nil {
+		t.Skipf("no symbolic links: %v", err)
+	}
+	for _, tc := range []struct{ name, wd, path string }{
+		{"absolute", root, filepath.Join(root, "data")},
+		{"relative", root, "data"},
+		{"from a linked working directory", filepath.Join(root, "current"), "../data"},
+		{"through a link", root, "current/data"},
+		{"up from a link", root, "current/../data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(tc.wd)
+			runID := strings.ReplaceAll(tc.name, " ", "/")
+			writeFSRun(t, tc.path, runID)
+			body := notified(t, tc.path, runID)
+			var event struct {
+				Locator struct {
+					Run     map[string]string `json:"run"`
+					Storage map[string]string `json:"storage"`
+				} `json:"locator"`
+			}
+			if err := json.Unmarshal([]byte(body), &event); err != nil {
+				t.Fatalf("decode %q: %v", body, err)
+			}
+			t.Chdir(t.TempDir())
+			// The flags that the SDK's readRun passes.
+			run, storage := event.Locator.Run, event.Locator.Storage
+			out, err := runListCLI(t, "events", "--format=json",
+				"--storage-backend="+storage["backend"], "--storage-path="+storage["path"], "--storage-dataset="+storage["dataset"],
+				"--source="+run["source"], "--category="+run["category"], "--day="+run["day"], "--run-id="+run["runId"])
+			if err != nil || !strings.Contains(out, `"run_complete"`) {
+				t.Errorf("list events = %s, %v, want the run's events", out, err)
+			}
+		})
+	}
+}
+
+// A relative directory without a working directory skips the notification.
+func TestRunFinalizer_SkipsAnUnresolvedDirectory(t *testing.T) {
+	testutil.Serial(t, "changes the process working directory and swaps os.Stderr")
+	if goruntime.GOOS == "windows" {
+		t.Skip("a working directory cannot be removed")
+	}
+	wd, err := os.MkdirTemp(t.TempDir(), "wd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logFile, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(wd)
+	original := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() {
+		os.Stderr = original
+		iox.DiscardClose(logFile)
+	})
+	if err := os.Remove(wd); err != nil {
+		t.Fatal(err)
+	}
+	if body := notified(t, "data", "run-1"); body != "" {
+		t.Errorf("published %s", body)
+	}
+	logged, err := os.ReadFile(logFile.Name())
+	if err != nil || !strings.Contains(string(logged), "adapter notification skipped: resolve storage path") {
+		t.Errorf("stderr = %q, %v, want the skip", logged, err)
 	}
 }
 

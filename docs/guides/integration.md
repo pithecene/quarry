@@ -98,7 +98,8 @@ Include enough information for consumers to:
 ### Webhook Adapter
 
 Quarry ships a built-in webhook adapter that POSTs a JSON event to a
-configurable URL after each run whose records Quarry confirmed in storage.
+configurable URL after each run whose records Quarry confirmed in storage. The
+CLI warns on stderr when it skips a notification.
 
 ```bash
 quarry run \
@@ -154,7 +155,7 @@ A consumer reads the run with the SDK's
 
 Quarry ships a built-in Redis pub/sub adapter that publishes a JSON event
 to a configurable Redis channel after each run whose records Quarry confirmed in
-storage.
+storage. The CLI warns on stderr when it skips a notification.
 
 ```bash
 quarry run \

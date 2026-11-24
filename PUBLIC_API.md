@@ -973,7 +973,7 @@ do {
 
 **Built-in adapters**: `--adapter webhook` sends an HTTP POST, and
 `--adapter redis` publishes to a Redis pub/sub channel, after each run whose records Quarry
-confirmed in storage.
+confirmed in storage. A run that cannot be located sends none, and the CLI warns.
 See adapter flags above.
 
 **Event sinks**: `--event-sink redis` streams every event to a Redis

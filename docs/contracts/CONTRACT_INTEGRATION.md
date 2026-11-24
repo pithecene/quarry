@@ -278,7 +278,7 @@ as `readRun(locator.run, { storage: locator.storage })`:
 |-------|-------------|
 | `run.source`, `run.category`, `run.day`, `run.runId` | The run's key, unencoded |
 | `storage.backend` | `fs` or `s3` |
-| `storage.path` | `fs`: absolute directory, with symbolic links resolved. `s3`: bucket/prefix |
+| `storage.path` | `fs`: absolute directory. `s3`: bucket/prefix |
 | `storage.dataset` | Lode dataset ID |
 | `storage.region` | `s3` only, when the run configured one |
 | `storage.endpoint` | `s3` only, when the run configured one, without user information, query, and fragment |
@@ -286,8 +286,8 @@ as `readRun(locator.run, { storage: locator.storage })`:
 
 The locator carries no credentials of the run's configuration. The path of an
 endpoint addresses the store, so the locator keeps it, and it must hold no secret.
-A run whose storage directory cannot be resolved is not notified, and a warning on
-stderr reports it. The reader supplies its own credentials, and the
+A run is not notified when the working directory that its relative storage
+directory needs no longer resolves, and a warning on stderr reports it. The reader supplies its own credentials, and the
 reader's environment supplies a region or endpoint that the run did not configure.
 `storage_path` is for people to read, and no reader parses it.
 

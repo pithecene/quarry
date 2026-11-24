@@ -1628,7 +1628,7 @@ func buildStorageLocator(storageConfig storageChoice, dataset string) (adapter.S
 	locator := adapter.StorageLocator{Backend: storageConfig.backend, Path: storageConfig.path, Dataset: dataset}
 	switch storageConfig.backend {
 	case "fs":
-		root, err := physicalPath(storageConfig.path)
+		root, err := storageRoot(storageConfig.path)
 		if err != nil {
 			return adapter.StorageLocator{}, fmt.Errorf("resolve storage path: %w", err)
 		}
@@ -1641,13 +1641,12 @@ func buildStorageLocator(storageConfig storageChoice, dataset string) (adapter.S
 	return locator, nil
 }
 
-// physicalPath is the absolute path that the operating system resolves path to,
-// for a reader in another directory. filepath.Abs alone cleans ".." lexically,
-// against a working directory that can itself be a symbolic link.
-func physicalPath(path string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || filepath.IsAbs(resolved) {
-		return resolved, err
+// storageRoot is the absolute directory that Lode's filesystem store opens for
+// path. The store cleans path, and the operating system resolves the result
+// against the physical working directory, which filepath.Abs does not use.
+func storageRoot(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
 	}
 	wd, err := os.Getwd()
 	if err != nil {
@@ -1656,7 +1655,7 @@ func physicalPath(path string) (string, error) {
 	if wd, err = filepath.EvalSymlinks(wd); err != nil {
 		return "", err
 	}
-	return filepath.Join(wd, resolved), nil
+	return filepath.Join(wd, path), nil
 }
 
 // redactEndpoint is the endpoint URL without its user information, query, and
