@@ -84,7 +84,11 @@ type StreamingPolicy struct {
 	mu          sync.Mutex // guards buffer state and stats
 	eventBuffer []*types.EventEnvelope
 	bufferBytes int64
-	stats       *statsRecorder
+	// writing and writingBytes are the batch that a flush holds outside
+	// eventBuffer. A failed write returns it, so the bounds count it.
+	writing      int
+	writingBytes int64
+	stats        *statsRecorder
 
 	// flushSem serializes flush operations (capacity 1).
 	// Prevents concurrent flushes from interval goroutine and count trigger.
@@ -238,6 +242,7 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 
 	// Install a fresh buffer so ingestion can continue during write
 	p.eventBuffer = make([]*types.EventEnvelope, 0, 128)
+	p.writing, p.writingBytes = len(events), p.bufferBytes
 	p.recalculateBufferBytes()
 
 	p.mu.Unlock()
@@ -247,12 +252,14 @@ func (p *StreamingPolicy) triggerFlush(ctx context.Context, trigger FlushTrigger
 		p.mu.Lock()
 		p.stats.incErrorsLocked()
 		p.eventBuffer = append(events, p.eventBuffer...)
+		p.writing, p.writingBytes = 0, 0
 		p.recalculateBufferBytes()
 		p.mu.Unlock()
 		p.logFlushFailure(trigger, err)
 		return err
 	}
 	p.mu.Lock()
+	p.writing, p.writingBytes = 0, 0
 	p.stats.incEventsPersistedLocked(int64(len(events)))
 	p.mu.Unlock()
 
@@ -375,7 +382,8 @@ func (p *StreamingPolicy) recalculateBufferBytes() {
 // flushes the partial batch and checks again: the capacity trigger after an
 // append never fires for an event that does not fit, and one flush need not
 // make room, since other calls can refill the buffer while it writes. An
-// empty buffer always has room, so an oversized event is admitted alone.
+// empty buffer always has room when no flush holds a batch, so an oversized event
+// is admitted alone.
 func (p *StreamingPolicy) admitLocked(ctx context.Context, eventSize int64) error {
 	for {
 		if p.stopped {
@@ -384,7 +392,7 @@ func (p *StreamingPolicy) admitLocked(ctx context.Context, eventSize int64) erro
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if p.bufferBytes == 0 || !p.wouldExceedCapacityLocked(eventSize) {
+		if p.bufferBytes+p.writingBytes == 0 || !p.wouldExceedCapacityLocked(eventSize) {
 			return nil
 		}
 		p.mu.Unlock()
@@ -397,13 +405,13 @@ func (p *StreamingPolicy) admitLocked(ctx context.Context, eventSize int64) erro
 }
 
 // wouldExceedCapacityLocked returns true if adding additionalBytes would exceed
-// internal buffer capacity.
+// internal capacity, which the buffer shares with the batch being written.
 // Caller must hold mu.
 func (p *StreamingPolicy) wouldExceedCapacityLocked(additionalBytes int64) bool {
-	if len(p.eventBuffer) >= streamingMaxBufferEvents {
+	if len(p.eventBuffer)+p.writing >= streamingMaxBufferEvents {
 		return true
 	}
-	return p.bufferBytes+additionalBytes > streamingMaxBufferBytes
+	return p.bufferBytes+p.writingBytes+additionalBytes > streamingMaxBufferBytes
 }
 
 // isBufferFullLocked returns true if the buffer has reached internal capacity.

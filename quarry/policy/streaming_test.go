@@ -690,15 +690,6 @@ func TestStreamingPolicy_IngestWaitingForRoomHonorsCancellation(t *testing.T) {
 			}
 		}()
 		<-sink.started
-		// The second fills the buffer again, and its flush waits for the first.
-		for i := range capacity - 1 {
-			if err := pol.IngestEvent(t.Context(), item(capacity+i)); err != nil {
-				t.Fatal(err)
-			}
-		}
-		go func() { _ = pol.IngestEvent(t.Context(), item(2*capacity)) }()
-		synctest.Wait()
-
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() { done <- pol.IngestEvent(ctx, item(2*capacity+1)) }()
@@ -763,24 +754,78 @@ func startHeldCapacityFlush(t *testing.T, ctx context.Context, flushErr error) (
 	return pol, release, admitted
 }
 
-// When other calls refill the buffer while the pre-append flush writes, the
-// waiting call flushes again rather than waiting for a flush nobody starts.
-// synctest reports a deadlock if it waits.
-func TestStreamingPolicy_FlushesAgainWhenTheBufferRefills(t *testing.T) {
+// The batch that a flush is writing counts toward the bounds, so no call is
+// admitted beside a full one. Each waiting call is admitted once the write
+// succeeds. synctest reports a deadlock if one waits for a flush nobody starts.
+func TestStreamingPolicy_CountsTheBatchBeingWritten(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		pol, release, admitted := startHeldCapacityFlush(t, t.Context(), nil)
-		for seq := 13; seq < 25; seq++ {
-			if err := pol.IngestEvent(t.Context(), bigFrame(seq)); err != nil {
-				t.Fatal(err)
-			}
+		pol, release, first := startHeldCapacityFlush(t, t.Context(), nil)
+		admitted := make(chan error, 24)
+		for seq := 13; seq < 37; seq++ {
+			go func() { admitted <- pol.IngestEvent(t.Context(), bigFrame(seq)) }()
+		}
+		synctest.Wait()
+		if stats := pol.Stats(); stats.TotalEvents != 12 {
+			t.Errorf("admitted %d events, want the 12 being written", stats.TotalEvents)
 		}
 		release()
-		if err := <-admitted; err != nil {
-			t.Fatalf("ingest after the refill: %v", err)
+		if err := <-first; err != nil {
+			t.Fatalf("the call that flushed: %v", err)
 		}
-		if stats := pol.Stats(); stats.EventsPersisted != 24 || stats.TotalEvents != 25 {
-			t.Errorf("persisted %d of %d, want 24 of 25", stats.EventsPersisted, stats.TotalEvents)
+		for range 24 {
+			if err := <-admitted; err != nil {
+				t.Fatalf("a waiting call: %v", err)
+			}
+		}
+		if err := pol.Flush(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if stats := pol.Stats(); stats.EventsPersisted != 37 || stats.TotalEvents != 37 {
+			t.Errorf("persisted %d of %d, want 37 of 37", stats.EventsPersisted, stats.TotalEvents)
+		}
+	})
+}
+
+// A failed flush returns its batch within the bounds, whatever arrived while it
+// wrote, and the next flush writes both in order.
+func TestStreamingPolicy_FailedFlushStaysWithinBounds(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		refusal := errors.New("bucket refused the write")
+		sink := &pausingSink{started: make(chan struct{}), release: make(chan struct{}), firstErr: refusal}
+		pol := mustNewStreamingPolicy(t, sink, policy.StreamingConfig{FlushCount: 100})
+		release := sync.OnceFunc(func() { close(sink.release) })
+		t.Cleanup(release)
+		ingest := func(from, to int) {
+			t.Helper()
+			for seq := from; seq < to; seq++ {
+				if err := pol.IngestEvent(t.Context(), bigFrame(seq)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		ingest(0, 6)
+		flushed := make(chan error, 1)
+		go func() { flushed <- pol.Flush(t.Context()) }()
+		<-sink.started
+		ingest(6, 12) // fits beside the 6 being written
+		over := make(chan error, 1)
+		go func() { over <- pol.IngestEvent(t.Context(), bigFrame(12)) }()
+		synctest.Wait()
+		if stats := pol.Stats(); stats.TotalEvents != 12 {
+			t.Errorf("admitted %d events, want 12", stats.TotalEvents)
+		}
+		release()
+		if err := <-flushed; !errors.Is(err, refusal) {
+			t.Errorf("Flush = %v, want the refusal", err)
+		}
+		// The waiting call writes the returned batch and the rest, and is admitted.
+		if err := <-over; err != nil {
+			t.Errorf("IngestEvent = %v", err)
+		}
+		if stats := pol.Stats(); stats.EventsPersisted != 12 || stats.BufferSize != 10<<20 {
+			t.Errorf("persisted %d with %d bytes buffered, want 12 and one frame", stats.EventsPersisted, stats.BufferSize)
 		}
 	})
 }
