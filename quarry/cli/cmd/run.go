@@ -554,14 +554,14 @@ func (f *runFinalizer) Finalize(ctx context.Context, result *runtime.RunResult) 
 
 // notifyAdapter publishes the completion event on a context that keeps ctx's
 // values but not its cancellation, so a run that its deadline or a signal ended
-// still reports that it completed. It publishes nothing for a run that a reader
-// would not find complete.
+// still reports that it completed. It publishes nothing for a run whose
+// records are not confirmed in storage.
 func (f *runFinalizer) notifyAdapter(ctx context.Context, result *runtime.RunResult, duration time.Duration) {
 	if f.adapter == nil {
 		return
 	}
 	if !result.Recorded {
-		fmt.Fprintln(os.Stderr, "Warning: adapter notification skipped: storage does not hold the run's records")
+		fmt.Fprintln(os.Stderr, "Warning: adapter notification skipped: the run's records are not confirmed in storage")
 		return
 	}
 	adpt, err := buildAdapter(*f.adapter)

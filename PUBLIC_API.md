@@ -969,7 +969,8 @@ do {
 - `signal` (an `AbortSignal`) aborts a read and terminates the CLI process.
 
 **Built-in adapters**: `--adapter webhook` sends an HTTP POST, and
-`--adapter redis` publishes to a Redis pub/sub channel after each run completes.
+`--adapter redis` publishes to a Redis pub/sub channel, after each run whose records Quarry
+confirmed in storage.
 See adapter flags above.
 
 **Event sinks**: `--event-sink redis` streams every event to a Redis

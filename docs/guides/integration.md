@@ -98,7 +98,7 @@ Include enough information for consumers to:
 ### Webhook Adapter
 
 Quarry ships a built-in webhook adapter that POSTs a JSON event to a
-configurable URL after each run completes.
+configurable URL after each run whose records Quarry confirmed in storage.
 
 ```bash
 quarry run \
@@ -146,7 +146,8 @@ run exits with its normal outcome code.
 ### Redis Pub/Sub Adapter
 
 Quarry ships a built-in Redis pub/sub adapter that publishes a JSON event
-to a configurable Redis channel after each run completes.
+to a configurable Redis channel after each run whose records Quarry confirmed in
+storage.
 
 ```bash
 quarry run \

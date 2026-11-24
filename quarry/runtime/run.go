@@ -143,8 +143,8 @@ type RunResult struct {
 	// §Failure Semantics). Empty when the end record was written or the run
 	// has no storage.
 	RunRecordError string
-	// Recorded reports that storage holds both of the run's records, so that a
-	// reader finds the run complete.
+	// Recorded reports that the runtime confirmed both of the run's records in
+	// storage, so that a reader finds the run complete.
 	Recorded bool
 }
 
@@ -354,29 +354,34 @@ func (r *RunOrchestrator) writeEndRecord(ctx context.Context, result *RunResult)
 	if r.config.Collector != nil {
 		end.Metrics = new(r.config.Collector.Snapshot())
 	}
-	for attempt := 1; ; attempt++ {
-		err := r.config.Storage.WriteEndRecord(ctx, end)
-		if err == nil {
+	var err error
+	attempt := 0
+	for {
+		attempt++
+		if err = r.config.Storage.WriteEndRecord(ctx, end); err == nil {
 			return true
 		}
-		// A record that exists and is not this one stays.
-		if attempt == endRecordAttempts || ctx.Err() != nil || errors.Is(err, lode.ErrPathExists) {
-			result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)
-			r.logger.Error("run end record write failed", map[string]any{
-				"error":    err.Error(),
-				"attempts": attempt,
-			})
-			return false
+		if attempt == endRecordAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(endRecordDelay):
+		}
+		if ctx.Err() != nil {
+			break
 		}
 		r.logger.Warn("run end record write failed, retrying", map[string]any{
 			"error":   err.Error(),
 			"attempt": attempt,
 		})
-		select {
-		case <-ctx.Done():
-		case <-time.After(endRecordDelay):
-		}
 	}
+	result.RunRecordError = fmt.Sprintf("run end record write failed: %v", err)
+	r.logger.Error("run end record write failed", map[string]any{
+		"error":    err.Error(),
+		"attempts": attempt,
+	})
+	return false
 }
 
 // execute runs the executor and ingestion and determines the outcome.
