@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -201,6 +202,49 @@ func TestExecutorManager_StopsWhatTheExecutorStarted(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An ended pipe gives what it holds and then its end, although a writer still
+// holds it open, and ending it wakes a read that waits.
+func TestOutputPipe_EndsAfterWhatItHolds(t *testing.T) {
+	t.Parallel()
+	for _, held := range []string{"", "buffered frames"} {
+		t.Run("holding "+strconv.Quote(held), func(t *testing.T) {
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				iox.DiscardClose(r)
+				iox.DiscardClose(w)
+			})
+			pipe := outputPipe{r}
+			if _, err := io.WriteString(w, held); err != nil {
+				t.Fatal(err)
+			}
+			pipe.end()
+			got := make(chan string, 1)
+			go func() {
+				data, err := io.ReadAll(pipe)
+				got <- string(data) + errorText(err)
+			}()
+			select {
+			case text := <-got:
+				if text != held {
+					t.Errorf("read %q, want %q", text, held)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the read did not end")
+			}
+		})
+	}
+}
+
+func errorText(err error) string {
+	if err != nil {
+		return " error: " + err.Error()
+	}
+	return ""
 }
 
 // A manager that starts a second run stops that run too.

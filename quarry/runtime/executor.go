@@ -168,7 +168,8 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		iox.DiscardClose(stderr)
 		return fmt.Errorf("failed to start executor: %w", err)
 	}
-	m.stdout, m.stderrPipe = stdout, stderr
+	output, diagnostics := outputPipe{stdout}, outputPipe{stderr}
+	m.stdout, m.stderrPipe = output, diagnostics
 	// Stopping what the executor leaves behind also ends the output pipes that
 	// ingestion and the stderr capture read to their end.
 	m.exited = make(chan struct{})
@@ -177,15 +178,15 @@ func (m *ExecutorManager) Start(ctx context.Context) error {
 		m.waitErr = m.cmd.Wait()
 		m.groupErr = m.stopGroup()
 		if m.groupErr != nil {
-			// What remains can hold the output open: end its readers, so that the
-			// run ends and reports the group.
-			iox.DiscardClose(stdout)
-			iox.DiscardClose(stderr)
+			// What remains can hold the output open: its readers take what the
+			// pipes hold and end, so that the run ends and reports the group.
+			output.end()
+			diagnostics.end()
 		}
 	}()
 	// Drain stderr now, not at Wait: Wait runs only after ingestion ends, and
 	// an executor blocked on a full stderr pipe would never end it.
-	m.stderr = startStderrCapture(stderr)
+	m.stderr = startStderrCapture(diagnostics)
 
 	// Write run metadata and job to stdin
 	input := executorInput{
@@ -242,13 +243,13 @@ func (m *ExecutorManager) Wait() (*ExecutorResult, error) {
 	}
 
 	<-m.exited
+	stderrBytes := m.stderr.wait()
+	iox.DiscardClose(m.stdout)
+	iox.DiscardClose(m.stderrPipe)
 	if m.groupErr != nil {
 		return nil, fmt.Errorf("stop what the executor started: %w", m.groupErr)
 	}
 	err := m.waitErr
-	stderrBytes := m.stderr.wait()
-	iox.DiscardClose(m.stdout)
-	iox.DiscardClose(m.stderrPipe)
 
 	result := &ExecutorResult{
 		StderrBytes: stderrBytes,
