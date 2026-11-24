@@ -148,7 +148,9 @@ Quarry has two browser reuse mechanisms: one transparent and one explicit.
 
 **Transparent reuse (default):** Quarry automatically starts a long-lived
 browser server on the first `quarry run` invocation. Subsequent runs on the
-same host reuse it through a Unix socket in the runtime directory. The browser
+same host whose launch settings match reuse it through a Unix socket in the
+runtime directory; [CONTRACT_CLI.md](../contracts/CONTRACT_CLI.md) §Transparent
+Browser Reuse lists the settings. The browser
 self-terminates after `QUARRY_BROWSER_IDLE_TIMEOUT` seconds (default: 60)
 once no run is using it. It works like `git credential-cache` and needs no user
 management.

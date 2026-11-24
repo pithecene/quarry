@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -60,9 +62,12 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 		return "", fmt.Errorf("browser reuse: %w", err)
 	}
 	socketPath := filepath.Join(dir, leaseSocketName)
-	hash := proxyHash(cfg.Proxy)
+	key, identity, err := browserKey(ctx, cfg)
+	if err != nil {
+		return "", fmt.Errorf("browser reuse: %w", err)
+	}
 
-	lease, err := requestLease(ctx, socketPath, hash)
+	lease, err := requestLease(ctx, socketPath, key)
 	if !errors.Is(err, errNoServer) {
 		return reused(ctx, lease, err)
 	}
@@ -74,19 +79,19 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 	defer unlock()
 
 	// Another run may have started a server while this one waited for the lock.
-	lease, err = requestLease(ctx, socketPath, hash)
+	lease, err = requestLease(ctx, socketPath, key)
 	if !errors.Is(err, errNoServer) {
 		return reused(ctx, lease, err)
 	}
 
 	logPath := filepath.Join(dir, browserServerLogName)
-	pid, err := startBrowserServer(ctx, cfg, dir, socketPath, logPath)
+	pid, err := startBrowserServer(ctx, cfg, key, identity, dir, socketPath, logPath)
 	if err != nil {
 		return "", fmt.Errorf("browser reuse: launch (log: %s): %w", logPath, err)
 	}
 	fmt.Fprintf(os.Stderr, "Starting reusable browser server (pid=%d, log=%s)\n", pid, logPath)
 
-	lease, err = requestLease(ctx, socketPath, hash)
+	lease, err = requestLease(ctx, socketPath, key)
 	if err != nil {
 		return "", fmt.Errorf("browser reuse: lease on the new server: %w", err)
 	}
@@ -96,8 +101,8 @@ func AcquireReusableBrowser(ctx context.Context, cfg ReusableBrowserConfig) (str
 // reused reports the outcome of a lease request on an existing server.
 func reused(ctx context.Context, lease browserLease, err error) (string, error) {
 	switch {
-	case errors.Is(err, errProxyMismatch):
-		fmt.Fprintf(os.Stderr, "Proxy mismatch, skipping browser reuse for this run\n")
+	case errors.Is(err, errLaunchMismatch):
+		fmt.Fprintf(os.Stderr, "Launch settings differ from the reusable browser's, skipping browser reuse for this run\n")
 		return "", fmt.Errorf("browser reuse: %w", err)
 	case err != nil:
 		return "", fmt.Errorf("browser reuse: %w", err)
@@ -192,20 +197,163 @@ func HealthCheckBrowser(ctx context.Context, wsEndpoint string) error {
 	return nil
 }
 
-// proxyHash returns a deterministic hash of proxy config for mismatch detection.
-// Returns empty string for nil proxy.
-func proxyHash(proxy *types.ProxyEndpoint) string {
-	if proxy == nil {
-		return ""
-	}
+// launchSettings are what a reusable browser is keyed on. The executor
+// reports the identity of the browser it would launch (the Puppeteer modules
+// it resolves, the Chrome binary, the plugins, and the launch arguments, the
+// proxy among them), because only the resolution that launches can say what
+// it launches. The runtime adds the executor's digest and the proxy username,
+// which the launch arguments leave out; the password never reaches the key.
+type launchSettings struct {
+	ExecutorSHA256 string          `json:"executor_sha256"`
+	ProxyUsername  *string         `json:"proxy_username,omitempty"`
+	Identity       json.RawMessage `json:"identity"`
+}
 
-	// Hash host, port, protocol, username (not password — avoid leaking secrets to disk)
-	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "%s:%s:%d", proxy.Protocol, proxy.Host, proxy.Port)
-	if proxy.Username != nil {
-		_, _ = fmt.Fprintf(h, ":%s", *proxy.Username)
+// launchIdentityTimeout bounds the executor's identity report.
+const launchIdentityTimeout = 15 * time.Second
+
+// browserKey returns a digest of the run's launch settings. A run shares a
+// reusable browser only with runs whose key is the same, so it never gets a
+// browser that resolves another Puppeteer, starts another Chrome, or launches
+// with other plugins, arguments, proxy, or executor.
+func browserKey(ctx context.Context, cfg ReusableBrowserConfig) (string, json.RawMessage, error) {
+	executorSum, err := executorSHA256(cfg.ExecutorPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("hash the executor: %w", err)
 	}
-	return fmt.Sprintf("sha256:%x", h.Sum(nil))
+	identity, err := launchIdentity(ctx, cfg)
+	if err != nil {
+		return "", nil, err
+	}
+	settings := launchSettings{ExecutorSHA256: executorSum, Identity: identity}
+	if cfg.Proxy != nil {
+		settings.ProxyUsername = cfg.Proxy.Username
+	}
+	encoded, err := json.Marshal(settings)
+	if err != nil {
+		return "", nil, fmt.Errorf("encode launch settings: %w", err)
+	}
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(encoded)), identity, nil
+}
+
+// launchIdentity runs the executor's --launch-identity mode in the
+// environment that the browser server would get, and returns its report,
+// compacted so that equal identities encode equally.
+func launchIdentity(ctx context.Context, cfg ReusableBrowserConfig) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, launchIdentityTimeout)
+	defer cancel()
+	cmd := executor.Command(ctx, cfg.ExecutorPath, "--launch-identity", cfg.ScriptPath)
+	cmd.Env = withResolveFrom(browserProxyEnv(cfg.Proxy), cfg.ResolveFrom)
+	// A child that inherits the pipes cannot hold the wait past the deadline.
+	cmd.WaitDelay = time.Second
+	stdout := &boundedBuffer{limit: maxIdentityReport}
+	stderr := &boundedBuffer{limit: maxIdentityDiagnostic}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("report the launch identity: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	if stdout.overflowed {
+		return nil, fmt.Errorf("the launch identity report exceeds %d bytes", maxIdentityReport)
+	}
+	report := bytes.TrimSpace(stdout.Bytes())
+	if err := validIdentity(report); err != nil {
+		return nil, err
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, report); err != nil {
+		return nil, fmt.Errorf("read the launch identity: %w", err)
+	}
+	return compact.Bytes(), nil
+}
+
+// maxIdentityReport and maxIdentityDiagnostic bound what the runtime keeps of
+// the identity mode's output: a valid report is a few kilobytes.
+const (
+	maxIdentityReport     = 1 << 20
+	maxIdentityDiagnostic = 4 << 10
+)
+
+// reportedIdentity is the shape of the executor's launch identity report.
+type reportedIdentity struct {
+	Modules map[string]struct {
+		Location string `json:"location"`
+		Version  string `json:"version"`
+	} `json:"modules"`
+	ExecutablePath string `json:"executablePath"`
+	Plugins        *struct {
+		Stealth   *bool `json:"stealth"`
+		Adblocker *bool `json:"adblocker"`
+	} `json:"plugins"`
+	Args []string `json:"args"`
+}
+
+// validIdentity refuses a report that does not carry a whole identity, so an
+// executor that prints null, an empty object, or an unresolved value never
+// yields a key that stays the same while its browser changes.
+func validIdentity(report []byte) error {
+	var id reportedIdentity
+	if err := json.Unmarshal(report, &id); err != nil {
+		return fmt.Errorf("read the launch identity: %w", err)
+	}
+	modulesKnown := len(id.Modules) > 0
+	for name, m := range id.Modules {
+		if name == "" || m.Location == "" || m.Version == "" {
+			modulesKnown = false
+		}
+	}
+	_, hasPuppeteer := id.Modules["puppeteer"]
+	pluginsKnown := id.Plugins != nil && id.Plugins.Stealth != nil && id.Plugins.Adblocker != nil
+	if !modulesKnown || !hasPuppeteer || id.ExecutablePath == "" || !pluginsKnown || id.Args == nil {
+		return errors.New("the launch identity report is incomplete")
+	}
+	return nil
+}
+
+// boundedBuffer keeps at most limit bytes and records that more arrived.
+type boundedBuffer struct {
+	bytes.Buffer
+	limit      int
+	overflowed bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if room := b.limit - b.Len(); room < len(p) {
+		b.overflowed = true
+		b.Buffer.Write(p[:max(room, 0)])
+		return len(p), nil
+	}
+	return b.Buffer.Write(p)
+}
+
+// executorSHA256 returns the hex SHA-256 of the executor that path names.
+func executorSHA256(path string) (string, error) {
+	if path == executor.Embedded {
+		return executor.EmbeddedSHA256(), nil
+	}
+	return fileSHA256(path)
+}
+
+// fileSHA256 returns the hex SHA-256 of the regular file at path. It opens
+// without blocking and checks the opened file, so a FIFO or a device, even one
+// swapped in for the path, is refused rather than read.
+func fileSHA256(path string) (string, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", err
+	}
+	defer iox.DiscardClose(f)
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s is not a regular file", path)
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 // startBrowserServer starts the executor in --browser-server mode as a
@@ -216,7 +364,7 @@ func proxyHash(proxy *types.ProxyEndpoint) string {
 // outlive the run that starts it: that is the point of reuse. A server that
 // fails to start is this process's unreaped child, so signaling its PID
 // cannot reach another process; it is the only server the runtime stops.
-func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, socketPath, logPath string) (int, error) {
+func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, key string, identity json.RawMessage, dir, socketPath, logPath string) (int, error) {
 	// Under the lock no server is listening, so a socket file left by one
 	// that was killed is stale, and the new server cannot bind over it.
 	if err := os.Remove(socketPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -233,7 +381,9 @@ func startBrowserServer(ctx context.Context, cfg ReusableBrowserConfig, dir, soc
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Env = append(withResolveFrom(browserProxyEnv(cfg.Proxy), cfg.ResolveFrom),
 		"QUARRY_BROWSER_REUSE_DIR="+dir,
-		"QUARRY_BROWSER_PROXY_HASH="+proxyHash(cfg.Proxy),
+		"QUARRY_BROWSER_KEY="+key,
+		// The server checks that it would launch this identity before it serves.
+		"QUARRY_BROWSER_IDENTITY="+string(identity),
 		fmt.Sprintf("QUARRY_BROWSER_IDLE_TIMEOUT=%d", int(idleTimeout.Seconds())),
 	)
 	// Diagnostics go to a log file, truncated per launch; the lock held by

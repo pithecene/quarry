@@ -34,14 +34,16 @@ var (
 	// that stopped listening while the connection waited.
 	errNoServer = errors.New("no browser server is listening")
 
-	errProxyMismatch = errors.New("proxy mismatch")
+	// errLaunchMismatch means the server's browser was launched with settings
+	// other than the run's (see browserKey).
+	errLaunchMismatch = errors.New("launch mismatch")
 )
 
 // leaseRequest and leaseReply are the one exchange on a lease connection,
 // each a line of JSON. executor-node/src/browser-lease-server.ts is the
 // other side.
 type leaseRequest struct {
-	ProxyHash string `json:"proxy_hash"`
+	BrowserKey string `json:"browser_key"`
 }
 
 type leaseReply struct {
@@ -65,7 +67,7 @@ type browserLease struct {
 // it if the process ends first. Cancelling ctx also ends a wait for the
 // reply. Failures that show no server is listening
 // wrap errNoServer.
-func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLease, error) {
+func requestLease(ctx context.Context, socketPath, browserKey string) (browserLease, error) {
 	if len(socketPath) > maxSocketPathLen {
 		return browserLease{}, fmt.Errorf("socket path is %d bytes, over the %d-byte limit: %s", len(socketPath), maxSocketPathLen, socketPath)
 	}
@@ -87,7 +89,7 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 		foreverLeases.drop(conn)
 		iox.DiscardClose(conn)
 	}
-	lease, err := exchange(conn, proxyHash)
+	lease, err := exchange(conn, browserKey)
 	if err != nil {
 		release()
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -103,11 +105,11 @@ func requestLease(ctx context.Context, socketPath, proxyHash string) (browserLea
 }
 
 // exchange sends the request and reads the one reply.
-func exchange(conn net.Conn, proxyHash string) (browserLease, error) {
+func exchange(conn net.Conn, browserKey string) (browserLease, error) {
 	if err := conn.SetDeadline(time.Now().Add(leaseReplyTimeout)); err != nil {
 		return browserLease{}, fmt.Errorf("set deadline: %w", err)
 	}
-	if err := json.NewEncoder(conn).Encode(leaseRequest{ProxyHash: proxyHash}); err != nil {
+	if err := json.NewEncoder(conn).Encode(leaseRequest{BrowserKey: browserKey}); err != nil {
 		return browserLease{}, classifyExchangeError("send request", err)
 	}
 	line, err := bufio.NewReader(conn).ReadBytes('\n')
@@ -123,8 +125,8 @@ func exchange(conn net.Conn, proxyHash string) (browserLease, error) {
 		return browserLease{}, fmt.Errorf("parse reply: %w", err)
 	}
 	switch {
-	case reply.Refused == errProxyMismatch.Error():
-		return browserLease{}, errProxyMismatch
+	case reply.Refused == errLaunchMismatch.Error():
+		return browserLease{}, errLaunchMismatch
 	case reply.Refused != "":
 		return browserLease{}, fmt.Errorf("server refused the lease: %s", reply.Refused)
 	case reply.WSEndpoint == "":

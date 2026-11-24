@@ -96,16 +96,16 @@ func TestRequestLease(t *testing.T) {
 		if lease.WSEndpoint != "ws://127.0.0.1:1/devtools/browser/x" || lease.ServerPID != 42 {
 			t.Errorf("lease = %+v", lease)
 		}
-		if got.ProxyHash != "sha256:abc" {
-			t.Errorf("sent proxy hash %q", got.ProxyHash)
+		if got.BrowserKey != "sha256:abc" {
+			t.Errorf("sent browser key %q", got.BrowserKey)
 		}
 	})
 
-	t.Run("proxy mismatch", func(t *testing.T) {
-		path := fakeLeaseServer(t, replyWith(`{"refused":"proxy mismatch"}`, nil))
+	t.Run("launch mismatch", func(t *testing.T) {
+		path := fakeLeaseServer(t, replyWith(`{"refused":"launch mismatch"}`, nil))
 
-		if _, err := requestLease(ipcContext(t), path, ""); !errors.Is(err, errProxyMismatch) {
-			t.Errorf("err = %v, want errProxyMismatch", err)
+		if _, err := requestLease(ipcContext(t), path, ""); !errors.Is(err, errLaunchMismatch) {
+			t.Errorf("err = %v, want errLaunchMismatch", err)
 		}
 	})
 
@@ -113,7 +113,7 @@ func TestRequestLease(t *testing.T) {
 		path := fakeLeaseServer(t, replyWith(`{"refused":"malformed request"}`, nil))
 
 		_, err := requestLease(ipcContext(t), path, "")
-		if err == nil || errors.Is(err, errNoServer) || errors.Is(err, errProxyMismatch) {
+		if err == nil || errors.Is(err, errNoServer) || errors.Is(err, errLaunchMismatch) {
 			t.Errorf("err = %v, want a plain refusal", err)
 		}
 	})
@@ -218,7 +218,7 @@ func TestRequestLease_HeldForAContextThatCannotEnd(t *testing.T) {
 func TestRequestLease_ForeverLeaseHeldOnlyUntilReleased(t *testing.T) {
 	testutil.Serial(t, "reads the process-wide set of held leases")
 
-	refused := fakeLeaseServer(t, replyWith(`{"refused":"proxy mismatch"}`, nil))
+	refused := fakeLeaseServer(t, replyWith(`{"refused":"launch mismatch"}`, nil))
 	if _, err := requestLease(context.Background(), refused, ""); err == nil {
 		t.Fatal("expected a refusal")
 	}

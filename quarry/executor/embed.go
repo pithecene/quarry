@@ -8,6 +8,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -53,6 +54,11 @@ const bootstrap = "const b=process.getBuiltinModule,{readFileSync,closeSync}=b('
 // IsEmbedded returns true if an executor is embedded in this binary.
 func IsEmbedded() bool {
 	return len(embeddedExecutor) > 0
+}
+
+// EmbeddedSHA256 returns the hex SHA-256 of the embedded bundle.
+func EmbeddedSHA256() string {
+	return fmt.Sprintf("%x", sha256.Sum256(embeddedExecutor))
 }
 
 // Process is an executor process. Its own methods replace every method of the

@@ -17,11 +17,11 @@
  *
  * @module
  */
-import { realpathSync } from 'node:fs'
+import { accessSync, constants, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { Writable } from 'node:stream'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   createAPIs,
   createContext,
@@ -48,6 +48,9 @@ export type PluginConfig = {
   readonly stealth: boolean
   readonly adblocker: boolean
 }
+
+/** A loaded module and the file it loaded from. */
+type LoadedModule = { readonly module: Record<string, unknown>; readonly location: string }
 
 /**
  * Resolve a package from the node_modules of the script's directory and its
@@ -77,28 +80,140 @@ function holds(dir: string, file: string): boolean {
 }
 
 /**
- * Resolve a module from the script's directory, falling back to standard import.
+ * Load a module from the script's directory, falling back to standard import,
+ * and report the file that the successful import loaded.
  *
  * The embedded bundle runs from memory, so dependencies must be resolved from
  * the user's script location or the configured module root.
  */
-async function resolveModule(name: string, scriptPath: string): Promise<Record<string, unknown>> {
+async function loadModule(name: string, scriptPath: string): Promise<LoadedModule> {
   // Strategy 1: resolve from script's directory. The URL
   // form loads from a bundle that has no directory of its own.
   let scriptError: unknown
   try {
-    return await import(pathToFileURL(resolvePeer(name, scriptPath)).href)
+    const location = resolvePeer(name, scriptPath)
+    return { module: await import(pathToFileURL(location).href), location }
   } catch (err) {
     scriptError = err
   }
 
   // Strategy 2: Standard import, through --resolve-from for the embedded bundle
   try {
-    return await import(name)
+    const module = (await import(name)) as Record<string, unknown>
+    return { module, location: fileURLToPath(import.meta.resolve(name)) }
   } catch (err) {
     throw new Error(`${errorMessage(scriptError)}; fallback import: ${errorMessage(err)}`, {
       cause: err
     })
+  }
+}
+
+/** Resolve a module from the script's directory, falling back to standard import. */
+async function resolveModule(name: string, scriptPath: string): Promise<Record<string, unknown>> {
+  return (await loadModule(name, scriptPath)).module
+}
+
+/** Where a module loaded from and which version it is. */
+export type ModuleIdentity = { readonly location: string; readonly version: string }
+
+/**
+ * What a browser that this process launches would be: the modules that would
+ * load, the Chrome binary Puppeteer would start, the plugins, and the
+ * effective launch arguments. A reusable browser is shared only with runs
+ * whose identity is the same, so the identity comes from the same loading as
+ * the launch, and anything it cannot establish fails the report.
+ */
+export type LaunchIdentity = {
+  readonly modules: Readonly<Record<string, ModuleIdentity>>
+  readonly executablePath: string
+  readonly plugins: PluginConfig
+  readonly args: readonly string[]
+}
+
+/**
+ * The version of the package that owns `location`: the nearest package.json
+ * above it with a version, which also names an aliased install correctly.
+ */
+function owningVersion(name: string, location: string): string {
+  for (let dir = dirname(location); ; dir = dirname(dir)) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+        version?: unknown
+      }
+      if (typeof pkg.version === 'string' && pkg.version !== '') return pkg.version
+    } catch {
+      // No package.json here; keep walking up.
+    }
+    if (dirname(dir) === dir)
+      throw new Error(`cannot identify the version of ${name} loaded from ${location}`)
+  }
+}
+
+/**
+ * The file that a launch of `path` runs, as the launch looks it up: an
+ * absolute path as given, a relative path against the working directory, and
+ * a bare name through PATH. Symlinks are resolved, so two names for one
+ * binary agree and one name for two binaries does not.
+ */
+function executableFile(path: string): string {
+  if (isAbsolute(path) || path.includes(sep)) return realpathSync(resolve(path))
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (dir === '') continue
+    const candidate = join(dir, path)
+    try {
+      accessSync(candidate, constants.X_OK)
+      return realpathSync(candidate)
+    } catch {
+      // Not here; keep looking.
+    }
+  }
+  throw new Error(`cannot find the Chrome executable ${path} on PATH`)
+}
+
+/** The Puppeteer surface that the identity reads. */
+type PuppeteerIdentitySurface = {
+  executablePath?: () => string | Promise<string>
+  defaultArgs?: (options: {
+    headless: boolean
+    args: readonly string[]
+  }) => string[] | Promise<string[]>
+}
+
+/** Compute the identity of the browser that this process would launch. */
+export async function launchIdentity(
+  scriptPath: string,
+  plugins: PluginConfig,
+  args: readonly string[]
+): Promise<LaunchIdentity> {
+  const names = ['puppeteer']
+  if (plugins.stealth || plugins.adblocker) names.push('puppeteer-extra')
+  if (plugins.stealth) names.push('puppeteer-extra-plugin-stealth')
+  if (plugins.adblocker) names.push('puppeteer-extra-plugin-adblocker')
+  const modules: Record<string, ModuleIdentity> = {}
+  let puppeteer: PuppeteerIdentitySurface | undefined
+  for (const name of names) {
+    const loaded = await loadModule(name, scriptPath)
+    modules[name] = { location: loaded.location, version: owningVersion(name, loaded.location) }
+    if (name === 'puppeteer') puppeteer = loaded.module.default as PuppeteerIdentitySurface
+  }
+  if (
+    typeof puppeteer?.executablePath !== 'function' ||
+    typeof puppeteer.defaultArgs !== 'function'
+  ) {
+    throw new Error(
+      'puppeteer exposes no executablePath() and defaultArgs() to identify its launch'
+    )
+  }
+  const configured = await puppeteer.executablePath()
+  if (typeof configured !== 'string' || configured === '') {
+    throw new Error('puppeteer reported no Chrome executable')
+  }
+  return {
+    modules,
+    executablePath: executableFile(configured),
+    plugins,
+    // Puppeteer 25 returns both as promises.
+    args: await puppeteer.defaultArgs({ headless: true, args })
   }
 }
 

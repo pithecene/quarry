@@ -2,7 +2,7 @@
 //
 // These tests spawn real browser server processes and validate the full
 // AcquireReusableBrowser flow: leases over the server's socket, idle
-// shutdown, recovery from a killed server, and proxy mismatch handling.
+// shutdown, recovery from a killed server, and launch mismatch handling.
 //
 // Gating: all tests require the -e2e flag.
 //
@@ -41,6 +41,7 @@ var e2e = flag.Bool("e2e", false, "run E2E browser reuse tests (requires Node + 
 type e2eHarness struct {
 	cfg        ReusableBrowserConfig
 	socketPath string
+	key        string // browserKey of cfg in the harness's environment
 	ctx        context.Context
 }
 
@@ -73,22 +74,29 @@ func setupE2E(t *testing.T) e2eHarness {
 	// The embedded executor finds Puppeteer only where it is told to look.
 	t.Setenv("NODE_PATH", filepath.Join(executorNodeDir(t), "node_modules"))
 
+	// A known launch state, so a mismatch test can change it whatever the
+	// runner's environment exports.
+	t.Setenv("QUARRY_STEALTH", "")
+	t.Setenv("QUARRY_ADBLOCKER", "")
+
+	cfg := ReusableBrowserConfig{
+		ExecutorPath: executor.Embedded,
+		ScriptPath:   scriptPath,
+		IdleTimeout:  30 * time.Second,
+	}
+	// The key reads the environment set above, as the server's first run does.
+	key, _, err := browserKey(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("browser key: %v", err)
+	}
 	socketPath := filepath.Join(dir, "quarry", "browser-reuse", leaseSocketName)
 	// Cleanups run after t.Context is done, so every lease has been released.
 	t.Cleanup(func() {
-		stopServer(socketPath)
+		stopServer(socketPath, key)
 		_ = os.RemoveAll(dir)
 	})
 
-	return e2eHarness{
-		cfg: ReusableBrowserConfig{
-			ExecutorPath: executor.Embedded,
-			ScriptPath:   scriptPath,
-			IdleTimeout:  30 * time.Second,
-		},
-		socketPath: socketPath,
-		ctx:        t.Context(),
-	}
+	return e2eHarness{cfg: cfg, socketPath: socketPath, key: key, ctx: t.Context()}
 }
 
 func executorNodeDir(t *testing.T) string {
@@ -103,11 +111,11 @@ func executorNodeDir(t *testing.T) string {
 
 // serverPID returns the PID of the server listening on socketPath, from a
 // lease that ends with the call.
-func serverPID(t *testing.T, socketPath string) int {
+func serverPID(t *testing.T, h e2eHarness) int {
 	t.Helper()
 	ctx, end := context.WithCancel(t.Context())
 	defer end()
-	lease, err := requestLease(ctx, socketPath, "")
+	lease, err := requestLease(ctx, h.socketPath, h.key)
 	if err != nil {
 		t.Fatalf("lease for the server PID: %v", err)
 	}
@@ -117,9 +125,9 @@ func serverPID(t *testing.T, socketPath string) int {
 // stopServer sends SIGTERM to the server listening on socketPath, if any,
 // and waits until it stops listening. The PID came from the server's own
 // reply a moment earlier.
-func stopServer(socketPath string) {
+func stopServer(socketPath, key string) {
 	ctx, end := context.WithCancel(context.Background())
-	lease, err := requestLease(ctx, socketPath, "")
+	lease, err := requestLease(ctx, socketPath, key)
 	end()
 	if err != nil {
 		return
@@ -202,7 +210,9 @@ func TestE2E_BrowserReuse_SequentialAcquire(t *testing.T) {
 	}
 }
 
-func TestE2E_BrowserReuse_ProxyMismatch(t *testing.T) {
+// A run whose launch settings differ from the server's is refused, whether
+// the proxy or another setting differs, and launches its own browser.
+func TestE2E_BrowserReuse_LaunchMismatch(t *testing.T) {
 	testutil.Serial(t, "setupE2E calls t.Setenv")
 	h := setupE2E(t)
 
@@ -210,19 +220,24 @@ func TestE2E_BrowserReuse_ProxyMismatch(t *testing.T) {
 		t.Fatalf("initial acquire: %v", err)
 	}
 
-	proxyCfg := h.cfg
-	proxyCfg.Proxy = &types.ProxyEndpoint{
-		Protocol: types.ProxyProtocolHTTP,
-		Host:     "proxy.example.com",
-		Port:     8080,
+	cases := []struct {
+		name  string
+		apply func(t *testing.T, cfg *ReusableBrowserConfig)
+	}{
+		{"proxy", func(_ *testing.T, cfg *ReusableBrowserConfig) {
+			cfg.Proxy = &types.ProxyEndpoint{Protocol: types.ProxyProtocolHTTP, Host: "proxy.example.com", Port: 8080}
+		}},
+		{"stealth", func(t *testing.T, _ *ReusableBrowserConfig) { t.Setenv("QUARRY_STEALTH", "0") }},
 	}
-
-	_, err := AcquireReusableBrowser(h.ctx, proxyCfg)
-	if err == nil {
-		t.Fatal("expected error for proxy mismatch")
-	}
-	if !strings.Contains(err.Error(), "proxy mismatch") {
-		t.Errorf("expected 'proxy mismatch' in error, got: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := h.cfg
+			tc.apply(t, &cfg)
+			_, err := AcquireReusableBrowser(h.ctx, cfg)
+			if !errors.Is(err, errLaunchMismatch) {
+				t.Errorf("acquire with another %s = %v, want errLaunchMismatch", tc.name, err)
+			}
+		})
 	}
 }
 
@@ -237,7 +252,7 @@ func TestE2E_BrowserReuse_KilledServerReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first acquire: %v", err)
 	}
-	pid := serverPID(t, h.socketPath)
+	pid := serverPID(t, h)
 	// Should the test stop before the new server closes the killed server's
 	// browser, close it here, so that no browser outlives the test.
 	t.Cleanup(func() {

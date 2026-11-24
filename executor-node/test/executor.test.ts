@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { decode as msgpackDecode } from '@msgpack/msgpack'
 import type { JobId, ProxyEndpoint, RunId } from '@pithecene/quarry-sdk'
@@ -7,6 +10,7 @@ import {
   _resetPuppeteerForTesting,
   type ExecutorConfig,
   execute,
+  launchIdentity,
   parseRunMeta
 } from '../src/executor.js'
 import type { RunResultFrame } from '../src/ipc/frame.js'
@@ -1283,5 +1287,79 @@ describe('runs without a browser', () => {
       expect(result.outcome.message).toContain('--no-browser')
     }
     expect(puppeteer.launch).not.toHaveBeenCalled()
+  })
+})
+
+describe('launchIdentity', () => {
+  // A project with its own Puppeteer of the given version. Its async
+  // executablePath returns `chrome`, as Puppeteer 25 does, and defaultArgs
+  // adds its own argument, so the identity must await one and use the other.
+  function project(
+    version: string,
+    chrome: string,
+    pkgFields: Record<string, unknown> = { version }
+  ): string {
+    const dir = mkdtempSync(join(tmpdir(), 'quarry-identity-'))
+    const pkg = join(dir, 'node_modules', 'puppeteer')
+    mkdirSync(pkg, { recursive: true })
+    writeFileSync(
+      join(pkg, 'package.json'),
+      JSON.stringify({ name: 'puppeteer', main: 'index.js', ...pkgFields })
+    )
+    writeFileSync(
+      join(pkg, 'index.js'),
+      `module.exports = { executablePath: async () => ${JSON.stringify(chrome)}, defaultArgs: async (o) => ['--puppeteer-default', ...o.args] }\n`
+    )
+    return join(dir, 'script.ts')
+  }
+  // An executable file to stand for Chrome.
+  function chromeAt(dir: string, name: string): string {
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, name)
+    writeFileSync(file, '#!/bin/sh\n', { mode: 0o755 })
+    return realpathSync(file)
+  }
+  const noPlugins = { stealth: false, adblocker: false }
+
+  it('reports the loaded Puppeteer, the resolved Chrome, and the effective arguments', async () => {
+    const chrome = chromeAt(mkdtempSync(join(tmpdir(), 'quarry-chrome-')), 'chrome')
+    const script = project('1.0.0', chrome)
+    const identity = await launchIdentity(script, noPlugins, ['--headless'])
+    expect(identity.modules.puppeteer).toEqual({
+      // Node resolves real paths, and the temp directory may sit behind a symlink.
+      location: realpathSync(join(dirname(script), 'node_modules', 'puppeteer', 'index.js')),
+      version: '1.0.0'
+    })
+    expect(identity.executablePath).toBe(chrome)
+    expect(identity.args).toEqual(['--puppeteer-default', '--headless'])
+  })
+
+  it('differs between projects with different Puppeteer installations', async () => {
+    const chrome = chromeAt(mkdtempSync(join(tmpdir(), 'quarry-chrome-')), 'chrome')
+    const a = await launchIdentity(project('1.0.0', chrome), noPlugins, [])
+    const b = await launchIdentity(project('2.0.0', chrome), noPlugins, [])
+    expect(a.modules.puppeteer?.version).not.toBe(b.modules.puppeteer?.version)
+  })
+
+  it('finds a bare Chrome name through PATH', async () => {
+    const bin = mkdtempSync(join(tmpdir(), 'quarry-path-'))
+    const chrome = chromeAt(bin, 'quarry-test-chrome')
+    vi.stubEnv('PATH', bin)
+    try {
+      const identity = await launchIdentity(project('1.0.0', 'quarry-test-chrome'), noPlugins, [])
+      expect(identity.executablePath).toBe(chrome)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('fails without a version or a Chrome it can find, so reuse is declined', async () => {
+    const chrome = chromeAt(mkdtempSync(join(tmpdir(), 'quarry-chrome-')), 'chrome')
+    await expect(launchIdentity(project('1.0.0', chrome, {}), noPlugins, [])).rejects.toThrow(
+      /version/
+    )
+    await expect(
+      launchIdentity(project('1.0.0', '/no/such/chrome'), noPlugins, [])
+    ).rejects.toThrow()
   })
 })

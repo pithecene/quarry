@@ -1,8 +1,8 @@
 import { once } from 'node:events'
 import { createServer, type Socket } from 'node:net'
 
-/** What a run sends when it connects: the hash of its proxy configuration. */
-export type LeaseRequest = { proxy_hash: string }
+/** What a run sends when it connects: the key of its launch settings. */
+export type LeaseRequest = { browser_key: string }
 
 /** The server's one reply: the browser's endpoint, or why the run cannot share it. */
 export type LeaseReply = { ws_endpoint: string; pid: number } | { refused: string }
@@ -10,7 +10,7 @@ export type LeaseReply = { ws_endpoint: string; pid: number } | { refused: strin
 export type LeaseServerOptions = {
   socketPath: string
   wsEndpoint: string
-  proxyHash: string
+  browserKey: string
   idleTimeoutMs: number
 }
 
@@ -20,6 +20,11 @@ export type LeaseServer = {
   readonly idle: Promise<void>
   /** Stop listening now, removing the socket file. Open connections close on their own. */
   close(): void
+}
+
+/** Whether `key` has the form of a browser key: `sha256:` and 64 hex digits. */
+export function isBrowserKey(key: string): boolean {
+  return /^sha256:[0-9a-f]{64}$/.test(key)
 }
 
 /** A request longer than this is malformed: a run sends one short line. */
@@ -88,7 +93,7 @@ async function answer(socket: Socket, options: LeaseServerOptions): Promise<void
 function replyTo(line: string | undefined, options: LeaseServerOptions): LeaseReply {
   const request = parseRequest(line)
   if (request === undefined) return { refused: 'malformed request' }
-  if (request.proxy_hash !== options.proxyHash) return { refused: 'proxy mismatch' }
+  if (request.browser_key !== options.browserKey) return { refused: 'launch mismatch' }
   return { ws_endpoint: options.wsEndpoint, pid: process.pid }
 }
 
@@ -121,8 +126,9 @@ function firstLine(socket: Socket): Promise<string | undefined> {
 function parseRequest(line: string | undefined): LeaseRequest | undefined {
   if (line === undefined) return undefined
   try {
-    const hash = (JSON.parse(line) as { proxy_hash?: unknown } | null)?.proxy_hash
-    return typeof hash === 'string' ? { proxy_hash: hash } : undefined
+    const key = (JSON.parse(line) as { browser_key?: unknown } | null)?.browser_key
+    // An empty key names no launch settings, so it is malformed, not a match.
+    return typeof key === 'string' && key !== '' ? { browser_key: key } : undefined
   } catch {
     return undefined
   }
