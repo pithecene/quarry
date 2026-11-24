@@ -254,7 +254,7 @@ events:
 |------|---------|-------------|
 | `--event-sink-redis-stream-key` | `quarry:events` | Shared stream key |
 | `--event-sink-redis-max-len` | `100000` | Approximate stream cap (-1 disables) |
-| `--event-sink-redis-ttl` | `24h` | Key expiry (-1 disables) |
+| `--event-sink-redis-ttl` | `24h` | Key expiry (a negative duration such as `-1s` disables) |
 | `--event-sink-redis-timeout` | `2s` | Per-operation timeout |
 | `--event-sink-redis-retries` | `2` | Retry attempts with exponential backoff |
 | `--event-sink-redis-delivery` | `mandatory` | `mandatory` or `best_effort` |

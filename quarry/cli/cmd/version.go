@@ -10,8 +10,8 @@ import (
 // VersionResponse is the response for the version command.
 // Reports the canonical project version (lockstep across all components).
 type VersionResponse struct {
-	Version string `json:"version"`
-	Commit  string `json:"commit"`
+	Version string `json:"version" yaml:"version"`
+	Commit  string `json:"commit" yaml:"commit"`
 }
 
 // VersionCommand returns the version command.

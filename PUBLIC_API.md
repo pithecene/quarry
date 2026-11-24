@@ -542,7 +542,7 @@ CLI flags always override config file values.
 | `--event-sink-redis-url <url>` | | Redis URL (required when `--event-sink` includes `redis`) |
 | `--event-sink-redis-stream-key` | `quarry:events` | Redis Streams key |
 | `--event-sink-redis-max-len` | `100000` | Max stream length (-1 disables) |
-| `--event-sink-redis-ttl` | `24h` | Stream key expiry (-1 disables) |
+| `--event-sink-redis-ttl` | `24h` | Stream key expiry (a negative duration such as `-1s` disables) |
 | `--event-sink-redis-timeout` | `2s` | Per-operation timeout |
 | `--event-sink-redis-retries` | `2` | Retry attempts |
 | `--event-sink-redis-delivery` | `mandatory` | Delivery mode for Redis event sink |
