@@ -99,26 +99,37 @@ describe('upload-assets', () => {
     expect(uploaded()).toEqual([])
   })
 
-  it('refuses a malformed asset list', async () => {
-    const { world, uploaded } = distWorld()
-    const run = world.ctx.run
-    const ctx = {
-      ...world.ctx,
-      run: async (...args: Parameters<typeof run>) =>
-        args[1][1] === 'view'
-          ? {
-              code: 0,
-              stdout: '{"isDraft":true,"isPrerelease":false,"assets":[{}]}',
-              stderr: '',
-              timedOut: false
-            }
-          : run(...args)
-    }
-    await expect(uploadAssets(ctx, 'v1.2.3', join(world.pkgDir, 'dist'), POLICY)).rejects.toThrow(
-      'unexpected output'
-    )
+  it('fails after its attempts when gh cannot start', async () => {
+    const { world, dir, uploaded } = distWorld()
+    const ctx = { ...world.ctx, run: () => Promise.reject(new Error('spawn gh EAGAIN')) }
+    await expect(uploadAssets(ctx, 'v1.2.3', dir, POLICY)).rejects.toThrow('spawn gh EAGAIN')
     expect(uploaded()).toEqual([])
+    expect(world.sleeps).toEqual([5000, 10000])
   })
+
+  it.each(['[{}]', '[{"name":"a.tar.gz","state":"uploaded"}]'])(
+    'refuses the malformed asset list %s',
+    async (assets) => {
+      const { world, uploaded } = distWorld()
+      const run = world.ctx.run
+      const ctx = {
+        ...world.ctx,
+        run: async (...args: Parameters<typeof run>) =>
+          args[1][1] === 'view'
+            ? {
+                code: 0,
+                stdout: `{"isDraft":true,"isPrerelease":false,"assets":${assets}}`,
+                stderr: '',
+                timedOut: false
+              }
+            : run(...args)
+      }
+      await expect(uploadAssets(ctx, 'v1.2.3', join(world.pkgDir, 'dist'), POLICY)).rejects.toThrow(
+        'unexpected output'
+      )
+      expect(uploaded()).toEqual([])
+    }
+  )
 
   it('reads the release again after its delay, before it uploads', async () => {
     const { world, dir, uploaded } = distWorld({
@@ -131,7 +142,7 @@ describe('upload-assets', () => {
         world.state.assets.set('a.tar.gz', 'sha256:other')
       }
     }
-    // The first retry waits; by then someone published the release.
+    // The release is published during the delay that a failed upload causes.
     await uploadAssets(ctx, 'v1.2.3', dir, POLICY)
     expect(uploaded()).toEqual(['a.tar.gz', 'b.tar.gz'])
   })

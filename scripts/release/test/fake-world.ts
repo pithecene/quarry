@@ -184,11 +184,19 @@ export const fakeWorld = (overrides: Partial<WorldState> = {}) => {
         if (state.releaseLookupFails) return fail('HTTP 401: Bad credentials')
         if (state.release === 'missing') return fail('release not found')
         return ok(
-          JSON.stringify({
-            isDraft: state.release.startsWith('draft'),
-            isPrerelease: state.release.endsWith('prerelease'),
-            assets: [...state.assets].map(([name, digest]) => ({ name, digest, state: 'uploaded' }))
-          })
+          JSON.stringify(
+            {
+              isDraft: state.release.startsWith('draft'),
+              isPrerelease: state.release.endsWith('prerelease'),
+              assets: [...state.assets].map(([name, digest]) => ({
+                name,
+                digest,
+                state: 'uploaded'
+              }))
+            },
+            // Only the requested fields, with those inside an asset.
+            [...(args[4] ?? '').split(','), 'name', 'digest', 'state']
+          )
         )
     }
     throw new Error(`fake world has no behavior for: ${command} ${line}`)
