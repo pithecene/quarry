@@ -311,6 +311,21 @@ func TestQueryRunDetails_IncompleteIndex(t *testing.T) {
 	}
 }
 
+// committedClient is a client of the run after the dataset's first commit.
+func committedClient(t *testing.T, store lode.RangeStore, runID string) *LodeClient {
+	t.Helper()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: runID}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := lode.D{"source": "src", "category": "raw", "day": "2026-10-22", "run_id": "b", "event_type": "item"}
+	if _, err := client.dataset.Write(t.Context(), []lode.D{record}, nil); err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
 // A file at a key that Lode reads as a manifest would fail every listing of
 // the dataset, so the write is refused, and every near key is written.
 func TestPutFile_RefusesAManifestKey(t *testing.T) {
@@ -327,15 +342,7 @@ func TestPutFile_RefusesAManifestKey(t *testing.T) {
 		{"a", "segments/files/manifest.json", true},
 	} {
 		store := lode.NewMemory()
-		cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: tc.runID}
-		client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
-		if err != nil {
-			t.Fatal(err)
-		}
-		record := lode.D{"source": "src", "category": "raw", "day": "2026-10-22", "run_id": "b", "event_type": "item"}
-		if _, err := client.dataset.Write(t.Context(), []lode.D{record}, nil); err != nil {
-			t.Fatal(err)
-		}
+		client := committedClient(t, store, tc.runID)
 		if err := client.PutFile(t.Context(), tc.filename, "text/plain", []byte("x")); (err != nil) != tc.refused {
 			t.Errorf("run %q file %q: %v, want refused = %t", tc.runID, tc.filename, err, tc.refused)
 		}
@@ -350,37 +357,13 @@ func TestPutFile_RefusesAManifestKey(t *testing.T) {
 func TestRunSnapshots_ReportsAFileAtAManifestKey(t *testing.T) {
 	t.Parallel()
 	store := lode.NewMemory()
-	cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: "run-a"}
-	client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
-	if err != nil {
-		t.Fatal(err)
-	}
-	record := lode.D{"source": "src", "category": "raw", "day": "2026-10-22", "run_id": "run-a", "event_type": "item"}
-	if _, err := client.dataset.Write(t.Context(), []lode.D{record}, nil); err != nil {
-		t.Fatal(err)
-	}
+	client := committedClient(t, store, "run-a")
 	key := "datasets/quarry/partitions/source=src/category=raw/day=2026-10-22/run_id=a/segments/files/manifest.json"
 	if err := store.Put(t.Context(), key, strings.NewReader("{}")); err != nil {
 		t.Fatal(err)
 	}
-	got, err := RunSnapshots(t.Context(), client.dataset, PartitionPrefix(cfg))
+	got, err := RunSnapshots(t.Context(), client.dataset, PartitionPrefix(client.config))
 	if err == nil || got != nil || !strings.Contains(err.Error(), key) {
 		t.Fatalf("RunSnapshots = %v, %v; want an error that names the file", got, err)
-	}
-}
-
-// A partition with another field is another layout, never the run's.
-func TestObjectPartition(t *testing.T) {
-	t.Parallel()
-	const dir = "source=s/category=c/day=2026-10-22/run_id=r/event_type=item"
-	for path, want := range map[string]string{
-		dir + "/segments/1/data/data":         dir,
-		dir + "/extra=x/segments/1/data/data": dir + "/extra=x",
-		"source=s/segments/1/data/data":       "source=s",
-	} {
-		got, ok := objectPartition("quarry", "datasets/quarry/partitions/"+path)
-		if _, valid := splitPartition(got); got != want || !ok || valid != (want == dir) {
-			t.Errorf("objectPartition(%q) = %q, %t, valid %t; want %q", path, got, ok, valid, want)
-		}
 	}
 }

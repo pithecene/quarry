@@ -173,36 +173,38 @@ func listKeys(ctx context.Context, store lode.Store, prefix string) (map[string]
 	return set, nil
 }
 
-// legacyRuns groups the dataset's committed snapshots by run, in key order.
+// legacyRuns groups the dataset's partitions by run, in key order, with the
+// committed snapshots that hold each. Lode's partition listing is complete,
+// since it loads the manifest of each snapshot whose index is not.
 func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string) ([]legacyRun, error) {
+	parts, err := dr.ListPartitions(ctx, lode.PartitionListOptions{})
+	if errors.Is(err, lode.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, WrapReadError(err, "datasets/"+dataset)
+	}
 	snapshots, err := RunSnapshots(ctx, dr, "")
 	if err != nil {
 		return nil, err
 	}
+	held := snapshotsByPartition(snapshots)
 	byPrefix := map[string]*legacyRun{}
-	for _, snap := range snapshots {
-		for _, obj := range snap.Objects {
-			path, ok := objectPartition(dataset, obj.Path)
-			if !ok {
-				continue
-			}
-			values, ok := splitPartition(path)
-			if !ok {
-				return nil, fmt.Errorf("rebuild: partition %q does not have the layout %s", path, strings.Join(partitionKeys, "/"))
-			}
-			prefix := path[:strings.LastIndex(path, "/")+1]
-			run, seen := byPrefix[prefix]
-			if !seen {
-				run = &legacyRun{prefix: prefix, partitions: map[string][]*lode.Snapshot{}, cfg: Config{
-					Dataset: dataset, Source: values[0], Category: values[1], Day: values[2], RunID: values[3],
-				}}
-				byPrefix[prefix] = run
-			}
-			held := run.partitions[values[4]]
-			if len(held) == 0 || held[len(held)-1] != snap {
-				run.partitions[values[4]] = append(held, snap)
-			}
+	for _, p := range parts {
+		path := p.String()
+		values, ok := splitPartition(path)
+		if !ok {
+			return nil, fmt.Errorf("rebuild: partition %q does not have the layout %s", path, strings.Join(partitionKeys, "/"))
 		}
+		prefix := path[:strings.LastIndex(path, "/")+1]
+		run, seen := byPrefix[prefix]
+		if !seen {
+			run = &legacyRun{prefix: prefix, partitions: map[string][]*lode.Snapshot{}, cfg: Config{
+				Dataset: dataset, Source: values[0], Category: values[1], Day: values[2], RunID: values[3],
+			}}
+			byPrefix[prefix] = run
+		}
+		run.partitions[values[4]] = held[path]
 	}
 	out := make([]legacyRun, 0, len(byPrefix))
 	for _, run := range byPrefix {
@@ -212,19 +214,24 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 	return out, nil
 }
 
-// objectPartition returns the partition path of a data object in the
-// dataset's partition tree.
-func objectPartition(dataset, path string) (string, bool) {
-	rel, ok := strings.CutPrefix(path, "datasets/"+dataset+"/partitions/")
-	if !ok {
-		return "", false
+// snapshotsByPartition indexes the snapshots by the first fields of their
+// objects' paths, as many as a Quarry partition has.
+func snapshotsByPartition(snapshots []*lode.Snapshot) map[string][]*lode.Snapshot {
+	held := map[string][]*lode.Snapshot{}
+	for _, snap := range snapshots {
+		for _, obj := range snap.Objects {
+			_, rel, _ := strings.Cut(obj.Path, "/partitions/")
+			segs := strings.SplitN(rel, "/", len(partitionKeys)+1)
+			if len(segs) <= len(partitionKeys) {
+				continue
+			}
+			path := strings.Join(segs[:len(partitionKeys)], "/")
+			if have := held[path]; len(have) == 0 || have[len(have)-1] != snap {
+				held[path] = append(have, snap)
+			}
+		}
 	}
-	segs := strings.Split(rel, "/")
-	end := 0
-	for end < len(segs) && strings.Contains(segs[end], "=") {
-		end++ // every field the partition has, so the caller reports another layout
-	}
-	return strings.Join(segs[:end], "/"), true
+	return held
 }
 
 // splitPartition decodes a partition path's values in layout order.
