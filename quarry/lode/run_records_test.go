@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -483,15 +483,15 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 // blockingPutStore blocks the first Put of data until release is closed.
 type blockingPutStore struct {
 	lode.RangeStore
-	once             sync.Once
+	blocked          atomic.Bool
 	entered, release chan struct{}
 }
 
 func (s *blockingPutStore) Put(ctx context.Context, key string, r io.Reader) error {
-	s.once.Do(func() {
+	if !s.blocked.Swap(true) {
 		close(s.entered)
 		<-s.release
-	})
+	}
 	return s.RangeStore.Put(ctx, key, r)
 }
 
