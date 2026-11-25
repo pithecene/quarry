@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"time"
 
@@ -38,8 +37,7 @@ type FileWriter interface {
 // Verify LodeClient implements FileWriter.
 var _ FileWriter = (*LodeClient)(nil)
 
-// recoveryTimeout bounds each step taken after a failed write: reading the
-// object back, and removing a file whose companion failed.
+// recoveryTimeout bounds the readback of a failed write.
 const recoveryTimeout = 10 * time.Second
 
 // PutFile writes a sidecar file to Lode Store at the computed Hive path.
@@ -48,12 +46,15 @@ const recoveryTimeout = 10 * time.Second
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
 	prefix := SidecarFilesPrefix(c.config)
 	key := collapseSidecarSlashes(prefix) + filename
-	if c.wroteFile(prefix + filename) {
+	state := c.fileState(filename)
+	if state == fileRecorded {
 		// An S3 store takes an identical second upload for its own first.
 		return WrapWriteError(fmt.Errorf("%s: %w", key, lode.ErrPathExists), key)
 	}
-	created, err := c.putData(ctx, key, data)
-	if err != nil {
+	if err := c.putData(ctx, key, data, state == fileIncomplete); err != nil {
+		if !errors.Is(err, lode.ErrPathExists) {
+			c.setFileState(filename, fileIncomplete) // it can be stored
+		}
 		return WrapWriteError(err, key)
 	}
 
@@ -66,9 +67,9 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	}
 	metaPath := key + ".meta.json"
 	if err := c.putReconciled(ctx, metaPath, meta); err != nil {
-		if created {
-			err = errors.Join(err, c.removeIncomplete(ctx, key, metaPath))
-		}
+		// The data stays: the store can have taken another write's equal bytes for
+		// these, so no state of it makes a removal safe.
+		c.setFileState(filename, fileIncomplete)
 		return WrapWriteError(err, metaPath)
 	}
 
@@ -82,45 +83,42 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	}
 	c.pendingFiles = append(c.pendingFiles, ref)
 	c.files = append(c.files, ref)
+	c.fileStates[filename] = fileRecorded
 	c.mu.Unlock()
 
 	return nil
 }
 
-// wroteFile reports whether this client recorded the file at path.
-func (c *LodeClient) wroteFile(path string) bool {
+// fileState is what this client knows of a filename.
+type fileState int
+
+const (
+	fileUnknown    fileState = iota
+	fileIncomplete           // its data is or can be stored, and the put failed
+	fileRecorded             // it is a file of the run
+)
+
+func (c *LodeClient) fileState(filename string) fileState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return slices.ContainsFunc(c.files, func(f SidecarFileRef) bool { return f.Path == path })
+	return c.fileStates[filename]
 }
 
-// removeIncomplete removes the data file of a write whose companion failed, so
-// that a retry can use its name. A companion at metaPath makes the data a whole
-// file, perhaps of another write whose equal bytes the store took for these, so
-// the data stays unless the companion is known to be absent.
-// The context may have ended the write, so its cancellation does not apply.
-func (c *LodeClient) removeIncomplete(ctx context.Context, key, metaPath string) error {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
-	defer cancel()
-	exists, err := c.store.Exists(ctx, metaPath)
-	if err == nil && !exists {
-		err = c.store.Delete(ctx, key)
-	}
-	if err != nil {
-		return fmt.Errorf("remove the incomplete file: %w", err)
-	}
-	return nil
+func (c *LodeClient) setFileState(filename string, state fileState) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.fileStates[filename] = state
 }
 
-// putData writes a file's data, and reports whether the store confirmed it.
-// Unlike its companion, the data names no run. So ErrPathExists stands without a
-// read, and a write that only its bytes confirm is not known to be this one.
-func (c *LodeClient) putData(ctx context.Context, key string, data []byte) (created bool, err error) {
+// putData writes a file's data. Unlike its companion, the data names no run, so
+// an existing path is a refusal without a read, except when this client retries a
+// put that can have stored it.
+func (c *LodeClient) putData(ctx context.Context, key string, data []byte, retry bool) error {
 	putErr := c.store.Put(ctx, key, bytes.NewReader(data))
-	if putErr == nil || errors.Is(putErr, lode.ErrPathExists) {
-		return putErr == nil, putErr
+	if putErr == nil || (errors.Is(putErr, lode.ErrPathExists) && !retry) {
+		return putErr
 	}
-	return false, c.reconcile(ctx, key, data, putErr)
+	return c.reconcile(ctx, key, data, putErr)
 }
 
 // putReconciled writes data at key, create-only. A write that reports an error

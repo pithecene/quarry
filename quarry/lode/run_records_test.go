@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/pithecene/lode/lode"
@@ -310,22 +309,19 @@ func TestEndRecord_SidecarFiles(t *testing.T) {
 	}
 }
 
-// companionFailingStore fails each companion write, and its Delete waits for the
-// context to end.
-type companionFailingStore struct{ lode.RangeStore }
+// companionFailingStore fails companion writes while failing is set.
+type companionFailingStore struct {
+	lode.RangeStore
+	failing bool
+}
 
 var errCompanion = errors.New("companion refused")
 
-func (s companionFailingStore) Put(ctx context.Context, key string, r io.Reader) error {
-	if strings.HasSuffix(key, ".meta.json") {
+func (s *companionFailingStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if s.failing && strings.HasSuffix(key, ".meta.json") {
 		return errCompanion
 	}
 	return s.RangeStore.Put(ctx, key, r)
-}
-
-func (companionFailingStore) Delete(ctx context.Context, _ string) error {
-	<-ctx.Done()
-	return ctx.Err()
 }
 
 // uncertainStore reports an error after it persists a key with the suffix, and
@@ -367,13 +363,15 @@ func uncertainClient(t *testing.T, store *uncertainStore) (*LodeClient, *[]strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	client.store = store
+	if store != nil {
+		client.store = store
+	}
 	return client, observed
 }
 
 // A companion write that reports an error after it persisted succeeds by
-// readback. One that the readback cannot settle leaves the data, whose name
-// stays taken, since the stored companion can belong to another write.
+// readback. One that the readback cannot settle leaves the data, and a retry
+// with the same companion completes the file.
 func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	t.Parallel()
 	for _, unreadable := range []bool{false, true} {
@@ -389,18 +387,17 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 					t.Fatalf("first PutFile: %v with files %v, want the write's error and no file", err, client.files)
 				}
 				store.unreadable = false
-				for _, contentType := range []string{"image/gif", "image/png"} {
-					if err := put(contentType); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
-						t.Fatalf("retry: %v with files %v, want ErrPathExists and no file", err, client.files)
-					}
+				if err := put("image/gif"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+					t.Fatalf("other companion: %v with files %v, want ErrPathExists and no file", err, client.files)
 				}
-				return
+				*observed = nil
+				err = put("image/png")
 			}
 			if err != nil {
 				t.Fatalf("PutFile: %v", err)
 			}
 			key := SidecarFilesPrefix(client.config) + "page.png"
-			if len(client.files) != 1 || len(*observed) != 1 || (*observed)[0] != key+".meta.json" {
+			if len(client.files) != 1 || !slices.Contains(*observed, key+".meta.json") {
 				t.Errorf("files = %v, observed = %v, want one file and its companion", client.files, *observed)
 			}
 			var companion map[string]any
@@ -458,6 +455,13 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 			if stored != tc.stored {
 				t.Errorf("stored = %q, want %q", stored, tc.stored)
 			}
+			// The data names no run, so an existing path is refused without a read.
+			if tc.before != "" {
+				fresh, _ := uncertainClient(t, &uncertainStore{RangeStore: store.RangeStore, suffix: "none", unreadable: true})
+				if err := fresh.PutFile(t.Context(), "page.png", "image/png", []byte(tc.before)); !errors.Is(err, ErrPathExists) {
+					t.Errorf("existing path: %v, want ErrPathExists", err)
+				}
+			}
 			store.unreadable, store.suffix = false, "none"
 			if err := client.PutFile(t.Context(), "other.txt", "text/plain", []byte("x")); err != nil {
 				t.Errorf("later write: %v", err)
@@ -504,8 +508,15 @@ func (s *equalUploadStore) Get(ctx context.Context, key string) (io.ReadCloser, 
 // it: two runs whose keys collapse to one can share a name.
 func TestPutFile_KeepsAnEarlierFileOfEqualBytes(t *testing.T) {
 	t.Parallel()
-	for _, other := range []bool{false, true} {
-		t.Run(fmt.Sprintf("other client=%t", other), func(t *testing.T) {
+	for _, tc := range []struct {
+		name, contentType string
+		other             bool
+	}{
+		{"same client, other type", "text/html", false},
+		{"same client, same type", "text/plain", false},
+		{"other client", "text/html", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			store := &equalUploadStore{RangeStore: lode.NewMemory()}
 			newClient := func(category string) *LodeClient {
 				client, err := NewLodeClientWithFactory(t.Context(), Config{
@@ -519,13 +530,13 @@ func TestPutFile_KeepsAnEarlierFileOfEqualBytes(t *testing.T) {
 			}
 			first := newClient("c/d")
 			second := first
-			if other {
+			if tc.other {
 				second = newClient("c//d")
 			}
 			if err := first.PutFile(t.Context(), "a.txt", "text/plain", []byte("same")); err != nil {
 				t.Fatal(err)
 			}
-			if err := second.PutFile(t.Context(), "a.txt", "text/html", []byte("same")); !errors.Is(err, ErrPathExists) {
+			if err := second.PutFile(t.Context(), "a.txt", tc.contentType, []byte("same")); !errors.Is(err, ErrPathExists) || len(first.files) != 1 {
 				t.Errorf("second write: %v, want ErrPathExists", err)
 			}
 			if store.reads != 0 {
@@ -573,26 +584,41 @@ func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
 	}
 }
 
-// A file whose companion fails is removed within a bound, and is no file of the
-// run.
-func TestPutFile_BoundsTheRemovalOfAnIncompleteFile(t *testing.T) {
+// A file whose companion fails is no file of the run, and its data stays. Only a
+// retry of equal data completes it.
+func TestPutFile_KeepsTheDataOfAnIncompleteFile(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "run-1"}
-		client, err := NewLodeClientWithFactory(t.Context(), cfg, lode.Memory())
-		if err != nil {
-			t.Fatal(err)
-		}
-		store, err := lode.Memory()()
-		if err != nil {
-			t.Fatal(err)
-		}
-		client.store = companionFailingStore{store}
-		err = client.PutFile(t.Context(), "a.txt", "text/plain", []byte("x"))
-		if !errors.Is(err, errCompanion) || !errors.Is(err, context.DeadlineExceeded) || len(client.files) != 0 {
-			t.Errorf("PutFile = %v with files %v, want both failures and no file", err, client.files)
-		}
-	})
+	for _, uncertain := range []bool{false, true} {
+		t.Run(fmt.Sprintf("uncertain data=%t", uncertain), func(t *testing.T) {
+			mem := lode.NewMemory()
+			store := &companionFailingStore{RangeStore: mem, failing: true}
+			client, _ := uncertainClient(t, nil)
+			client.store = store
+			if uncertain {
+				store.RangeStore = &uncertainStore{RangeStore: mem, suffix: "a.txt"}
+			}
+			key := SidecarFilesPrefix(client.config) + "a.txt"
+			put := func(data string) error {
+				return client.PutFile(t.Context(), "a.txt", "text/plain", []byte(data))
+			}
+			if err := put("x"); !errors.Is(err, errCompanion) || len(client.files) != 0 {
+				t.Fatalf("PutFile = %v with files %v, want the companion's failure and no file", err, client.files)
+			}
+			if exists, err := mem.Exists(t.Context(), key); err != nil || !exists {
+				t.Fatalf("data exists = %v, %v, want it kept", exists, err)
+			}
+			store.failing, store.RangeStore = false, mem
+			if err := put("y"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+				t.Errorf("other data: %v with files %v, want ErrPathExists and no file", err, client.files)
+			}
+			if err := put("x"); err != nil || len(client.files) != 1 {
+				t.Errorf("equal data: %v with files %v, want one file", err, client.files)
+			}
+			if err := put("x"); !errors.Is(err, ErrPathExists) || len(client.files) != 1 {
+				t.Errorf("recorded name: %v with files %v, want ErrPathExists and one file", err, client.files)
+			}
+		})
+	}
 }
 
 // An end record whose write reports an error after it persisted is written, at
