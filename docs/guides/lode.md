@@ -177,14 +177,19 @@ The following behaviors are explicitly **out of scope**:
 - Callers are responsible for implementing retry logic at the job/orchestration level.
 
 **No Storage-Aware Throttling:**
-- Quarry does not pace a run to the storage backend. Slow storage reaches the
-  script only through the policy ([policy guide](policy.md)).
-- `strict` writes each event before it accepts the next, and `streaming`
-  blocks ingestion while it flushes a full buffer
-  ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Streaming Policy). Either way
-  the script's emit calls wait ([emit guide](emit.md) §Backpressure).
-- `buffered` writes when the run ends, so slow storage delays the end of the run.
-  A full buffer drops advisory events, and then fails the run.
+- Quarry does not pace a run to the storage backend.
+- Events reach storage through the policy. `strict` writes each event before it
+  accepts the next. `streaming` waits for each flush that a trigger or its byte
+  bound requires ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Flush Triggers). `buffered`
+  writes when the run ends, so slow storage delays the end of the run.
+- While ingestion waits, the IPC pipe can fill, and the script's emit calls
+  then wait ([emit guide](emit.md) §Backpressure). An emit that returns does not
+  confirm that its event is stored.
+- `storage.put()` and artifact ranges bypass the policy. Each waits for its own
+  storage write.
+- When the `buffered` buffer is full, it drops an incoming advisory event, or
+  evicts an older one to admit an event it may not drop. It fails the run only
+  when it cannot make room ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
 
 **No Deduplication:**
 - Duplicate detection is a downstream consumer responsibility.
