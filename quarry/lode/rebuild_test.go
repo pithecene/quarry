@@ -382,3 +382,23 @@ func TestRebuildRunRecords_RefusesAnotherLayout(t *testing.T) {
 		})
 	}
 }
+
+func TestSnapshotsByPartition(t *testing.T) {
+	t.Parallel()
+	const partition = "source=s/category=c/day=2026-10-21/run_id=r/event_type=item"
+	for _, tc := range []struct {
+		name, path string
+		want       int
+	}{
+		{"in the partition tree", "datasets/quarry/partitions/" + partition + "/data", 1},
+		{"without the dataset's prefix", partition + "/data", 0},
+		{"in another dataset", "datasets/other/partitions/" + partition + "/data", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := &lode.Snapshot{ID: "1", Manifest: &lode.Manifest{Objects: []lode.ObjectRef{{Path: tc.path}}}}
+			if got := snapshotsByPartition("quarry", []*lode.Snapshot{snap}); len(got) != tc.want || len(got[partition]) != tc.want {
+				t.Errorf("snapshotsByPartition(%q) = %v, want %d entries", tc.path, got, tc.want)
+			}
+		})
+	}
+}
