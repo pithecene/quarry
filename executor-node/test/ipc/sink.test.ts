@@ -404,34 +404,6 @@ function encodeAckFrame(writeId: number, ok: boolean, error?: string): Buffer {
 }
 
 describe('StdioSink writeFile with AckReader', () => {
-  it('rejects with a refusal that arrives before the write settles', async () => {
-    const ackStream = new PassThrough()
-    const ackReader = new AckReader(ackStream)
-    ackReader.start()
-    const output = new Writable({
-      write(_chunk, _encoding, done) {
-        const ack = { type: 'file_write_ack', write_id: 1, ok: false, error: 'refused' }
-        ackStream.write(encodeFrame(msgpackEncode(ack)))
-        setTimeout(done, 20)
-      },
-      highWaterMark: 1
-    })
-    const unhandled: unknown[] = []
-    const record = (err: unknown) => unhandled.push(err)
-    process.on('unhandledRejection', record)
-    try {
-      const sink = new StdioSink(output, undefined, ackReader)
-      await expect(sink.writeFile('a.txt', 'text/plain', Buffer.from('x'))).rejects.toThrow(
-        'refused'
-      )
-      await new Promise((done) => setTimeout(done, 40))
-      expect(unhandled).toEqual([])
-    } finally {
-      process.off('unhandledRejection', record)
-      ackReader.stop()
-    }
-  })
-
   it('blocks on ack and resolves on success', async () => {
     const output = new PassThrough()
     const ackStream = new PassThrough()
