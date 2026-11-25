@@ -40,7 +40,7 @@ tasks:
       - go test -v -timeout 120s ./runtime/ -e2e
 
   test:s3:
-    desc: Run the S3 lifecycle smoke against a disposable RustFS container (requires Docker)
+    desc: Run the S3 lifecycle and concurrency smokes against a disposable RustFS container (requires Docker)
     deps: [go:build]
     cmds:
       - scripts/ci/s3-smoke.sh
