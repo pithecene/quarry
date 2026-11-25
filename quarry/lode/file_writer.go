@@ -48,7 +48,7 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	key := collapseSidecarSlashes(prefix) + filename
 	// Lode takes ".../segments/<name>/manifest.json" for a snapshot's manifest,
 	// and its listing would then fail for every run of the dataset.
-	if filename == "manifest.json" && strings.HasSuffix(key, "/segments/files/manifest.json") {
+	if segs := strings.Split(key, "/"); segs[len(segs)-1] == "manifest.json" && segs[len(segs)-3] == "segments" {
 		return WrapWriteError(fmt.Errorf("%s: %w: the key is reserved for a snapshot", key, lode.ErrInvalidPath), key)
 	}
 	if !c.reserveFilename(filename) {

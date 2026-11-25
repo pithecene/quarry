@@ -324,6 +324,7 @@ func TestPutFile_RefusesAManifestKey(t *testing.T) {
 		{"a/segments", "other.json", false},
 		{"segments", "manifest.json", false},
 		{"a", "manifest.json", false},
+		{"a", "segments/files/manifest.json", true},
 	} {
 		store := lode.NewMemory()
 		cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: tc.runID}
@@ -340,6 +341,46 @@ func TestPutFile_RefusesAManifestKey(t *testing.T) {
 		}
 		if _, err := RunSnapshots(t.Context(), client.dataset, ""); err != nil {
 			t.Errorf("run %q file %q: listing: %v", tc.runID, tc.filename, err)
+		}
+	}
+}
+
+// A file that an older writer stored at a manifest's key fails the listing
+// with that key, rather than leaving a partial inventory.
+func TestRunSnapshots_ReportsAFileAtAManifestKey(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: "run-a"}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := lode.D{"source": "src", "category": "raw", "day": "2026-10-22", "run_id": "run-a", "event_type": "item"}
+	if _, err := client.dataset.Write(t.Context(), []lode.D{record}, nil); err != nil {
+		t.Fatal(err)
+	}
+	key := "datasets/quarry/partitions/source=src/category=raw/day=2026-10-22/run_id=a/segments/files/manifest.json"
+	if err := store.Put(t.Context(), key, strings.NewReader("{}")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RunSnapshots(t.Context(), client.dataset, PartitionPrefix(cfg))
+	if err == nil || got != nil || !strings.Contains(err.Error(), key) {
+		t.Fatalf("RunSnapshots = %v, %v; want an error that names the file", got, err)
+	}
+}
+
+// A partition with another field is another layout, never the run's.
+func TestObjectPartition(t *testing.T) {
+	t.Parallel()
+	const dir = "source=s/category=c/day=2026-10-22/run_id=r/event_type=item"
+	for path, want := range map[string]string{
+		dir + "/segments/1/data/data":         dir,
+		dir + "/extra=x/segments/1/data/data": dir + "/extra=x",
+		"source=s/segments/1/data/data":       "source=s",
+	} {
+		got, ok := objectPartition("quarry", "datasets/quarry/partitions/"+path)
+		if _, valid := splitPartition(got); got != want || !ok || valid != (want == dir) {
+			t.Errorf("objectPartition(%q) = %q, %t, valid %t; want %q", path, got, ok, valid, want)
 		}
 	}
 }

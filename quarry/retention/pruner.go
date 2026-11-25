@@ -183,7 +183,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if err != nil {
 		return out, true, err
 	}
-	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, stored, len(stored) > 0)
+	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, stored)
 	out.Skipped = skipped
 	if errors.Is(err, errMalformedInventory) {
 		out.Kept = keptInventory

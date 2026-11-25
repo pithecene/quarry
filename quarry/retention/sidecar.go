@@ -24,7 +24,7 @@ const metaSuffix = ".meta.json"
 // so Lode's expiry never deletes them (CONTRACT_LODE.md §Sidecar File
 // Inventory). Recorded paths outside the run's sidecar prefix are returned
 // as skipped and are never deleted.
-func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, snapshots []*lode.Snapshot, committed bool) (paths, skipped []string, err error) {
+func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, snapshots []*lode.Snapshot) (paths, skipped []string, err error) {
 	prefix := qlode.SidecarFilesPrefix(cfg)
 	// The run key was validated before selection. Its recorded prefix may
 	// contain repeated slashes that older Lode stores collapsed.
@@ -48,7 +48,7 @@ func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, snapshots [
 	}
 	if !unambiguous(cfg) {
 		for _, file := range ended {
-			if committed {
+			if len(snapshots) > 0 {
 				recorded = append(recorded, file.Path)
 			} else {
 				skipped = append(skipped, file.Path)

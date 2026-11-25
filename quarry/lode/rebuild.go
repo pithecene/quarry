@@ -219,11 +219,12 @@ func objectPartition(dataset, path string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	segs := strings.SplitN(rel, "/", len(partitionKeys)+1)
-	if len(segs) <= len(partitionKeys) {
-		return rel, true // no partition of the layout, which the caller reports
+	segs := strings.Split(rel, "/")
+	end := 0
+	for end < len(segs) && strings.Contains(segs[end], "=") {
+		end++ // every field the partition has, so the caller reports another layout
 	}
-	return strings.Join(segs[:len(partitionKeys)], "/"), true
+	return strings.Join(segs[:end], "/"), true
 }
 
 // splitPartition decodes a partition path's values in layout order.
