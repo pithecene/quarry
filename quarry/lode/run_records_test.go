@@ -370,8 +370,8 @@ func uncertainClient(t *testing.T, store *uncertainStore) (*LodeClient, *[]strin
 }
 
 // A companion write that reports an error after it persisted succeeds by
-// readback. One that the readback cannot settle leaves the data, and a retry
-// with the same companion completes the file.
+// readback. One that the readback cannot settle leaves the data, whose name
+// stays taken.
 func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	t.Parallel()
 	for _, unreadable := range []bool{false, true} {
@@ -387,11 +387,12 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 					t.Fatalf("first PutFile: %v with files %v, want the write's error and no file", err, client.files)
 				}
 				store.unreadable = false
-				if err := put("image/gif"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
-					t.Fatalf("other companion: %v with files %v, want ErrPathExists and no file", err, client.files)
+				for _, contentType := range []string{"image/gif", "image/png"} {
+					if err := put(contentType); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+						t.Fatalf("retry: %v with files %v, want ErrPathExists and no file", err, client.files)
+					}
 				}
-				*observed = nil
-				err = put("image/png")
+				return
 			}
 			if err != nil {
 				t.Fatalf("PutFile: %v", err)
@@ -475,6 +476,29 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 				t.Errorf("later write: %v", err)
 			}
 		})
+	}
+}
+
+// Two puts of one filename at once record it once.
+func TestPutFile_RecordsAConcurrentNameOnce(t *testing.T) {
+	t.Parallel()
+	client, _ := uncertainClient(t, nil)
+	client.store = &equalUploadStore{RangeStore: lode.NewMemory()}
+	errs := make(chan error, 8)
+	for range cap(errs) {
+		go func() { errs <- client.PutFile(t.Context(), "a.txt", "text/plain", []byte("same")) }()
+	}
+	succeeded := 0
+	for range cap(errs) {
+		switch err := <-errs; {
+		case err == nil:
+			succeeded++
+		case !errors.Is(err, ErrPathExists):
+			t.Errorf("PutFile: %v, want ErrPathExists", err)
+		}
+	}
+	if succeeded != 1 || len(client.files) != 1 {
+		t.Errorf("%d puts succeeded with files %v, want one of each", succeeded, client.files)
 	}
 }
 
@@ -593,8 +617,8 @@ func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
 	}
 }
 
-// A file whose companion fails is no file of the run, and its data stays. Only a
-// retry of equal data completes it.
+// A file whose companion fails is no file of the run, and its data stays, so its
+// name stays taken.
 func TestPutFile_KeepsTheDataOfAnIncompleteFile(t *testing.T) {
 	t.Parallel()
 	for _, uncertain := range []bool{false, true} {
@@ -617,14 +641,10 @@ func TestPutFile_KeepsTheDataOfAnIncompleteFile(t *testing.T) {
 				t.Fatalf("data exists = %v, %v, want it kept", exists, err)
 			}
 			store.failing, store.RangeStore = false, mem
-			if err := put("y"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
-				t.Errorf("other data: %v with files %v, want ErrPathExists and no file", err, client.files)
-			}
-			if err := put("x"); err != nil || len(client.files) != 1 {
-				t.Errorf("equal data: %v with files %v, want one file", err, client.files)
-			}
-			if err := put("x"); !errors.Is(err, ErrPathExists) || len(client.files) != 1 {
-				t.Errorf("recorded name: %v with files %v, want ErrPathExists and one file", err, client.files)
+			for _, data := range []string{"x", "y"} {
+				if err := put(data); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+					t.Errorf("retry of %q: %v with files %v, want ErrPathExists and no file", data, err, client.files)
+				}
 			}
 		})
 	}

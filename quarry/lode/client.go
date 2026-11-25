@@ -30,11 +30,10 @@ type LodeClient struct { //nolint:revive // intentional naming for clarity
 	// snapshots.
 	store lode.RangeStore
 
-	putMu        sync.Mutex           // serializes PutFile, and guards fileStates
-	mu           sync.Mutex           // guards pendingFiles and files
-	pendingFiles []SidecarFileRef     // sidecar files written since last snapshot flush
-	files        []SidecarFileRef     // every sidecar file the run wrote
-	fileStates   map[string]fileState // by filename
+	mu           sync.Mutex       // guards the fields below
+	pendingFiles []SidecarFileRef // sidecar files written since last snapshot flush
+	files        []SidecarFileRef // every sidecar file the run wrote
+	filenames    map[string]bool  // filenames of the run's files and of puts in progress
 }
 
 // openClient creates the store once, opens the dataset over it, and returns
@@ -57,10 +56,10 @@ func openClient(ctx context.Context, cfg Config, factory lode.Factory[lode.Range
 		return nil, err
 	}
 	return &LodeClient{
-		fileStates: make(map[string]fileState),
-		dataset:    ds,
-		config:     cfg,
-		store:      store,
+		filenames: make(map[string]bool),
+		dataset:   ds,
+		config:    cfg,
+		store:     store,
 	}, nil
 }
 

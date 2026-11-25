@@ -281,15 +281,13 @@ the key is an empty string.
 - A write of the data file can report an error after storage persisted it.
   Quarry then reads the file back, and the write succeeds with a logged warning
   when the stored bytes are its own. When the store reports that the path exists,
-  the write fails without that read, since the data file names no run, unless it
-  retries a put of the same run that can have stored those bytes.
+  the write fails without that read, since the data file names no run.
 - A run writes each filename once: a second write of a recorded filename fails
   as an existing path, whatever its bytes are.
 - When the companion write fails, the put fails and the data file stays in
   storage, outside the run's inventory. Quarry MUST NOT remove it, since a store
-  can take an equal upload of another write for this one. A retry by the same
-  run completes the file when its data is equal and its companion is absent or
-  equal.
+  can take an equal upload of another write for this one. A store that
+  refuses existing paths then refuses a retry of that filename.
 - A companion write can report an error after storage persisted it. Quarry
   then reads the companion back, and the write succeeds with a logged warning
   when the stored bytes are its own.
