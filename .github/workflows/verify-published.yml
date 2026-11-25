@@ -1,0 +1,61 @@
+name: 🔏 Verify Published Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release to verify, from v0.20.0 on
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  binary:
+    name: 📦 Binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-15]
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 🔏 Verify
+        run: scripts/ci/verify-published.sh "$TAG"
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+
+  image:
+    name: 🐳 Image (${{ matrix.suffix || 'full' }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            suffix: ""
+          - os: ubuntu-latest
+            suffix: -slim
+          - os: ubuntu-24.04-arm
+            suffix: -slim
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔏 Verify
+        run: scripts/ci/verify-image.sh "$TAG" "$SUFFIX"
+        env:
+          TAG: ${{ inputs.tag }}
+          SUFFIX: ${{ matrix.suffix }}
