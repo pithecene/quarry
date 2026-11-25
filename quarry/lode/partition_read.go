@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/pithecene/lode/lode"
 
@@ -61,25 +60,16 @@ func OpenViewAt(ctx context.Context, dataset string, store lode.ObjectStore, sna
 	return lode.OpenReadOnly(lode.Use(store)).Records(ctx, lode.DatasetID(dataset), recordCodec(), layout(), lode.WithAnchor(snapshot))
 }
 
-// ReadPartitionRecords returns every record stored in one partition (a path
-// as ListPartitions returns it), across all of its committed snapshots, each
-// data file read once. Lode's Manifests yields each manifest with the load
-// that its listing made, so no manifest is read twice, and it skips a
-// manifest that expired after the listing.
+// ReadPartitionRecords returns every record stored in one partition, across
+// all of its committed snapshots, indexed there or not, each data file read
+// once.
 func ReadPartitionRecords(ctx context.Context, ds *lode.RecordView[lode.D], partition lode.PartitionPath) ([]lode.D, error) {
-	seen := map[string]bool{}
-	var out []lode.D
-	for loaded, err := range ds.Manifests(ctx, partition, lode.ManifestListOptions{}) {
-		if err != nil {
-			return nil, WrapReadError(err, partition.String())
-		}
-		recs, err := readManifestRecords(ctx, ds, loaded.Manifest, partition, seen)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, recs...)
+	prefix := partition.String() + "/"
+	snapshots, err := RunSnapshots(ctx, ds, prefix)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	return ReadSnapshotRecords(ctx, ds, snapshots, prefix)
 }
 
 // ReadSnapshotPartitionRecords returns the records that one committed
@@ -94,17 +84,16 @@ func ReadSnapshotPartitionRecords(ctx context.Context, ds *lode.RecordView[lode.
 	if err != nil {
 		return nil, WrapReadError(err, partition.String())
 	}
-	return readManifestRecords(ctx, ds, snap.Manifest, partition, map[string]bool{})
+	return readManifestRecords(ctx, ds, snap.Manifest, partition.String()+"/", map[string]bool{})
 }
 
-// readManifestRecords reads the records of the manifest's objects in the
-// partition, skipping an object that seen holds and adding each object it
+// readManifestRecords reads the records of the manifest's objects under
+// prefix, skipping an object that seen holds and adding each object it
 // reads.
-func readManifestRecords(ctx context.Context, ds *lode.RecordView[lode.D], m *lode.Manifest, partition lode.PartitionPath, seen map[string]bool) ([]lode.D, error) {
-	dir := "/" + partition.String() + "/"
+func readManifestRecords(ctx context.Context, ds *lode.RecordView[lode.D], m *lode.Manifest, prefix string, seen map[string]bool) ([]lode.D, error) {
 	var out []lode.D
 	for _, obj := range m.Objects {
-		if seen[obj.Path] || !strings.Contains(obj.Path, dir) {
+		if seen[obj.Path] || !underPrefix(obj.Path, prefix) {
 			continue
 		}
 		seen[obj.Path] = true

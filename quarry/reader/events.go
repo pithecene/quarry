@@ -18,12 +18,13 @@ var ErrInvalidRun = errors.New("invalid run")
 // ReadEvents returns the run's event records (record_kind "event" and
 // "artifact_event") in sequence order. Artifact chunks and the metrics record
 // are not events and are omitted. The run's partitions are addressed from its
-// start record's partition prefix, never re-derived.
+// start record's partition prefix, never re-derived, and every committed
+// snapshot under it is read, indexed or not.
 func (r *Reader) ReadEvents(ctx context.Context, run Run) ([]map[string]any, error) {
 	if _, err := r.validateRun(run); err != nil {
 		return nil, err
 	}
-	recs, err := r.readPartitions(ctx, run.Partition, func(lode.PartitionPath) bool { return true })
+	recs, err := r.readRecords(ctx, run.Partition)
 	if err != nil {
 		return nil, err
 	}
@@ -54,13 +55,11 @@ func (r *Reader) validateRun(run Run) (qlode.Config, error) {
 	return cfg, nil
 }
 
-// readPartitions returns every record in the partitions under prefix that
-// keep accepts: a run's partition prefix, or one partition of it matched
-// exactly, since a partition path has no trailing "/". The view is bound to
-// the reader's store, so records come from the same store the run was
-// listed from. A dataset without snapshots, or a prefix without partitions,
-// holds no records.
-func (r *Reader) readPartitions(ctx context.Context, prefix string, keep func(lode.PartitionPath) bool) ([]lode.D, error) {
+// readRecords returns every record under prefix, which ends with "/": a run's
+// partition prefix, or one partition of it. The view is bound to the reader's
+// store, so records come from the same store the run was listed from. A
+// dataset without snapshots, or a prefix without objects, holds no records.
+func (r *Reader) readRecords(ctx context.Context, prefix string) ([]lode.D, error) {
 	dr, err := qlode.OpenView(ctx, r.dataset, r.store)
 	if errors.Is(err, lode.ErrNotFound) {
 		return nil, nil
@@ -68,26 +67,10 @@ func (r *Reader) readPartitions(ctx context.Context, prefix string, keep func(lo
 	if err != nil {
 		return nil, qlode.WrapReadError(err, "datasets/"+r.dataset)
 	}
-
 	// The prefix ends with "/", so run_id=r1/ never matches run_id=r10/.
-	parts, err := dr.ListPartitions(ctx, lode.PartitionListOptions{Prefix: prefix})
+	snapshots, err := qlode.RunSnapshots(ctx, dr, prefix)
 	if err != nil {
-		if errors.Is(err, lode.ErrNotFound) {
-			return nil, nil
-		}
-		return nil, qlode.WrapReadError(err, prefix)
+		return nil, err
 	}
-
-	var recs []lode.D
-	for _, part := range parts {
-		if !keep(part) {
-			continue
-		}
-		partRecs, err := qlode.ReadPartitionRecords(ctx, dr, part)
-		if err != nil {
-			return nil, err
-		}
-		recs = append(recs, partRecs...)
-	}
-	return recs, nil
+	return qlode.ReadSnapshotRecords(ctx, dr, snapshots, prefix)
 }

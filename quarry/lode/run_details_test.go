@@ -41,8 +41,8 @@ func TestQueryRunDetails_ScopesSnapshotReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Another run with a similar ID shares the dataset and selectors. Its
-	// manifest is older than the head and should never be loaded.
+	// Another run with a similar ID shares the dataset and selectors. The
+	// inventory reads its manifest, and nothing reads its data.
 	unrelated, err := client.dataset.Write(t.Context(), lode.R(lode.D{
 		"source": cfg.Source, "category": cfg.Category, "day": cfg.Day, "run_id": cfg.RunID + "-other",
 		"event_type": "metrics", "record_kind": RecordKindMetrics, "policy": "buffered",
@@ -76,18 +76,12 @@ func TestQueryRunDetails_ScopesSnapshotReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := "datasets/" + cfg.Dataset + "/partitions/" + PartitionPrefix(cfg)
-	if !slices.Contains(counted.lists, prefix) {
-		t.Errorf("storage listings = %v, want run partition prefix %q", counted.lists, prefix)
-	}
-	for _, listed := range counted.lists {
-		if !strings.HasPrefix(listed, prefix) && listed != "datasets/"+cfg.Dataset+"/expired/" {
-			t.Errorf("listed outside the run and Lode's retention index: %q", listed)
-		}
+	if n := len(counted.lists); n != 1 {
+		t.Errorf("storage listings = %v, want the one inventory", counted.lists)
 	}
 	for _, path := range counted.gets {
-		if strings.Contains(path, "/"+string(unrelated.ID)+"/") || strings.Contains(path, "/category=other/") {
-			t.Errorf("read unrelated snapshot data or metadata: %q", path)
+		if strings.Contains(path, "/data/") && (strings.Contains(path, "/"+string(unrelated.ID)+"/") || strings.Contains(path, "/category=other/")) {
+			t.Errorf("read unrelated snapshot data: %q", path)
 		}
 	}
 	if details.Policy == nil || *details.Policy != "streaming" {
@@ -145,8 +139,8 @@ func TestQueryRunDetails_ResolvesOwnersAtTheirSnapshot(t *testing.T) {
 			headReads++
 		}
 	}
-	if headReads != 1 {
-		t.Errorf("read the head snapshot %s %d times, want once, by the details view: %v", head.ID, headReads, counted.gets)
+	if headReads != 2 {
+		t.Errorf("read the head snapshot %s %d times, want twice, by the details view and the inventory: %v", head.ID, headReads, counted.gets)
 	}
 }
 
@@ -283,5 +277,93 @@ func TestRecordKey_ReadsExactFieldNames(t *testing.T) {
 				t.Errorf("got %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+// The inventory of a snapshot without a partition manifest is read.
+func TestQueryRunDetails_IncompleteIndex(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: "run-a"}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := SidecarFileRef{Filename: "a.txt", ContentType: "text/plain", Path: SidecarFilesPrefix(cfg) + "a.txt"}
+	record := lode.D{"source": cfg.Source, "category": cfg.Category, "day": cfg.Day, "run_id": cfg.RunID, "event_type": "item", "record_kind": RecordKindEvent}
+	if _, err := client.dataset.Write(t.Context(), []lode.D{record}, map[string]any{MetadataKeySidecarFiles: []SidecarFileRef{ref}}); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := store.List(t.Context(), "datasets/quarry/partitions/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range keys {
+		if strings.HasSuffix(k, "/manifest.json") {
+			if err := store.Delete(t.Context(), k); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	details, err := QueryRunDetails(t.Context(), sharedFactory(store), cfg)
+	if err != nil || len(details.SidecarFiles) != 1 || details.SidecarFiles[0] != ref {
+		t.Fatalf("details = %+v, %v; want the one file", details, err)
+	}
+}
+
+// committedClient is a client of the run after the dataset's first commit.
+func committedClient(t *testing.T, store lode.RangeStore, runID string) *LodeClient {
+	t.Helper()
+	cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: runID}
+	client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := lode.D{"source": "src", "category": "raw", "day": "2026-10-22", "run_id": "b", "event_type": "item"}
+	if _, err := client.dataset.Write(t.Context(), []lode.D{record}, nil); err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
+// A file at a key that Lode reads as a manifest would fail every listing of
+// the dataset, so the write is refused, and every near key is written.
+func TestPutFile_RefusesAManifestKey(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		runID, filename string
+		refused         bool
+	}{
+		{"a/segments", "manifest.json", true},
+		{"a/segments/", "manifest.json", true},
+		{"a/segments", "other.json", false},
+		{"segments", "manifest.json", false},
+		{"a", "manifest.json", false},
+		{"a", "segments/files/manifest.json", true},
+	} {
+		store := lode.NewMemory()
+		client := committedClient(t, store, tc.runID)
+		if err := client.PutFile(t.Context(), tc.filename, "text/plain", []byte("x")); (err != nil) != tc.refused {
+			t.Errorf("run %q file %q: %v, want refused = %t", tc.runID, tc.filename, err, tc.refused)
+		}
+		if _, err := RunSnapshots(t.Context(), client.dataset, ""); err != nil {
+			t.Errorf("run %q file %q: listing: %v", tc.runID, tc.filename, err)
+		}
+	}
+}
+
+// A file that an older writer stored at a manifest's key fails the listing
+// with that key, rather than leaving a partial inventory.
+func TestRunSnapshots_ReportsAFileAtAManifestKey(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	client := committedClient(t, store, "run-a")
+	key := "datasets/quarry/partitions/source=src/category=raw/day=2026-10-22/run_id=a/segments/files/manifest.json"
+	if err := store.Put(t.Context(), key, strings.NewReader("{}")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := RunSnapshots(t.Context(), client.dataset, PartitionPrefix(client.config))
+	if err == nil || got != nil || !strings.Contains(err.Error(), key) {
+		t.Fatalf("RunSnapshots = %v, %v; want an error that names the file", got, err)
 	}
 }

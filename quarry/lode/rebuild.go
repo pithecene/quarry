@@ -18,9 +18,8 @@ import (
 )
 
 // Rebuild backfills run records for runs that predate them (CONTRACT_RUN.md
-// §Backfilled Run Records). It derives runs from Lode's partition tree, the
-// one place that enumerates partitions, and writes only what the stored data
-// shows.
+// §Backfilled Run Records). It derives runs from the dataset's committed
+// snapshots and writes only what the stored data shows.
 
 // RebuildOptions controls a run-record rebuild.
 type RebuildOptions struct {
@@ -72,16 +71,16 @@ const (
 // metricsEventType is the event_type partition of a run's metrics record.
 const metricsEventType = "metrics"
 
-// legacyRun is one run found in the partition tree: its decoded key and the
-// partition paths of its event types.
+// legacyRun is one run found in the dataset: its decoded key and the
+// snapshots that hold each of its event types.
 type legacyRun struct {
 	cfg        Config
 	prefix     string
-	partitions map[string]lode.PartitionPath // event_type -> partition path
+	partitions map[string][]*lode.Snapshot // event_type -> snapshots
 }
 
 // RebuildRunRecords writes run records for every run in the dataset's
-// partition tree that has none: a start record, and an end record when the
+// committed snapshots that has none: a start record, and an end record when the
 // run has exactly one terminal event. A run that already has a start record
 // written by the runtime is never touched, and a backfilled run gains only a
 // missing end record, so rerunning is idempotent. A store error terminates
@@ -174,7 +173,9 @@ func listKeys(ctx context.Context, store lode.Store, prefix string) (map[string]
 	return set, nil
 }
 
-// legacyRuns groups the dataset's partitions by run, in key order.
+// legacyRuns groups the dataset's partitions by run, in key order, with the
+// committed snapshots that hold each. Lode's partition listing is complete,
+// since it loads the manifest of each snapshot whose index is not.
 func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string) ([]legacyRun, error) {
 	parts, err := dr.ListPartitions(ctx, lode.PartitionListOptions{})
 	if errors.Is(err, lode.ErrNotFound) {
@@ -183,6 +184,11 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 	if err != nil {
 		return nil, WrapReadError(err, "datasets/"+dataset)
 	}
+	snapshots, err := RunSnapshots(ctx, dr, "")
+	if err != nil {
+		return nil, err
+	}
+	held := snapshotsByPartition(dataset, snapshots)
 	byPrefix := map[string]*legacyRun{}
 	for _, p := range parts {
 		path := p.String()
@@ -193,12 +199,14 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 		prefix := path[:strings.LastIndex(path, "/")+1]
 		run, seen := byPrefix[prefix]
 		if !seen {
-			run = &legacyRun{prefix: prefix, partitions: map[string]lode.PartitionPath{}, cfg: Config{
+			run = &legacyRun{prefix: prefix, partitions: map[string][]*lode.Snapshot{}, cfg: Config{
 				Dataset: dataset, Source: values[0], Category: values[1], Day: values[2], RunID: values[3],
 			}}
 			byPrefix[prefix] = run
 		}
-		run.partitions[values[4]] = p
+		if len(held[path]) > 0 { // a listed partition alone is no evidence of a record
+			run.partitions[values[4]] = held[path]
+		}
 	}
 	out := make([]legacyRun, 0, len(byPrefix))
 	for _, run := range byPrefix {
@@ -206,6 +214,26 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].prefix < out[j].prefix })
 	return out, nil
+}
+
+// snapshotsByPartition indexes the snapshots by the first fields of their
+// objects' paths, as many as a Quarry partition has.
+func snapshotsByPartition(dataset string, snapshots []*lode.Snapshot) map[string][]*lode.Snapshot {
+	held := map[string][]*lode.Snapshot{}
+	for _, snap := range snapshots {
+		for _, obj := range snap.Objects {
+			rel, inside := strings.CutPrefix(obj.Path, "datasets/"+dataset+"/partitions/")
+			segs := strings.SplitN(rel, "/", len(partitionKeys)+1)
+			if !inside || len(segs) <= len(partitionKeys) {
+				continue
+			}
+			path := strings.Join(segs[:len(partitionKeys)], "/")
+			if have := held[path]; len(have) == 0 || have[len(have)-1] != snap {
+				held[path] = append(have, snap)
+			}
+		}
+	}
+	return held
 }
 
 // splitPartition decodes a partition path's values in layout order.
@@ -302,11 +330,7 @@ func (b *rebuilder) isBackfilled(ctx context.Context, key string) (bool, error) 
 func (b *rebuilder) terminalEvent(ctx context.Context, run legacyRun) (map[string]any, string, error) {
 	var terminals []map[string]any
 	for _, et := range []types.EventType{types.EventTypeRunComplete, types.EventTypeRunError} {
-		path, ok := run.partitions[string(et)]
-		if !ok {
-			continue
-		}
-		recs, err := ReadPartitionRecords(ctx, b.dr, path)
+		recs, err := b.records(ctx, run, string(et))
 		if err != nil {
 			return nil, "", err
 		}
@@ -326,6 +350,11 @@ func (b *rebuilder) terminalEvent(ctx context.Context, run legacyRun) (map[strin
 		return terminals[0], "", nil
 	}
 	return nil, noEndAmbiguous, nil
+}
+
+// records returns the run's records of one event type.
+func (b *rebuilder) records(ctx context.Context, run legacyRun, eventType string) ([]lode.D, error) {
+	return ReadSnapshotRecords(ctx, b.dr, run.partitions[eventType], run.prefix+"event_type="+eventType+"/")
 }
 
 // writeStart writes the run's backfilled start record, or returns the reason
@@ -394,7 +423,7 @@ func (b *rebuilder) lineageEvent(ctx context.Context, run legacyRun) (map[string
 	}
 	sort.Strings(names)
 	for _, et := range names {
-		recs, err := ReadPartitionRecords(ctx, b.dr, run.partitions[et])
+		recs, err := b.records(ctx, run, et)
 		if err != nil {
 			return nil, err
 		}

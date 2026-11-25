@@ -173,12 +173,31 @@ A run written by a release before 0.15 holds its artifact bytes as chunk
 records under `event_type=artifact`, which readers still read (§Chunk
 Record Schema). The runtime writes no chunk record.
 
+### Run Contents
+
+- Quarry MUST determine a run's stored contents from Lode's unfiltered listing
+  of committed manifests. A snapshot belongs to the run when it holds an object
+  under the run's partition prefix.
+- A partition's listing can omit a committed snapshot whose partition index is
+  incomplete, as after a process ends between the canonical manifest and the
+  partition manifests. A missing index entry MUST NOT produce a successful
+  partial read, and MUST NOT let a prune remove the run's records while one of
+  its committed snapshots remains.
+- The rule covers events, artifacts, the sidecar inventory of snapshots,
+  `index rebuild`, and prune. Reads repair nothing. `Dataset.Sweep`, which a
+  prune runs when given a grace period, restores the index.
+- An unfiltered listing lists the dataset and reads one manifest of each of its
+  snapshots, so the cost of reading one run grows with the dataset. Opening an
+  artifact through its commit index entry needs no listing.
+- A read gives no frozen view of a run that is still writing.
+
 ### Commit Index
 
 A reader that opens one artifact needs that artifact's commit record
 only. The run's artifact partition holds one snapshot for each batch that
-committed an artifact, so the cost of reading the partition grows with
-the run. The commit index holds one entry per committed artifact, and
+committed an artifact, and finding those snapshots reads a manifest of each
+snapshot in the dataset (§Run Contents), so the cost of reading the partition
+grows with both. The commit index holds one entry per committed artifact, and
 each entry names the snapshot that holds the artifact's record:
 
 ```
@@ -645,6 +664,13 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    gives the reason. Lode never expires the head, so the run that
    committed most recently is removed only by a later prune.
 
+   Then read the run's snapshots (§Run Contents). Expiry finds snapshots
+   through the partition index, so when the preview lacks one of them, the
+   prune keeps the run with its snapshots, records, sidecar files, and
+   Volumes, and the report gives the reason. A snapshot that committed after
+   the preview needs only a later prune. A lasting gap needs a sweep, which
+   restores the index of snapshots older than its grace period.
+
    Then preview the removal of the run's artifact Volumes. The prune
    lists the names under the run's `volumes/` prefix and calls Lode's
    `volume.Remove` for each against a sandbox store. The sandbox reads
@@ -663,7 +689,7 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    `r/files/x` beneath run `r`, so it is never listed. Without that
    condition, a direct child could also belong to another run, so the
    prefix is not listed. The end record names the files of such a run, and
-   the prune uses it only while the run has snapshots: without them, an
+   the prune uses it only while the run has committed snapshots: without them, an
    interrupted prune may have removed a file whose place another run's file
    has taken since, so its files stay and are reported. A file that no source
    names remains. A path that a snapshot records outside the run's sidecar prefix is reported
@@ -673,8 +699,8 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    and the report gives the reason. The paths are gathered first because
    the recorded ones are in the manifests that step 3 deletes.
 3. Expire the snapshots that the preview selected with `Dataset.Expire`,
-   naming their IDs and the partition prefix, and then list the partition
-   again. A snapshot that committed after the preview was not judged by
+   naming their IDs and the partition prefix, and then read the run's
+   snapshots again (§Run Contents). A snapshot that committed after the preview was not judged by
    it, so it is never expired. If one remains, the prune keeps the run with its
    sidecar files and records. A run with no snapshot in the preview (one
    that committed nothing) has nothing to expire, and Lode requires no

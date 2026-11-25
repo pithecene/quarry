@@ -26,8 +26,7 @@ func (s *getCountingStore) Get(ctx context.Context, p string) (io.ReadCloser, er
 	return s.RangeStore.Get(ctx, p)
 }
 
-// A partition read loads each manifest once: Lode's Manifests yields the
-// manifest that its listing loaded, so no key is read a second time.
+// A partition read loads each manifest once, and no key is read a second time.
 func TestReadPartitionRecords_ReadsEachKeyOnce(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

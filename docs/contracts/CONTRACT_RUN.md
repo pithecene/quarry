@@ -257,8 +257,8 @@ existed receive backfilled records (§Backfilled Run Records).
 ### Backfilled Run Records
 
 The `quarry index rebuild` command ([CONTRACT_CLI.md](CONTRACT_CLI.md) §index rebuild) writes records for
-runs that have partitions but no start record. It is the only reader
-that finds runs by scanning the partition tree, and it writes only what
+runs that have snapshots but no start record. It is the only reader
+that finds runs from the committed snapshots ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Contents), and it writes only what
 the stored data shows:
 
 - **Start record**, for every such run. `day`, `source`, `category`,

@@ -113,7 +113,7 @@ type Option func(*Reader)
 // WithIndexFallback reports to fn each time OpenArtifact cannot use the
 // artifact's commit index entry and reads the run's artifact partition
 // instead (CONTRACT_LODE.md §Commit Index), with the reason. A partition
-// read costs requests that grow with the run, so a caller that measures or
+// read costs requests that grow with the dataset, so a caller that measures or
 // explains a read's cost supplies fn.
 func WithIndexFallback(fn func(artifactID string, why IndexFallback)) Option {
 	return func(r *Reader) { r.onFallback = fn }

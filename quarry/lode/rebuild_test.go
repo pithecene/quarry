@@ -2,6 +2,7 @@ package lode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -276,5 +277,128 @@ func TestRebuild_LineageFallsBackWhenTerminalLacksIt(t *testing.T) {
 	readJSON(t, store, RunRecordDir(cfg)+StartRecordName, &start)
 	if start["attempt"] != float64(3) {
 		t.Errorf("attempt = %v, want 3 from the first event record", start["attempt"])
+	}
+}
+
+// A terminal event without a partition manifest still ends its run.
+func TestRebuildRunRecords_IncompleteIndex(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	factory := sharedFactory(store)
+	cfg := writeLegacyRun(t, factory, "src", "r1", types.EventTypeItem, types.EventTypeRunComplete)
+	keys, err := store.List(t.Context(), "datasets/quarry/partitions/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range keys {
+		if strings.HasSuffix(k, "/manifest.json") {
+			if err := store.Delete(t.Context(), k); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	report := rebuild(t, factory, false)
+	if report.StartsWritten != 1 || report.EndsWritten != 1 || !hasKey(t, factory, RunRecordDir(cfg)+EndRecordName) {
+		t.Fatalf("report = %+v, want a start and an end record", report)
+	}
+}
+
+// A dataset ID that repeats a path segment, and an index key without a record
+// behind it, do not mislead the rebuild.
+func TestRebuildRunRecords_TakesFactsFromObjects(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	cfg := Config{Dataset: "partitions", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "r1"}
+	c, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := &types.EventEnvelope{ContractVersion: types.ContractVersion, EventID: "e1", RunID: "r1", Seq: 1, Type: types.EventTypeRunComplete, Ts: legacyTs, Payload: map[string]any{}, Attempt: 1}
+	if err := c.WriteEvents(t.Context(), "partitions", "r1", []*types.EventEnvelope{ev}); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := store.List(t.Context(), "datasets/partitions/partitions/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range keys {
+		if !strings.HasSuffix(k, "/manifest.json") {
+			continue
+		}
+		rc, err := store.Get(t.Context(), k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Put(t.Context(), strings.Replace(k, "event_type=run_complete", "event_type=metrics", 1), rc); err != nil {
+			t.Fatal(err)
+		}
+		_ = rc.Close()
+	}
+	report, err := RebuildRunRecords(t.Context(), "partitions", sharedFactory(store), RebuildOptions{})
+	if err != nil || report.StartsWritten != 1 || report.EndsWritten != 1 {
+		t.Fatalf("report = %+v, %v; want a start and an end record", report, err)
+	}
+	rc, err := store.Get(t.Context(), RunRecordDir(cfg)+EndRecordName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rc.Close() }()
+	var end EndRecord
+	if err := json.NewDecoder(rc).Decode(&end); err != nil || end.MetricsPersisted {
+		t.Errorf("end = %+v, %v; want no metrics", end, err)
+	}
+}
+
+// A partition with another field count is refused, and nothing is written.
+func TestRebuildRunRecords_RefusesAnotherLayout(t *testing.T) {
+	t.Parallel()
+	for name, replace := range map[string][2]string{
+		"a sixth field":   {"event_type=item/", "event_type=item/extra=x/"},
+		"a missing field": {"event_type=item/", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := lode.NewMemory()
+			cfg := writeLegacyRun(t, sharedFactory(store), "src", "r1", types.EventTypeItem)
+			keys, err := store.List(t.Context(), "datasets/quarry/partitions/")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, k := range keys {
+				if strings.Contains(k, "event_type=item/") && strings.HasSuffix(k, "/manifest.json") {
+					rc, err := store.Get(t.Context(), k)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := store.Put(t.Context(), strings.Replace(k, replace[0], replace[1], 1), rc); err != nil {
+						t.Fatal(err)
+					}
+					_ = rc.Close()
+				}
+			}
+			_, err = RebuildRunRecords(t.Context(), "quarry", sharedFactory(store), RebuildOptions{})
+			if err == nil || !strings.Contains(err.Error(), "does not have the layout") || hasKey(t, sharedFactory(store), RunRecordDir(cfg)+StartRecordName) {
+				t.Fatalf("err = %v, want a layout error and no record", err)
+			}
+		})
+	}
+}
+
+func TestSnapshotsByPartition(t *testing.T) {
+	t.Parallel()
+	const partition = "source=s/category=c/day=2026-10-21/run_id=r/event_type=item"
+	for _, tc := range []struct {
+		name, path string
+		want       int
+	}{
+		{"in the partition tree", "datasets/quarry/partitions/" + partition + "/data", 1},
+		{"without the dataset's prefix", partition + "/data", 0},
+		{"in another dataset", "datasets/other/partitions/" + partition + "/data", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := &lode.Snapshot{ID: "1", Manifest: &lode.Manifest{Objects: []lode.ObjectRef{{Path: tc.path}}}}
+			if got := snapshotsByPartition("quarry", []*lode.Snapshot{snap}); len(got) != tc.want || len(got[partition]) != tc.want {
+				t.Errorf("snapshotsByPartition(%q) = %v, want %d entries", tc.path, got, tc.want)
+			}
+		})
 	}
 }
