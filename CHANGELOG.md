@@ -11,6 +11,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Datasets with an old empty write open again**: Quarry failed to list a dataset that held a write of no records from Lode v0.9.0, and to write to one with such a head. Quarry now requires Lode v0.18.5, which reads that snapshot as empty.
+- **A file named `manifest.json` no longer blocks a new dataset**: when a run stored one before the first commit of its dataset, that commit failed and the run exited 4. With Lode v0.18.5, the filename alone no longer blocks the commit.
 - **`index rebuild` reads the metrics record**: it wrote `metrics_persisted: true` for any run with a metrics partition, even without a metrics record in it. The rebuild now reads the record. It never replaces an end record, so an incorrect `true` in an existing one remains. `CONTRACT_RUN.md` § Backfilled Run Records states the rule.
 - **Reads return every committed event of a run**: when a run's partition index omitted a snapshot, `list events`, the SDK's `readRun`, the artifact commands, and `inspect run` returned a part of the run as a success. Quarry now reads the dataset's committed snapshots, so one read needs one manifest of each snapshot in the dataset. `CONTRACT_LODE.md` § Run Contents states the rule.
 - **Prune keeps a run whose index is incomplete**: prune expired the indexed snapshots, deleted the run's records, and left the others with no run to find them. It now keeps the run and reports the reason. A sweep past its grace period restores the index for a later prune. `CONTRACT_LODE.md` § Order of Operations states the steps.
