@@ -278,6 +278,16 @@ the key is an empty string.
 - Content type is persisted as a companion `.meta.json` sidecar file
   alongside the data file in storage. It holds `content_type` and the `run_id`
   of the run that wrote it.
+- A write of the data file can report an error after storage persisted it.
+  Quarry then reads the file back, and the write succeeds with a logged warning
+  when the stored bytes are its own. When the store reports that the path exists,
+  the write fails without that read, since the data file names no run.
+- A run writes each filename once: a second write of a recorded filename fails
+  as an existing path, whatever its bytes are.
+- When the companion write fails, the put fails and the data file stays in
+  storage, outside the run's inventory. Quarry MUST NOT remove it, since a store
+  can take an equal upload of another write for this one. A store that
+  refuses existing paths then refuses a retry of that filename.
 - A companion write can report an error after storage persisted it. Quarry
   then reads the companion back, and the write succeeds with a logged warning
   when the stored bytes are its own.
