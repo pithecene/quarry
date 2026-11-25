@@ -36,6 +36,22 @@ jobs:
             executor-node/**/*.log
           retention-days: 14
 
+  s3:
+    name: 🪣 S3 Lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup
+        uses: ./.github/actions/setup
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🪣 S3 Lifecycle
+        run: task test:s3
+
   e2e:
     name: 🔌 E2E Tests
     runs-on: ubuntu-latest
