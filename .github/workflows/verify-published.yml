@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Published release to verify, such as v0.20.1
+        description: Published release to verify, from v0.20.0 on
         required: true
         type: string
 
@@ -16,6 +16,7 @@ jobs:
   binary:
     name: 📦 Binary (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +39,7 @@ jobs:
   image:
     name: 🐳 Image (${{ matrix.suffix || 'full' }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

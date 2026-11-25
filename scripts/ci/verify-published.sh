@@ -5,7 +5,15 @@
 
 set -euo pipefail
 
+# The checksum names and the exit report that this reads date from v0.20.0.
+if [[ ! "$1" =~ ^v[0-9]+\.([0-9]+)\.[0-9]+$ ]] || [[ "$1" == v0.* && "${BASH_REMATCH[1]}" -lt 20 ]]; then
+  echo "expected a release from v0.20.0 on, got $1" >&2
+  exit 1
+fi
+# A release that hangs fails here, whatever its own limits are.
+bounded() { perl -e 'alarm shift; exec @ARGV or die' "$@"; }
 tag="$1"
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$(uname -m)" in
   x86_64) arch=amd64 ;;
@@ -13,19 +21,27 @@ case "$(uname -m)" in
   *) echo "unsupported machine: $(uname -m)" >&2 && exit 1 ;;
 esac
 archive="quarry_${tag}_${os}_${arch}.tar.gz"
-# The stored checksums name the archive alone, as a download holds it.
-check() { if command -v sha256sum > /dev/null; then sha256sum --check "$1"; else shasum -a 256 -c "$1"; fi; }
+sha256() { if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi; }
 
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
-gh release download "$tag" --dir "$dir" --pattern "$archive" --pattern "$archive.sha256"
+gh release download "$tag" --repo "$repo" --dir "$dir" --pattern "$archive" --pattern "$archive.sha256"
 cd "$dir"
-check "$archive.sha256"
+# The one entry names the archive alone, as a download holds it.
+[[ "$(cat "$archive.sha256")" == "$(sha256 "$archive")" ]]
 tar -xzf "$archive"
-commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+# Rosetta also runs an amd64 binary, so a run does not show the architecture.
+case "$os/$arch" in
+  linux/amd64) kind='ELF 64-bit.*x86-64' ;;
+  linux/arm64) kind='ELF 64-bit.*aarch64' ;;
+  darwin/amd64) kind='Mach-O 64-bit executable x86_64' ;;
+  darwin/arm64) kind='Mach-O 64-bit executable arm64' ;;
+esac
+file -b quarry | grep -E "$kind"
+commit=$(gh api "repos/$repo/commits/$tag" --jq .sha)
 ./quarry version | tee version.json
 jq -e --arg version "${tag#v}" --arg commit "$commit" \
-  '.version == $version and (.commit as $short | $commit | startswith($short))' version.json
+  '.version == $version and (.commit | test("^[0-9a-f]{7,40}$")) and (.commit as $short | $commit | startswith($short))' version.json
 
 cat > run.mjs << 'SCRIPT'
 export default async function run(ctx) {
@@ -35,11 +51,12 @@ export default async function run(ctx) {
 SCRIPT
 store=(--storage-backend fs --storage-path store)
 mkdir store
-./quarry run --script ./run.mjs --run-id verify --source ci --category verify \
+bounded 120 ./quarry run --script ./run.mjs --run-id verify --source ci --category verify \
   --no-browser --report report.json "${store[@]}"
 jq -e '.outcome == "success" and .recorded and .exit_code == 0' report.json
 day=$(./quarry list runs --format json "${store[@]}" | jq -r '.runs[0].day')
 ./quarry list events --format json "${store[@]}" \
   --source ci --category verify --day "$day" --run-id verify > events.json
-jq -e '[.events[].type] == ["item", "item", "item", "run_complete"]' events.json
+jq -e '[.events[] | [.seq, .type, .payload.data.n]] ==
+  [[1, "item", 0], [2, "item", 1], [3, "item", 2], [4, "run_complete", null]]' events.json
 echo "✅ $archive on $os/$arch"
