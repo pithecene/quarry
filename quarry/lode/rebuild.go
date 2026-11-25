@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -386,7 +387,17 @@ func (b *rebuilder) writeStart(ctx context.Context, run legacyRun, terminal map[
 func (b *rebuilder) writeEnd(ctx context.Context, run legacyRun, terminal map[string]any) (bool, error) {
 	endedAt, _ := recordTime(terminal)
 	t, _ := terminal["type"].(string)
-	_, metrics := run.partitions[metricsEventType]
+	if b.existing[RunRecordDir(run.cfg)+EndRecordName] {
+		return false, nil // never replaced
+	}
+	recs, err := b.records(ctx, run, metricsEventType)
+	if err != nil {
+		return false, err
+	}
+	metrics := slices.ContainsFunc(recs, func(rec lode.D) bool {
+		_, dated := recordTime(rec) // as the metrics query requires
+		return dated && matchesMetricsRecord(rec, run.cfg)
+	})
 	rec := EndRecord{
 		RecordKind:       RecordKindRunEnd,
 		SchemaVersion:    RunRecordSchemaVersion,

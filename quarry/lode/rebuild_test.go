@@ -2,7 +2,6 @@ package lode
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/iox"
 	"github.com/pithecene/quarry/metrics"
 	"github.com/pithecene/quarry/types"
 )
@@ -308,15 +308,7 @@ func TestRebuildRunRecords_IncompleteIndex(t *testing.T) {
 func TestRebuildRunRecords_TakesFactsFromObjects(t *testing.T) {
 	t.Parallel()
 	store := lode.NewMemory()
-	cfg := Config{Dataset: "partitions", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "r1"}
-	c, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ev := &types.EventEnvelope{ContractVersion: types.ContractVersion, EventID: "e1", RunID: "r1", Seq: 1, Type: types.EventTypeRunComplete, Ts: legacyTs, Payload: map[string]any{}, Attempt: 1}
-	if err := c.WriteEvents(t.Context(), "partitions", "r1", []*types.EventEnvelope{ev}); err != nil {
-		t.Fatal(err)
-	}
+	cfg, _ := writeTerminal(t, store, "partitions")
 	keys, err := store.List(t.Context(), "datasets/partitions/partitions/")
 	if err != nil {
 		t.Fatal(err)
@@ -332,20 +324,15 @@ func TestRebuildRunRecords_TakesFactsFromObjects(t *testing.T) {
 		if err := store.Put(t.Context(), strings.Replace(k, "event_type=run_complete", "event_type=metrics", 1), rc); err != nil {
 			t.Fatal(err)
 		}
-		_ = rc.Close()
+		iox.DiscardClose(rc)
 	}
 	report, err := RebuildRunRecords(t.Context(), "partitions", sharedFactory(store), RebuildOptions{})
 	if err != nil || report.StartsWritten != 1 || report.EndsWritten != 1 {
 		t.Fatalf("report = %+v, %v; want a start and an end record", report, err)
 	}
-	rc, err := store.Get(t.Context(), RunRecordDir(cfg)+EndRecordName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = rc.Close() }()
 	var end EndRecord
-	if err := json.NewDecoder(rc).Decode(&end); err != nil || end.MetricsPersisted {
-		t.Errorf("end = %+v, %v; want no metrics", end, err)
+	if readJSON(t, store, RunRecordDir(cfg)+EndRecordName, &end); end.MetricsPersisted {
+		t.Errorf("end = %+v, want no metrics", end)
 	}
 }
 
@@ -372,7 +359,7 @@ func TestRebuildRunRecords_RefusesAnotherLayout(t *testing.T) {
 					if err := store.Put(t.Context(), strings.Replace(k, replace[0], replace[1], 1), rc); err != nil {
 						t.Fatal(err)
 					}
-					_ = rc.Close()
+					iox.DiscardClose(rc)
 				}
 			}
 			_, err = RebuildRunRecords(t.Context(), "quarry", sharedFactory(store), RebuildOptions{})
@@ -400,5 +387,92 @@ func TestSnapshotsByPartition(t *testing.T) {
 				t.Errorf("snapshotsByPartition(%q) = %v, want %d entries", tc.path, got, tc.want)
 			}
 		})
+	}
+}
+
+// writeTerminal writes a run of one terminal event without run records.
+func writeTerminal(t *testing.T, store lode.RangeStore, dataset string) (Config, *LodeClient) {
+	t.Helper()
+	cfg := Config{Dataset: dataset, Source: "src", Category: "cat", Day: "2026-10-21", RunID: "r1"}
+	c, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := &types.EventEnvelope{ContractVersion: types.ContractVersion, EventID: "e1", RunID: "r1", Seq: 1, Type: types.EventTypeRunComplete, Ts: legacyTs, Payload: map[string]any{}, Attempt: 1}
+	if err := c.WriteEvents(t.Context(), dataset, "r1", []*types.EventEnvelope{ev}); err != nil {
+		t.Fatal(err)
+	}
+	return cfg, c
+}
+
+// A metrics partition is no metrics record: the record itself is read, and one
+// that cannot be read ends the rebuild before the end record, unless the end
+// record is there already.
+func TestRebuildRunRecords_ReadsTheMetricsRecord(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		change      func(lode.D)
+		lose, ended bool
+		want        bool
+		wantErr     error
+	}{
+		{name: "a record", want: true},
+		{name: "another kind", change: func(d lode.D) { d["record_kind"] = RecordKindEvent }},
+		{name: "no time", change: func(d lode.D) { delete(d, "ts") }},
+		{name: "a malformed time", change: func(d lode.D) { d["ts"] = "not-a-date" }},
+		{name: "a lost data file", lose: true, wantErr: lode.ErrNotFound},
+		{name: "a lost data file of an ended run", lose: true, ended: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := lode.NewMemory()
+			cfg, c := writeTerminal(t, store, "quarry")
+			rec := toMetricsRecordMap(metrics.Snapshot{RunID: "r1", Policy: "strict"}, cfg, time.Now())
+			if tc.change != nil {
+				tc.change(rec)
+			}
+			if _, err := c.dataset.Write(t.Context(), lode.R(rec), nil); err != nil {
+				t.Fatal(err)
+			}
+			end := RunRecordDir(cfg) + EndRecordName
+			if tc.ended {
+				if err := store.Put(t.Context(), end, strings.NewReader("{}")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.lose {
+				loseMetrics(t, store)
+			}
+			report, err := RebuildRunRecords(t.Context(), "quarry", sharedFactory(store), RebuildOptions{})
+			if !errors.Is(err, tc.wantErr) || report.StartsWritten != 1 {
+				t.Fatalf("report = %+v, %v; want a start record and %v", report, err, tc.wantErr)
+			}
+			if got, want := hasKey(t, sharedFactory(store), end), tc.wantErr == nil; got != want {
+				t.Fatalf("end record = %t, want %t", got, want)
+			}
+			if tc.wantErr != nil {
+				return
+			}
+			var written EndRecord
+			if readJSON(t, store, end, &written); written.MetricsPersisted != tc.want {
+				t.Errorf("end = %+v, want metrics = %t", written, tc.want)
+			}
+		})
+	}
+}
+
+// loseMetrics deletes the data of every metrics partition.
+func loseMetrics(t *testing.T, store lode.RangeStore) {
+	t.Helper()
+	keys, err := store.List(t.Context(), "datasets/quarry/partitions/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range keys {
+		if strings.Contains(k, "event_type=metrics/") && strings.Contains(k, "/data/") {
+			if err := store.Delete(t.Context(), k); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
