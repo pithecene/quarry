@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.20.1] - 2026-11-25
+
 ### Fixed
 
 - **Concurrent runs retry a lost commit**: runs that committed to one dataset at once could exit 4 while a winning writer had not yet stored its manifest, and Quarry never retried that error. Quarry now requires Lode v0.18.4, which waits up to about two seconds for that manifest and then retries the commit as a conflict. A manifest that stays missing still makes the commit uncertain, and contention can still exhaust the retries. The fault dates from v0.19.0.
@@ -891,7 +895,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 <!-- jscpd:ignore-start -->
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/pithecene/quarry/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/pithecene/quarry/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/pithecene/quarry/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/pithecene/quarry/compare/v0.17.0...v0.18.0

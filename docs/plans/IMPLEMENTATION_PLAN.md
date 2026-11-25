@@ -13,8 +13,8 @@ Quarry’s core principle:
 
 Scripts and executors remain **policy-agnostic**.
 
-## Current Status (as of v0.20.0)
-- Latest release: v0.20.0 (see CHANGELOG.md).
+## Current Status (as of v0.20.1)
+- Latest release: v0.20.1 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - All v1.0 readiness items resolved (see docs/plans/RELEASE_READINESS_v1.0.md).
 - Roadmap: v0.13.6 (Lode v0.10.0) → v0.14.0 (read side and retention) →
@@ -30,6 +30,9 @@ Scripts and executors remain **policy-agnostic**.
   the terminal summary, and the sidecar inventory, and a notification follows
   its confirmation and carries a locator. The release also supervises the
   executor's processes. Artifact acknowledgement modes remain under #245.
+- v0.20.1 fixes sidecar files that a second put removed on S3, scripts that a
+  refused put ended, and fractional artifact sizes. It moves to Lode v0.18.4,
+  which retries a lost commit of concurrent runs.
 
 ---
 
