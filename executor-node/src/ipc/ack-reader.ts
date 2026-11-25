@@ -8,7 +8,7 @@
  * @module
  */
 import type { Readable } from 'node:stream'
-import { ArtifactRangeRefusedError } from '@pithecene/quarry-sdk'
+import { ArtifactRangeRefusedError, StorageWriteRefusedError } from '@pithecene/quarry-sdk'
 import { decodeArtifactRangeAck, decodeFileWriteAck, LENGTH_PREFIX_SIZE } from './frame.js'
 
 /** The two acknowledgements the runtime sends, each with its own ID space. */
@@ -182,6 +182,10 @@ export class AckReader {
       // A refused range is recoverable (CONTRACT_IPC.md §Artifact Range
       // Acknowledgement): the error names it so the sinks do not latch it.
       entry.reject(new ArtifactRangeRefusedError(ack.error ?? 'artifact range refused'))
+    } else if (ack.ok === false) {
+      // A refused file is recoverable too (§File Write Acknowledgement). An ack
+      // without a boolean ok is no refusal by the runtime.
+      entry.reject(new StorageWriteRefusedError(ack.error ?? 'file write failed'))
     } else {
       entry.reject(new Error(ack.error ?? 'file write failed'))
     }

@@ -21,7 +21,8 @@ import {
   ARTIFACT_MAX_BYTES,
   ARTIFACT_RANGE_MAX_BYTES,
   ArtifactRangeRefusedError,
-  ArtifactWriterError
+  ArtifactWriterError,
+  StorageWriteRefusedError
 } from './emit'
 import { RangeSet } from './range-set'
 import type { RunMeta } from './types/context'
@@ -73,11 +74,15 @@ export function buildStorageKey(partition: StoragePartitionMeta, filename: strin
 const SHA256_HEX = /^[0-9a-f]{64}$/i
 
 /**
- * Errors after which the script may emit on: a range the runtime refused,
- * and a call an artifact writer refused before sending anything.
+ * Errors after which the script may emit on: a range or a file the runtime
+ * refused, and a call an artifact writer refused before sending anything.
  */
 function isRecoverable(err: unknown): boolean {
-  return err instanceof ArtifactRangeRefusedError || err instanceof ArtifactWriterError
+  return (
+    err instanceof ArtifactRangeRefusedError ||
+    err instanceof StorageWriteRefusedError ||
+    err instanceof ArtifactWriterError
+  )
 }
 
 /**
@@ -208,8 +213,8 @@ export function createAPIs(
       try {
         return await fn()
       } catch (err) {
-        // A refused artifact range is recoverable (CONTRACT_IPC.md §Artifact
-        // Range Acknowledgement), as is a call an artifact writer refused
+        // A refused artifact range or file is recoverable (CONTRACT_IPC.md
+        // §Artifact Range Acknowledgement, §File Write Acknowledgement), as is a call an artifact writer refused
         // before sending anything: the script may catch it and emit on.
         if (!isRecoverable(err)) {
           sinkFailed = err
