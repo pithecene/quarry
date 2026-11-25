@@ -39,6 +39,12 @@ tasks:
     cmds:
       - go test -v -timeout 120s ./runtime/ -e2e
 
+  test:s3:
+    desc: Run the S3 lifecycle smoke against a disposable RustFS container (requires Docker)
+    deps: [go:build]
+    cmds:
+      - scripts/ci/s3-smoke.sh
+
   examples:
     desc: Run and validate all examples
     # Note: ts:build is transitive via go:build → executor:bundle → ts:build
