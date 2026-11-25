@@ -523,7 +523,13 @@ func TestPutFile_ReservesTheNameOfAPutInProgress(t *testing.T) {
 		}
 	}
 	first := put("a.txt")
-	<-store.entered
+	select {
+	case <-store.entered:
+	case err := <-first:
+		t.Fatalf("the first put returned %v before it reached the store", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first put did not reach the store")
+	}
 	if err := await("the same name", put("a.txt")); !errors.Is(err, ErrPathExists) {
 		t.Errorf("same name: %v, want ErrPathExists", err)
 	}
