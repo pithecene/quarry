@@ -179,17 +179,19 @@ The following behaviors are explicitly **out of scope**:
 **No Storage-Aware Throttling:**
 - Quarry does not pace a run to the storage backend.
 - Events reach storage through the policy. `strict` writes each event before it
-  accepts the next. `streaming` waits for each flush that a trigger or its byte
-  bound requires ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Flush Triggers). `buffered`
+  accepts the next. `streaming` waits for a flush that its count or its bounds
+  require, while an interval flush runs beside ingestion
+  ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Flush Triggers). `buffered`
   writes when the run ends, so slow storage delays the end of the run.
 - While ingestion waits, the IPC pipe can fill, and the script's emit calls
   then wait ([emit guide](emit.md) §Backpressure). An emit that returns does not
   confirm that its event is stored.
-- `storage.put()` and artifact ranges bypass the policy. Each waits for its own
-  storage write.
-- When the `buffered` buffer is full, it drops an incoming advisory event, or
-  evicts an older one to admit an event it may not drop. It fails the run only
-  when it cannot make room ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
+- `storage.put()` and artifact ranges bypass the policy. An artifact range waits
+  for its storage commit, and so does a put when the runtime acknowledges
+  file writes ([CONTRACT_IPC.md](../contracts/CONTRACT_IPC.md)).
+- When the `buffered` buffer is full, it drops an incoming advisory event. For an
+  event it may not drop, it evicts the oldest advisory event once, and it fails
+  the run when the event still does not fit ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
 
 **No Deduplication:**
 - Duplicate detection is a downstream consumer responsibility.
