@@ -156,11 +156,10 @@ artifacts/<dataset>/<source>/<category>/<day>/<run_id>/volumes/<artifact_id>/...
   run records (§Key Encoding), so a run's Volumes can neither escape the
   run nor share a prefix with another run's. The artifact ID is one path
   segment, which the runtime and Lode's `volume.New` both require.
-- The namespace lies outside `datasets/<dataset>/`. A Lode Dataset rejects
-  any manifest in its directory that its layout does not persist, as a
-  history written under another layout, and a Volume's manifests are such
-  manifests. Run records sit inside the dataset's directory because they
-  are not manifests.
+- The namespace lies outside `datasets/<dataset>/`, which Lode owns. A release
+  before Lode v0.18.5 takes a Volume's manifest in that directory for a history
+  of another layout, and rejects the dataset's first commit. Run records sit
+  inside the dataset's directory because they are not manifests.
 - The runtime creates the Volume with the artifact's size as its total
   length before any byte arrives, stages and commits each range as it
   arrives, and keeps no artifact bytes of its own. A run that stops part

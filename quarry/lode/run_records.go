@@ -109,10 +109,9 @@ func RunRecordPrefix(dataset string, components ...string) string {
 // holds the run's artifact Volumes (CONTRACT_LODE.md §Artifact Storage):
 // artifacts/<dataset>/<source>/<category>/<day>/<run_id>/.
 //
-// The namespace lies beside datasets/, not inside the dataset's directory:
-// a Lode Dataset rejects, as a history written under another layout, any
-// manifest it finds in its directory that its layout does not persist,
-// and a Volume's manifests are such manifests.
+// The namespace lies beside datasets/, not inside the dataset's directory, which
+// Lode owns: a release before Lode v0.18.5 takes a Volume's manifest there for
+// another layout's history and rejects the dataset's first commit.
 func RunArtifactDir(cfg Config) string {
 	return ArtifactPrefix(cfg.Dataset, cfg.Source, cfg.Category, cfg.Day, cfg.RunID)
 }
