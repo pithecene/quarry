@@ -402,3 +402,69 @@ func TestSnapshotsByPartition(t *testing.T) {
 		})
 	}
 }
+
+// A metrics partition is no metrics record: the record itself is read, and one
+// that cannot be read ends the rebuild before the end record.
+func TestRebuildRunRecords_ReadsTheMetricsRecord(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name            string
+		change          func(lode.D)
+		lose            bool
+		want, wantError bool
+	}{
+		{"a record", func(lode.D) {}, false, true, false},
+		{"another kind", func(d lode.D) { d["record_kind"] = RecordKindEvent }, false, false, false},
+		{"a lost data file", func(lode.D) {}, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := lode.NewMemory()
+			cfg := Config{Dataset: "quarry", Source: "src", Category: "cat", Day: "2026-10-21", RunID: "r1"}
+			c, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ev := &types.EventEnvelope{ContractVersion: types.ContractVersion, EventID: "e1", RunID: "r1", Seq: 1, Type: types.EventTypeRunComplete, Ts: legacyTs, Payload: map[string]any{}, Attempt: 1}
+			if err := c.WriteEvents(t.Context(), "quarry", "r1", []*types.EventEnvelope{ev}); err != nil {
+				t.Fatal(err)
+			}
+			rec := lode.D{"source": "src", "category": "cat", "day": cfg.Day, "run_id": "r1", "event_type": "metrics", "record_kind": RecordKindMetrics}
+			tc.change(rec)
+			if _, err := c.dataset.Write(t.Context(), []lode.D{rec}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if tc.lose {
+				keys, err := store.List(t.Context(), "datasets/quarry/partitions/")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, k := range keys {
+					if strings.Contains(k, "event_type=metrics/") && strings.Contains(k, "/data/") {
+						if err := store.Delete(t.Context(), k); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+			}
+			report, err := RebuildRunRecords(t.Context(), "quarry", sharedFactory(store), RebuildOptions{})
+			if (err != nil) != tc.wantError {
+				t.Fatalf("report = %+v, %v; want an error = %t", report, err, tc.wantError)
+			}
+			if ended := hasKey(t, sharedFactory(store), RunRecordDir(cfg)+EndRecordName); ended == tc.wantError {
+				t.Fatalf("end record = %t, want %t", ended, !tc.wantError)
+			}
+			if tc.wantError {
+				return
+			}
+			rc, err := store.Get(t.Context(), RunRecordDir(cfg)+EndRecordName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = rc.Close() }()
+			var end EndRecord
+			if err := json.NewDecoder(rc).Decode(&end); err != nil || end.MetricsPersisted != tc.want {
+				t.Errorf("end = %+v, %v; want metrics = %t", end, err, tc.want)
+			}
+		})
+	}
+}

@@ -270,7 +270,8 @@ the stored data shows:
 - **End record**, only when the run has exactly one terminal event
   (`run_complete` or `run_error`). `ended_at` is that event's `ts`,
   `terminal` its type, and `metrics_persisted` whether the run has a
-  metrics record. `outcome` and `event_count` are `null`: a terminal event
+  metrics record, which the rebuild reads. A record that cannot be read ends
+  the rebuild with the error, before the end record. `outcome` and `event_count` are `null`: a terminal event
   does not determine the runtime's outcome (a policy failure can follow
   `run_complete`). A run with no terminal event, or more than one, receives no
   end record, and the report states the reason.
