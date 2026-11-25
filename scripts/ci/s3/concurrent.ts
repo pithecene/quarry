@@ -15,13 +15,12 @@ const ITEMS = 5
 /** Contention can exhaust the retries of some runs, never of most of them. */
 const LEAST_SUCCESSES = (ROUNDS * RUNS) / 2
 const EXIT_STORAGE = 4
+/** The conflict retries of one write (CONTRACT_LODE.md, Write Retry). */
+const RETRIES = 3
 /** A run ID is unique across invocations (CONTRACT_RUN.md). */
 const INVOCATION = `smoke-${Date.now()}-${process.pid}`
 /** The conflict retries of every run, which show that their commits met. */
 let contended = 0
-
-const itemValue = (payload: unknown): unknown =>
-  (payload as { data?: { value?: string } } | undefined)?.data?.value
 
 /** Runs one round, and returns how many of its runs succeeded. */
 async function round(prefix: string): Promise<number> {
@@ -49,15 +48,20 @@ async function round(prefix: string): Promise<number> {
     const key = { source: 's', category: 'c', day: run.day, runId: id }
     const { events } = await readRun(key, { storage, quarryPath, signal })
     // A success stored all that its run emitted, and a refusal a prefix of it.
-    const stored = events.map(({ type, run_id, payload }) => [type, run_id, itemValue(payload)])
+    const stored = events.map(({ seq, type, run_id, payload }) => ({ seq, type, run_id, payload }))
     const emitted = [
-      ...Array.from({ length: ITEMS }, (_, n) => ['item', id, `${id}/${n}`]),
-      ['run_complete', id, undefined]
+      ...Array.from({ length: ITEMS }, (_, n) => ({
+        seq: n + 1,
+        type: 'item',
+        run_id: id,
+        payload: { item_type: 'x', data: { value: `${id}/${n}` } }
+      })),
+      { seq: ITEMS + 1, type: 'run_complete', run_id: id, payload: { summary: { items: ITEMS } } }
     ]
     assert.deepEqual(stored, code === 0 ? emitted : emitted.slice(0, stored.length), id)
     const retries = Number(/lode_write_retry_total:\s+(\d+)/.exec(out + err)?.[1])
     assert.ok(Number.isInteger(retries), `${id} reports its retries`)
-    if (code !== 0) assert.ok(retries > 0, `${id} was refused without a retry`)
+    if (code !== 0) assert.ok(retries >= RETRIES, `${id} was refused after ${retries} retries`)
     contended += retries
   }
   await assertOneChain(prefix)
@@ -76,7 +80,7 @@ try {
     join(dir, 'run.mjs'),
     `export default async function run(ctx) {
       for (let n = 0; n < ${ITEMS}; n++) await ctx.emit.item({ item_type: 'x', data: { value: ctx.run.run_id + '/' + n } })
-      await ctx.emit.runComplete({})
+      await ctx.emit.runComplete({ summary: { items: ${ITEMS} } })
     }`
   )
   let succeeded = 0

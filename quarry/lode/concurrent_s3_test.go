@@ -15,6 +15,7 @@ var (
 // TestS3SnapshotsFormOneChain checks a dataset that concurrent runs wrote: its
 // snapshots form one chain, which ends at the head.
 func TestS3SnapshotsFormOneChain(t *testing.T) {
+	t.Parallel()
 	if *s3Endpoint == "" {
 		t.Skip("needs -s3-endpoint and -s3-path")
 	}
