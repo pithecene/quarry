@@ -3,6 +3,8 @@ package runtime
 import (
 	"bytes"
 	"errors"
+	"math"
+	"strings"
 	"testing"
 
 	lodepkg "github.com/pithecene/lode/lode"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/pithecene/quarry/ipc"
 	"github.com/pithecene/quarry/lode"
+	"github.com/pithecene/quarry/log"
+	"github.com/pithecene/quarry/policy"
 	"github.com/pithecene/quarry/types"
 )
 
@@ -226,5 +230,44 @@ func TestArtifactManager_AbandonUnfinished(t *testing.T) {
 	}
 	if ids, err := m.AbandonUnfinished(ctx); err != nil || len(ids) != 0 {
 		t.Fatalf("second AbandonUnfinished = %v, %v; want nothing left", ids, err)
+	}
+}
+
+func TestIngestion_RefusesNonIntegralArtifactSize(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		size float64
+		want string // "" accepts
+	}{
+		{"whole", 16, ""},
+		{"fraction", 16.5, "is not an int64"},
+		{"infinity", math.Inf(1), "is not an int64"},
+		{"not a number", math.NaN(), "is not an int64"},
+		{"beyond int64", 1 << 63, "is not an int64"},
+		{"negative", -16, "artifact commit failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newArtifactStoreFixture(t)
+			event := artifactEvent(1, "a1", 16)
+			event.Payload["size_bytes"] = tc.size
+			meta := &types.RunMeta{RunID: "run-123", Attempt: 1}
+			frames := bytes.Join([][]byte{
+				frameOf(t, openFrame("a1", 16)), frameOf(t, rangeFrame("a1", 1, 0, []byte("0123456789abcdef"))),
+				encodeEventFrame(event), encodeEventFrame(terminalEvent(2)),
+			}, nil)
+			pol := &recordingPolicy{Policy: policy.NewNoopPolicy()}
+			err := NewIngestionEngine(bytes.NewReader(frames), pol, NewArtifactManager(f.client), nil, log.NewLogger(meta), meta, nil, nil, nil).Run(t.Context())
+			if tc.want == "" {
+				if err != nil || len(pol.artifacts) != 1 {
+					t.Fatalf("err = %v with %d artifacts, want one accepted", err, len(pol.artifacts))
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) || len(pol.artifacts) != 0 {
+				t.Fatalf("err = %v with %d artifacts, want a refusal naming %q", err, len(pol.artifacts), tc.want)
+			}
+		})
 	}
 }
