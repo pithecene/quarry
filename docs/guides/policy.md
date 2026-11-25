@@ -27,8 +27,8 @@ All core output events (`item`, `artifact`, `checkpoint`, `run_error`,
 
 ## Policy Modes
 
-- **Strict**: synchronous writes, no drops. Every event is written to storage
-  immediately. The executor blocks on each write. Best for low-volume runs
+- **Strict**: synchronous writes, no drops. The runtime writes each event to storage
+  before it accepts the next, so ingestion waits on each write. Best for low-volume runs
   where guaranteed persistence matters more than throughput.
 - **Buffered**: bounded buffers, batched writes, explicit drops allowed.
   Events accumulate in memory and are flushed on run completion. Best for
