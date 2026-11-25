@@ -20,7 +20,7 @@ if [[ "$1" =~ ^v0\.20\.[01]$ ]]; then
   echo "$1 records no image digest, so the tag is not compared" >&2
 else
   repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-  commit=$(gh api "repos/$repo/commits/$1" --jq .sha)
+  commit=$(gh api "repos/$repo/commits/tags/$1" --jq .sha)
   run=$(gh run list --repo "$repo" --workflow release.yml --branch "$1" --commit "$commit" --event push \
     --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
   if [[ ! "$run" =~ ^[0-9]+$ ]]; then
