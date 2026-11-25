@@ -228,10 +228,19 @@ export class StdioSink implements EmitSink {
       throw new Error(`artifact range of ${data.length} bytes exceeds max ${MAX_CHUNK_SIZE}`)
     }
     const rangeId = ++this.rangeIdCounter
-    const ackPromise = ackReader.waitForRangeAck(rangeId)
     const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data)
+    const ackPromise = ackReader.waitForRangeAck(rangeId)
+    await this.writeAcknowledged(frame, ackPromise)
+  }
+
+  /**
+   * Write a frame and wait for its ack. The ack can arrive while the write waits
+   * for the stream, so its rejection is handled from the start, and awaited after.
+   */
+  private async writeAcknowledged(frame: Buffer, ack: Promise<void>): Promise<void> {
+    ack.catch(() => {})
     await writeWithBackpressure(this.output, frame, this.writeFn)
-    await ackPromise
+    await ack
   }
 
   /**
@@ -266,10 +275,9 @@ export class StdioSink implements EmitSink {
   async writeFile(filename: string, contentType: string, data: Buffer | Uint8Array): Promise<void> {
     if (this.ackReader) {
       const writeId = ++this.writeIdCounter
-      const ackPromise = this.ackReader.waitForAck(writeId)
       const frame = encodeFileWriteFrame(filename, contentType, data, writeId)
-      await writeWithBackpressure(this.output, frame, this.writeFn)
-      await ackPromise
+      const ackPromise = this.ackReader.waitForAck(writeId)
+      await this.writeAcknowledged(frame, ackPromise)
     } else {
       const frame = encodeFileWriteFrame(filename, contentType, data)
       await writeWithBackpressure(this.output, frame, this.writeFn)

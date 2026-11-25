@@ -3,7 +3,11 @@
  * catch must match `instanceof` across copies of the module.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ArtifactRangeRefusedError, ArtifactWriterError } from '../../../src/emit'
+import {
+  ArtifactRangeRefusedError,
+  ArtifactWriterError,
+  StorageWriteRefusedError
+} from '../../../src/emit'
 
 /** Load a second, separate copy of the emit module, as the executor bundle holds. */
 async function otherCopy(): Promise<typeof import('../../../src/emit')> {
@@ -11,7 +15,7 @@ async function otherCopy(): Promise<typeof import('../../../src/emit')> {
   return import('../../../src/emit')
 }
 
-describe('catchable artifact errors across SDK copies', () => {
+describe('catchable errors across SDK copies', () => {
   it('matches ArtifactRangeRefusedError constructed by another copy', async () => {
     const other = await otherCopy()
     expect(other.ArtifactRangeRefusedError).not.toBe(ArtifactRangeRefusedError)
@@ -30,7 +34,17 @@ describe('catchable artifact errors across SDK copies', () => {
     expect(err).not.toBeInstanceOf(ArtifactRangeRefusedError)
   })
 
+  it('matches StorageWriteRefusedError constructed by another copy', async () => {
+    const other = await otherCopy()
+    expect(other.StorageWriteRefusedError).not.toBe(StorageWriteRefusedError)
+
+    const err = new other.StorageWriteRefusedError('refused')
+    expect(err).toBeInstanceOf(StorageWriteRefusedError)
+    expect(err).not.toBeInstanceOf(ArtifactRangeRefusedError)
+  })
+
   it('matches no other error', () => {
+    expect(new Error('x')).not.toBeInstanceOf(StorageWriteRefusedError)
     expect(new Error('x')).not.toBeInstanceOf(ArtifactRangeRefusedError)
     expect(new Error('x')).not.toBeInstanceOf(ArtifactWriterError)
     expect(null).not.toBeInstanceOf(ArtifactWriterError)
