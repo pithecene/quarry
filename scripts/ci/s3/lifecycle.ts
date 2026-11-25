@@ -2,14 +2,20 @@
 // Usage: lifecycle.ts <quarry binary> <endpoint>, with AWS_* credentials.
 
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { listRuns, type NotificationLocator, readRun } from '../../../sdk/src/index.ts'
+import { promisify } from 'node:util'
+import {
+  listRuns,
+  type NotificationLocator,
+  type RunLocator,
+  readRun
+} from '../../../sdk/src/index.ts'
 
 const [binary = '', endpoint = ''] = process.argv.slice(2)
 // The run writes and prunes, so it accepts a local service only.
@@ -77,18 +83,17 @@ const run = (script: string, id: string, policy: string[] = []) =>
   )
 
 /** Reads one signed S3 URL below the smoke's bucket. */
-function s3(path: string): string {
+async function s3(path: string): Promise<string> {
   const { AWS_ACCESS_KEY_ID: id, AWS_SECRET_ACCESS_KEY: secret } = process.env
   const auth = ['--aws-sigv4', 'aws:amz:us-east-1:s3', '--user', `${id}:${secret}`]
-  const limits = ['--silent', '--show-error', '--fail', '--max-time', '30']
-  return execFileSync('curl', [...limits, ...auth, `${endpoint}/smoke${path}`], {
-    encoding: 'utf8'
-  })
+  const url = `${endpoint}/smoke${path}`
+  const args = ['--silent', '--show-error', '--fail', ...auth, url]
+  return (await promisify(execFile)('curl', args, { signal })).stdout
 }
 
 /** Lists every key below the storage path, without that path. */
-function storedKeys(): string[] {
-  const listing = s3('?list-type=2&max-keys=1000')
+async function storedKeys(): Promise<string[]> {
+  const listing = await s3('?list-type=2&max-keys=1000')
   assert.match(listing, /<IsTruncated>false</, 'the smoke holds one page of keys')
   const prefix = 'pre fix/'
   return [...listing.matchAll(/<Key>([^<]*)<\/Key>/g)].map(([, key = '']) => {
@@ -97,42 +102,38 @@ function storedKeys(): string[] {
   })
 }
 
-/** Asserts that only the kept run and the records of removals remain. */
-function assertRemainder(keptDay: string): void {
-  const partition = `source=a%20b/category=c%2Fd/day=${keptDay}/run_id=run%20failed/`
-  const kept = storedKeys().filter((key) => key.startsWith('datasets/quarry/partitions/'))
-  const id = /\/segments\/([^/]+)\//
-  const snapshots = new Set(kept.map((key) => id.exec(key)?.[1]))
-  const runs = `datasets/quarry/runs/a%20b/c%2Fd/${keptDay}/run%20failed/`
-  for (const key of storedKeys()) {
-    if (key === 'datasets/quarry/latest') continue
-    if (key.startsWith('datasets/quarry/partitions/')) {
-      assert.ok(key.startsWith(`datasets/quarry/partitions/${partition}`), key)
-    } else if (key.startsWith('datasets/quarry/segments/')) {
-      assert.ok(snapshots.has(id.exec(key.slice('datasets/quarry'.length))?.[1]), key)
-    } else if (key.startsWith('datasets/quarry/expired/')) {
-      assert.ok(!snapshots.has(key.split('/').at(-1)), key)
-    } else if (key.startsWith('artifacts/')) {
-      const path = ['pre fix', ...key.split('/')].map(encodeURIComponent).join('/')
-      assert.equal(s3(`/${path}`), 'lode:removed', key)
-    } else {
-      assert.ok(key.startsWith(runs), `an unexplained key: ${key}`)
-    }
-  }
+/**
+ * The keys that a prune leaves of `before`: the kept run's, the head pointer,
+ * a tombstone for each pruned snapshot, and the fence of each removed Volume.
+ */
+function expectedRemainder(before: string[], keptDay: string): string[] {
+  const dataset = 'datasets/quarry/'
+  const partition = `${dataset}partitions/source=a%20b/category=c%2Fd/day=${keptDay}/run_id=run%20failed/`
+  const runs = `${dataset}runs/a%20b/c%2Fd/${keptDay}/run%20failed/`
+  const snapshot = (key: string) => /\/segments\/([^/]+)\//.exec(key)?.[1] ?? ''
+  const kept = new Set(before.filter((key) => key.startsWith(partition)).map(snapshot))
+  const canonical = before.filter((key) => key.startsWith(`${dataset}segments/`))
+  return [
+    ...before.filter((key) => key.startsWith(partition) || key.startsWith(runs)),
+    ...canonical.filter((key) => kept.has(snapshot(key))),
+    ...canonical
+      .map(snapshot)
+      .filter((id) => !kept.has(id))
+      .map((id) => `${dataset}expired/${id}`),
+    ...before.filter((key) => /^artifacts\/.*\/volumes\/[^/]+\/latest$/.test(key)),
+    `${dataset}latest`
+  ].sort()
 }
 
 /** Reads a run's artifact back and compares every byte. */
-async function assertArtifact({ run: key, storage: at }: NotificationLocator): Promise<void> {
-  const { events } = await readRun(key, { storage: at, quarryPath, signal })
-  const id = events.map((event) => event.artifact_id).find((value) => value !== undefined)
+async function assertArtifact(key: RunLocator, id: string, want: Buffer): Promise<void> {
   const out = join(dir, `${key.runId}.bin`)
   const result = await quarry(
     ...['read', 'artifact', ...flags, `--source=${key.source}`, `--category=${key.category}`],
-    ...[`--day=${key.day}`, `--run-id=${key.runId}`],
-    ...[`--artifact-id=${id}`, `--out=${out}`]
+    ...[`--day=${key.day}`, `--run-id=${key.runId}`, `--artifact-id=${id}`, `--out=${out}`]
   )
   assert.equal(result.code, 0, result.err)
-  assert.ok((await readFile(out)).equals(Buffer.alloc(9 << 20, 7)), 'the artifact bytes differ')
+  assert.ok((await readFile(out)).equals(want), 'the artifact bytes differ')
 }
 
 async function prune(...args: string[]): Promise<Record<string, number>> {
@@ -152,7 +153,7 @@ async function main(): Promise<void> {
     `export default async function run(ctx) {
       for (let n = 0; n < 5; n++) await ctx.emit.item({ item_type: 'x', data: { n } })
       await ctx.storage.put({ filename: 'a.txt', content_type: 'text/plain', data: Buffer.from('a') })
-      await ctx.emit.artifact({ name: 'a.bin', content_type: 'application/octet-stream', data: Buffer.alloc(9 << 20, 7) })
+      await ctx.emit.artifact({ name: 'a.bin', content_type: 'application/octet-stream', data: Buffer.from(Uint32Array.from({ length: 9 << 18 }, (_, n) => n ^ (ctx.run.run_id.length << 24)).buffer) })
       await ctx.emit.runComplete({})
     }`
   )
@@ -175,7 +176,13 @@ async function main(): Promise<void> {
     assert.equal(read.run.run_id, `run ${id}`)
     assert.equal(read.run.state, 'succeeded')
     assert.equal(read.events.length, 7, 'five items, an artifact, and the terminal event')
-    await assertArtifact(locator)
+    // Each word names its run and its offset, across the 8 MiB range boundary.
+    const words = Uint32Array.from(
+      { length: 9 << 18 },
+      (_, n) => n ^ (locator.run.runId.length << 24)
+    )
+    const artifact = read.events.find((event) => event.artifact_id !== undefined)?.artifact_id
+    await assertArtifact(locator.run, String(artifact), Buffer.from(words.buffer))
     locators.push(locator)
   }
   // The day is part of a run's key, so midnight would make the retry another run.
@@ -192,6 +199,7 @@ async function main(): Promise<void> {
   assert.equal(runs.runs.length, 3)
 
   const due = ['--succeeded-days=0', '--failed-days=0']
+  const before = await storedKeys()
   const planned = await prune('--dry-run', ...due)
   const pruned = await prune(...due)
   const again = await prune(...due)
@@ -214,7 +222,13 @@ async function main(): Promise<void> {
   const kept = await readRun(failed.run, { storage: failed.storage, quarryPath, signal })
   assert.equal(kept.run.run_id, 'run failed')
   assert.equal(kept.run.state, 'failed', 'the kept run stays readable')
-  assertRemainder(failed.run.day)
+  const remainder = await storedKeys()
+  assert.deepEqual(remainder.sort(), expectedRemainder(before, failed.run.day))
+  for (const fence of remainder.filter((key) => key.startsWith('artifacts/'))) {
+    const path = ['pre fix', ...fence.split('/')].map(encodeURIComponent).join('/')
+    assert.equal(await s3(`/${path}`), 'lode:removed', fence)
+  }
+  signal.throwIfAborted()
   console.log('S3 lifecycle passed')
 }
 
