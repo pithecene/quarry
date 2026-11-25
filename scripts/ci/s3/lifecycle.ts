@@ -2,9 +2,9 @@
 // Usage: lifecycle.ts <quarry binary> <endpoint>, with AWS_* credentials.
 
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -76,6 +76,65 @@ const run = (script: string, id: string, policy: string[] = []) =>
     ...policy
   )
 
+/** Reads one signed S3 URL below the smoke's bucket. */
+function s3(path: string): string {
+  const { AWS_ACCESS_KEY_ID: id, AWS_SECRET_ACCESS_KEY: secret } = process.env
+  const auth = ['--aws-sigv4', 'aws:amz:us-east-1:s3', '--user', `${id}:${secret}`]
+  const limits = ['--silent', '--show-error', '--fail', '--max-time', '30']
+  return execFileSync('curl', [...limits, ...auth, `${endpoint}/smoke${path}`], {
+    encoding: 'utf8'
+  })
+}
+
+/** Lists every key below the storage path, without that path. */
+function storedKeys(): string[] {
+  const listing = s3('?list-type=2&max-keys=1000')
+  assert.match(listing, /<IsTruncated>false</, 'the smoke holds one page of keys')
+  const prefix = 'pre fix/'
+  return [...listing.matchAll(/<Key>([^<]*)<\/Key>/g)].map(([, key = '']) => {
+    assert.ok(key.startsWith(prefix), `a key outside the storage path: ${key}`)
+    return key.slice(prefix.length)
+  })
+}
+
+/** Asserts that only the kept run and the records of removals remain. */
+function assertRemainder(keptDay: string): void {
+  const partition = `source=a%20b/category=c%2Fd/day=${keptDay}/run_id=run%20failed/`
+  const kept = storedKeys().filter((key) => key.startsWith('datasets/quarry/partitions/'))
+  const id = /\/segments\/([^/]+)\//
+  const snapshots = new Set(kept.map((key) => id.exec(key)?.[1]))
+  const runs = `datasets/quarry/runs/a%20b/c%2Fd/${keptDay}/run%20failed/`
+  for (const key of storedKeys()) {
+    if (key === 'datasets/quarry/latest') continue
+    if (key.startsWith('datasets/quarry/partitions/')) {
+      assert.ok(key.startsWith(`datasets/quarry/partitions/${partition}`), key)
+    } else if (key.startsWith('datasets/quarry/segments/')) {
+      assert.ok(snapshots.has(id.exec(key.slice('datasets/quarry'.length))?.[1]), key)
+    } else if (key.startsWith('datasets/quarry/expired/')) {
+      assert.ok(!snapshots.has(key.split('/').at(-1)), key)
+    } else if (key.startsWith('artifacts/')) {
+      const path = ['pre fix', ...key.split('/')].map(encodeURIComponent).join('/')
+      assert.equal(s3(`/${path}`), 'lode:removed', key)
+    } else {
+      assert.ok(key.startsWith(runs), `an unexplained key: ${key}`)
+    }
+  }
+}
+
+/** Reads a run's artifact back and compares every byte. */
+async function assertArtifact({ run: key, storage: at }: NotificationLocator): Promise<void> {
+  const { events } = await readRun(key, { storage: at, quarryPath, signal })
+  const id = events.map((event) => event.artifact_id).find((value) => value !== undefined)
+  const out = join(dir, `${key.runId}.bin`)
+  const result = await quarry(
+    ...['read', 'artifact', ...flags, `--source=${key.source}`, `--category=${key.category}`],
+    ...[`--day=${key.day}`, `--run-id=${key.runId}`],
+    ...[`--artifact-id=${id}`, `--out=${out}`]
+  )
+  assert.equal(result.code, 0, result.err)
+  assert.ok((await readFile(out)).equals(Buffer.alloc(9 << 20, 7)), 'the artifact bytes differ')
+}
+
 async function prune(...args: string[]): Promise<Record<string, number>> {
   const result = await quarry('prune', '--format=json', ...flags, ...args)
   assert.equal(result.code, 0, result.err)
@@ -116,6 +175,7 @@ async function main(): Promise<void> {
     assert.equal(read.run.run_id, `run ${id}`)
     assert.equal(read.run.state, 'succeeded')
     assert.equal(read.events.length, 7, 'five items, an artifact, and the terminal event')
+    await assertArtifact(locator)
     locators.push(locator)
   }
   // The day is part of a run's key, so midnight would make the retry another run.
@@ -154,6 +214,7 @@ async function main(): Promise<void> {
   const kept = await readRun(failed.run, { storage: failed.storage, quarryPath, signal })
   assert.equal(kept.run.run_id, 'run failed')
   assert.equal(kept.run.state, 'failed', 'the kept run stays readable')
+  assertRemainder(failed.run.day)
   console.log('S3 lifecycle passed')
 }
 
