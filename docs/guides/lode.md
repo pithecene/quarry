@@ -190,8 +190,8 @@ The following behaviors are explicitly **out of scope**:
   for its storage commit, and so does a put when the runtime acknowledges
   file writes ([CONTRACT_IPC.md](../contracts/CONTRACT_IPC.md)).
 - When the `buffered` buffer is full, it drops an incoming advisory event. For an
-  event it may not drop, it evicts the oldest advisory event once, and it fails
-  the run when the event still does not fit ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
+  event it may not drop, it evicts at most one advisory event, the oldest that no
+  flush is writing, and it fails the run when the event still does not fit ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
 
 **No Deduplication:**
 - Duplicate detection is a downstream consumer responsibility.
