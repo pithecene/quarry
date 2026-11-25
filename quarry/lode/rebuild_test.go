@@ -278,3 +278,26 @@ func TestRebuild_LineageFallsBackWhenTerminalLacksIt(t *testing.T) {
 		t.Errorf("attempt = %v, want 3 from the first event record", start["attempt"])
 	}
 }
+
+// A terminal event without a partition manifest still ends its run.
+func TestRebuildRunRecords_IncompleteIndex(t *testing.T) {
+	t.Parallel()
+	store := lode.NewMemory()
+	factory := sharedFactory(store)
+	cfg := writeLegacyRun(t, factory, "src", "r1", types.EventTypeItem, types.EventTypeRunComplete)
+	keys, err := store.List(t.Context(), "datasets/quarry/partitions/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range keys {
+		if strings.HasSuffix(k, "/manifest.json") {
+			if err := store.Delete(t.Context(), k); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	report := rebuild(t, factory, false)
+	if report.StartsWritten != 1 || report.EndsWritten != 1 || !hasKey(t, factory, RunRecordDir(cfg)+EndRecordName) {
+		t.Fatalf("report = %+v, want a start and an end record", report)
+	}
+}

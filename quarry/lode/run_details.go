@@ -1,7 +1,6 @@
 package lode
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +18,7 @@ type RunDetails struct {
 }
 
 // QueryRunDetails reads metrics and sidecar metadata for the run identified by
-// key from its indexed partitions. A run with no visible metrics has a nil policy.
+// key from its committed snapshots. A run with no visible metrics has a nil policy.
 func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore], key Config) (RunDetails, error) {
 	ds, store, ok, err := openReadStore(ctx, key.Dataset, factory)
 	if err != nil {
@@ -38,7 +37,7 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 	// A run can write files and its end record without a snapshot.
 	if ok {
 		prefix := PartitionPrefix(key)
-		snapshots, err := readRunSnapshots(ctx, ds, prefix)
+		snapshots, err := RunSnapshots(ctx, ds, prefix)
 		if err != nil {
 			return RunDetails{}, err
 		}
@@ -83,44 +82,10 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 	return details, nil
 }
 
-func readRunSnapshots(ctx context.Context, ds *lode.RecordView[lode.D], prefix string) ([]*lode.Snapshot, error) {
-	parts, err := ds.ListPartitions(ctx, lode.PartitionListOptions{Prefix: prefix})
-	if err != nil {
-		return nil, WrapReadError(err, prefix)
-	}
-
-	var snapshots []*lode.Snapshot
-	seen := make(map[lode.SnapshotID]bool)
-	for _, part := range parts {
-		for loaded, err := range ds.Manifests(ctx, part, lode.ManifestListOptions{}) {
-			if errors.Is(err, lode.ErrNotFound) {
-				break // Retention can empty a partition after it was listed.
-			}
-			if err != nil {
-				return nil, WrapReadError(err, part.String())
-			}
-			id := loaded.Ref.ID
-			if !seen[id] {
-				seen[id] = true
-				snapshots = append(snapshots, &lode.Snapshot{ID: id, Manifest: loaded.Manifest})
-			}
-		}
-	}
-	// Merge the partition listings in the same order as Lode's snapshot catalog.
-	slices.SortFunc(snapshots, func(a, b *lode.Snapshot) int {
-		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), cmp.Compare(a.ID, b.ID))
-	})
-	return snapshots, nil
-}
-
 func latestRunMetrics(ctx context.Context, ds *lode.RecordView[lode.D], snapshots []*lode.Snapshot, key Config, prefix string) (lode.D, error) {
-	partition, err := lode.ParsePartitionPath(prefix + "event_type=metrics")
-	if err != nil {
-		return nil, err
-	}
 	seen := make(map[string]bool)
 	for _, snap := range slices.Backward(snapshots) {
-		records, err := readManifestRecords(ctx, ds, snap.Manifest, partition, seen)
+		records, err := readManifestRecords(ctx, ds, snap.Manifest, prefix+"event_type=metrics/", seen)
 		if err != nil {
 			return nil, WrapReadError(err, "quarry/snapshot/"+string(snap.ID))
 		}

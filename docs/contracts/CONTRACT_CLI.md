@@ -521,9 +521,8 @@ SidecarFileSummary:
   path: string                # as the inventory records it; the stored key collapses consecutive slashes
 ```
 
-The command discovers the selected run's snapshots through Lode's partition
-manifest index. The response reflects snapshots indexed in at least one
-partition of that run.
+The response reflects every committed snapshot of the run, whether or not its
+partition index is complete ([CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Contents).
 
 The `policy` field comes from the metrics of the run's end record, or from its
 latest visible metrics record, and is null without either. Metrics without a recognized policy
@@ -709,7 +708,8 @@ The `events` field holds the run's stored records of `record_kind` `event` and
 The metrics record, and the artifact chunk records of a run that a release before 0.15 wrote, are not events and are omitted.
 Item payloads are returned as stored. Quarry does not know a script's
 item schema. The run's partitions are addressed from its start record's
-`partition`. `table` renders one summary row per record (`seq`, `type`,
+`partition`, and every committed snapshot under it is read
+([CONTRACT_LODE.md](CONTRACT_LODE.md) §Run Contents). `table` renders one summary row per record (`seq`, `type`,
 `record_kind`, `ts`, `event_id`), and `json` and `yaml` carry the full records.
 
 A run with no start record is an error (`run not found`).
@@ -795,7 +795,7 @@ number of store requests therefore stays the same however many artifacts
 the run holds. When the
 run has no entry for the artifact, the command finds the record by
 reading the run's artifact partition. The number of store requests in a partition read
-grows with the number of the run's snapshots. The command therefore writes the reason for
+grows with the number of the dataset's snapshots. The command therefore writes the reason for
 each partition read to stderr. For an artifact stored in a Volume, the command reads the
 Volume's snapshot one range at a time. A run from a release before 0.15 stores each
 artifact as chunk records. The command reads those records together with
@@ -812,7 +812,7 @@ artifact ID that no commit record names (`artifact not found`).
 
 Backfills run records for runs written before v0.14.0, which `list runs`
 cannot otherwise find ([CONTRACT_RUN.md](CONTRACT_RUN.md) §Backfilled Run Records). It scans
-the dataset's partition tree and writes a start record for each run that
+the dataset's committed snapshots and writes a start record for each run that
 has no start record. An end record follows when the stored data shows that
 the run ended, and the command reports what it wrote. Records are created, never
 replaced, so a rerun writes only the records still missing, and rerunning

@@ -635,3 +635,115 @@ func TestAgeSince_Deadline(t *testing.T) {
 		}
 	}
 }
+
+// dropIndex deletes the run's partition manifests and returns the count.
+func (f *fixture) dropIndex(cfg qlode.Config) int {
+	f.t.Helper()
+	n := 0
+	for _, k := range f.keys(cfg) {
+		if strings.HasSuffix(k, "/manifest.json") {
+			n++
+			if err := f.store.Delete(f.t.Context(), k); err != nil {
+				f.t.Fatal(err)
+			}
+		}
+	}
+	return n
+}
+
+// A run whose partition index omits a snapshot keeps everything, terminated or
+// not, and a sweep restores the index so that the next prune removes the run.
+func TestPrune_IncompleteIndex(t *testing.T) {
+	t.Parallel()
+	for name, outcome := range map[string]types.OutcomeStatus{"failed": types.OutcomeScriptError, "unterminated": ""} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+			cfg := f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: outcome, artifacts: 1})
+			f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})
+			f.write(runSpec{source: "src", runID: "r2", day: recentDay, outcome: types.OutcomeSuccess})
+			if f.dropIndex(cfg) == 0 {
+				t.Fatal("the run has no partition manifest")
+			}
+			before := f.keys(cfg)
+			policy := Policy{Failed: days(7), Unterminated: days(7)}
+			for _, dryRun := range []bool{true, false} {
+				report := f.prune(Options{Policy: policy, DryRun: dryRun})
+				if got := outcomes(report); got != "[r1:kept]" || report.Runs[0].Kept != keptUnindexed || report.Snapshots != 0 {
+					t.Fatalf("runs = %s (%+v), want r1 kept as unindexed", got, report.Runs)
+				}
+				if after := f.keys(cfg); !slices.Equal(after, before) {
+					t.Fatalf("keys = %v, want %v", after, before)
+				}
+			}
+			// The sweep ends a prune, so the run is pruned by the next one.
+			f.prune(Options{Policy: policy, SweepGrace: time.Nanosecond})
+			if report := f.prune(Options{Policy: policy}); outcomes(report) != "[r1:pruned]" {
+				t.Fatalf("runs = %s (%+v), want r1 pruned", outcomes(report), report.Runs)
+			}
+			if left := f.keys(cfg); len(left) != 0 {
+				t.Fatalf("left %v", left)
+			}
+		})
+	}
+}
+
+// One omitted snapshot of several keeps the run, and no other is expired.
+func TestPrune_PartlyIncompleteIndex(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	cfg := cfgs["failed"]
+	f.write(runSpec{source: "src", runID: cfg.RunID, day: oldDay, again: true})
+	f.write(runSpec{source: "src", runID: "r9", day: recentDay, outcome: types.OutcomeSuccess})
+	for _, k := range f.keys(cfg) {
+		if strings.HasSuffix(k, "/manifest.json") {
+			if err := f.store.Delete(t.Context(), k); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	before := f.keys(cfg)
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got := outcomes(report); got != "[r1:kept]" || report.Runs[0].Kept != keptUnindexed {
+		t.Fatalf("runs = %s (%+v), want r1 kept as unindexed", got, report.Runs)
+	}
+	if after := f.keys(cfg); !slices.Equal(after, before) {
+		t.Fatalf("keys = %v, want %v", after, before)
+	}
+}
+
+// A run that commits a snapshot without its index after the preview keeps that
+// snapshot and its records.
+func TestPrune_KeepsAnUnindexedCommitAfterThePreview(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	cfg := cfgs["failed"]
+	store := &commitDuring{RangeStore: f.store}
+	store.commit = func() {
+		indexed := f.keys(cfg)
+		f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})
+		for _, k := range f.keys(cfg) {
+			if strings.HasSuffix(k, "/manifest.json") && !slices.Contains(indexed, k) {
+				if err := f.store.Delete(t.Context(), k); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+		f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
+	}
+	factory := func() (lode.RangeStore, error) { return store, nil }
+	report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now})
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if got := outcomes(report); got != "[r1:kept]" || report.Runs[0].Kept != keptCommitted {
+		t.Fatalf("runs = %s (%+v), want r1 kept as committed", got, report.Runs)
+	}
+	if _, err := f.store.Get(t.Context(), qlode.RunRecordDir(cfg)+qlode.StartRecordName); err != nil {
+		t.Fatalf("start record removed: %v", err)
+	}
+	if _, err := f.store.Get(t.Context(), strings.ReplaceAll(qlode.SidecarFilesPrefix(cfg), "//", "/")+"page.html"); err != nil {
+		t.Fatalf("sidecar removed: %v", err)
+	}
+}

@@ -24,13 +24,13 @@ const metaSuffix = ".meta.json"
 // so Lode's expiry never deletes them (CONTRACT_LODE.md §Sidecar File
 // Inventory). Recorded paths outside the run's sidecar prefix are returned
 // as skipped and are never deleted.
-func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, partition string, committed bool) (paths, skipped []string, err error) {
+func (p *pruner) sidecarPaths(ctx context.Context, cfg qlode.Config, snapshots []*lode.Snapshot, committed bool) (paths, skipped []string, err error) {
 	prefix := qlode.SidecarFilesPrefix(cfg)
 	// The run key was validated before selection. Its recorded prefix may
 	// contain repeated slashes that older Lode stores collapsed.
 	objectPrefix := path.Clean(prefix) + "/"
 	set := map[string]bool{}
-	recorded, err := p.recordedSidecars(ctx, partition)
+	recorded, err := recordedSidecars(snapshots)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -103,41 +103,22 @@ func unambiguous(cfg qlode.Config) bool {
 
 // recordedSidecars returns the sidecar paths that the run's snapshots record
 // in their metadata (CONTRACT_LODE.md §Sidecar File Inventory).
-func (p *pruner) recordedSidecars(ctx context.Context, partition string) ([]string, error) {
-	parts, err := p.ds.ListPartitions(ctx, lode.PartitionListOptions{Prefix: partition})
-	if errors.Is(err, lode.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, qlode.WrapReadError(err, partition)
-	}
-	seen := map[lode.SnapshotID]bool{}
+func recordedSidecars(snapshots []*lode.Snapshot) ([]string, error) {
 	var out []string
-	for _, part := range parts {
-		// Manifests skips a manifest that expired after the listing.
-		for loaded, err := range p.ds.Manifests(ctx, part, lode.ManifestListOptions{}) {
-			if err != nil {
-				return nil, qlode.WrapReadError(err, part.String())
-			}
-			ref, m := loaded.Ref, loaded.Manifest
-			if seen[ref.ID] {
-				continue
-			}
-			seen[ref.ID] = true
-			var meta map[string]any
-			if err := m.Metadata.Decode(&meta); err != nil {
-				return nil, fmt.Errorf("%w: snapshot %s: %w", errMalformedInventory, ref.ID, err)
-			}
-			raw, recorded := meta[qlode.MetadataKeySidecarFiles]
-			if !recorded {
-				continue // the writer omits the key when a snapshot adds no file
-			}
-			paths, ok := sidecarRefPaths(raw)
-			if !ok {
-				return nil, fmt.Errorf("%w: snapshot %s", errMalformedInventory, ref.ID)
-			}
-			out = append(out, paths...)
+	for _, snap := range snapshots {
+		var meta map[string]any
+		if err := snap.Metadata.Decode(&meta); err != nil {
+			return nil, fmt.Errorf("%w: snapshot %s: %w", errMalformedInventory, snap.ID, err)
 		}
+		raw, recorded := meta[qlode.MetadataKeySidecarFiles]
+		if !recorded {
+			continue // the writer omits the key when a snapshot adds no file
+		}
+		paths, ok := sidecarRefPaths(raw)
+		if !ok {
+			return nil, fmt.Errorf("%w: snapshot %s", errMalformedInventory, snap.ID)
+		}
+		out = append(out, paths...)
 	}
 	return out, nil
 }

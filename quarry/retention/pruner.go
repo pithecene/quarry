@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ const (
 	keptNoInstant = "a snapshot ID carries no write instant"
 	keptCommitted = "committed during the prune; its records remain"
 	keptInventory = "a snapshot's sidecar inventory is malformed"
+	keptUnindexed = "has committed snapshots that the expiry did not find; a prune with a sweep restores their index"
 )
 
 // pruner removes one run at a time from one dataset.
@@ -126,12 +128,18 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 		out.Kept = kept
 		return out, true, err
 	}
+	// The inventory is read after the preview, so it also holds each snapshot
+	// that committed in between, which keeps the run.
+	stored, err := qlode.RunSnapshots(ctx, p.ds, out.Partition)
+	if err != nil {
+		return out, true, err
+	}
 	cfg := p.configOf(k)
 	// heads are the Volume heads that dated an unterminated run, nil for a
 	// terminated one.
 	var heads map[string]string
 	if out.State == reader.StateUnterminated {
-		writes, dated, kept, err := p.writes(ctx, cfg, preview.Expired)
+		writes, dated, kept, err := p.writes(ctx, cfg, slices.Concat(preview.Expired, snapshotIDs(stored)))
 		if kept != "" || err != nil {
 			out.Kept = kept
 			return out, true, err
@@ -141,6 +149,12 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 			return out, due, nil
 		}
 		heads = dated
+	}
+	// Expiry finds the run's snapshots through its partition index, so one that
+	// the index omits would outlive the records that locate it.
+	if slices.ContainsFunc(stored, func(s *lode.Snapshot) bool { return !slices.Contains(preview.Expired, s.ID) }) {
+		out.Kept = keptUnindexed
+		return out, true, nil
 	}
 	// Each Volume is removed in a dry run first, so a Volume that would keep
 	// the run keeps it before anything of the run is deleted.
@@ -163,7 +177,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if err != nil {
 		return out, true, err
 	}
-	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, out.Partition, len(preview.Expired) > 0)
+	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, stored, len(preview.Expired) > 0)
 	out.Skipped = skipped
 	if errors.Is(err, errMalformedInventory) {
 		out.Kept = keptInventory
@@ -192,13 +206,13 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 			return out, true, err
 		}
 	}
-	// A snapshot that committed after the preview remains, so the partition
-	// is listed again; a snapshot there keeps the records.
-	live, err := p.hasSnapshots(ctx, out.Partition)
+	// A snapshot that committed after the preview remains, so the inventory is
+	// read again; a snapshot there, indexed or not, keeps the records.
+	live, err := qlode.RunSnapshots(ctx, p.ds, out.Partition)
 	if err != nil {
 		return out, true, err
 	}
-	if live {
+	if len(live) > 0 {
 		out.Kept = keptCommitted
 		return out, true, nil
 	}
@@ -346,23 +360,10 @@ func isNonce(s string) bool {
 	return len(s) == 16 && strings.Trim(s, "0123456789abcdef") == ""
 }
 
-// hasSnapshots reports whether any snapshot still has a manifest under the
-// run's partition.
-func (p *pruner) hasSnapshots(ctx context.Context, partition string) (bool, error) {
-	parts, err := p.ds.ListPartitions(ctx, lode.PartitionListOptions{Prefix: partition})
-	if errors.Is(err, lode.ErrNotFound) {
-		return false, nil
+func snapshotIDs(snapshots []*lode.Snapshot) []lode.SnapshotID {
+	ids := make([]lode.SnapshotID, len(snapshots))
+	for i, s := range snapshots {
+		ids[i] = s.ID
 	}
-	if err != nil {
-		return false, qlode.WrapReadError(err, partition)
-	}
-	for _, part := range parts {
-		for _, err := range p.ds.Manifests(ctx, part, lode.ManifestListOptions{Limit: 1}) {
-			if err != nil {
-				return false, qlode.WrapReadError(err, part.String())
-			}
-			return true, nil
-		}
-	}
-	return false, nil
+	return ids
 }

@@ -610,3 +610,86 @@ func TestFindRun_RejectsEndRecordOfAnotherRun(t *testing.T) {
 		t.Fatalf("FindRun = %+v, %v; want ErrInvalidRun", run, err)
 	}
 }
+
+// dropIndex deletes the first n partition manifests of the run.
+func (f *fixture) dropIndex(runID, eventType string, n int) {
+	f.t.Helper()
+	keys, err := f.store.List(f.t.Context(), "datasets/quarry/partitions/")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		if n > 0 && strings.Contains(k, "/run_id="+runID+"/event_type="+eventType+"/") && strings.HasSuffix(k, "/manifest.json") {
+			n--
+			if err := f.store.Delete(f.t.Context(), k); err != nil {
+				f.t.Fatal(err)
+			}
+		}
+	}
+	if n != 0 {
+		f.t.Fatalf("%d partition manifests of %s too few", n, runID)
+	}
+}
+
+// A run's events and artifacts read completely whatever its partition index
+// omits, with or without an end record, and another run's never appear.
+func TestReadEvents_IncompleteIndex(t *testing.T) {
+	t.Parallel()
+	item, complete := types.EventTypeItem, types.EventTypeRunComplete
+	for name, end := range map[string]*qlode.RunEnd{"ended": ended(types.OutcomeSuccess, complete), "unterminated": nil} {
+		for _, lost := range []int{0, 1, 3} {
+			t.Run(fmt.Sprintf("%s, %d lost", name, lost), func(t *testing.T) {
+				t.Parallel()
+				f := newFixture(t)
+				f.write(runSpec{"src", "cat", "2026-10-21", "r1", []types.EventType{item, item, item, complete}, end})
+				f.write(runSpec{"src", "cat", "2026-10-21", "r10", []types.EventType{item}, nil})
+				f.dropIndex("r1", "item", lost)
+				r := f.reader()
+				p, err := r.ListRuns(t.Context(), Selector{}, ListOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				run := p.Runs[0]
+				if want := end == nil; (run.State == StateUnterminated) != want {
+					t.Errorf("state = %s, want unterminated = %t", run.State, want)
+				}
+				evs, err := r.ReadEvents(t.Context(), run)
+				if err != nil || len(evs) != 4 {
+					t.Fatalf("events = %d, %v; want 4", len(evs), err)
+				}
+				for i, e := range evs {
+					if intOf(e["seq"]) != int64(i+1) || e["run_id"] != "r1" {
+						t.Errorf("event %d = %v", i, e)
+					}
+				}
+			})
+		}
+	}
+}
+
+// An artifact without its partition manifest is listed.
+func TestListArtifacts_IncompleteIndex(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	spec := runSpec{"src", "cat", "2026-10-21", "r1", nil, nil}
+	f.writeRun(spec, []chunkRecord{{artifactID: "a1", seq: 1, isLast: true, data: []byte("x")}}, &types.EventEnvelope{
+		ContractVersion: types.ContractVersion, EventID: "e1", RunID: "r1", Seq: 1, Type: types.EventTypeArtifact,
+		Ts: "2026-10-21T01:00:00Z", Attempt: 1, Payload: map[string]any{"artifact_id": "a1", "name": "a", "content_type": "t", "size_bytes": 1},
+	})
+	r := f.reader()
+	p, err := r.ListRuns(t.Context(), Selector{}, ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.dropIndex("r1", "artifact", 2)
+	got, err := r.ListArtifacts(t.Context(), p.Runs[0])
+	if err != nil || len(got) != 1 || got[0].ArtifactID != "a1" || got[0].SizeBytes != 1 {
+		t.Fatalf("artifacts = %+v, %v; want a1 of one byte", got, err)
+	}
+	if _, rd, err := r.OpenArtifact(t.Context(), p.Runs[0], "a1"); err != nil {
+		t.Fatalf("OpenArtifact: %v", err)
+	} else if b, err := io.ReadAll(rd); err != nil || string(b) != "x" {
+		t.Fatalf("bytes = %q, %v", b, err)
+	}
+}

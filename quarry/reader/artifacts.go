@@ -49,8 +49,7 @@ var artifactPartition = "event_type=" + string(types.EventTypeArtifact)
 
 // artifactRecords returns every record in the run's artifact partition.
 func (r *Reader) artifactRecords(ctx context.Context, run Run) ([]lode.D, error) {
-	path := run.Partition + artifactPartition
-	return r.readPartitions(ctx, path, func(p lode.PartitionPath) bool { return p.String() == path })
+	return r.readRecords(ctx, run.Partition+artifactPartition+"/")
 }
 
 // Artifact is one artifact as the run's commit record describes it.
