@@ -58,6 +58,6 @@ jq -e '.outcome == "success" and .recorded == true and .exit_code == 0' report.j
 day=$(./quarry list runs --format json "${store[@]}" | jq -r '.runs[0].day')
 ./quarry list events --format json "${store[@]}" \
   --source ci --category verify --day "$day" --run-id verify > events.json
-jq -e '[.events[] | [.seq, .type, .payload.data.n]] ==
-  [[1, "item", 0], [2, "item", 1], [3, "item", 2], [4, "run_complete", null]]' events.json
+jq -e '[.events[] | [.seq, .type, .payload.item_type, .payload.data.n]] ==
+  [[1, "item", "x", 0], [2, "item", "x", 1], [3, "item", "x", 2], [4, "run_complete", null, null]]' events.json
 echo "✅ $archive on $os/$arch"
