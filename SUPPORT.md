@@ -1,19 +1,19 @@
-# Support Posture — Quarry v0.20.1
+# Support Posture — Quarry v0.20.2
 
-This document defines support expectations for Quarry v0.20.1.
+This document defines support expectations for Quarry v0.20.2.
 
 ---
 
 ## Maturity Level
 
-**v0.20.1 is an early release.** APIs and behaviors may change in subsequent
+**v0.20.2 is an early release.** APIs and behaviors may change in subsequent
 minor versions. Breaking changes will be documented in release notes.
 
 ---
 
 ## Known Issues
 
-_No known functional issues in v0.20.1._
+_No known functional issues in v0.20.2._
 
 ### Open Security Advisories
 
@@ -146,12 +146,12 @@ Quarry uses lockstep versioning:
 Check versions:
 ```bash
 quarry version
-# 0.20.1 (commit: ...)
+# 0.20.2 (commit: ...)
 ```
 
 ---
 
 ## No Warranty
 
-Quarry v0.20.1 is provided "as is" without warranty of any kind.
+Quarry v0.20.2 is provided "as is" without warranty of any kind.
 See LICENSE for details.
