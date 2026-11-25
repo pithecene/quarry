@@ -39,4 +39,4 @@ docker run --rm --network "container:$browser" --volume "$PWD/scripts/ci/smoke:/
     quarry run --script ./scripts/page.ts --run-id smoke --source ci --category smoke \
       --browser-ws-endpoint "$endpoint" --report /tmp/report.json \
       --storage-backend fs --storage-path /tmp/data >&2
-    cat /tmp/report.json' | jq -e '.outcome == "success" and .recorded and .exit_code == 0'
+    cat /tmp/report.json' | jq -e '.outcome == "success" and .recorded == true and .exit_code == 0'

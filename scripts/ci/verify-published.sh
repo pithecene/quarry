@@ -54,7 +54,7 @@ store=(--storage-backend fs --storage-path store)
 mkdir store
 ./quarry run --script ./run.mjs --run-id verify --source ci --category verify \
   --no-browser --report report.json "${store[@]}"
-jq -e '.outcome == "success" and .recorded and .exit_code == 0' report.json
+jq -e '.outcome == "success" and .recorded == true and .exit_code == 0' report.json
 day=$(./quarry list runs --format json "${store[@]}" | jq -r '.runs[0].day')
 ./quarry list events --format json "${store[@]}" \
   --source ci --category verify --day "$day" --run-id verify > events.json
