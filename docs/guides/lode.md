@@ -176,10 +176,15 @@ The following behaviors are explicitly **out of scope**:
 - If a write fails, the error propagates to the policy and run outcome.
 - Callers are responsible for implementing retry logic at the job/orchestration level.
 
-**No Backpressure:**
-- Quarry does not implement backpressure for slow storage backends.
-- Events are written as fast as the policy allows.
-- For high-throughput scenarios, use buffered policy with appropriate limits.
+**No Storage-Aware Throttling:**
+- Quarry does not pace a run to the storage backend. Slow storage reaches the
+  script only through the policy ([policy guide](policy.md)).
+- `strict` writes each event before it accepts the next, and `streaming`
+  blocks ingestion while it flushes a full buffer
+  ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Streaming Policy). Either way
+  the script's emit calls wait ([emit guide](emit.md) §Backpressure).
+- `buffered` writes when the run ends, so slow storage delays the end of the run.
+  A full buffer drops advisory events, and then fails the run.
 
 **No Deduplication:**
 - Duplicate detection is a downstream consumer responsibility.
