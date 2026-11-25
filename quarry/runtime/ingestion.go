@@ -480,6 +480,10 @@ func (e *IngestionEngine) handleArtifactCommit(ctx context.Context, envelope *ty
 		}
 		sizeBytes = int64(v)
 	case float64:
+		// The conversion drops a fraction, and is undefined out of range.
+		if v != math.Trunc(v) || v < math.MinInt64 || v >= 1<<63 {
+			return types.ArtifactStorage{}, fmt.Errorf("artifact event size_bytes %v is not an int64", v)
+		}
 		sizeBytes = int64(v)
 	default:
 		return types.ArtifactStorage{}, fmt.Errorf("artifact event has invalid size_bytes type: %T", envelope.Payload["size_bytes"])
