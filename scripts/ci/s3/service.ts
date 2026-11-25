@@ -7,8 +7,9 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
+import type { ReaderStorage } from '../../../sdk/src/index.ts'
 
-const [binary = '', endpoint = ''] = process.argv.slice(2)
+export const [binary = '', endpoint = ''] = process.argv.slice(2)
 // A smoke writes and prunes, so it accepts a local service only.
 assert.match(endpoint, /^http:\/\/127\.0\.0\.1:\d+$/, 'expected a loopback endpoint')
 export const BUDGET_MS = 300_000
@@ -19,17 +20,16 @@ export const quarryPath = resolve(binary)
 export const dir = await mkdtemp(join(tmpdir(), 'quarry-s3-'))
 
 /** The reader's storage at prefix of the smoke's bucket. */
-export const storageAt = (prefix: string) =>
-  ({
-    backend: 's3',
-    path: `smoke/${prefix}`,
-    region: 'us-east-1',
-    endpoint,
-    s3PathStyle: true
-  }) as const
+export const storageAt = (prefix: string): ReaderStorage => ({
+  backend: 's3',
+  path: `smoke/${prefix}`,
+  region: 'us-east-1',
+  endpoint,
+  s3PathStyle: true
+})
 
 /** The CLI's flags for storageAt(prefix). */
-export const flagsAt = (prefix: string) => [
+export const flagsAt = (prefix: string): string[] => [
   '--storage-backend=s3',
   `--storage-path=smoke/${prefix}`,
   '--storage-region=us-east-1',
@@ -74,11 +74,9 @@ export async function s3(path: string): Promise<string> {
   return (await promisify(execFile)('curl', args, { signal })).stdout
 }
 
-/** Lists every key below a storage prefix, without that prefix. */
+/** Lists every key of the bucket, which must all be below a storage prefix, without it. */
 export async function storedKeys(storagePrefix: string): Promise<string[]> {
-  const listing = await s3(
-    `?list-type=2&max-keys=1000&prefix=${encodeURIComponent(`${storagePrefix}/`)}`
-  )
+  const listing = await s3('?list-type=2&max-keys=1000')
   assert.match(listing, /<IsTruncated>false</, 'the smoke holds one page of keys')
   const prefix = `${storagePrefix}/`
   return [...listing.matchAll(/<Key>([^<]*)<\/Key>/g)].map(([, key = '']) => {

@@ -21,5 +21,5 @@ curl --silent --fail --retry 60 --retry-delay 1 --retry-all-errors --max-time 5 
 curl --silent --show-error --fail --aws-sigv4 aws:amz:us-east-1:s3 \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" --request PUT "$endpoint/smoke"
 for smoke in lifecycle concurrent; do
-  pnpm exec tsx "scripts/ci/s3/$smoke.ts" "${QUARRY_BINARY:-quarry/quarry}" "$endpoint"
+  pnpm exec tsx "scripts/ci/s3/$smoke.ts" quarry/quarry "$endpoint"
 done

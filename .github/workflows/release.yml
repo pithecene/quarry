@@ -97,7 +97,7 @@ jobs:
       - name: 🧪 Test
         run: task test
 
-      - name: 🪣 S3 Lifecycle
+      - name: 🪣 S3 Smokes
         run: task test:s3
 
   build:
