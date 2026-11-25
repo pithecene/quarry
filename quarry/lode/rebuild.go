@@ -188,7 +188,7 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 	if err != nil {
 		return nil, err
 	}
-	held := snapshotsByPartition(snapshots)
+	held := snapshotsByPartition(dataset, snapshots)
 	byPrefix := map[string]*legacyRun{}
 	for _, p := range parts {
 		path := p.String()
@@ -204,7 +204,9 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 			}}
 			byPrefix[prefix] = run
 		}
-		run.partitions[values[4]] = held[path]
+		if len(held[path]) > 0 { // a listed partition alone is no evidence of a record
+			run.partitions[values[4]] = held[path]
+		}
 	}
 	out := make([]legacyRun, 0, len(byPrefix))
 	for _, run := range byPrefix {
@@ -216,11 +218,11 @@ func legacyRuns(ctx context.Context, dr *lode.RecordView[lode.D], dataset string
 
 // snapshotsByPartition indexes the snapshots by the first fields of their
 // objects' paths, as many as a Quarry partition has.
-func snapshotsByPartition(snapshots []*lode.Snapshot) map[string][]*lode.Snapshot {
+func snapshotsByPartition(dataset string, snapshots []*lode.Snapshot) map[string][]*lode.Snapshot {
 	held := map[string][]*lode.Snapshot{}
 	for _, snap := range snapshots {
 		for _, obj := range snap.Objects {
-			_, rel, _ := strings.Cut(obj.Path, "/partitions/")
+			rel, _ := strings.CutPrefix(obj.Path, "datasets/"+dataset+"/partitions/")
 			segs := strings.SplitN(rel, "/", len(partitionKeys)+1)
 			if len(segs) <= len(partitionKeys) {
 				continue
