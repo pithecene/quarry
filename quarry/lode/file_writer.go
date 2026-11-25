@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pithecene/lode/lode"
+
 	"github.com/pithecene/quarry/iox"
 )
 
