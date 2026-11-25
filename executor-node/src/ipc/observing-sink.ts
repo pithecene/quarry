@@ -16,7 +16,8 @@ import {
   type ArtifactId,
   ArtifactRangeRefusedError,
   type EmitSink,
-  type EventEnvelope
+  type EventEnvelope,
+  StorageWriteRefusedError
 } from '@pithecene/quarry-sdk'
 
 /**
@@ -164,11 +165,16 @@ export class ObservingSink implements EmitSink, SinkState {
   }
 
   /**
-   * Write a sidecar file, tracking failures.
+   * Write a sidecar file, tracking failures. A file the runtime refused
+   * (StorageWriteRefusedError) is recoverable per CONTRACT_IPC.md and is
+   * rethrown without marking the sink failed.
    * @throws SinkAlreadyFailedError if the sink has previously failed
    */
   async writeFile(filename: string, contentType: string, data: Buffer | Uint8Array): Promise<void> {
-    await this.guard(() => this.inner.writeFile(filename, contentType, data))
+    await this.guard(
+      () => this.inner.writeFile(filename, contentType, data),
+      (err) => err instanceof StorageWriteRefusedError
+    )
   }
 
   /**

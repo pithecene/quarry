@@ -218,7 +218,8 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 ### Semantics
 
 - `storage.put()` shares the same serialization chain as `emit.*` for
-  ordering and fail-fast behavior.
+  ordering and fail-fast behavior, except that a file the runtime refused
+  (`ok: false`) does not fail the chain (§Error Propagation).
 - **Terminal boundary**: calling `storage.put()` after a terminal event
   (`run_complete` or `run_error`) throws `TerminalEventError`.
 - **Not events**: file writes do not produce event envelopes and are
@@ -229,7 +230,11 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 
 The promise that `storage.put()` returns reflects the backend write result. If the storage backend
 (e.g. S3, local filesystem) fails, the returned promise **rejects** with
-the error message from the runtime.
+`StorageWriteRefusedError`, which carries the error message from the runtime.
+A failure of the transport itself is not such a refusal: the write that meets it
+fails, and so does every later call. An example is a write that waits for its
+ack when stdin ends, after the runtime sent an ack (CONTRACT_IPC.md §Backward
+Compatibility states the case without one).
 
 This is implemented via `file_write_ack` frames (see [CONTRACT_IPC.md](CONTRACT_IPC.md) §File
 Write Acknowledgement). The error is **recoverable**: the run continues and
@@ -278,6 +283,16 @@ the key is an empty string.
 - Content type is persisted as a companion `.meta.json` sidecar file
   alongside the data file in storage. It holds `content_type` and the `run_id`
   of the run that wrote it.
+- A write of the data file can report an error after storage persisted it.
+  Quarry then reads the file back, and the write succeeds with a logged warning
+  when the stored bytes are its own. When the store reports that the path exists,
+  the write fails without that read, since the data file names no run.
+- A run writes each filename once: a second write of a recorded filename fails
+  as an existing path, whatever its bytes are.
+- When the companion write fails, the put fails and the data file stays in
+  storage, outside the run's inventory. Quarry MUST NOT remove it, since a store
+  can take an equal upload of another write for this one. A store that
+  refuses existing paths then refuses a retry of that filename.
 - A companion write can report an error after storage persisted it. Quarry
   then reads the companion back, and the write succeeds with a logged warning
   when the stored bytes are its own.
