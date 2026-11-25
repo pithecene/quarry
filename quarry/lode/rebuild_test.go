@@ -420,6 +420,7 @@ func TestRebuildRunRecords_ReadsTheMetricsRecord(t *testing.T) {
 		{name: "a record", want: true},
 		{name: "another kind", change: func(d lode.D) { d["record_kind"] = RecordKindEvent }},
 		{name: "no time", change: func(d lode.D) { delete(d, "ts") }},
+		{name: "a malformed time", change: func(d lode.D) { d["ts"] = "not-a-date" }},
 		{name: "a lost data file", lose: true, wantErr: lode.ErrNotFound},
 		{name: "a lost data file of an ended run", lose: true, ended: true},
 	} {
