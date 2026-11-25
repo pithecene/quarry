@@ -342,6 +342,7 @@ jobs:
         run: scripts/ci/image-metadata.sh "$GITHUB_REF_NAME"
 
       - name: 🐳 Build & push (slim)
+        id: slim
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -355,6 +356,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: 🐳 Build & push (full, amd64 only)
+        id: full
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -366,6 +368,21 @@ jobs:
             ghcr.io/pithecene/quarry:${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # A tag can move, so verify-published.yml compares what a tag serves
+      # with the digests that this run pushed.
+      - name: 🧾 Record Digests
+        run: jq -n --arg full "$FULL" --arg slim "$SLIM" '{full:$full, slim:$slim}' | tee image-digests.json
+        env:
+          FULL: ${{ steps.full.outputs.digest }}
+          SLIM: ${{ steps.slim.outputs.digest }}
+
+      - name: ⬆️ Upload Digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digests
+          path: image-digests.json
+          overwrite: true
 
 
   publish_release:
