@@ -18,9 +18,8 @@ import (
 )
 
 // Rebuild backfills run records for runs that predate them (CONTRACT_RUN.md
-// §Backfilled Run Records). It derives runs from Lode's partition tree, the
-// one place that enumerates partitions, and writes only what the stored data
-// shows.
+// §Backfilled Run Records). It derives runs from the dataset's committed
+// snapshots and writes only what the stored data shows.
 
 // RebuildOptions controls a run-record rebuild.
 type RebuildOptions struct {
@@ -77,11 +76,11 @@ const metricsEventType = "metrics"
 type legacyRun struct {
 	cfg        Config
 	prefix     string
-	partitions map[string][]*lode.Snapshot // event_type -> snapshots, in commit order
+	partitions map[string][]*lode.Snapshot // event_type -> snapshots
 }
 
 // RebuildRunRecords writes run records for every run in the dataset's
-// partition tree that has none: a start record, and an end record when the
+// committed snapshots that has none: a start record, and an end record when the
 // run has exactly one terminal event. A run that already has a start record
 // written by the runtime is never touched, and a backfilled run gains only a
 // missing end record, so rerunning is idempotent. A store error terminates
@@ -220,8 +219,11 @@ func objectPartition(dataset, path string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	partition, _, ok := strings.Cut(rel, "/segments/")
-	return partition, ok
+	segs := strings.SplitN(rel, "/", len(partitionKeys)+1)
+	if len(segs) <= len(partitionKeys) {
+		return rel, true // no partition of the layout, which the caller reports
+	}
+	return strings.Join(segs[:len(partitionKeys)], "/"), true
 }
 
 // splitPartition decodes a partition path's values in layout order.

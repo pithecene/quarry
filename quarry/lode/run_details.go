@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -41,6 +42,10 @@ func QueryRunDetails(ctx context.Context, factory lode.Factory[lode.RangeStore],
 		if err != nil {
 			return RunDetails{}, err
 		}
+		// The latest metrics stand, and files keep the order of their commits.
+		slices.SortFunc(snapshots, func(a, b *lode.Snapshot) int {
+			return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), cmp.Compare(a.ID, b.ID))
+		})
 		if record == nil {
 			record, err = latestRunMetrics(ctx, ds, snapshots, key, prefix)
 			if err != nil && !errors.Is(err, ErrNoMetricsFound) {

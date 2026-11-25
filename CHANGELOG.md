@@ -12,7 +12,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Fixed
 
 - **Reads return every committed event of a run**: when a run's partition index omitted a snapshot, `list events`, the SDK's `readRun`, the artifact commands, and `inspect run` returned a part of the run as a success. Quarry now reads the dataset's committed snapshots, so one read needs one manifest of each snapshot in the dataset. `CONTRACT_LODE.md` § Run Contents states the rule.
-- **Prune keeps a run whose index is incomplete**: prune expired the indexed snapshots, deleted the run's records, and left the others with no run to find them. It now keeps the run and reports the reason. A prune with `--sweep-grace` restores the index, and the next prune removes the run. `CONTRACT_LODE.md` § Order of Operations states the steps.
+- **Prune keeps a run whose index is incomplete**: prune expired the indexed snapshots, deleted the run's records, and left the others with no run to find them. It now keeps the run and reports the reason. A sweep past its grace period restores the index for a later prune. `CONTRACT_LODE.md` § Order of Operations states the steps.
 
 ---
 

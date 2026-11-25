@@ -640,7 +640,6 @@ func TestReadEvents_IncompleteIndex(t *testing.T) {
 	for name, end := range map[string]*qlode.RunEnd{"ended": ended(types.OutcomeSuccess, complete), "unterminated": nil} {
 		for _, lost := range []int{0, 1, 3} {
 			t.Run(fmt.Sprintf("%s, %d lost", name, lost), func(t *testing.T) {
-				t.Parallel()
 				f := newFixture(t)
 				f.write(runSpec{"src", "cat", "2026-10-21", "r1", []types.EventType{item, item, item, complete}, end})
 				f.write(runSpec{"src", "cat", "2026-10-21", "r10", []types.EventType{item}, nil})

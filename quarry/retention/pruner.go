@@ -25,7 +25,7 @@ const (
 	keptNoInstant = "a snapshot ID carries no write instant"
 	keptCommitted = "committed during the prune; its records remain"
 	keptInventory = "a snapshot's sidecar inventory is malformed"
-	keptUnindexed = "has committed snapshots that the expiry did not find; a prune with a sweep restores their index"
+	keptUnindexed = "has committed snapshots that the expiry did not find; rerun the prune, after one with a sweep if the reason persists"
 )
 
 // pruner removes one run at a time from one dataset.
@@ -152,9 +152,15 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	// Expiry finds the run's snapshots through its partition index, so one that
 	// the index omits would outlive the records that locate it.
-	if slices.ContainsFunc(stored, func(s *lode.Snapshot) bool { return !slices.Contains(preview.Expired, s.ID) }) {
-		out.Kept = keptUnindexed
-		return out, true, nil
+	expiring := make(map[lode.SnapshotID]bool, len(preview.Expired))
+	for _, id := range preview.Expired {
+		expiring[id] = true
+	}
+	for _, s := range stored {
+		if !expiring[s.ID] {
+			out.Kept = keptUnindexed
+			return out, true, nil
+		}
 	}
 	// Each Volume is removed in a dry run first, so a Volume that would keep
 	// the run keeps it before anything of the run is deleted.
@@ -177,7 +183,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	if err != nil {
 		return out, true, err
 	}
-	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, stored, len(preview.Expired) > 0)
+	sidecars, skipped, err := p.sidecarPaths(ctx, cfg, stored, len(stored) > 0)
 	out.Skipped = skipped
 	if errors.Is(err, errMalformedInventory) {
 		out.Kept = keptInventory

@@ -1,7 +1,6 @@
 package lode
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"iter"
@@ -17,7 +16,7 @@ type manifestLister interface {
 }
 
 // RunSnapshots returns every committed snapshot that holds an object under
-// prefix, in commit order. It lists the dataset without a partition, because a
+// prefix, in Lode's listing order. It lists the dataset without a partition, because a
 // partition's listing omits a snapshot whose partition index is incomplete
 // (CONTRACT_LODE.md §Run Contents). Each call reads one manifest of each
 // snapshot in the dataset. A dataset without snapshots holds none.
@@ -34,9 +33,6 @@ func RunSnapshots(ctx context.Context, ds manifestLister, prefix string) ([]*lod
 			out = append(out, &lode.Snapshot{ID: loaded.Ref.ID, Manifest: loaded.Manifest})
 		}
 	}
-	slices.SortFunc(out, func(a, b *lode.Snapshot) int {
-		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), cmp.Compare(a.ID, b.ID))
-	})
 	return out, nil
 }
 

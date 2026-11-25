@@ -379,6 +379,34 @@ func TestPrune_LeavesAmbiguousSidecarsWithoutSnapshots(t *testing.T) {
 	}
 }
 
+// stuckManifests fails to delete a partition manifest, as an expiry that stops
+// after it deletes the canonical one does.
+type stuckManifests struct{ lode.RangeStore }
+
+func (s stuckManifests) Delete(ctx context.Context, path string) error {
+	if strings.Contains(path, "/event_type=") && strings.HasSuffix(path, "/manifest.json") {
+		return errors.New("delete stopped")
+	}
+	return s.RangeStore.Delete(ctx, path)
+}
+
+// A partition manifest that an interrupted expiry left is no snapshot of the
+// run, so it does not prove whose file an ambiguous path holds.
+func TestPrune_LeavesAmbiguousSidecarsBesideAResidualManifest(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.write(runSpec{source: "a//b", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError})
+	f.write(runSpec{source: "src", runID: "head", day: recentDay, outcome: types.OutcomeSuccess})
+	stuck := func() (lode.RangeStore, error) { return stuckManifests{f.store}, nil }
+	if _, err := Prune(t.Context(), "quarry", stuck, Options{Policy: Policy{Failed: days(7)}, Now: now}); err == nil {
+		t.Fatal("the expiry was not interrupted")
+	}
+	report := f.prune(Options{Policy: Policy{Failed: days(7)}})
+	if got, want := outcomes(report), "[r1:pruned]"; got != want || report.SidecarObjects != 0 || len(report.Runs[0].Skipped) != 1 || report.Snapshots != 1 {
+		t.Fatalf("report = %+v, want %s with one snapshot, no sidecar object, and the file skipped", report, want)
+	}
+}
+
 func TestPrune_Sweep(t *testing.T) {
 	t.Parallel()
 	f, _ := seed(t)
@@ -657,7 +685,6 @@ func TestPrune_IncompleteIndex(t *testing.T) {
 	t.Parallel()
 	for name, outcome := range map[string]types.OutcomeStatus{"failed": types.OutcomeScriptError, "unterminated": ""} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			f := newFixture(t)
 			cfg := f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: outcome, artifacts: 1})
 			f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})

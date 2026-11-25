@@ -310,3 +310,36 @@ func TestQueryRunDetails_IncompleteIndex(t *testing.T) {
 		t.Fatalf("details = %+v, %v; want the one file", details, err)
 	}
 }
+
+// A file at a key that Lode reads as a manifest would fail every listing of
+// the dataset, so the write is refused, and every near key is written.
+func TestPutFile_RefusesAManifestKey(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		runID, filename string
+		refused         bool
+	}{
+		{"a/segments", "manifest.json", true},
+		{"a/segments/", "manifest.json", true},
+		{"a/segments", "other.json", false},
+		{"segments", "manifest.json", false},
+		{"a", "manifest.json", false},
+	} {
+		store := lode.NewMemory()
+		cfg := Config{Dataset: "quarry", Source: "src", Category: "raw", Day: "2026-10-22", RunID: tc.runID}
+		client, err := NewLodeClientWithFactory(t.Context(), cfg, sharedFactory(store))
+		if err != nil {
+			t.Fatal(err)
+		}
+		record := lode.D{"source": "src", "category": "raw", "day": "2026-10-22", "run_id": "b", "event_type": "item"}
+		if _, err := client.dataset.Write(t.Context(), []lode.D{record}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := client.PutFile(t.Context(), tc.filename, "text/plain", []byte("x")); (err != nil) != tc.refused {
+			t.Errorf("run %q file %q: %v, want refused = %t", tc.runID, tc.filename, err, tc.refused)
+		}
+		if _, err := RunSnapshots(t.Context(), client.dataset, ""); err != nil {
+			t.Errorf("run %q file %q: listing: %v", tc.runID, tc.filename, err)
+		}
+	}
+}

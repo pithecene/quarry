@@ -46,6 +46,11 @@ const recoveryTimeout = 10 * time.Second
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
 	prefix := SidecarFilesPrefix(c.config)
 	key := collapseSidecarSlashes(prefix) + filename
+	// Lode takes ".../segments/<name>/manifest.json" for a snapshot's manifest,
+	// and its listing would then fail for every run of the dataset.
+	if filename == "manifest.json" && strings.HasSuffix(key, "/segments/files/manifest.json") {
+		return WrapWriteError(fmt.Errorf("%s: %w: the key is reserved for a snapshot", key, lode.ErrInvalidPath), key)
+	}
 	if !c.reserveFilename(filename) {
 		// An S3 store takes an identical second upload for its own first.
 		return WrapWriteError(fmt.Errorf("%s: %w", key, lode.ErrPathExists), key)

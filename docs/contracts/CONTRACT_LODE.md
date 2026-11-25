@@ -195,8 +195,9 @@ Record Schema). The runtime writes no chunk record.
 
 A reader that opens one artifact needs that artifact's commit record
 only. The run's artifact partition holds one snapshot for each batch that
-committed an artifact, so the cost of reading the partition grows with
-the run. The commit index holds one entry per committed artifact, and
+committed an artifact, and finding those snapshots reads a manifest of each
+snapshot in the dataset (§Run Contents), so the cost of reading the partition
+grows with both. The commit index holds one entry per committed artifact, and
 each entry names the snapshot that holds the artifact's record:
 
 ```
@@ -666,8 +667,9 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    Then read the run's snapshots (§Run Contents). Expiry finds snapshots
    through the partition index, so when the preview lacks one of them, the
    prune keeps the run with its snapshots, records, sidecar files, and
-   Volumes, and the report gives the reason. A sweep restores the index, and
-   a later prune then removes the run.
+   Volumes, and the report gives the reason. A snapshot that committed after
+   the preview needs only a later prune. A lasting gap needs a sweep, which
+   restores the index of snapshots older than its grace period.
 
    Then preview the removal of the run's artifact Volumes. The prune
    lists the names under the run's `volumes/` prefix and calls Lode's
@@ -687,7 +689,7 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    `r/files/x` beneath run `r`, so it is never listed. Without that
    condition, a direct child could also belong to another run, so the
    prefix is not listed. The end record names the files of such a run, and
-   the prune uses it only while the run has snapshots: without them, an
+   the prune uses it only while the run has committed snapshots: without them, an
    interrupted prune may have removed a file whose place another run's file
    has taken since, so its files stay and are reported. A file that no source
    names remains. A path that a snapshot records outside the run's sidecar prefix is reported

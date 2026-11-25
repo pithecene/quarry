@@ -276,6 +276,8 @@ the key is an empty string.
 - Must not be empty.
 - Must not contain path separators (`/` or `\`).
 - Must not contain `..`.
+- Must not be `manifest.json` when the run ID ends in `/segments`, since Lode
+  reads that key as a snapshot's manifest. The write then fails.
 
 ### Content Type
 
