@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/pithecene/lode/lode"
 	"github.com/pithecene/quarry/iox"
 )
 
@@ -45,7 +47,7 @@ const recoveryTimeout = 10 * time.Second
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
 	prefix := SidecarFilesPrefix(c.config)
 	key := collapseSidecarSlashes(prefix) + filename
-	if err := c.store.Put(ctx, key, bytes.NewReader(data)); err != nil {
+	if err := c.putData(ctx, key, data); err != nil {
 		return WrapWriteError(err, key)
 	}
 
@@ -83,13 +85,24 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	return nil
 }
 
+// putData writes a file's data. Unlike its companion, the data names no run, so
+// a key that another write took is a refusal, whatever that write's bytes are.
+func (c *LodeClient) putData(ctx context.Context, key string, data []byte) error {
+	return c.reconcile(ctx, key, data, c.store.Put(ctx, key, bytes.NewReader(data)), lode.ErrPathExists)
+}
+
 // putReconciled writes data at key, create-only. A write that reports an error
 // can have persisted, so it succeeds when the object reads back as data. The
 // error may be the context's, so the read does not use its cancellation.
 func (c *LodeClient) putReconciled(ctx context.Context, key string, data []byte) error {
-	putErr := c.store.Put(ctx, key, bytes.NewReader(data))
-	if putErr == nil {
-		return nil
+	return c.reconcile(ctx, key, data, c.store.Put(ctx, key, bytes.NewReader(data)))
+}
+
+// reconcile decides a write of data at key that returned putErr. An error that
+// matches one of refusals stands without a read.
+func (c *LodeClient) reconcile(ctx context.Context, key string, data []byte, putErr error, refusals ...error) error {
+	if putErr == nil || slices.ContainsFunc(refusals, func(r error) bool { return errors.Is(putErr, r) }) {
+		return putErr
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
 	defer cancel()

@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A sidecar file survives a lost response**: when storage persisted the data of a `storage.put` but reported an error, the file stayed without its content type and without an inventory entry, and every retry failed because the name existed. Quarry now reads the file back, and the write succeeds when the stored bytes are its own. A name that another write took is still refused. `CONTRACT_EMIT.md` § Content Type states the rule.
+
 ---
 
 ## [0.20.0] - 2026-11-24

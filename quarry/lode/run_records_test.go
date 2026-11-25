@@ -399,6 +399,78 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	}
 }
 
+// A data write that reports an error after it persisted succeeds by readback.
+// One that the readback cannot settle is no file of the run, and its name stays
+// taken, since the stored data names no run.
+func TestPutFile_ReconcilesUncertainData(t *testing.T) {
+	t.Parallel()
+	for _, unreadable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
+			store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: "page.png", unreadable: unreadable}
+			var observed []string
+			client, err := NewLodeClientWithFactory(t.Context(), Config{
+				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+				ReconcileObserver: func(key string, _ error) { observed = append(observed, key) },
+			}, sharedFactory(lode.NewMemory()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.store = store
+			put := func() error { return client.PutFile(t.Context(), "page.png", "image/png", []byte("png")) }
+			key := SidecarFilesPrefix(client.config) + "page.png"
+			err = put()
+			if unreadable {
+				if !errors.Is(err, errUncertain) || len(client.files) != 0 {
+					t.Fatalf("PutFile: %v with files %v, want the write's error and no file", err, client.files)
+				}
+				store.unreadable = false
+			} else if err != nil || len(client.files) != 1 || len(observed) != 1 || observed[0] != key {
+				t.Fatalf("PutFile: %v with files %v and observed %v, want one reconciled file", err, client.files, observed)
+			}
+			files := len(client.files)
+			if err := put(); !errors.Is(err, ErrPathExists) || len(client.files) != files {
+				t.Errorf("second write: %v with files %v, want ErrPathExists and no further file", err, client.files)
+			}
+			if err := client.PutFile(t.Context(), "other.txt", "text/plain", []byte("x")); err != nil {
+				t.Errorf("later write: %v", err)
+			}
+		})
+	}
+}
+
+// Stored data that differs is another write's, so the error stands.
+func TestPutFile_KeepsTheErrorOfADifferingDataFile(t *testing.T) {
+	t.Parallel()
+	mem := lode.NewMemory()
+	client, err := NewLodeClientWithFactory(t.Context(), Config{
+		Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+	}, sharedFactory(mem))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := SidecarFilesPrefix(client.config) + "page.png"
+	if err := mem.Put(t.Context(), key, strings.NewReader("other")); err != nil {
+		t.Fatal(err)
+	}
+	client.store = failingPutStore{mem}
+	if err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png")); !errors.Is(err, errUncertain) || len(client.files) != 0 {
+		t.Errorf("PutFile: %v with files %v, want the write's error and no file", err, client.files)
+	}
+	rc, err := mem.Get(t.Context(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer iox.DiscardClose(rc)
+	if got, err := io.ReadAll(rc); err != nil || string(got) != "other" {
+		t.Errorf("stored = %q, %v, want the other write's bytes", got, err)
+	}
+}
+
+// failingPutStore fails every Put without persisting it.
+type failingPutStore struct{ lode.RangeStore }
+
+func (failingPutStore) Put(context.Context, string, io.Reader) error { return errUncertain }
+
 // Another write's data file or companion is never taken for this one's, and a
 // refused data file is left as it is.
 func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
