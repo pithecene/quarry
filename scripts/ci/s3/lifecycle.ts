@@ -15,6 +15,7 @@ const [binary = '', endpoint = ''] = process.argv.slice(2)
 // The run writes and prunes, so it accepts a local service only.
 assert.match(endpoint, /^http:\/\/127\.0\.0\.1:\d+$/, 'expected a loopback endpoint')
 const BUDGET_MS = 300_000
+const KILL_GRACE_MS = 30_000
 const signal = AbortSignal.timeout(BUDGET_MS)
 const quarryPath = resolve(binary)
 const storage = {
@@ -42,11 +43,14 @@ const server = createServer(async (req, res) => {
 })
 
 async function quarry(...args: string[]): Promise<{ code: number; out: string; err: string }> {
-  const child = spawn(quarryPath, args, { cwd: dir, signal, killSignal: 'SIGKILL' })
+  const child = spawn(quarryPath, args, { cwd: dir, signal })
   // An abort reports an error first. The close follows it, and ends the wait.
+  // An aborted CLI gets SIGTERM and time to stop its executor, then SIGKILL.
   let failure: Error | undefined
+  let kill: NodeJS.Timeout | undefined
   child.on('error', (error) => {
     failure = error
+    kill = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS)
   })
   let out = ''
   let err = ''
@@ -57,6 +61,7 @@ async function quarry(...args: string[]): Promise<{ code: number; out: string; e
     err += data
   })
   const code = await new Promise<number>((done) => child.on('close', done))
+  clearTimeout(kill)
   if (failure) throw failure
   return { code, out, err }
 }
