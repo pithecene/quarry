@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.20.2] - 2026-11-25
+
 ### Fixed
 
 - **Datasets with an old empty write open again**: Quarry failed to list a dataset that held a write of no records from Lode v0.9.0, and to write to one with such a head. Quarry now requires Lode v0.18.5, which reads that snapshot as empty.
@@ -903,7 +907,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 <!-- jscpd:ignore-start -->
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/pithecene/quarry/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/pithecene/quarry/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/pithecene/quarry/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/pithecene/quarry/compare/v0.18.0...v0.19.0

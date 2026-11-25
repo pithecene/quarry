@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Quarry Executor Bundle v0.20.1
+// Quarry Executor Bundle v0.20.2
 // This is a bundled version for embedding in the quarry binary.
 // Do not edit directly - regenerate with: task executor:bundle
 
@@ -2147,7 +2147,7 @@ var RangeSet = class {
     return lo;
   }
 };
-var CONTRACT_VERSION = "0.20.1";
+var CONTRACT_VERSION = "0.20.2";
 var TerminalEventError = class extends Error {
   constructor() {
     super("Cannot emit: a terminal event (run_error or run_complete) has already been emitted");
