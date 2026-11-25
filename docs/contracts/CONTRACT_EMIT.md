@@ -231,8 +231,9 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 The promise that `storage.put()` returns reflects the backend write result. If the storage backend
 (e.g. S3, local filesystem) fails, the returned promise **rejects** with
 `StorageWriteRefusedError`, which carries the error message from the runtime.
-A failure of the transport itself, such as a closed stdin, is not such a
-refusal: it fails every later call.
+A failure of the transport itself is not such a refusal: it fails every later
+call. An example is stdin that ends after the runtime sent an ack
+(CONTRACT_IPC.md §Backward Compatibility states the case without one).
 
 This is implemented via `file_write_ack` frames (see [CONTRACT_IPC.md](CONTRACT_IPC.md) §File
 Write Acknowledgement). The error is **recoverable**: the run continues and

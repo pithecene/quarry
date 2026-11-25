@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **A script can continue after a refused `storage.put`**: when the runtime could not write a file, every later `emit` and `put` of the run failed, and the run ended as `executor_crash`, even when the script caught the error. The promise now rejects with the new `StorageWriteRefusedError`, and a script that catches it continues. A run whose script does not catch it still fails. `CONTRACT_EMIT.md` § Error Propagation states the rule.
+- **A script can continue after a refused `storage.put`**: when the runtime could not write a file, every later `emit` and `put` of the run failed. The run ended as `executor_crash`, even when the script caught the error. The promise now rejects with the new `StorageWriteRefusedError`, and a script that catches it continues. A script that awaits the put and lets the rejection propagate still fails its run. `CONTRACT_EMIT.md` § Error Propagation states the rule.
 
 ---
 

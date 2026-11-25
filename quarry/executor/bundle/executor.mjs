@@ -2810,6 +2810,9 @@ function decodeFileWriteAck(payload) {
   if (decoded.type !== "file_write_ack") {
     throw new Error(`Expected file_write_ack frame, got type: ${String(decoded.type)}`);
   }
+  if (typeof decoded.ok !== "boolean") {
+    throw new Error("Expected a boolean ok in a file_write_ack frame");
+  }
   return {
     type: "file_write_ack",
     write_id: decoded.write_id,
@@ -2845,6 +2848,9 @@ function decodeArtifactRangeAck(payload) {
   const decoded = (0, import_msgpack.decode)(payload);
   if (decoded.type !== "artifact_range_ack") {
     throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`);
+  }
+  if (typeof decoded.ok !== "boolean") {
+    throw new Error("Expected a boolean ok in a artifact_range_ack frame");
   }
   return {
     type: "artifact_range_ack",
@@ -2988,8 +2994,17 @@ var StdioSink = class {
     const rangeId = ++this.rangeIdCounter;
     const ackPromise = ackReader.waitForRangeAck(rangeId);
     const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data);
+    await this.writeAcknowledged(frame, ackPromise);
+  }
+  /**
+   * Write a frame and wait for its ack. The ack can arrive while the write waits
+   * for the stream, so its rejection is handled from the start, and awaited after.
+   */
+  async writeAcknowledged(frame, ack) {
+    ack.catch(() => {
+    });
     await writeWithBackpressure(this.output, frame, this.writeFn);
-    await ackPromise;
+    await ack;
   }
   /**
    * Write a run result control frame.
@@ -3021,8 +3036,7 @@ var StdioSink = class {
       const writeId = ++this.writeIdCounter;
       const ackPromise = this.ackReader.waitForAck(writeId);
       const frame = encodeFileWriteFrame(filename, contentType, data, writeId);
-      await writeWithBackpressure(this.output, frame, this.writeFn);
-      await ackPromise;
+      await this.writeAcknowledged(frame, ackPromise);
     } else {
       const frame = encodeFileWriteFrame(filename, contentType, data);
       await writeWithBackpressure(this.output, frame, this.writeFn);

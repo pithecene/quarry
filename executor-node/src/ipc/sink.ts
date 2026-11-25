@@ -230,8 +230,17 @@ export class StdioSink implements EmitSink {
     const rangeId = ++this.rangeIdCounter
     const ackPromise = ackReader.waitForRangeAck(rangeId)
     const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data)
+    await this.writeAcknowledged(frame, ackPromise)
+  }
+
+  /**
+   * Write a frame and wait for its ack. The ack can arrive while the write waits
+   * for the stream, so its rejection is handled from the start, and awaited after.
+   */
+  private async writeAcknowledged(frame: Buffer, ack: Promise<void>): Promise<void> {
+    ack.catch(() => {})
     await writeWithBackpressure(this.output, frame, this.writeFn)
-    await ackPromise
+    await ack
   }
 
   /**
@@ -268,8 +277,7 @@ export class StdioSink implements EmitSink {
       const writeId = ++this.writeIdCounter
       const ackPromise = this.ackReader.waitForAck(writeId)
       const frame = encodeFileWriteFrame(filename, contentType, data, writeId)
-      await writeWithBackpressure(this.output, frame, this.writeFn)
-      await ackPromise
+      await this.writeAcknowledged(frame, ackPromise)
     } else {
       const frame = encodeFileWriteFrame(filename, contentType, data)
       await writeWithBackpressure(this.output, frame, this.writeFn)
