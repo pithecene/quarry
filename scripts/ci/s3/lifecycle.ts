@@ -1,5 +1,5 @@
 // The lifecycle of runs on an S3 service: write, notification, SDK read, prune.
-// Usage: s3-lifecycle.ts <quarry binary> <endpoint>, with AWS_* credentials.
+// Usage: lifecycle.ts <quarry binary> <endpoint>, with AWS_* credentials.
 
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
@@ -14,7 +14,8 @@ import { listRuns, type NotificationLocator, readRun } from '../../../sdk/src/in
 const [binary = '', endpoint = ''] = process.argv.slice(2)
 // The run writes and prunes, so it accepts a local service only.
 assert.match(endpoint, /^http:\/\/127\.0\.0\.1:\d+$/, 'expected a loopback endpoint')
-const signal = AbortSignal.timeout(300_000)
+const BUDGET_MS = 300_000
+const signal = AbortSignal.timeout(BUDGET_MS)
 const quarryPath = resolve(binary)
 const storage = {
   backend: 's3',
@@ -41,7 +42,12 @@ const server = createServer(async (req, res) => {
 })
 
 async function quarry(...args: string[]): Promise<{ code: number; out: string; err: string }> {
-  const child = spawn(quarryPath, args, { cwd: dir, signal })
+  const child = spawn(quarryPath, args, { cwd: dir, signal, killSignal: 'SIGKILL' })
+  // An abort reports an error first. The close follows it, and ends the wait.
+  let failure: Error | undefined
+  child.on('error', (error) => {
+    failure = error
+  })
   let out = ''
   let err = ''
   child.stdout.on('data', (data) => {
@@ -50,7 +56,8 @@ async function quarry(...args: string[]): Promise<{ code: number; out: string; e
   child.stderr.on('data', (data) => {
     err += data
   })
-  const [code] = await once(child, 'close')
+  const code = await new Promise<number>((done) => child.on('close', done))
+  if (failure) throw failure
   return { code, out, err }
 }
 
@@ -104,15 +111,13 @@ async function main(): Promise<void> {
     assert.equal(read.events.length, 7, 'five items, an artifact, and the terminal event')
     locators.push(locator)
   }
-  // The day is part of a run's key, so midnight makes the retry another run.
-  const today = () => new Date().toISOString().slice(0, 10)
-  if (locators[0]?.run.day === today()) {
+  // The day is part of a run's key, so midnight would make the retry another run.
+  const untilMidnight = 86_400_000 - (Date.now() % 86_400_000)
+  if (untilMidnight > BUDGET_MS && locators[0]?.run.day === new Date().toISOString().slice(0, 10)) {
     const duplicate = await run('ok.mjs', 'run strict')
-    if (locators[0].run.day === today()) {
-      assert.equal(duplicate.code, 2, duplicate.err)
-      assert.match(duplicate.err, /already (exists|used|recorded)|duplicate/i)
-      assert.equal(received.length, locators.length, 'a refused run sends no notification')
-    }
+    assert.equal(duplicate.code, 2, duplicate.err)
+    assert.match(duplicate.err, /already (exists|used|recorded)|duplicate/i)
+    assert.equal(received.length, locators.length, 'a refused run sends no notification')
   }
   assert.equal((await run('bad.mjs', 'run failed')).code, 1)
   const failed = (JSON.parse(received.at(-1) ?? '') as { locator: NotificationLocator }).locator
@@ -137,17 +142,17 @@ async function main(): Promise<void> {
   for (const locator of locators) {
     await assert.rejects(readRun(locator.run, { storage, quarryPath, signal }), /run not found/)
   }
-  const kept = await readRun(failed.run, { storage, quarryPath, signal })
+  assert.equal(failed.run.runId, 'run failed')
+  assert.deepEqual(failed.storage, { ...storage, dataset: 'quarry' })
+  const kept = await readRun(failed.run, { storage: failed.storage, quarryPath, signal })
+  assert.equal(kept.run.run_id, 'run failed')
   assert.equal(kept.run.state, 'failed', 'the kept run stays readable')
   console.log('S3 lifecycle passed')
 }
 
-main()
-  .catch((err: unknown) => {
-    console.error(err)
-    process.exitCode = 1
-  })
-  .finally(async () => {
-    server.close()
-    if (dir !== '') await rm(dir, { recursive: true, force: true })
-  })
+try {
+  await main()
+} finally {
+  server.close()
+  if (dir !== '') await rm(dir, { recursive: true, force: true })
+}
