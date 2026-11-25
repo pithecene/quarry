@@ -176,22 +176,25 @@ The following behaviors are explicitly **out of scope**:
 - If a write fails, the error propagates to the policy and run outcome.
 - Callers are responsible for implementing retry logic at the job/orchestration level.
 
-**No Storage-Aware Throttling:**
-- Quarry does not pace a run to the storage backend.
+**No Adaptive Storage Throttling:**
+- Quarry does not automatically adjust a target write rate to the backend's
+  throughput. Slow storage can block ingestion and, through IPC backpressure,
+  the script's emit calls.
 - Events reach storage through the policy. `strict` writes each event before it
-  accepts the next. `streaming` waits for a flush that its count or its bounds
-  require, while an interval flush runs beside ingestion
+  accepts the next. `streaming` waits for flushes triggered by the count threshold or
+  buffer limits, while interval flushes run concurrently with ingestion
   ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Flush Triggers). `buffered`
   writes when the run ends, so slow storage delays the end of the run.
 - While ingestion waits, the IPC pipe can fill, and the script's emit calls
-  then wait ([emit guide](emit.md) §Backpressure). An emit that returns does not
-  confirm that its event is stored.
-- `storage.put()` and artifact ranges bypass the policy. An artifact range waits
-  for its storage commit, and so does a put when the runtime acknowledges
-  file writes ([CONTRACT_IPC.md](../contracts/CONTRACT_IPC.md)).
+  then wait ([emit guide](emit.md) §Backpressure). A resolved event-emission promise does
+  not confirm that its event is stored.
+- `storage.put()` and artifact ranges bypass the ingestion policy. Each artifact
+  range waits for acknowledgement of its storage commit. `storage.put()` waits
+  for the file-write result when the runtime supports file-write
+  acknowledgements ([CONTRACT_IPC.md](../contracts/CONTRACT_IPC.md)).
 - When the `buffered` buffer is full, it drops an incoming advisory event. For an
-  event it may not drop, it evicts at most one advisory event, the oldest that no
-  flush is writing, and it fails the run when the event still does not fit ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
+  event it may not drop, it evicts at most one advisory event, the oldest advisory
+  event that is not already being flushed, and it fails the run when the event still does not fit ([CONTRACT_POLICY.md](../contracts/CONTRACT_POLICY.md) §Drop Rules).
 
 **No Deduplication:**
 - Duplicate detection is a downstream consumer responsibility.
