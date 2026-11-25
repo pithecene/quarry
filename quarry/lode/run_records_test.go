@@ -1,6 +1,7 @@
 package lode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -332,11 +334,15 @@ type uncertainStore struct {
 	lode.RangeStore
 	suffix     string
 	unreadable bool
+	loses      bool // fails the write without persisting it
 }
 
 var errUncertain = errors.New("no response")
 
 func (s *uncertainStore) Put(ctx context.Context, key string, r io.Reader) error {
+	if s.loses && strings.HasSuffix(key, s.suffix) {
+		return errUncertain
+	}
 	if err := s.RangeStore.Put(ctx, key, r); err != nil || !strings.HasSuffix(key, s.suffix) {
 		return err
 	}
@@ -350,42 +356,52 @@ func (s *uncertainStore) Get(ctx context.Context, key string) (io.ReadCloser, er
 	return s.RangeStore.Get(ctx, key)
 }
 
+// uncertainClient returns a client on store and the keys that it reconciled.
+func uncertainClient(t *testing.T, store *uncertainStore) (*LodeClient, *[]string) {
+	t.Helper()
+	observed := new([]string)
+	client, err := NewLodeClientWithFactory(t.Context(), Config{
+		Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
+		ReconcileObserver: func(key string, _ error) { *observed = append(*observed, key) },
+	}, sharedFactory(lode.NewMemory()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.store = store
+	return client, observed
+}
+
 // A companion write that reports an error after it persisted succeeds by
-// readback, and one that the readback cannot settle leaves the file writable.
+// readback. One that the readback cannot settle leaves the data, whose name
+// stays taken, since the stored companion can belong to another write.
 func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	t.Parallel()
 	for _, unreadable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
 			store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: ".meta.json", unreadable: unreadable}
-			var observed []string
-			client, err := NewLodeClientWithFactory(t.Context(), Config{
-				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
-				ReconcileObserver: func(key string, _ error) { observed = append(observed, key) },
-			}, sharedFactory(lode.NewMemory()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			client.store = store
+			client, observed := uncertainClient(t, store)
 			put := func(contentType string) error {
 				return client.PutFile(t.Context(), "page.png", contentType, []byte("png"))
 			}
-			err = put("image/png")
+			err := put("image/png")
 			if unreadable {
 				if !errors.Is(err, errUncertain) || len(client.files) != 0 {
 					t.Fatalf("first PutFile: %v with files %v, want the write's error and no file", err, client.files)
 				}
 				store.unreadable = false
-				if err := put("image/gif"); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
-					t.Fatalf("other companion: %v with files %v, want ErrPathExists and no file", err, client.files)
+				for _, contentType := range []string{"image/gif", "image/png"} {
+					if err := put(contentType); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
+						t.Fatalf("retry: %v with files %v, want ErrPathExists and no file", err, client.files)
+					}
 				}
-				err = put("image/png")
+				return
 			}
 			if err != nil {
 				t.Fatalf("PutFile: %v", err)
 			}
 			key := SidecarFilesPrefix(client.config) + "page.png"
-			if len(client.files) != 1 || len(observed) != 1 || observed[0] != key+".meta.json" {
-				t.Errorf("files = %v, observed = %v, want one file and its companion", client.files, observed)
+			if len(client.files) != 1 || len(*observed) != 1 || (*observed)[0] != key+".meta.json" {
+				t.Errorf("files = %v, observed = %v, want one file and its companion", client.files, *observed)
 			}
 			var companion map[string]any
 			readJSON(t, store.RangeStore, key+".meta.json", &companion)
@@ -399,38 +415,50 @@ func TestPutFile_ReconcilesAnUncertainCompanion(t *testing.T) {
 	}
 }
 
-// A data write that reports an error after it persisted succeeds by readback.
-// One that the readback cannot settle is no file of the run, and its name stays
-// taken, since the stored data names no run.
+// A data write that reports an error succeeds only when the data reads back.
+// Otherwise it is no file of the run, and what is stored stays.
 func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 	t.Parallel()
-	for _, unreadable := range []bool{false, true} {
-		t.Run(fmt.Sprintf("unreadable=%t", unreadable), func(t *testing.T) {
-			store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: "page.png", unreadable: unreadable}
-			var observed []string
-			client, err := NewLodeClientWithFactory(t.Context(), Config{
-				Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
-				ReconcileObserver: func(key string, _ error) { observed = append(observed, key) },
-			}, sharedFactory(lode.NewMemory()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			client.store = store
-			put := func() error { return client.PutFile(t.Context(), "page.png", "image/png", []byte("png")) }
+	for _, tc := range []struct {
+		name, before string // the bytes that another write stored first
+		unreadable   bool
+		persists     bool
+		want         error
+		stored       string
+	}{
+		{"persisted", "", false, true, nil, "png"},
+		{"persisted and unreadable", "", true, true, errUncertain, "png"},
+		{"lost", "", false, false, errUncertain, ""},
+		{"different bytes", "other", false, false, errUncertain, "other"},
+		{"a prefix of the bytes", "pn", false, false, errUncertain, "pn"},
+		{"more than the bytes", "pngs", false, false, errUncertain, "pngs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &uncertainStore{RangeStore: lode.NewMemory(), suffix: "page.png", unreadable: tc.unreadable, loses: !tc.persists}
+			client, observed := uncertainClient(t, store)
 			key := SidecarFilesPrefix(client.config) + "page.png"
-			err = put()
-			if unreadable {
-				if !errors.Is(err, errUncertain) || len(client.files) != 0 {
-					t.Fatalf("PutFile: %v with files %v, want the write's error and no file", err, client.files)
+			if tc.before != "" {
+				if err := store.RangeStore.Put(t.Context(), key, strings.NewReader(tc.before)); err != nil {
+					t.Fatal(err)
 				}
-				store.unreadable = false
-			} else if err != nil || len(client.files) != 1 || len(observed) != 1 || observed[0] != key {
-				t.Fatalf("PutFile: %v with files %v and observed %v, want one reconciled file", err, client.files, observed)
 			}
-			files := len(client.files)
-			if err := put(); !errors.Is(err, ErrPathExists) || len(client.files) != files {
-				t.Errorf("second write: %v with files %v, want ErrPathExists and no further file", err, client.files)
+			err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png"))
+			if !errors.Is(err, tc.want) || (err == nil) != (len(client.files) == 1) || (err == nil) != slices.Equal(*observed, []string{key}) {
+				t.Errorf("PutFile: %v with files %v and observed %v, want %v", err, client.files, *observed, tc.want)
 			}
+			stored := ""
+			if rc, err := store.RangeStore.Get(t.Context(), key); err == nil {
+				defer iox.DiscardClose(rc)
+				data, err := io.ReadAll(rc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stored = string(data)
+			}
+			if stored != tc.stored {
+				t.Errorf("stored = %q, want %q", stored, tc.stored)
+			}
+			store.unreadable, store.suffix = false, "none"
 			if err := client.PutFile(t.Context(), "other.txt", "text/plain", []byte("x")); err != nil {
 				t.Errorf("later write: %v", err)
 			}
@@ -438,41 +466,83 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 	}
 }
 
-// Stored data that differs is another write's, so the error stands.
-func TestPutFile_KeepsTheErrorOfADifferingDataFile(t *testing.T) {
-	t.Parallel()
-	mem := lode.NewMemory()
-	client, err := NewLodeClientWithFactory(t.Context(), Config{
-		Dataset: "quarry", Source: "s", Category: "c", Day: "2026-02-03", RunID: "run-1",
-	}, sharedFactory(mem))
+// equalUploadStore takes a second upload of equal bytes for its own first, as
+// Lode's S3 store does, and counts the reads of data files.
+type equalUploadStore struct {
+	lode.RangeStore
+	reads int
+}
+
+func (s *equalUploadStore) Put(ctx context.Context, key string, r io.Reader) error {
+	data, err := io.ReadAll(r)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
-	key := SidecarFilesPrefix(client.config) + "page.png"
-	if err := mem.Put(t.Context(), key, strings.NewReader("other")); err != nil {
-		t.Fatal(err)
+	putErr := s.RangeStore.Put(ctx, key, bytes.NewReader(data))
+	if !errors.Is(putErr, lode.ErrPathExists) {
+		return putErr
 	}
-	client.store = failingPutStore{mem}
-	if err := client.PutFile(t.Context(), "page.png", "image/png", []byte("png")); !errors.Is(err, errUncertain) || len(client.files) != 0 {
-		t.Errorf("PutFile: %v with files %v, want the write's error and no file", err, client.files)
-	}
-	rc, err := mem.Get(t.Context(), key)
+	rc, err := s.RangeStore.Get(ctx, key)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	defer iox.DiscardClose(rc)
-	if got, err := io.ReadAll(rc); err != nil || string(got) != "other" {
-		t.Errorf("stored = %q, %v, want the other write's bytes", got, err)
+	if stored, err := io.ReadAll(rc); err != nil || !bytes.Equal(stored, data) {
+		return putErr
+	}
+	return nil
+}
+
+func (s *equalUploadStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if !strings.HasSuffix(key, ".meta.json") {
+		s.reads++
+	}
+	return s.RangeStore.Get(ctx, key)
+}
+
+// No second write of a name removes the first one's file, whichever client made
+// it: two runs whose keys collapse to one can share a name.
+func TestPutFile_KeepsAnEarlierFileOfEqualBytes(t *testing.T) {
+	t.Parallel()
+	for _, other := range []bool{false, true} {
+		t.Run(fmt.Sprintf("other client=%t", other), func(t *testing.T) {
+			store := &equalUploadStore{RangeStore: lode.NewMemory()}
+			newClient := func(category string) *LodeClient {
+				client, err := NewLodeClientWithFactory(t.Context(), Config{
+					Dataset: "quarry", Source: "s", Category: category, Day: "2026-02-03", RunID: "run-1",
+				}, sharedFactory(lode.NewMemory()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				client.store = store
+				return client
+			}
+			first := newClient("c/d")
+			second := first
+			if other {
+				second = newClient("c//d")
+			}
+			if err := first.PutFile(t.Context(), "a.txt", "text/plain", []byte("same")); err != nil {
+				t.Fatal(err)
+			}
+			if err := second.PutFile(t.Context(), "a.txt", "text/html", []byte("same")); !errors.Is(err, ErrPathExists) {
+				t.Errorf("second write: %v, want ErrPathExists", err)
+			}
+			if store.reads != 0 {
+				t.Errorf("read the data %d times, want none", store.reads)
+			}
+			key := SidecarFilesPrefix(first.config) + "a.txt"
+			var companion map[string]any
+			readJSON(t, store.RangeStore, key+".meta.json", &companion)
+			if exists, err := store.Exists(t.Context(), key); err != nil || !exists || companion["content_type"] != "text/plain" {
+				t.Errorf("data exists = %v, %v with companion %v, want the first file", exists, err, companion)
+			}
+		})
 	}
 }
 
-// failingPutStore fails every Put without persisting it.
-type failingPutStore struct{ lode.RangeStore }
-
-func (failingPutStore) Put(context.Context, string, io.Reader) error { return errUncertain }
-
-// Another write's data file or companion is never taken for this one's, and a
-// refused data file is left as it is.
+// Another write's data file or companion is never taken for this one's, and
+// neither is removed. The data beside another write's companion stays too.
 func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, content string }{
@@ -496,8 +566,8 @@ func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
 				t.Errorf("PutFile: %v, want ErrPathExists", err)
 			}
 			keys, err := store.List(t.Context(), prefix)
-			if err != nil || len(keys) != 1 || keys[0] != prefix+tc.name || len(client.files) != 0 {
-				t.Errorf("keys = %v, %v with files %v, want only the other write's object", keys, err, client.files)
+			if err != nil || !slices.Contains(keys, prefix+tc.name) || !slices.Contains(keys, prefix+"page.png") || len(client.files) != 0 {
+				t.Errorf("keys = %v, %v with files %v, want the other write's object and the data", keys, err, client.files)
 			}
 		})
 	}

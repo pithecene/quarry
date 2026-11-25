@@ -47,7 +47,12 @@ const recoveryTimeout = 10 * time.Second
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
 	prefix := SidecarFilesPrefix(c.config)
 	key := collapseSidecarSlashes(prefix) + filename
-	if err := c.putData(ctx, key, data); err != nil {
+	if c.wroteFile(prefix + filename) {
+		// An S3 store takes an identical second upload for its own first.
+		return WrapWriteError(fmt.Errorf("%s: %w", key, lode.ErrPathExists), key)
+	}
+	created, err := c.putData(ctx, key, data)
+	if err != nil {
 		return WrapWriteError(err, key)
 	}
 
@@ -60,12 +65,8 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	}
 	metaPath := key + ".meta.json"
 	if err := c.putReconciled(ctx, metaPath, meta); err != nil {
-		// A file that was not written whole is no file of the run. The context
-		// may have ended the write, so the removal does not use its cancellation.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
-		defer cancel()
-		if delErr := c.store.Delete(cleanup, key); delErr != nil {
-			err = errors.Join(err, fmt.Errorf("remove the incomplete file: %w", delErr))
+		if created {
+			err = errors.Join(err, c.removeIncomplete(ctx, key, metaPath))
 		}
 		return WrapWriteError(err, metaPath)
 	}
@@ -85,25 +86,55 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	return nil
 }
 
-// putData writes a file's data. Unlike its companion, the data names no run, so
-// a key that another write took is a refusal, whatever that write's bytes are.
-func (c *LodeClient) putData(ctx context.Context, key string, data []byte) error {
-	return c.reconcile(ctx, key, data, c.store.Put(ctx, key, bytes.NewReader(data)), lode.ErrPathExists)
+// wroteFile reports whether this client recorded the file at path.
+func (c *LodeClient) wroteFile(path string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.ContainsFunc(c.files, func(f SidecarFileRef) bool { return f.Path == path })
+}
+
+// removeIncomplete removes the data file of a write whose companion failed, so
+// that a retry can use its name. A companion at metaPath makes the data a whole
+// file, perhaps of another write whose equal bytes the store took for these, so
+// the data stays unless the companion is known to be absent.
+// The context may have ended the write, so its cancellation does not apply.
+func (c *LodeClient) removeIncomplete(ctx context.Context, key, metaPath string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
+	defer cancel()
+	exists, err := c.store.Exists(ctx, metaPath)
+	if err == nil && !exists {
+		err = c.store.Delete(ctx, key)
+	}
+	if err != nil {
+		return fmt.Errorf("remove the incomplete file: %w", err)
+	}
+	return nil
+}
+
+// putData writes a file's data, and reports whether the store confirmed it.
+// Unlike its companion, the data names no run. So ErrPathExists stands without a
+// read, and a write that only its bytes confirm is not known to be this one.
+func (c *LodeClient) putData(ctx context.Context, key string, data []byte) (created bool, err error) {
+	putErr := c.store.Put(ctx, key, bytes.NewReader(data))
+	if putErr == nil || errors.Is(putErr, lode.ErrPathExists) {
+		return putErr == nil, putErr
+	}
+	return false, c.reconcile(ctx, key, data, putErr)
 }
 
 // putReconciled writes data at key, create-only. A write that reports an error
 // can have persisted, so it succeeds when the object reads back as data. The
 // error may be the context's, so the read does not use its cancellation.
 func (c *LodeClient) putReconciled(ctx context.Context, key string, data []byte) error {
-	return c.reconcile(ctx, key, data, c.store.Put(ctx, key, bytes.NewReader(data)))
+	putErr := c.store.Put(ctx, key, bytes.NewReader(data))
+	if putErr == nil {
+		return nil
+	}
+	return c.reconcile(ctx, key, data, putErr)
 }
 
-// reconcile decides a write of data at key that returned putErr. An error that
-// matches one of refusals stands without a read.
-func (c *LodeClient) reconcile(ctx context.Context, key string, data []byte, putErr error, refusals ...error) error {
-	if putErr == nil || slices.ContainsFunc(refusals, func(r error) bool { return errors.Is(putErr, r) }) {
-		return putErr
-	}
+// reconcile decides a write of data at key that failed with putErr.
+func (c *LodeClient) reconcile(ctx context.Context, key string, data []byte, putErr error) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout)
 	defer cancel()
 	rc, err := c.store.Get(ctx, key)
@@ -111,14 +142,28 @@ func (c *LodeClient) reconcile(ctx context.Context, key string, data []byte, put
 		return putErr
 	}
 	defer iox.DiscardClose(rc)
-	stored, err := io.ReadAll(io.LimitReader(rc, int64(len(data))+1))
-	if err != nil || !bytes.Equal(stored, data) {
+	if !holds(rc, data) {
 		return putErr
 	}
 	if c.config.ReconcileObserver != nil {
 		c.config.ReconcileObserver(key, putErr)
 	}
 	return nil
+}
+
+// holds reports whether r yields exactly want.
+func holds(r io.Reader, want []byte) bool {
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := r.Read(buf)
+		if !bytes.HasPrefix(want, buf[:n]) {
+			return false
+		}
+		want = want[n:]
+		if err != nil {
+			return errors.Is(err, io.EOF) && len(want) == 0
+		}
+	}
 }
 
 // fileMetadata is the companion metadata written alongside sidecar files.

@@ -280,8 +280,13 @@ the key is an empty string.
   of the run that wrote it.
 - A write of the data file can report an error after storage persisted it.
   Quarry then reads the file back, and the write succeeds with a logged warning
-  when the stored bytes are its own. A name that another write took is refused
-  without that read, since the data file names no run.
+  when the stored bytes are its own. When the store reports that the path exists,
+  the write fails without that read, since the data file names no run.
+- A run writes each filename once: a second write of a recorded filename fails
+  as an existing path, whatever its bytes are.
+- When the companion write fails, Quarry removes the data file only if storage
+  confirmed its creation and holds no companion for it. Any other data file
+  stays, and its name stays taken.
 - A companion write can report an error after storage persisted it. Quarry
   then reads the companion back, and the write succeeds with a logged warning
   when the stored bytes are its own.
