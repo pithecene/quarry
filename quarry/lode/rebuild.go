@@ -222,9 +222,9 @@ func snapshotsByPartition(dataset string, snapshots []*lode.Snapshot) map[string
 	held := map[string][]*lode.Snapshot{}
 	for _, snap := range snapshots {
 		for _, obj := range snap.Objects {
-			rel, _ := strings.CutPrefix(obj.Path, "datasets/"+dataset+"/partitions/")
+			rel, inside := strings.CutPrefix(obj.Path, "datasets/"+dataset+"/partitions/")
 			segs := strings.SplitN(rel, "/", len(partitionKeys)+1)
-			if len(segs) <= len(partitionKeys) {
+			if !inside || len(segs) <= len(partitionKeys) {
 				continue
 			}
 			path := strings.Join(segs[:len(partitionKeys)], "/")
