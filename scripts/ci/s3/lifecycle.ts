@@ -2,44 +2,33 @@
 // Usage: lifecycle.ts <quarry binary> <endpoint>, with AWS_* credentials.
 
 import assert from 'node:assert/strict'
-import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { promisify } from 'node:util'
+import { join } from 'node:path'
 import {
   listRuns,
   type NotificationLocator,
   type RunLocator,
   readRun
 } from '../../../sdk/src/index.ts'
+import {
+  BUDGET_MS,
+  dir,
+  flagsAt,
+  quarry,
+  quarryPath,
+  s3,
+  signal,
+  storageAt,
+  storedKeys
+} from './service.ts'
 
-const [binary = '', endpoint = ''] = process.argv.slice(2)
-// The run writes and prunes, so it accepts a local service only.
-assert.match(endpoint, /^http:\/\/127\.0\.0\.1:\d+$/, 'expected a loopback endpoint')
-const BUDGET_MS = 300_000
-const KILL_GRACE_MS = 30_000
-const signal = AbortSignal.timeout(BUDGET_MS)
-const quarryPath = resolve(binary)
-const storage = {
-  backend: 's3',
-  path: 'smoke/pre fix',
-  region: 'us-east-1',
-  endpoint,
-  s3PathStyle: true
-} as const
-const flags = [
-  '--storage-backend=s3',
-  `--storage-path=${storage.path}`,
-  '--storage-region=us-east-1',
-  `--storage-endpoint=${endpoint}`,
-  '--storage-s3-path-style'
-]
+const PREFIX = 'pre fix'
+const storage = storageAt(PREFIX)
+const flags = flagsAt(PREFIX)
 
-let dir = ''
 const received: string[] = []
 const server = createServer(async (req, res) => {
   let body = ''
@@ -48,32 +37,6 @@ const server = createServer(async (req, res) => {
   res.writeHead(204).end()
 })
 
-async function quarry(...args: string[]): Promise<{ code: number; out: string; err: string }> {
-  const child = spawn(quarryPath, args, { cwd: dir, signal })
-  // An abort reports an error first. The close follows it, and ends the wait.
-  // An aborted CLI gets SIGTERM and time to stop its executor, then SIGKILL.
-  let failure: Error | undefined
-  let kill: NodeJS.Timeout | undefined
-  child.on('error', (error) => {
-    failure = error
-    kill = setTimeout(() => {
-      if (child.kill('SIGKILL')) console.error('quarry did not stop in its grace period: killed')
-    }, KILL_GRACE_MS)
-  })
-  let out = ''
-  let err = ''
-  child.stdout.on('data', (data) => {
-    out += data
-  })
-  child.stderr.on('data', (data) => {
-    err += data
-  })
-  const code = await new Promise<number>((done) => child.on('close', done))
-  clearTimeout(kill)
-  if (failure) throw failure
-  return { code, out, err }
-}
-
 const run = (script: string, id: string, policy: string[] = []) =>
   quarry(
     ...['run', '--script', join(dir, script), '--run-id', id, '--source', 'a b'],
@@ -81,26 +44,6 @@ const run = (script: string, id: string, policy: string[] = []) =>
     `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
     ...policy
   )
-
-/** Reads one signed S3 URL below the smoke's bucket. */
-async function s3(path: string): Promise<string> {
-  const { AWS_ACCESS_KEY_ID: id, AWS_SECRET_ACCESS_KEY: secret } = process.env
-  const auth = ['--aws-sigv4', 'aws:amz:us-east-1:s3', '--user', `${id}:${secret}`]
-  const url = `${endpoint}/smoke${path}`
-  const args = ['--silent', '--show-error', '--fail', ...auth, url]
-  return (await promisify(execFile)('curl', args, { signal })).stdout
-}
-
-/** Lists every key below the storage path, without that path. */
-async function storedKeys(): Promise<string[]> {
-  const listing = await s3('?list-type=2&max-keys=1000')
-  assert.match(listing, /<IsTruncated>false</, 'the smoke holds one page of keys')
-  const prefix = 'pre fix/'
-  return [...listing.matchAll(/<Key>([^<]*)<\/Key>/g)].map(([, key = '']) => {
-    assert.ok(key.startsWith(prefix), `a key outside the storage path: ${key}`)
-    return key.slice(prefix.length)
-  })
-}
 
 /**
  * The keys that a prune leaves of `before`: the kept run's, the head pointer,
@@ -145,7 +88,6 @@ async function prune(...args: string[]): Promise<Record<string, number>> {
 const locators: NotificationLocator[] = []
 
 async function main(): Promise<void> {
-  dir = await mkdtemp(join(tmpdir(), 'quarry-s3-'))
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   await writeFile(
@@ -199,7 +141,7 @@ async function main(): Promise<void> {
   assert.equal(runs.runs.length, 3)
 
   const due = ['--succeeded-days=0', '--failed-days=0']
-  const before = await storedKeys()
+  const before = await storedKeys(PREFIX)
   const planned = await prune('--dry-run', ...due)
   const pruned = await prune(...due)
   const again = await prune(...due)
@@ -222,10 +164,10 @@ async function main(): Promise<void> {
   const kept = await readRun(failed.run, { storage: failed.storage, quarryPath, signal })
   assert.equal(kept.run.run_id, 'run failed')
   assert.equal(kept.run.state, 'failed', 'the kept run stays readable')
-  const remainder = await storedKeys()
+  const remainder = await storedKeys(PREFIX)
   assert.deepEqual(remainder.sort(), expectedRemainder(before, failed.run.day))
   for (const fence of remainder.filter((key) => key.startsWith('artifacts/'))) {
-    const path = ['pre fix', ...fence.split('/')].map(encodeURIComponent).join('/')
+    const path = [PREFIX, ...fence.split('/')].map(encodeURIComponent).join('/')
     assert.equal(await s3(`/${path}`), 'lode:removed', fence)
   }
   signal.throwIfAborted()
@@ -236,5 +178,5 @@ try {
   await main()
 } finally {
   server.close()
-  if (dir !== '') await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true })
 }
