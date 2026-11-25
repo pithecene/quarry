@@ -50,7 +50,9 @@ async function quarry(...args: string[]): Promise<{ code: number; out: string; e
   let kill: NodeJS.Timeout | undefined
   child.on('error', (error) => {
     failure = error
-    kill = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS)
+    kill = setTimeout(() => {
+      if (child.kill('SIGKILL')) console.error('quarry did not stop in its grace period: killed')
+    }, KILL_GRACE_MS)
   })
   let out = ''
   let err = ''
