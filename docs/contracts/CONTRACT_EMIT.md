@@ -218,7 +218,8 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 ### Semantics
 
 - `storage.put()` shares the same serialization chain as `emit.*` for
-  ordering and fail-fast behavior.
+  ordering and fail-fast behavior, except that a file the runtime refused
+  (`ok: false`) does not fail the chain (§Error Propagation).
 - **Terminal boundary**: calling `storage.put()` after a terminal event
   (`run_complete` or `run_error`) throws `TerminalEventError`.
 - **Not events**: file writes do not produce event envelopes and are
@@ -229,7 +230,9 @@ the event envelope, sequence numbering, and policy pipeline entirely.
 
 The promise that `storage.put()` returns reflects the backend write result. If the storage backend
 (e.g. S3, local filesystem) fails, the returned promise **rejects** with
-the error message from the runtime.
+`StorageWriteRefusedError`, which carries the error message from the runtime.
+A failure of the transport itself, such as a closed stdin, is not such a
+refusal: it fails every later call.
 
 This is implemented via `file_write_ack` frames (see [CONTRACT_IPC.md](CONTRACT_IPC.md) §File
 Write Acknowledgement). The error is **recoverable**: the run continues and

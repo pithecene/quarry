@@ -2059,6 +2059,7 @@ import v8 from "node:v8";
 var ARTIFACT_RANGE_MAX_BYTES = 8 * 1024 * 1024;
 var ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024;
 var RANGE_REFUSED_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactRangeRefusedError");
+var FILE_REFUSED_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/StorageWriteRefusedError");
 var WRITER_ERROR_BRAND = /* @__PURE__ */ Symbol.for("@pithecene/quarry-sdk/ArtifactWriterError");
 function hasBrand(value, brand) {
   return typeof value === "object" && value !== null && Reflect.get(value, brand) === true;
@@ -2078,6 +2079,16 @@ var ArtifactRangeRefusedError = class extends Error {
   }
   static [Symbol.hasInstance](value) {
     return hasBrand(value, RANGE_REFUSED_BRAND);
+  }
+};
+var StorageWriteRefusedError = class extends Error {
+  [FILE_REFUSED_BRAND] = true;
+  constructor(message) {
+    super(message);
+    this.name = "StorageWriteRefusedError";
+  }
+  static [Symbol.hasInstance](value) {
+    return hasBrand(value, FILE_REFUSED_BRAND);
   }
 };
 var ArtifactWriterError = class extends Error {
@@ -2161,7 +2172,7 @@ function buildStorageKey(partition, filename) {
 }
 var SHA256_HEX = /^[0-9a-f]{64}$/i;
 function isRecoverable(err) {
-  return err instanceof ArtifactRangeRefusedError || err instanceof ArtifactWriterError;
+  return err instanceof ArtifactRangeRefusedError || err instanceof StorageWriteRefusedError || err instanceof ArtifactWriterError;
 }
 function validateWriterOptions(options) {
   const size = options.size_bytes;
@@ -2670,11 +2681,16 @@ var ObservingSink = class {
     );
   }
   /**
-   * Write a sidecar file, tracking failures.
+   * Write a sidecar file, tracking failures. A file the runtime refused
+   * (StorageWriteRefusedError) is recoverable per CONTRACT_IPC.md and is
+   * rethrown without marking the sink failed.
    * @throws SinkAlreadyFailedError if the sink has previously failed
    */
   async writeFile(filename, contentType, data) {
-    await this.guard(() => this.inner.writeFile(filename, contentType, data));
+    await this.guard(
+      () => this.inner.writeFile(filename, contentType, data),
+      (err) => err instanceof StorageWriteRefusedError
+    );
   }
   /**
    * Run a write unless the sink has failed, and keep its first failure, which
@@ -3705,7 +3721,7 @@ var AckReader = class {
     } else if (ack.kind === "artifact_range") {
       entry.reject(new ArtifactRangeRefusedError(ack.error ?? "artifact range refused"));
     } else {
-      entry.reject(new Error(ack.error ?? "file write failed"));
+      entry.reject(new StorageWriteRefusedError(ack.error ?? "file write failed"));
     }
   }
   /**

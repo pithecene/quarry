@@ -4,7 +4,8 @@ import {
   type EmitSink,
   type EventEnvelope,
   type EventId,
-  type RunId
+  type RunId,
+  StorageWriteRefusedError
 } from '@pithecene/quarry-sdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObservingSink, SinkAlreadyFailedError } from '../../src/ipc/observing-sink.js'
@@ -382,5 +383,16 @@ describe('ObservingSink refused artifact range (CONTRACT_IPC.md §Artifact Range
     await expect(
       sink.writeEvent(makeEnvelope('item', { item_type: 'a', data: {} }))
     ).resolves.toBeUndefined()
+  })
+
+  it('a refused file rejects without marking the sink failed', async () => {
+    const inner = createMockSink()
+    const refusal = new StorageWriteRefusedError('path already exists')
+    inner.writeFileMock.mockRejectedValueOnce(refusal)
+    const sink = new ObservingSink(inner)
+
+    await expect(sink.writeFile('a.txt', 'text/plain', Buffer.from('x'))).rejects.toBe(refusal)
+    expect(sink.isSinkFailed()).toBe(false)
+    await expect(sink.writeFile('b.txt', 'text/plain', Buffer.from('x'))).resolves.toBeUndefined()
   })
 })

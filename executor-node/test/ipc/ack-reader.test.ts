@@ -1,5 +1,6 @@
 import { PassThrough } from 'node:stream'
 import { encode as msgpackEncode } from '@msgpack/msgpack'
+import { StorageWriteRefusedError } from '@pithecene/quarry-sdk'
 import { describe, expect, it } from 'vitest'
 import { AckReader } from '../../src/ipc/ack-reader.js'
 import { encodeFrame } from '../../src/ipc/frame.js'
@@ -36,7 +37,9 @@ describe('AckReader', () => {
     const promise = reader.waitForAck(1)
     stream.write(encodeAck(1, false, 'S3 PutObject failed'))
 
-    await expect(promise).rejects.toThrow('S3 PutObject failed')
+    const rejection = await promise.catch((err: unknown) => err)
+    expect(rejection).toBeInstanceOf(StorageWriteRefusedError)
+    expect(rejection).toMatchObject({ message: 'S3 PutObject failed' })
     reader.stop()
   })
 

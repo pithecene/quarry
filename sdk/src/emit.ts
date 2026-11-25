@@ -318,6 +318,7 @@ export const ARTIFACT_MAX_BYTES = 1024 * 1024 * 1024
  * symbol from the global registry that every copy shares.
  */
 const RANGE_REFUSED_BRAND = Symbol.for('@pithecene/quarry-sdk/ArtifactRangeRefusedError')
+const FILE_REFUSED_BRAND = Symbol.for('@pithecene/quarry-sdk/StorageWriteRefusedError')
 const WRITER_ERROR_BRAND = Symbol.for('@pithecene/quarry-sdk/ArtifactWriterError')
 
 /** Reports whether value carries brand, whichever SDK copy branded it. */
@@ -349,6 +350,24 @@ export class ArtifactRangeRefusedError extends Error {
 
   static [Symbol.hasInstance](value: unknown): boolean {
     return hasBrand(value, RANGE_REFUSED_BRAND)
+  }
+}
+
+/**
+ * Error with which `storage.put()` rejects when the runtime could not write
+ * the file (CONTRACT_IPC.md §File Write Acknowledgement). The refusal is
+ * recoverable: the script may catch it and continue.
+ */
+export class StorageWriteRefusedError extends Error {
+  readonly [FILE_REFUSED_BRAND] = true
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'StorageWriteRefusedError'
+  }
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasBrand(value, FILE_REFUSED_BRAND)
   }
 }
 
