@@ -6,12 +6,12 @@
 set -euo pipefail
 
 # The checksum names and the exit report that this reads date from v0.20.0.
-if [[ ! "$1" =~ ^v[0-9]+\.([0-9]+)\.[0-9]+$ ]] || [[ "$1" == v0.* && "${BASH_REMATCH[1]}" -lt 20 ]]; then
+number="(0|[1-9][0-9]*)"
+if [[ ! "$1" =~ ^v$number\.$number\.$number$ || ("${BASH_REMATCH[1]}" == 0 && "${BASH_REMATCH[2]}" -lt 20) ]]; then
   echo "expected a release from v0.20.0 on, got $1" >&2
   exit 1
 fi
-# A release that hangs fails here, whatever its own limits are.
-bounded() { perl -e 'alarm shift; exec @ARGV or die' "$@"; }
+# The job that calls this bounds it.
 tag="$1"
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -28,7 +28,8 @@ trap 'rm -rf "$dir"' EXIT
 gh release download "$tag" --repo "$repo" --dir "$dir" --pattern "$archive" --pattern "$archive.sha256"
 cd "$dir"
 # The one entry names the archive alone, as a download holds it.
-[[ "$(cat "$archive.sha256")" == "$(sha256 "$archive")" ]]
+sha256 "$archive" > expected.sha256
+cmp "$archive.sha256" expected.sha256
 tar -xzf "$archive"
 # Rosetta also runs an amd64 binary, so a run does not show the architecture.
 case "$os/$arch" in
@@ -51,7 +52,7 @@ export default async function run(ctx) {
 SCRIPT
 store=(--storage-backend fs --storage-path store)
 mkdir store
-bounded 120 ./quarry run --script ./run.mjs --run-id verify --source ci --category verify \
+./quarry run --script ./run.mjs --run-id verify --source ci --category verify \
   --no-browser --report report.json "${store[@]}"
 jq -e '.outcome == "success" and .recorded and .exit_code == 0' report.json
 day=$(./quarry list runs --format json "${store[@]}" | jq -r '.runs[0].day')
