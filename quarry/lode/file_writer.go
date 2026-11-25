@@ -3,6 +3,7 @@ package lode
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,14 +47,16 @@ const recoveryTimeout = 10 * time.Second
 func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, data []byte) error {
 	prefix := SidecarFilesPrefix(c.config)
 	key := collapseSidecarSlashes(prefix) + filename
-	state := c.fileState(filename)
-	if state == fileRecorded {
+	c.putMu.Lock()
+	defer c.putMu.Unlock()
+	state, attempt := c.fileStates[filename], fileState{incomplete: sha256.Sum256(data)}
+	if state.recorded {
 		// An S3 store takes an identical second upload for its own first.
 		return WrapWriteError(fmt.Errorf("%s: %w", key, lode.ErrPathExists), key)
 	}
-	if err := c.putData(ctx, key, data, state == fileIncomplete); err != nil {
+	if err := c.putData(ctx, key, data, state == attempt); err != nil {
 		if !errors.Is(err, lode.ErrPathExists) {
-			c.setFileState(filename, fileIncomplete) // it can be stored
+			c.fileStates[filename] = attempt // it can be stored
 		}
 		return WrapWriteError(err, key)
 	}
@@ -69,9 +72,11 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	if err := c.putReconciled(ctx, metaPath, meta); err != nil {
 		// The data stays: the store can have taken another write's equal bytes for
 		// these, so no state of it makes a removal safe.
-		c.setFileState(filename, fileIncomplete)
+		c.fileStates[filename] = attempt
 		return WrapWriteError(err, metaPath)
 	}
+
+	c.fileStates[filename] = fileState{recorded: true}
 
 	// Track the written file for inclusion in snapshot Metadata.
 	c.mu.Lock()
@@ -83,31 +88,15 @@ func (c *LodeClient) PutFile(ctx context.Context, filename, contentType string, 
 	}
 	c.pendingFiles = append(c.pendingFiles, ref)
 	c.files = append(c.files, ref)
-	c.fileStates[filename] = fileRecorded
 	c.mu.Unlock()
 
 	return nil
 }
 
-// fileState is what this client knows of a filename.
-type fileState int
-
-const (
-	fileUnknown    fileState = iota
-	fileIncomplete           // its data is or can be stored, and the put failed
-	fileRecorded             // it is a file of the run
-)
-
-func (c *LodeClient) fileState(filename string) fileState {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.fileStates[filename]
-}
-
-func (c *LodeClient) setFileState(filename string, state fileState) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.fileStates[filename] = state
+// fileState is what this client knows of a filename. The zero value is nothing.
+type fileState struct {
+	recorded   bool              // it is a file of the run
+	incomplete [sha256.Size]byte // the data of a put that failed and can have stored it
 }
 
 // putData writes a file's data. Unlike its companion, the data names no run, so

@@ -30,7 +30,8 @@ type LodeClient struct { //nolint:revive // intentional naming for clarity
 	// snapshots.
 	store lode.RangeStore
 
-	mu           sync.Mutex           // guards the fields below
+	putMu        sync.Mutex           // serializes PutFile, and guards fileStates
+	mu           sync.Mutex           // guards pendingFiles and files
 	pendingFiles []SidecarFileRef     // sidecar files written since last snapshot flush
 	files        []SidecarFileRef     // every sidecar file the run wrote
 	fileStates   map[string]fileState // by filename

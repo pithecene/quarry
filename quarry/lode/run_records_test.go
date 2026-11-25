@@ -457,10 +457,18 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 			}
 			// The data names no run, so an existing path is refused without a read.
 			if tc.before != "" {
-				fresh, _ := uncertainClient(t, &uncertainStore{RangeStore: store.RangeStore, suffix: "none", unreadable: true})
-				if err := fresh.PutFile(t.Context(), "page.png", "image/png", []byte(tc.before)); !errors.Is(err, ErrPathExists) {
-					t.Errorf("existing path: %v, want ErrPathExists", err)
+				reads := &equalUploadStore{RangeStore: store.RangeStore, strict: true}
+				fresh, _ := uncertainClient(t, nil)
+				for _, c := range []*LodeClient{fresh, client} {
+					c.store = reads
+					if err := c.PutFile(t.Context(), "page.png", "image/png", []byte(tc.before)); !errors.Is(err, ErrPathExists) || len(c.files) != 0 {
+						t.Errorf("another write's bytes: %v with files %v, want ErrPathExists and no file", err, c.files)
+					}
 				}
+				if reads.reads != 0 {
+					t.Errorf("read the data %d times, want none", reads.reads)
+				}
+				client.store = store
 			}
 			store.unreadable, store.suffix = false, "none"
 			if err := client.PutFile(t.Context(), "other.txt", "text/plain", []byte("x")); err != nil {
@@ -474,7 +482,8 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 // Lode's S3 store does, and counts the reads of data files.
 type equalUploadStore struct {
 	lode.RangeStore
-	reads int
+	strict bool // refuse equal bytes too
+	reads  int
 }
 
 func (s *equalUploadStore) Put(ctx context.Context, key string, r io.Reader) error {
@@ -483,7 +492,7 @@ func (s *equalUploadStore) Put(ctx context.Context, key string, r io.Reader) err
 		return err
 	}
 	putErr := s.RangeStore.Put(ctx, key, bytes.NewReader(data))
-	if !errors.Is(putErr, lode.ErrPathExists) {
+	if s.strict || !errors.Is(putErr, lode.ErrPathExists) {
 		return putErr
 	}
 	rc, err := s.RangeStore.Get(ctx, key)
