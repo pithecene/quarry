@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -479,26 +480,45 @@ func TestPutFile_ReconcilesUncertainData(t *testing.T) {
 	}
 }
 
-// Two puts of one filename at once record it once.
-func TestPutFile_RecordsAConcurrentNameOnce(t *testing.T) {
+// blockingPutStore blocks the first Put of data until release is closed.
+type blockingPutStore struct {
+	lode.RangeStore
+	once             sync.Once
+	entered, release chan struct{}
+}
+
+func (s *blockingPutStore) Put(ctx context.Context, key string, r io.Reader) error {
+	s.once.Do(func() {
+		close(s.entered)
+		<-s.release
+	})
+	return s.RangeStore.Put(ctx, key, r)
+}
+
+// A put in progress reserves its filename and no other.
+func TestPutFile_ReservesTheNameOfAPutInProgress(t *testing.T) {
 	t.Parallel()
 	client, _ := uncertainClient(t, nil)
-	client.store = &equalUploadStore{RangeStore: lode.NewMemory()}
-	errs := make(chan error, 8)
-	for range cap(errs) {
-		go func() { errs <- client.PutFile(t.Context(), "a.txt", "text/plain", []byte("same")) }()
+	store := &blockingPutStore{
+		RangeStore: &equalUploadStore{RangeStore: lode.NewMemory()},
+		entered:    make(chan struct{}), release: make(chan struct{}),
 	}
-	succeeded := 0
-	for range cap(errs) {
-		switch err := <-errs; {
-		case err == nil:
-			succeeded++
-		case !errors.Is(err, ErrPathExists):
-			t.Errorf("PutFile: %v, want ErrPathExists", err)
-		}
+	client.store = store
+	put := func(name string) error {
+		return client.PutFile(t.Context(), name, "text/plain", []byte("same"))
 	}
-	if succeeded != 1 || len(client.files) != 1 {
-		t.Errorf("%d puts succeeded with files %v, want one of each", succeeded, client.files)
+	first := make(chan error, 1)
+	go func() { first <- put("a.txt") }()
+	<-store.entered
+	if err := put("a.txt"); !errors.Is(err, ErrPathExists) {
+		t.Errorf("same name: %v, want ErrPathExists", err)
+	}
+	if err := put("b.txt"); err != nil {
+		t.Errorf("other name: %v", err)
+	}
+	close(store.release)
+	if err := <-first; err != nil || len(client.files) != 2 {
+		t.Errorf("first put: %v with files %v, want two files", err, client.files)
 	}
 }
 
@@ -621,13 +641,20 @@ func TestPutFile_RefusesAnotherWritesObject(t *testing.T) {
 // name stays taken.
 func TestPutFile_KeepsTheDataOfAnIncompleteFile(t *testing.T) {
 	t.Parallel()
-	for _, uncertain := range []bool{false, true} {
-		t.Run(fmt.Sprintf("uncertain data=%t", uncertain), func(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		uncertain, equal bool // the data write's error, and a store that takes equal bytes
+	}{
+		{"data confirmed", false, false},
+		{"data read back", true, false},
+		{"a store that takes equal bytes", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			mem := lode.NewMemory()
 			store := &companionFailingStore{RangeStore: mem, failing: true}
 			client, _ := uncertainClient(t, nil)
 			client.store = store
-			if uncertain {
+			if tc.uncertain {
 				store.RangeStore = &uncertainStore{RangeStore: mem, suffix: "a.txt"}
 			}
 			key := SidecarFilesPrefix(client.config) + "a.txt"
@@ -641,6 +668,13 @@ func TestPutFile_KeepsTheDataOfAnIncompleteFile(t *testing.T) {
 				t.Fatalf("data exists = %v, %v, want it kept", exists, err)
 			}
 			store.failing, store.RangeStore = false, mem
+			if tc.equal {
+				store.RangeStore = &equalUploadStore{RangeStore: mem}
+				if err := put("x"); err != nil || len(client.files) != 1 {
+					t.Errorf("retry: %v with files %v, want one file", err, client.files)
+				}
+				return
+			}
 			for _, data := range []string{"x", "y"} {
 				if err := put(data); !errors.Is(err, ErrPathExists) || len(client.files) != 0 {
 					t.Errorf("retry of %q: %v with files %v, want ErrPathExists and no file", data, err, client.files)

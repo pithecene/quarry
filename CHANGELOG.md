@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **A second put no longer deletes the first file on S3**: in v0.20.0, a script that put an identical file again under another content type lost the first file on an S3 store. The store took the second upload for the first, its companion failed, and the cleanup deleted the data. A run now writes each filename once, and Quarry no longer removes the data of a file whose companion failed. A store that refuses existing paths then refuses a retry under that filename. `CONTRACT_EMIT.md` § Content Type states the rule.
+- **A second put no longer deletes the first file on S3**: in v0.20.0, a script that put an identical file again under another content type lost the first file on an S3 store. The store took the second upload for the first, its companion failed, and the cleanup deleted the data. A run now writes each filename once, and Quarry no longer removes the data of a file whose companion failed. `CONTRACT_EMIT.md` § Content Type states the rule.
 - **A sidecar file survives a lost response**: when storage persisted the data of a `storage.put` but reported an error, the file stayed without its content type and without an inventory entry. Every retry failed because the name existed. Quarry now reads the file back, and the write succeeds when the stored bytes are its own. `CONTRACT_EMIT.md` § Content Type states the rule.
 
 ---
