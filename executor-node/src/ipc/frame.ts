@@ -318,13 +318,10 @@ export function decodeFileWriteAck(payload: Uint8Array): FileWriteAckFrame {
   if (decoded.type !== 'file_write_ack') {
     throw new Error(`Expected file_write_ack frame, got type: ${String(decoded.type)}`)
   }
-  if (typeof decoded.ok !== 'boolean') {
-    throw new Error('Expected a boolean ok in a file_write_ack frame')
-  }
   return {
     type: 'file_write_ack',
     write_id: decoded.write_id as number,
-    ok: decoded.ok,
+    ok: decoded.ok as boolean,
     ...(decoded.error != null && { error: decoded.error as string })
   }
 }
@@ -395,13 +392,10 @@ export function decodeArtifactRangeAck(payload: Uint8Array): ArtifactRangeAckFra
   if (decoded.type !== 'artifact_range_ack') {
     throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`)
   }
-  if (typeof decoded.ok !== 'boolean') {
-    throw new Error('Expected a boolean ok in a artifact_range_ack frame')
-  }
   return {
     type: 'artifact_range_ack',
     range_id: decoded.range_id as number,
-    ok: decoded.ok,
+    ok: decoded.ok as boolean,
     ...(decoded.error != null && { error: decoded.error as string })
   }
 }

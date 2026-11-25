@@ -2810,9 +2810,6 @@ function decodeFileWriteAck(payload) {
   if (decoded.type !== "file_write_ack") {
     throw new Error(`Expected file_write_ack frame, got type: ${String(decoded.type)}`);
   }
-  if (typeof decoded.ok !== "boolean") {
-    throw new Error("Expected a boolean ok in a file_write_ack frame");
-  }
   return {
     type: "file_write_ack",
     write_id: decoded.write_id,
@@ -2848,9 +2845,6 @@ function decodeArtifactRangeAck(payload) {
   const decoded = (0, import_msgpack.decode)(payload);
   if (decoded.type !== "artifact_range_ack") {
     throw new Error(`Expected artifact_range_ack frame, got type: ${String(decoded.type)}`);
-  }
-  if (typeof decoded.ok !== "boolean") {
-    throw new Error("Expected a boolean ok in a artifact_range_ack frame");
   }
   return {
     type: "artifact_range_ack",
@@ -2992,8 +2986,8 @@ var StdioSink = class {
       throw new Error(`artifact range of ${data.length} bytes exceeds max ${MAX_CHUNK_SIZE}`);
     }
     const rangeId = ++this.rangeIdCounter;
-    const ackPromise = ackReader.waitForRangeAck(rangeId);
     const frame = encodeArtifactRangeFrame(artifactId, rangeId, offset, data);
+    const ackPromise = ackReader.waitForRangeAck(rangeId);
     await this.writeAcknowledged(frame, ackPromise);
   }
   /**
@@ -3034,8 +3028,8 @@ var StdioSink = class {
   async writeFile(filename, contentType, data) {
     if (this.ackReader) {
       const writeId = ++this.writeIdCounter;
-      const ackPromise = this.ackReader.waitForAck(writeId);
       const frame = encodeFileWriteFrame(filename, contentType, data, writeId);
+      const ackPromise = this.ackReader.waitForAck(writeId);
       await this.writeAcknowledged(frame, ackPromise);
     } else {
       const frame = encodeFileWriteFrame(filename, contentType, data);
@@ -3734,8 +3728,10 @@ var AckReader = class {
       entry.resolve();
     } else if (ack.kind === "artifact_range") {
       entry.reject(new ArtifactRangeRefusedError(ack.error ?? "artifact range refused"));
-    } else {
+    } else if (ack.ok === false) {
       entry.reject(new StorageWriteRefusedError(ack.error ?? "file write failed"));
+    } else {
+      entry.reject(new Error(ack.error ?? "file write failed"));
     }
   }
   /**

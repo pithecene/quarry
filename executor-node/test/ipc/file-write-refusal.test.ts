@@ -27,11 +27,19 @@ describe('refused file writes (CONTRACT_IPC.md §File Write Acknowledgement)', (
     expect(rejection).toMatchObject({ message: 'S3 PutObject failed' })
   })
 
-  it('ignores an ack without a boolean ok', async () => {
-    const pending = reader.waitForAck(1)
-    send({})
-    send({ ok: true })
-    await expect(pending).resolves.toBeUndefined()
+  it('takes no ack without a boolean ok for a refusal', async () => {
+    const pending = reader.waitForAck(1).catch((err: unknown) => err)
+    send({ error: 'disk full' })
+    const rejection = await pending
+    expect(rejection).toBeInstanceOf(Error)
+    expect(rejection).not.toBeInstanceOf(StorageWriteRefusedError)
+  })
+
+  it('leaves no ack behind when the frame cannot be encoded', async () => {
+    const sink = new StdioSink(new PassThrough(), undefined, reader)
+    const tooLarge = Buffer.alloc(8 * 1024 * 1024 + 1)
+    await expect(sink.writeFile('a.txt', 'text/plain', tooLarge)).rejects.toThrow()
+    expect(reader.idle).toBe(true)
   })
 
   it('handles a refusal that arrives before the write settles', async () => {

@@ -182,9 +182,12 @@ export class AckReader {
       // A refused range is recoverable (CONTRACT_IPC.md §Artifact Range
       // Acknowledgement): the error names it so the sinks do not latch it.
       entry.reject(new ArtifactRangeRefusedError(ack.error ?? 'artifact range refused'))
-    } else {
-      // A refused file is recoverable too (§File Write Acknowledgement).
+    } else if (ack.ok === false) {
+      // A refused file is recoverable too (§File Write Acknowledgement). An ack
+      // without a boolean ok is no refusal by the runtime.
       entry.reject(new StorageWriteRefusedError(ack.error ?? 'file write failed'))
+    } else {
+      entry.reject(new Error(ack.error ?? 'file write failed'))
     }
   }
 
