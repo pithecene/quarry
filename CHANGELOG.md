@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **A fractional artifact size is refused**: the runtime truncated an artifact event's fractional `size_bytes`, so 16.5 matched an opened size of 16 and committed the artifact. It now refuses a size that is not a whole number within 64 bits. The SDK sends whole sizes only, so this concerns other executors. `CONTRACT_IPC.md` § Artifact Frames states the rule.
+- **A fractional artifact size is refused**: the runtime truncated an artifact event's fractional `size_bytes`, so 16.5 matched an opened size of 16 and committed the artifact. It now refuses a size that is not a whole signed 64-bit number. The SDK sends whole sizes only, so this concerns other executors. `CONTRACT_IPC.md` § Artifact Commit Semantics states the rule.
 
 ---
 

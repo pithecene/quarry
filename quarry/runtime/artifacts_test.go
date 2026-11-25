@@ -2,10 +2,12 @@ package runtime
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	lodepkg "github.com/pithecene/lode/lode"
 	"github.com/pithecene/lode/lode/volume"
@@ -245,10 +247,13 @@ func TestIngestion_RefusesNonIntegralArtifactSize(t *testing.T) {
 		{"infinity", math.Inf(1), "is not an int64"},
 		{"not a number", math.NaN(), "is not an int64"},
 		{"beyond int64", 1 << 63, "is not an int64"},
+		{"below int64", math.Nextafter(math.MinInt64, math.Inf(-1)), "is not an int64"},
+		{"least int64", math.MinInt64, "artifact commit failed"},
 		{"negative", -16, "artifact commit failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
 			f := newArtifactStoreFixture(t)
 			event := artifactEvent(1, "a1", 16)
 			event.Payload["size_bytes"] = tc.size
@@ -258,15 +263,17 @@ func TestIngestion_RefusesNonIntegralArtifactSize(t *testing.T) {
 				encodeEventFrame(event), encodeEventFrame(terminalEvent(2)),
 			}, nil)
 			pol := &recordingPolicy{Policy: policy.NewNoopPolicy()}
-			err := NewIngestionEngine(bytes.NewReader(frames), pol, NewArtifactManager(f.client), nil, log.NewLogger(meta), meta, nil, nil, nil).Run(t.Context())
+			artifacts := NewArtifactManager(f.client)
+			err := NewIngestionEngine(bytes.NewReader(frames), pol, artifacts, nil, log.NewLogger(meta), meta, nil, nil, nil).Run(ctx)
+			committed := artifacts.Stats().CommittedArtifacts
 			if tc.want == "" {
-				if err != nil || len(pol.artifacts) != 1 {
-					t.Fatalf("err = %v with %d artifacts, want one accepted", err, len(pol.artifacts))
+				if err != nil || len(pol.artifacts) != 1 || committed != 1 {
+					t.Fatalf("err = %v with %d artifacts and %d committed, want one of each", err, len(pol.artifacts), committed)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), tc.want) || len(pol.artifacts) != 0 {
-				t.Fatalf("err = %v with %d artifacts, want a refusal naming %q", err, len(pol.artifacts), tc.want)
+			if err == nil || !strings.Contains(err.Error(), tc.want) || len(pol.artifacts) != 0 || committed != 0 {
+				t.Fatalf("err = %v with %d artifacts and %d committed, want a refusal naming %q", err, len(pol.artifacts), committed, tc.want)
 			}
 		})
 	}
