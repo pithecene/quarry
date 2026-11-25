@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -504,20 +505,33 @@ func TestPutFile_ReservesTheNameOfAPutInProgress(t *testing.T) {
 		entered:    make(chan struct{}), release: make(chan struct{}),
 	}
 	client.store = store
-	put := func(name string) error {
-		return client.PutFile(t.Context(), name, "text/plain", []byte("same"))
+	release := sync.OnceFunc(func() { close(store.release) })
+	defer release()
+	put := func(name string) chan error {
+		done := make(chan error, 1)
+		go func() { done <- client.PutFile(t.Context(), name, "text/plain", []byte("same")) }()
+		return done
 	}
-	first := make(chan error, 1)
-	go func() { first <- put("a.txt") }()
+	await := func(name string, done chan error) error {
+		t.Helper()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s is still blocked", name)
+			return nil
+		}
+	}
+	first := put("a.txt")
 	<-store.entered
-	if err := put("a.txt"); !errors.Is(err, ErrPathExists) {
+	if err := await("the same name", put("a.txt")); !errors.Is(err, ErrPathExists) {
 		t.Errorf("same name: %v, want ErrPathExists", err)
 	}
-	if err := put("b.txt"); err != nil {
+	if err := await("the other name", put("b.txt")); err != nil {
 		t.Errorf("other name: %v", err)
 	}
-	close(store.release)
-	if err := <-first; err != nil || len(client.files) != 2 {
+	release()
+	if err := await("the first put", first); err != nil || len(client.files) != 2 {
 		t.Errorf("first put: %v with files %v, want two files", err, client.files)
 	}
 }
