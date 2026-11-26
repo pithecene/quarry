@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"sync"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
