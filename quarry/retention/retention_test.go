@@ -799,8 +799,8 @@ func TestPrune_SnapshotWithoutData(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, err := qlode.RunSnapshots(t.Context(), ds, qlode.PartitionPrefix(cfg))
-	if err != nil || len(stored) == 0 {
-		t.Fatalf("inventory = %d snapshots, %v; want the run's", len(stored), err)
+	if err != nil || len(stored) != 2 {
+		t.Fatalf("inventory = %d snapshots, %v; want the run's two", len(stored), err)
 	}
 	lost := snapshotIDs(stored)
 	policy := Policy{Failed: days(7)}

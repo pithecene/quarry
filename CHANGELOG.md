@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **Prune advice covers snapshots without their data**: when the prune kept a run for snapshots that the expiry did not find, its reason pointed to a sweep. A sweep restores only the index of a snapshot whose data remains. The reason now says that a snapshot that lost its data needs its own expiry by ID. `CONTRACT_LODE.md` § Order of Operations states the rule.
+- **Prune advice covers snapshots without their data**: when the prune kept a run for snapshots that the expiry did not find, its reason pointed to a sweep. A sweep restores only the index of a snapshot whose data remains. The reason now says to rerun the prune, and when it persists, points to the contract, which separates a repair by sweep from an expiry by ID. `CONTRACT_LODE.md` § Order of Operations states the rule.
 
 ---
 

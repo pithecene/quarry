@@ -678,8 +678,9 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
      expires only a snapshot whose canonical manifest names objects of this run
      alone, and records first any sidecar inventory that the manifest holds,
      which a run without an end record may name nowhere else. Lode keeps the
-     dataset head, so a snapshot that is the head waits for another commit. The
-     next prune then removes the run.
+     dataset head, which the expiry reports as retained: the operator waits for
+     another commit, expires the ID again, and confirms that the expiry reports
+     it. The next prune then removes the run.
 
    Then preview the removal of the run's artifact Volumes. The prune
    lists the names under the run's `volumes/` prefix and calls Lode's
