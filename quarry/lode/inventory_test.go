@@ -148,25 +148,42 @@ func TestInventory_KeepsAPartitionOnlySnapshotUntilItExpires(t *testing.T) {
 	}
 }
 
-// A malformed tombstone of a held snapshot without its canonical manifest
-// fails the read, as Lode's read of it does, rather than dropping the
-// snapshot.
-func TestInventory_FailsOnAMalformedTombstone(t *testing.T) {
+// A held snapshot without its canonical manifest whose tombstone key exists is
+// read through Lode: an empty placeholder keeps the live snapshot, and a
+// malformed tombstone fails the read rather than dropping it.
+func TestInventory_ReadsATombstoneThroughLode(t *testing.T) {
 	t.Parallel()
-	ctx := t.Context()
-	store := lode.NewMemory()
-	_, ids, read := inventoryFixture(t, store, 2)
-	if _, err := read(); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Delete(ctx, "datasets/quarry/segments/"+string(ids[0])+"/manifest.json"); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Put(ctx, "datasets/quarry/expired/"+string(ids[0]), strings.NewReader("{")); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := read(); err == nil {
-		t.Fatalf("read = %v; want the malformed tombstone's error", got)
+	for _, tc := range []struct {
+		name, tombstone string
+		fails           bool
+	}{
+		{"an empty placeholder keeps the snapshot", "", false},
+		{"a malformed tombstone fails the read", "{", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			store := lode.NewMemory()
+			_, ids, read := inventoryFixture(t, store, 2)
+			if _, err := read(); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Delete(ctx, "datasets/quarry/segments/"+string(ids[0])+"/manifest.json"); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Put(ctx, "datasets/quarry/expired/"+string(ids[0]), strings.NewReader(tc.tombstone)); err != nil {
+				t.Fatal(err)
+			}
+			got, err := read()
+			if tc.fails {
+				if err == nil {
+					t.Fatalf("read = %v; want the malformed tombstone's error", got)
+				}
+				return
+			}
+			if want := slices.Sorted(slices.Values(ids)); err != nil || !slices.Equal(got, want) {
+				t.Fatalf("read = %v, %v; want %v", got, err, want)
+			}
+		})
 	}
 }
 
