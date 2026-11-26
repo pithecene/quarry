@@ -3,12 +3,22 @@ package lode
 import (
 	"context"
 	"errors"
+	"io"
 	"iter"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/pithecene/lode/lode"
+
+	"github.com/pithecene/quarry/iox"
 )
+
+// listPrefetch bounds the manifests that an unfiltered listing loads ahead,
+// concurrently. On a development bucket of 14,834 snapshots, loading them one
+// at a time took 43 minutes, and 128 ahead took 67 seconds, in the same order
+// with the same results.
+const listPrefetch = 128
 
 // manifestLister is a dataset's manifest listing, which views and writers have.
 type manifestLister interface {
@@ -22,7 +32,7 @@ type manifestLister interface {
 // snapshot in the dataset. A dataset without snapshots holds none.
 func RunSnapshots(ctx context.Context, ds manifestLister, prefix string) ([]*lode.Snapshot, error) {
 	var out []*lode.Snapshot
-	for loaded, err := range ds.Manifests(ctx, lode.PartitionPath{}, lode.ManifestListOptions{}) {
+	for loaded, err := range ds.Manifests(ctx, lode.PartitionPath{}, lode.ManifestListOptions{Prefetch: listPrefetch}) {
 		if errors.Is(err, lode.ErrNotFound) {
 			break
 		}
@@ -60,4 +70,176 @@ func holdsPrefix(m *lode.Manifest, prefix string) bool {
 // the prefix matches whole segments.
 func underPrefix(path, prefix string) bool {
 	return strings.Contains(path, "/partitions/"+prefix)
+}
+
+// snapshotLoader is a dataset's manifest listing and its load of one
+// snapshot by ID, which views and writers have.
+type snapshotLoader interface {
+	manifestLister
+	Snapshot(ctx context.Context, id lode.SnapshotID) (*lode.Snapshot, error)
+}
+
+// Inventory answers a prune's reads of each run's snapshots without loading
+// every manifest for each run. The first read takes Lode's unfiltered
+// listing, which loads and validates each manifest once. Each later read
+// checks Lode's removal fence, lists the keys of the canonical manifests, and
+// loads only the snapshots that the inventory does not hold, so it finds each
+// snapshot that committed since, as a new unfiltered listing would
+// (CONTRACT_LODE.md §Order of Operations). A held snapshot of the run whose
+// canonical manifest is no longer listed is a legacy snapshot that only
+// partition manifests record when no tombstone exists, and otherwise Lode
+// reads it by ID. An
+// Inventory is not safe for concurrent use.
+type Inventory struct {
+	dataset string
+	store   lode.Store
+	ds      snapshotLoader
+	// held is each committed snapshot read so far, nil before the first read.
+	held map[lode.SnapshotID]*lode.Manifest
+}
+
+// NewInventory returns an empty inventory of dataset, whose handle ds
+// reads through store.
+func NewInventory(dataset string, store lode.Store, ds snapshotLoader) *Inventory {
+	return &Inventory{dataset: dataset, store: store, ds: ds}
+}
+
+// RunSnapshots returns every committed snapshot that holds an object under
+// prefix. Unlike the package's RunSnapshots, which keeps Lode's listing order,
+// it returns them in snapshot ID order, so its result does not depend on
+// which read first found each snapshot.
+func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.Snapshot, error) {
+	if inv.held == nil {
+		return inv.first(ctx, prefix)
+	}
+	listed, err := inv.refresh(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []*lode.Snapshot
+	for id, m := range inv.held {
+		if !holdsPrefix(m, prefix) {
+			continue
+		}
+		if !listed[id] {
+			live, err := inv.unlisted(ctx, id)
+			if err != nil {
+				return nil, WrapReadError(err, prefix)
+			}
+			if !live {
+				delete(inv.held, id)
+				continue
+			}
+		}
+		out = append(out, &lode.Snapshot{ID: id, Manifest: m})
+	}
+	slices.SortFunc(out, func(a, b *lode.Snapshot) int { return strings.Compare(string(a.ID), string(b.ID)) })
+	return out, nil
+}
+
+// unlisted reports whether a held snapshot whose canonical manifest is no
+// longer listed is still live. Without a tombstone it is a legacy snapshot
+// that its partition manifests record, since expiry records the tombstone
+// before it deletes a manifest. With one, Lode reads the tombstone, which
+// tells an expiry from a placeholder and fails on a malformed one.
+func (inv *Inventory) unlisted(ctx context.Context, id lode.SnapshotID) (bool, error) {
+	tombstoned, err := inv.store.Exists(ctx, inv.dir()+"expired/"+string(id))
+	if err != nil || !tombstoned {
+		return !tombstoned, err
+	}
+	_, err = inv.ds.Snapshot(ctx, id)
+	if errors.Is(err, lode.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// first fills the inventory from Lode's unfiltered listing.
+func (inv *Inventory) first(ctx context.Context, prefix string) ([]*lode.Snapshot, error) {
+	all, err := RunSnapshots(ctx, inv.ds, "")
+	if err != nil {
+		return nil, err
+	}
+	inv.held = make(map[lode.SnapshotID]*lode.Manifest, len(all))
+	for _, s := range all {
+		inv.held[s.ID] = s.Manifest
+	}
+	var out []*lode.Snapshot
+	for _, id := range slices.Sorted(maps.Keys(inv.held)) {
+		if m := inv.held[id]; holdsPrefix(m, prefix) {
+			out = append(out, &lode.Snapshot{ID: id, Manifest: m})
+		}
+	}
+	return out, nil
+}
+
+// dir is the dataset's directory in the store.
+func (inv *Inventory) dir() string { return "datasets/" + inv.dataset + "/" }
+
+// refresh checks the removal fence, lists the canonical manifest keys, and
+// loads each listed snapshot that the inventory does not hold. It returns
+// the listed snapshot IDs. A listed snapshot that Lode reports absent, as one
+// whose expiry deleted its manifest after the listing, is not held.
+func (inv *Inventory) refresh(ctx context.Context) (map[lode.SnapshotID]bool, error) {
+	if err := inv.checkLive(ctx); err != nil {
+		return nil, err
+	}
+	// Quarry's Hive layout keeps each canonical manifest at
+	// datasets/<dataset>/segments/<snapshot>/manifest.json.
+	dir := inv.dir() + "segments/"
+	keys, err := inv.store.List(ctx, dir)
+	if err != nil {
+		return nil, WrapReadError(err, dir)
+	}
+	listed := make(map[lode.SnapshotID]bool, len(inv.held))
+	var unheld []lode.SnapshotID
+	for _, key := range keys {
+		id, ok := strings.CutSuffix(strings.TrimPrefix(key, dir), "/manifest.json")
+		if !ok || id == "" || strings.Contains(id, "/") {
+			continue
+		}
+		listed[lode.SnapshotID(id)] = true
+		if _, held := inv.held[lode.SnapshotID(id)]; !held {
+			unheld = append(unheld, lode.SnapshotID(id))
+		}
+	}
+	slices.Sort(unheld)
+	for _, id := range unheld {
+		snap, err := inv.ds.Snapshot(ctx, id)
+		if errors.Is(err, lode.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, WrapReadError(err, dir)
+		}
+		inv.held[id] = snap.Manifest
+	}
+	return listed, nil
+}
+
+// removedPointer is the value of the head pointer that Lode's removal of a
+// dataset leaves (Lode PUBLIC_API.md §Root.RemoveDataset).
+const removedPointer = "lode:removed"
+
+// checkLive returns lode.ErrRemoved when the dataset's head pointer holds
+// Lode's removal fence, as each Lode read checks before it lists. A missing
+// pointer is live: a dataset can hold snapshots from before pointers.
+func (inv *Inventory) checkLive(ctx context.Context) error {
+	path := inv.dir() + "latest"
+	rc, err := inv.store.Get(ctx, path)
+	if errors.Is(err, lode.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return WrapReadError(err, path)
+	}
+	defer iox.DiscardClose(rc)
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		return WrapReadError(err, path)
+	}
+	if strings.TrimSpace(string(body)) == removedPointer {
+		return WrapReadError(lode.ErrRemoved, path)
+	}
+	return nil
 }

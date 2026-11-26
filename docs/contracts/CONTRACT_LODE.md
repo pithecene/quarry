@@ -187,6 +187,11 @@ Record Schema). The runtime writes no chunk record.
 - An unfiltered listing lists the dataset and reads one manifest of each of its
   snapshots, so the cost of reading one run grows with the dataset. Opening an
   artifact through its commit index entry needs no listing.
+- A prune MUST NOT repeat that listing for each run it reads. Each of its
+  reads of a run, before and after the run's expiry, MUST still find every
+  snapshot of the run that committed before the read, as a new unfiltered
+  listing would, and MUST stop with Lode's `ErrRemoved` once the dataset is
+  removed. Neither gives an atomic view of the dataset.
 - A read gives no frozen view of a run that is still writing.
 
 ### Commit Index
