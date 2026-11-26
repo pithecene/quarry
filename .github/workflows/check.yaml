@@ -28,7 +28,7 @@ jobs:
     # The image of the internal check's pinned release: the one line in this
     # repository that names it.
     container:
-      image: ghcr.io/pithecene/bosun:0.26.10
+      image: ghcr.io/pithecene/bosun:0.28.3
       credentials: { username: bosun, password: "${{ secrets.BOSUN_REGISTRY_TOKEN }}" }
     # The same read-only token reads Pithecene's layer, which bosun.yaml extends.
     env:
