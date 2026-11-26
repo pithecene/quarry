@@ -844,23 +844,25 @@ func (s *manifestGets) Get(ctx context.Context, p string) (io.ReadCloser, error)
 func TestPrune_LoadsEachManifestOnce(t *testing.T) {
 	t.Parallel()
 	for _, dryRun := range []bool{true, false} {
-		f := newFixture(t)
-		for _, id := range []string{"r1", "r2", "r3"} {
-			f.write(runSpec{source: "src", runID: id, day: oldDay, outcome: types.OutcomeScriptError})
-		}
-		f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
-		f.write(runSpec{source: "src", runID: "r6", day: recentDay, outcome: types.OutcomeSuccess})
-		store := &manifestGets{RangeStore: f.store, match: "run_id=r5/"}
-		factory := func() (lode.RangeStore, error) { return store, nil }
-		report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, DryRun: dryRun, Now: now})
-		if err != nil {
-			t.Fatalf("Prune: %v", err)
-		}
-		if got := outcomes(report); got != "[r1:pruned r2:pruned r3:pruned]" {
-			t.Fatalf("dry run %t: runs = %s (%+v), want three pruned", dryRun, got, report.Runs)
-		}
-		if store.n != 1 {
-			t.Fatalf("dry run %t: r5's manifest loaded %d times, want once", dryRun, store.n)
-		}
+		t.Run(fmt.Sprintf("dry run %t", dryRun), func(t *testing.T) {
+			f := newFixture(t)
+			for _, id := range []string{"r1", "r2", "r3"} {
+				f.write(runSpec{source: "src", runID: id, day: oldDay, outcome: types.OutcomeScriptError})
+			}
+			f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
+			f.write(runSpec{source: "src", runID: "r6", day: recentDay, outcome: types.OutcomeSuccess})
+			store := &manifestGets{RangeStore: f.store, match: "run_id=r5/"}
+			factory := func() (lode.RangeStore, error) { return store, nil }
+			report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, DryRun: dryRun, Now: now})
+			if err != nil {
+				t.Fatalf("Prune: %v", err)
+			}
+			if got := outcomes(report); got != "[r1:pruned r2:pruned r3:pruned]" {
+				t.Fatalf("dry run %t: runs = %s (%+v), want three pruned", dryRun, got, report.Runs)
+			}
+			if store.n != 1 {
+				t.Fatalf("r5's manifest loaded %d times, want once", store.n)
+			}
+		})
 	}
 }
