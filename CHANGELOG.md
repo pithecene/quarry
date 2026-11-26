@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Prune advice covers snapshots whose data is gone**: a run kept for snapshots that the expiry did not find said a sweep resolves the reason. A sweep restores only the index of a snapshot whose data remains. The reason now says that a snapshot whose data is gone needs its own expiry by ID. `CONTRACT_LODE.md` § Order of Operations states the rule.
+
 ---
 
 ## [0.20.2] - 2026-11-25

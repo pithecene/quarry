@@ -666,7 +666,9 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    prune keeps the run with its snapshots, records, sidecar files, and
    Volumes, and the report gives the reason. A snapshot that committed after
    the preview needs only a later prune. A lasting gap needs a sweep, which
-   restores the index of snapshots older than its grace period.
+   restores the index of snapshots older than its grace period whose data
+   remains. A snapshot whose data objects are gone has nothing to reindex, so
+   it keeps the run until Lode's `Dataset.Expire` retires it by its ID.
 
    Then preview the removal of the run's artifact Volumes. The prune
    lists the names under the run's `volumes/` prefix and calls Lode's

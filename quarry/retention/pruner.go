@@ -25,7 +25,7 @@ const (
 	keptNoInstant = "a snapshot ID carries no write instant"
 	keptCommitted = "committed during the prune; its records remain"
 	keptInventory = "a snapshot's sidecar inventory is malformed"
-	keptUnindexed = "has committed snapshots that the expiry did not find; rerun the prune, after one with a sweep if the reason persists"
+	keptUnindexed = "has committed snapshots that the expiry did not find; rerun the prune, and if the reason persists, run one with a sweep, which restores the index of a snapshot whose data remains; a snapshot whose data is gone needs its own expiry by ID"
 )
 
 // pruner removes one run at a time from one dataset.
