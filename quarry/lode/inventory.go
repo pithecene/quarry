@@ -80,9 +80,9 @@ type snapshotLoader interface {
 // loads only the snapshots that the inventory does not hold, so it finds each
 // snapshot that committed since, as a new unfiltered listing would
 // (CONTRACT_LODE.md §Order of Operations). A held snapshot of the run whose
-// canonical manifest is no longer listed is expired when its tombstone exists,
-// since expiry records the tombstone before it deletes a manifest, and is
-// otherwise a legacy snapshot that only partition manifests record. An
+// canonical manifest is no longer listed is a legacy snapshot that only
+// partition manifests record when no tombstone exists, and otherwise Lode
+// reads it by ID. An
 // Inventory is not safe for concurrent use.
 type Inventory struct {
 	dataset string
@@ -111,24 +111,41 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 		return nil, err
 	}
 	var out []*lode.Snapshot
-	for _, id := range slices.Sorted(maps.Keys(inv.held)) {
-		m := inv.held[id]
+	for id, m := range inv.held {
 		if !holdsPrefix(m, prefix) {
 			continue
 		}
 		if !listed[id] {
-			expired, err := inv.store.Exists(ctx, inv.dir()+"expired/"+string(id))
+			live, err := inv.unlisted(ctx, id)
 			if err != nil {
 				return nil, WrapReadError(err, prefix)
 			}
-			if expired {
+			if !live {
 				delete(inv.held, id)
 				continue
 			}
 		}
 		out = append(out, &lode.Snapshot{ID: id, Manifest: m})
 	}
+	slices.SortFunc(out, func(a, b *lode.Snapshot) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	return out, nil
+}
+
+// unlisted reports whether a held snapshot whose canonical manifest is no
+// longer listed is still live. Without a tombstone it is a legacy snapshot
+// that its partition manifests record, since expiry records the tombstone
+// before it deletes a manifest. With one, Lode reads the tombstone, which
+// tells an expiry from a placeholder and fails on a malformed one.
+func (inv *Inventory) unlisted(ctx context.Context, id lode.SnapshotID) (bool, error) {
+	tombstoned, err := inv.store.Exists(ctx, inv.dir()+"expired/"+string(id))
+	if err != nil || !tombstoned {
+		return !tombstoned, err
+	}
+	_, err = inv.ds.Snapshot(ctx, id)
+	if errors.Is(err, lode.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // first fills the inventory from Lode's unfiltered listing.

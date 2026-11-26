@@ -1,8 +1,11 @@
 package lode_test
 
 import (
+	"context"
 	"errors"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/pithecene/lode/lode"
@@ -44,8 +47,8 @@ func TestInventory_ExtendsRatherThanRepeats(t *testing.T) {
 		}
 		return ids
 	}
-	if got := read(); len(got) != 2 || got[0] != first || got[1] != second {
-		t.Fatalf("first read = %v, want %s and %s", got, first, second)
+	if got, want := read(), slices.Sorted(slices.Values([]lode.SnapshotID{first, second})); !slices.Equal(got, want) {
+		t.Fatalf("first read = %v, want %v", got, want)
 	}
 
 	// A snapshot that commits without its partition index is found, and only
@@ -65,8 +68,8 @@ func TestInventory_ExtendsRatherThanRepeats(t *testing.T) {
 	store.mu.Lock()
 	clear(store.gets)
 	store.mu.Unlock()
-	if got := read(); len(got) != 3 || got[2] != third {
-		t.Fatalf("second read = %v, want the unindexed %s last", got, third)
+	if got, want := read(), slices.Sorted(slices.Values([]lode.SnapshotID{first, second, third})); !slices.Equal(got, want) {
+		t.Fatalf("second read = %v, want %v with the unindexed %s", got, want, third)
 	}
 	for key := range store.gets {
 		if strings.HasSuffix(key, "/manifest.json") && !strings.Contains(key, string(third)) {
@@ -78,8 +81,8 @@ func TestInventory_ExtendsRatherThanRepeats(t *testing.T) {
 	if _, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.SnapshotID{first}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := read(); len(got) != 2 || got[0] != second || got[1] != third {
-		t.Fatalf("read after the expiry = %v, want %s and %s", got, second, third)
+	if got, want := read(), slices.Sorted(slices.Values([]lode.SnapshotID{second, third})); !slices.Equal(got, want) {
+		t.Fatalf("read after the expiry = %v, want %v", got, want)
 	}
 }
 
@@ -119,23 +122,85 @@ func inventoryFixture(t *testing.T, store lode.RangeStore, n int) (*lode.Records
 func TestInventory_KeepsAPartitionOnlySnapshotUntilItExpires(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	store := lode.NewMemory()
+	store := &listCountingStore{RangeStore: lode.NewMemory()}
 	ds, ids, read := inventoryFixture(t, store, 3)
-	if got, err := read(); err != nil || len(got) != 3 {
-		t.Fatalf("first read = %v, %v; want three snapshots", got, err)
+	want := slices.Sorted(slices.Values(ids))
+	if got, err := read(); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("first read = %v, %v; want %v", got, err, want)
 	}
 	if err := store.Delete(ctx, "datasets/quarry/segments/"+string(ids[0])+"/manifest.json"); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := read(); err != nil || len(got) != 3 || got[0] != ids[0] {
-		t.Fatalf("read without the canonical manifest = %v, %v; want %s kept", got, err, ids[0])
+	store.reset()
+	if got, err := read(); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("read without the canonical manifest = %v, %v; want %v", got, err, want)
+	}
+	// The legacy snapshot is kept without Lode's scan of the dataset.
+	if wide := store.wide(); len(wide) != 0 {
+		t.Fatalf("read listed %v, want only the canonical manifests", wide)
 	}
 	if _, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.SnapshotID{ids[0]}}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := read(); err != nil || len(got) != 2 || got[0] != ids[1] {
-		t.Fatalf("read after the expiry = %v, %v; want %s and %s", got, err, ids[1], ids[2])
+	want = slices.Sorted(slices.Values(ids[1:]))
+	if got, err := read(); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("read after the expiry = %v, %v; want %v", got, err, want)
 	}
+}
+
+// A malformed tombstone of a held snapshot without its canonical manifest
+// fails the read, as Lode's read of it does, rather than dropping the
+// snapshot.
+func TestInventory_FailsOnAMalformedTombstone(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store := lode.NewMemory()
+	_, ids, read := inventoryFixture(t, store, 2)
+	if _, err := read(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx, "datasets/quarry/segments/"+string(ids[0])+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(ctx, "datasets/quarry/expired/"+string(ids[0]), strings.NewReader("{")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := read(); err == nil {
+		t.Fatalf("read = %v; want the malformed tombstone's error", got)
+	}
+}
+
+// listCountingStore records the prefixes that List reads.
+type listCountingStore struct {
+	lode.RangeStore
+	mu    sync.Mutex
+	lists []string
+}
+
+func (s *listCountingStore) List(ctx context.Context, prefix string) ([]string, error) {
+	s.mu.Lock()
+	s.lists = append(s.lists, prefix)
+	s.mu.Unlock()
+	return s.RangeStore.List(ctx, prefix)
+}
+
+func (s *listCountingStore) reset() {
+	s.mu.Lock()
+	s.lists = nil
+	s.mu.Unlock()
+}
+
+// wide returns the listings other than the canonical manifest directory.
+func (s *listCountingStore) wide() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, p := range s.lists {
+		if p != "datasets/quarry/segments/" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // A later read checks Lode's removal fence, as each Lode listing does, even
