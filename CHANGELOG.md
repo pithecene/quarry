@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.20.3] - 2026-11-26
+
 ### Fixed
 
 - **Full listings load manifests ahead**: reads that take Lode's full listing of a dataset, such as `list events`, the artifact commands, `inspect run`, `index rebuild`, and prune, loaded one manifest at a time. Quarry now requires Lode v0.18.6 and loads 128 ahead, concurrently. On a bucket of 14,834 snapshots, the listing took 67 seconds instead of 43 minutes.
@@ -913,7 +917,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 <!-- jscpd:ignore-start -->
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.2...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.3...HEAD
+[0.20.3]: https://github.com/pithecene/quarry/compare/v0.20.2...v0.20.3
 [0.20.2]: https://github.com/pithecene/quarry/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/pithecene/quarry/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/pithecene/quarry/compare/v0.19.0...v0.20.0
