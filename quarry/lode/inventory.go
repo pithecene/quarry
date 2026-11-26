@@ -151,7 +151,9 @@ func (inv *Inventory) first(ctx context.Context, prefix string) ([]*lode.Snapsho
 // listed snapshot that Lode reports absent, as one whose expiry deleted its
 // manifest after the listing, is not held.
 func (inv *Inventory) refresh(ctx context.Context) (map[lode.SnapshotID]bool, error) {
-	dir := "datasets/" + inv.dataset + "/snapshots/"
+	// Quarry's Hive layout keeps each canonical manifest at
+	// datasets/<dataset>/segments/<snapshot>/manifest.json.
+	dir := "datasets/" + inv.dataset + "/segments/"
 	keys, err := inv.store.List(ctx, dir)
 	if err != nil {
 		return nil, WrapReadError(err, dir)
