@@ -182,7 +182,8 @@ Record Schema). The runtime writes no chunk record.
   its committed snapshots remains.
 - The rule covers events, artifacts, the sidecar inventory of snapshots,
   `index rebuild`, and prune. Reads repair nothing. `Dataset.Sweep`, which a
-  prune runs when given a grace period, restores the index.
+  prune runs when given a grace period, restores the index of a snapshot whose
+  data objects remain.
 - An unfiltered listing lists the dataset and reads one manifest of each of its
   snapshots, so the cost of reading one run grows with the dataset. Opening an
   artifact through its commit index entry needs no listing.
@@ -665,10 +666,16 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    through the partition index, so when the preview lacks one of them, the
    prune keeps the run with its snapshots, records, sidecar files, and
    Volumes, and the report gives the reason. A snapshot that committed after
-   the preview needs only a later prune. A lasting gap needs a sweep, which
-   restores the index of snapshots older than its grace period whose data
-   remains. A snapshot whose data objects are gone has nothing to reindex, so
-   it keeps the run until Lode's `Dataset.Expire` retires it by its ID.
+   the preview needs only a later prune. For a lasting gap, two cases differ:
+   - Where the snapshot's data objects remain, a prune with a sweep past its
+     grace period restores the index, and the next prune removes the run.
+     Quarry runs the sweep after its runs, so the same prune does not.
+   - Where they are gone, a sweep has nothing to reindex. Record first any
+     sidecar inventory that the manifest holds, since the expiry deletes it and
+     a run without an end record may name its files nowhere else. Then Lode's
+     `Dataset.Expire` with the snapshot's ID and no `Partition` retires it,
+     since a partition selects only through the missing index, and the next
+     prune removes the run.
 
    Then preview the removal of the run's artifact Volumes. The prune
    lists the names under the run's `volumes/` prefix and calls Lode's

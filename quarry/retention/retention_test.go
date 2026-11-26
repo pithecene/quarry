@@ -774,3 +774,58 @@ func TestPrune_KeepsAnUnindexedCommitAfterThePreview(t *testing.T) {
 		t.Fatalf("sidecar removed: %v", err)
 	}
 }
+
+// A committed snapshot whose data and partition manifests are gone keeps its run
+// through a sweep, which has nothing to reindex, until an expiry by its ID with
+// no partition retires it; the next prune then removes the run.
+func TestPrune_SnapshotWithoutData(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	cfg := f.write(runSpec{source: "src", runID: "r1", day: oldDay, outcome: types.OutcomeScriptError})
+	f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})
+	f.write(runSpec{source: "src", runID: "r2", day: recentDay, outcome: types.OutcomeSuccess})
+	// Every partition manifest and data object of the run goes, and each canonical
+	// manifest that names them stays.
+	var lost []lode.SnapshotID
+	for _, k := range f.keys(cfg) {
+		if strings.HasSuffix(k, "/manifest.json") || strings.Contains(k, "/data/") {
+			if id := segmentID(k); id != "" && !slices.Contains(lost, id) {
+				lost = append(lost, id)
+			}
+			if err := f.store.Delete(t.Context(), k); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(lost) == 0 {
+		t.Fatal("the run has no snapshot")
+	}
+	policy := Policy{Failed: days(7)}
+	f.prune(Options{Policy: policy, SweepGrace: time.Nanosecond})
+	if report := f.prune(Options{Policy: policy}); outcomes(report) != "[r1:kept]" || report.Runs[0].Kept != keptUnindexed {
+		t.Fatalf("after a sweep: runs = %s (%+v), want r1 kept", outcomes(report), report.Runs)
+	}
+	ds, err := qlode.OpenDataset(t.Context(), "quarry", f.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report, err := ds.Expire(t.Context(), lode.ExpireRequest{IDs: lost, Partition: qlode.PartitionPrefix(cfg)}); err != nil || len(report.Expired) != 0 {
+		t.Fatalf("expiry with the partition = %+v, %v; want nothing found", report, err)
+	}
+	if report, err := ds.Expire(t.Context(), lode.ExpireRequest{IDs: lost}); err != nil || len(report.Expired) != len(lost) {
+		t.Fatalf("expiry by ID = %+v, %v; want %d expired", report, err, len(lost))
+	}
+	if report := f.prune(Options{Policy: policy}); outcomes(report) != "[r1:pruned]" {
+		t.Fatalf("after the expiry: runs = %s (%+v), want r1 pruned", outcomes(report), report.Runs)
+	}
+}
+
+// segmentID is the snapshot ID in a key beneath a segments directory.
+func segmentID(key string) lode.SnapshotID {
+	_, rest, ok := strings.Cut(key, "/segments/")
+	if !ok {
+		return ""
+	}
+	id, _, _ := strings.Cut(rest, "/")
+	return lode.SnapshotID(id)
+}
