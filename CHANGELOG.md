@@ -11,6 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Prune reads the dataset once**: prune listed every manifest of the dataset again for each run it removed, so a prune of many runs on a large dataset ran for hours without a result. It now loads each manifest once and, for each later run, loads only the snapshots that committed since. `CONTRACT_LODE.md` § Run Contents states the rule.
 - **Prune advice covers snapshots without their data**: when the prune kept a run for snapshots that the expiry did not find, its reason pointed to a sweep. A sweep restores only the index of a snapshot whose data remains. The reason now says to rerun the prune, and when it persists, points to the contract, which separates a repair by sweep from an expiry by ID. `CONTRACT_LODE.md` § Order of Operations states the rule.
 
 ---

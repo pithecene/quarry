@@ -37,6 +37,9 @@ type pruner struct {
 	// ds is a writer handle: Lode retains only through writers, and a writer
 	// opens on a dataset without snapshots, where a view would not.
 	ds *lode.Records[lode.D]
+	// inv is the prune's one inventory of the dataset's snapshots, which
+	// each run's reads extend rather than repeat.
+	inv *qlode.Inventory
 }
 
 func newPruner(ctx context.Context, dataset string, factory lode.Factory[lode.RangeStore], opts Options) (*pruner, error) {
@@ -60,7 +63,7 @@ func newPruner(ctx context.Context, dataset string, factory lode.Factory[lode.Ra
 	if err != nil {
 		return nil, qlode.WrapInitError(err, dataset)
 	}
-	return &pruner{dataset: dataset, opts: opts, runs: runs, store: store, ds: ds}, nil
+	return &pruner{dataset: dataset, opts: opts, runs: runs, store: store, ds: ds, inv: qlode.NewInventory(dataset, store, ds)}, nil
 }
 
 // keys lists the runs to consider, or names the one run Options selects,
@@ -130,7 +133,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	// The inventory is read after the preview, so it also holds each snapshot
 	// that committed in between, which keeps the run.
-	stored, err := qlode.RunSnapshots(ctx, p.ds, out.Partition)
+	stored, err := p.inv.RunSnapshots(ctx, out.Partition)
 	if err != nil {
 		return out, true, err
 	}
@@ -214,7 +217,7 @@ func (p *pruner) remove(ctx context.Context, k reader.Key, out Run, threshold ti
 	}
 	// A snapshot that committed after the preview remains, so the inventory is
 	// read again; a snapshot there, indexed or not, keeps the records.
-	live, err := qlode.RunSnapshots(ctx, p.ds, out.Partition)
+	live, err := p.inv.RunSnapshots(ctx, out.Partition)
 	if err != nil {
 		return out, true, err
 	}

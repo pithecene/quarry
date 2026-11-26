@@ -187,6 +187,15 @@ Record Schema). The runtime writes no chunk record.
 - An unfiltered listing lists the dataset and reads one manifest of each of its
   snapshots, so the cost of reading one run grows with the dataset. Opening an
   artifact through its commit index entry needs no listing.
+- An operation that reads many runs, such as a prune, MUST NOT repeat that
+  listing for each run. It takes one unfiltered listing, and before each later
+  run it lists the keys of the canonical manifests and loads only the
+  snapshots that it does not hold. A held snapshot whose canonical manifest is
+  no longer listed, and that holds an object of the run, is loaded again by
+  ID, which finds a legacy snapshot through its partition manifests and
+  reports an expired one as absent. Each run then sees every snapshot that
+  committed before its read, as a new unfiltered listing would. Neither gives
+  an atomic view of the dataset.
 - A read gives no frozen view of a run that is still writing.
 
 ### Commit Index
