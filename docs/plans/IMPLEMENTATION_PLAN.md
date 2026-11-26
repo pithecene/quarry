@@ -13,8 +13,8 @@ Quarry’s core principle:
 
 Scripts and executors remain **policy-agnostic**.
 
-## Current Status (as of v0.20.2)
-- Latest release: v0.20.2 (see CHANGELOG.md).
+## Current Status (as of v0.20.3)
+- Latest release: v0.20.3 (see CHANGELOG.md).
 - Phases 0–5 complete. Phase 6 (dogfooding) in progress.
 - The implementation gaps identified in the earlier readiness assessment are
   resolved; v1.0 qualification and sign-off remain open (see
@@ -38,6 +38,10 @@ Scripts and executors remain **policy-agnostic**.
 - v0.20.2 reads every committed snapshot of a run, whatever its partition index
   omits, and prune keeps a run that the index does not cover. It moves to Lode
   v0.18.5, which reads the empty snapshots of v0.9.0.
+- v0.20.3 makes prune take the full manifest listing once, then list only the
+  manifest keys for each later run. It moves to Lode v0.18.6 and loads up to
+  128 manifests ahead in its full listings. The storage guide now names the
+  waits that slow storage causes.
 
 ---
 
