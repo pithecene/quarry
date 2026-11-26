@@ -11,6 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Full listings load manifests ahead**: reads that take Lode's full listing of a dataset, such as `list events`, the artifact commands, `inspect run`, `index rebuild`, and prune, loaded one manifest at a time. Quarry now requires Lode v0.18.6 and loads 128 ahead, concurrently. On a bucket of 14,834 snapshots, the listing took 67 seconds instead of 43 minutes.
 - **Prune no longer reloads the dataset for each run**: prune loaded every manifest of the dataset again for each run it removed, and a large prune ran for hours. It now takes Lode's full listing once. Each later run lists the manifest keys and loads new snapshots, plus any held snapshot of the run that lost its manifest beside a tombstone key. Expiry still reads each run's manifests. `CONTRACT_LODE.md` § Run Contents states the rule.
 - **Prune advice covers snapshots without their data**: when the prune kept a run for snapshots that the expiry did not find, its reason pointed to a sweep. A sweep restores only the index of a snapshot whose data remains. The reason now says to rerun the prune, and when it persists, points to the contract, which separates a repair by sweep from an expiry by ID. `CONTRACT_LODE.md` § Order of Operations states the rule.
 

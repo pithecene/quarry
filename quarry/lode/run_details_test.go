@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"sync"
 	"slices"
 	"strings"
 	"testing"
@@ -14,19 +15,26 @@ import (
 	"github.com/pithecene/quarry/metrics"
 )
 
+// listingStore records the prefixes it lists and the paths it reads. A
+// prefetched listing reads concurrently, so it records under a lock.
 type listingStore struct {
 	lode.RangeStore
+	mu    sync.Mutex
 	lists []string
 	gets  []string
 }
 
 func (s *listingStore) List(ctx context.Context, prefix string) ([]string, error) {
+	s.mu.Lock()
 	s.lists = append(s.lists, prefix)
+	s.mu.Unlock()
 	return s.RangeStore.List(ctx, prefix)
 }
 
 func (s *listingStore) Get(ctx context.Context, path string) (io.ReadCloser, error) {
+	s.mu.Lock()
 	s.gets = append(s.gets, path)
+	s.mu.Unlock()
 	return s.RangeStore.Get(ctx, path)
 }
 
