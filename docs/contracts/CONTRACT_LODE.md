@@ -666,16 +666,20 @@ implements it, and `quarry prune` ([CONTRACT_CLI.md](CONTRACT_CLI.md) §prune) e
    through the partition index, so when the preview lacks one of them, the
    prune keeps the run with its snapshots, records, sidecar files, and
    Volumes, and the report gives the reason. A snapshot that committed after
-   the preview needs only a later prune. For a lasting gap, two cases differ:
+   the preview needs only a later prune, so a kept run is first pruned again.
+   For a lasting gap, two cases differ:
    - Where the snapshot's data objects remain, a prune with a sweep past its
      grace period restores the index, and the next prune removes the run.
      Quarry runs the sweep after its runs, so the same prune does not.
-   - Where they are gone, a sweep has nothing to reindex. Record first any
-     sidecar inventory that the manifest holds, since the expiry deletes it and
-     a run without an end record may name its files nowhere else. Then Lode's
+   - Where they are gone, a sweep has nothing to reindex. Lode's
      `Dataset.Expire` with the snapshot's ID and no `Partition` retires it,
-     since a partition selects only through the missing index, and the next
-     prune removes the run.
+     since a partition selects only through the missing index. Without a
+     partition, Lode no longer checks for objects of other runs, so the operator
+     expires only a snapshot whose canonical manifest names objects of this run
+     alone, and records first any sidecar inventory that the manifest holds,
+     which a run without an end record may name nowhere else. Lode keeps the
+     dataset head, so a snapshot that is the head waits for another commit. The
+     next prune then removes the run.
 
    Then preview the removal of the run's artifact Volumes. The prune
    lists the names under the run's `volumes/` prefix and calls Lode's

@@ -786,28 +786,27 @@ func TestPrune_SnapshotWithoutData(t *testing.T) {
 	f.write(runSpec{source: "src", runID: "r2", day: recentDay, outcome: types.OutcomeSuccess})
 	// Every partition manifest and data object of the run goes, and each canonical
 	// manifest that names them stays.
-	var lost []lode.SnapshotID
 	for _, k := range f.keys(cfg) {
 		if strings.HasSuffix(k, "/manifest.json") || strings.Contains(k, "/data/") {
-			if id := segmentID(k); id != "" && !slices.Contains(lost, id) {
-				lost = append(lost, id)
-			}
 			if err := f.store.Delete(t.Context(), k); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
-	if len(lost) == 0 {
-		t.Fatal("the run has no snapshot")
+	// The run's inventory names the snapshots to expire, as an operator finds them.
+	ds, err := qlode.OpenDataset(t.Context(), "quarry", f.store)
+	if err != nil {
+		t.Fatal(err)
 	}
+	stored, err := qlode.RunSnapshots(t.Context(), ds, qlode.PartitionPrefix(cfg))
+	if err != nil || len(stored) == 0 {
+		t.Fatalf("inventory = %d snapshots, %v; want the run's", len(stored), err)
+	}
+	lost := snapshotIDs(stored)
 	policy := Policy{Failed: days(7)}
 	f.prune(Options{Policy: policy, SweepGrace: time.Nanosecond})
 	if report := f.prune(Options{Policy: policy}); outcomes(report) != "[r1:kept]" || report.Runs[0].Kept != keptUnindexed {
 		t.Fatalf("after a sweep: runs = %s (%+v), want r1 kept", outcomes(report), report.Runs)
-	}
-	ds, err := qlode.OpenDataset(t.Context(), "quarry", f.store)
-	if err != nil {
-		t.Fatal(err)
 	}
 	if report, err := ds.Expire(t.Context(), lode.ExpireRequest{IDs: lost, Partition: qlode.PartitionPrefix(cfg)}); err != nil || len(report.Expired) != 0 {
 		t.Fatalf("expiry with the partition = %+v, %v; want nothing found", report, err)
@@ -818,14 +817,4 @@ func TestPrune_SnapshotWithoutData(t *testing.T) {
 	if report := f.prune(Options{Policy: policy}); outcomes(report) != "[r1:pruned]" {
 		t.Fatalf("after the expiry: runs = %s (%+v), want r1 pruned", outcomes(report), report.Runs)
 	}
-}
-
-// segmentID is the snapshot ID in a key beneath a segments directory.
-func segmentID(key string) lode.SnapshotID {
-	_, rest, ok := strings.Cut(key, "/segments/")
-	if !ok {
-		return ""
-	}
-	id, _, _ := strings.Cut(rest, "/")
-	return lode.SnapshotID(id)
 }
