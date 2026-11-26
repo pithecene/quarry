@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **Prune no longer reloads the dataset for each run**: prune loaded every manifest of the dataset again for each run it removed. A prune of many runs on a large dataset ran for hours without a result. It now takes Lode's full listing of the manifests once. For each later run, it lists their keys and loads the snapshots that committed since. It also reads a held snapshot of the run by ID when its manifest is gone and a tombstone key exists. The expiry of each run still reads that run's manifests. `CONTRACT_LODE.md` § Run Contents states the rule.
+- **Prune no longer reloads the dataset for each run**: prune loaded every manifest of the dataset again for each run it removed, and a large prune ran for hours. It now takes Lode's full listing once. Each later run lists the manifest keys and loads new snapshots, plus any held snapshot of the run that lost its manifest beside a tombstone key. Expiry still reads each run's manifests. `CONTRACT_LODE.md` § Run Contents states the rule.
 - **Prune advice covers snapshots without their data**: when the prune kept a run for snapshots that the expiry did not find, its reason pointed to a sweep. A sweep restores only the index of a snapshot whose data remains. The reason now says to rerun the prune, and when it persists, points to the contract, which separates a repair by sweep from an expiry by ID. `CONTRACT_LODE.md` § Order of Operations states the rule.
 
 ---
