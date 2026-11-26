@@ -38,6 +38,9 @@ Scripts and executors remain **policy-agnostic**.
 - v0.20.2 reads every committed snapshot of a run, whatever its partition index
   omits, and prune keeps a run that the index does not cover. It moves to Lode
   v0.18.5, which reads the empty snapshots of v0.9.0.
+- v0.20.3 makes prune read the dataset once rather than for each run, and moves
+  to Lode v0.18.6, whose full listing loads 128 manifests ahead. The storage
+  guide now names the waits that slow storage causes.
 
 ---
 
