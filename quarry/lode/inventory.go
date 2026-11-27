@@ -144,43 +144,67 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 // run's prefix records and that neither the inventory nor the canonical
 // listing holds. A writer before canonical manifests commits a snapshot with
 // partition manifests alone (Lode CONTRACT_CORE §Head Pointer), so a refresh
-// of canonical keys cannot find one committed after the first read. Lode
-// loads it by ID, which finds it through its partition manifests, and
-// reports an expired one as absent.
+// of canonical keys cannot find one committed after the first read. A Quarry
+// write holds one run's records (LodeClient.WriteEvents builds each from its
+// run's config), so every partition manifest of such a snapshot lies under
+// the run's prefix. Each partition that names an unseen ID is read through
+// Lode's partition listing, which validates its manifests and leaves out an
+// expired snapshot, so no lookup scans the dataset.
 func (inv *Inventory) partitionOnly(ctx context.Context, prefix string, listed map[lode.SnapshotID]bool) error {
 	dir := inv.dir() + "partitions/" + prefix
 	keys, err := inv.store.List(ctx, dir)
 	if err != nil {
 		return WrapReadError(err, dir)
 	}
-	var unseen []lode.SnapshotID
+	unseen := map[lode.SnapshotID]bool{}
+	partitions := map[string]bool{}
 	for _, key := range keys {
-		rest, ok := strings.CutSuffix(key, "/manifest.json")
+		partition, id, ok := partitionManifest(strings.TrimPrefix(key, dir))
 		if !ok {
 			continue
 		}
-		_, idPart, ok := strings.Cut(rest, "/segments/")
-		if !ok || idPart == "" || strings.Contains(idPart, "/") {
+		if _, held := inv.held[id]; held || listed[id] {
 			continue
 		}
-		id := lode.SnapshotID(idPart)
-		if _, held := inv.held[id]; held || listed[id] || slices.Contains(unseen, id) {
-			continue
-		}
-		unseen = append(unseen, id)
+		unseen[id] = true
+		partitions[prefix+partition] = true
 	}
-	slices.Sort(unseen)
-	for _, id := range unseen {
-		snap, err := inv.ds.Snapshot(ctx, id)
-		if errors.Is(err, lode.ErrNotFound) {
-			continue
-		}
+	for _, p := range slices.Sorted(maps.Keys(partitions)) {
+		path, err := lode.ParsePartitionPath(p)
 		if err != nil {
 			return WrapReadError(err, dir)
 		}
-		inv.held[id] = snap.Manifest
+		for loaded, err := range inv.ds.Manifests(ctx, path, lode.ManifestListOptions{}) {
+			if errors.Is(err, lode.ErrNotFound) {
+				break
+			}
+			if err != nil {
+				return WrapReadError(err, p)
+			}
+			if unseen[loaded.Ref.ID] {
+				inv.held[loaded.Ref.ID] = loaded.Manifest
+			}
+		}
 	}
 	return nil
+}
+
+// partitionManifest parses a key below the run's partition prefix of the form
+// <partition>/segments/<snapshot>/manifest.json into its partition and ID.
+func partitionManifest(rel string) (partition string, id lode.SnapshotID, ok bool) {
+	rest, ok := strings.CutSuffix(rel, "/manifest.json")
+	if !ok {
+		return "", "", false
+	}
+	i := strings.LastIndex(rest, "/segments/")
+	if i <= 0 {
+		return "", "", false
+	}
+	idPart := rest[i+len("/segments/"):]
+	if idPart == "" || strings.Contains(idPart, "/") {
+		return "", "", false
+	}
+	return rest[:i], lode.SnapshotID(idPart), true
 }
 
 // unlisted reports whether a held snapshot whose canonical manifest is no
