@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -392,5 +393,117 @@ func openRun1(t *testing.T, dataset string, store lode.RangeStore) (*lode.Record
 			t.Fatal(err)
 		}
 		return snap.ID
+	}
+}
+
+// interleaveStore runs inject once, just before the first listing whose
+// prefix ends with suffix returns.
+type interleaveStore struct {
+	lode.RangeStore
+	suffix string
+	inject func()
+	done   bool
+}
+
+func (s *interleaveStore) List(ctx context.Context, prefix string) ([]string, error) {
+	if !s.done && strings.HasSuffix(prefix, s.suffix) {
+		s.done = true
+		s.inject()
+	}
+	return s.RangeStore.List(ctx, prefix)
+}
+
+// A snapshot whose ID sorts between a held snapshot and a late
+// partition-only candidate can commit after the read lists the run and
+// before it lists the candidate's partition, since an ID dates the start of
+// a write. The candidate, which committed before the read, is still found,
+// and the next read keeps it.
+func TestInventory_FindsACandidatePastALaterCommitWithALowerID(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	mem := lode.NewMemory()
+	store := &interleaveStore{RangeStore: mem, suffix: "/event_type=item/segments/"}
+	ds, write := openRun1(t, "quarry", store)
+	first := write(1)
+	inv := qlode.NewInventory("quarry", store, ds)
+	prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
+	if _, err := inv.RunSnapshots(ctx, prefix); err != nil {
+		t.Fatal(err)
+	}
+	late := write(2)
+	if err := mem.Delete(ctx, "datasets/quarry/segments/"+string(late)+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	// The slower writer's snapshot takes an ID between the two.
+	ns, _, _ := strings.Cut(string(late), "-")
+	n, err := strconv.ParseInt(ns, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	between := lode.SnapshotID(strconv.FormatInt(n-1, 10) + "-0000000000000000")
+	if between <= first || between >= late {
+		t.Fatalf("no ID between %s and %s", first, late)
+	}
+	dir := "datasets/quarry/partitions/" + prefix + "event_type=item/segments/"
+	store.inject = func() {
+		body, err := readAll(ctx, mem, dir+string(late)+"/manifest.json")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		other := strings.ReplaceAll(string(body), string(late), string(between))
+		if err := mem.Put(ctx, dir+string(between)+"/manifest.json", strings.NewReader(other)); err != nil {
+			t.Error(err)
+		}
+	}
+	for range 2 {
+		snaps, err := inv.RunSnapshots(ctx, prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(snaps, func(s *lode.Snapshot) bool { return s.ID == late }) {
+			t.Fatalf("read = %d snapshots without %s, which committed before the read", len(snaps), late)
+		}
+	}
+	if !store.done {
+		t.Fatal("the interleaved commit never happened")
+	}
+}
+
+// A late partition-only snapshot found in its smallest partition is not read
+// again from a later one, as Lode's own listing loads one copy: a malformed
+// later copy does not fail the read.
+func TestInventory_ReadsAPartitionOnlySnapshotFromItsFirstCopy(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store := lode.NewMemory()
+	ds, write := openRun1(t, "quarry", store)
+	write(1)
+	inv := qlode.NewInventory("quarry", store, ds)
+	prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
+	if _, err := inv.RunSnapshots(ctx, prefix); err != nil {
+		t.Fatal(err)
+	}
+	recs := []lode.D{
+		{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": 2},
+		{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "run_complete", "seq": 3},
+	}
+	late, err := ds.Write(ctx, recs, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx, "datasets/quarry/segments/"+string(late.ID)+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	later := "datasets/quarry/partitions/" + prefix + "event_type=run_complete/segments/" + string(late.ID) + "/manifest.json"
+	if err := store.Delete(ctx, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(ctx, later, strings.NewReader("{")); err != nil {
+		t.Fatal(err)
+	}
+	snaps, err := inv.RunSnapshots(ctx, prefix)
+	if err != nil || !slices.ContainsFunc(snaps, func(s *lode.Snapshot) bool { return s.ID == late.ID }) {
+		t.Fatalf("read = %d snapshots, %v; want %s from its first copy", len(snaps), err, late.ID)
 	}
 }
