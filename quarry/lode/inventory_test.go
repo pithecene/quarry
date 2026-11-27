@@ -541,6 +541,11 @@ func TestInventory_ReadsAPartitionOnlySnapshotFromOneCopy(t *testing.T) {
 					t.Errorf("read = %d snapshots without %s", len(snaps), id)
 				}
 			}
+			if tc.firstGoes {
+				if left, err := mem.Exists(ctx, copyAt("item")); err != nil || left {
+					t.Errorf("first copy still present = %t, %v; want it gone, so the read fell back", left, err)
+				}
+			}
 		})
 	}
 }
