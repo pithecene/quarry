@@ -140,8 +140,8 @@ the runs it returns.
 
 A regression baseline for prune, measured once on 2026-11-27 against a
 dataset on Cloudflare R2 with 44,917 keys, 14,834 snapshots and 119 runs.
-The command was `quarry prune --dry-run --failed-days 0`, which selected 32
-runs. No test reproduces it, because it needs a bucket of that size.
+The command was `quarry prune <storage flags> --dry-run --failed-days 0`,
+which selected 32 runs. No test reproduces it, because it needs a bucket of that size.
 
 | Quarry | Lode | Wall time | Peak memory | Result |
 |---|---|---|---|---|
@@ -149,29 +149,32 @@ runs. No test reproduces it, because it needs a bucket of that size.
 | v0.20.3 | v0.18.6 | 989 s | not measured | 32 runs selected |
 | quarry#492 | the code of v0.18.7 | 815 s | 107 MiB | the same per-run results |
 
-The last row measured the merged code that v0.20.4 and Lode v0.18.7 release,
-before either tag. A second run of that code used a store that refuses and
-logs every write. It took 782 s, made 17,603 `GET`, 325 `LIST` and 32
-existence requests, logged no write attempt, and reported the same per-run
-results.
+The last row measured quarry#492 on the Lode changes that v0.18.7 ships. A
+second run of that code used a store that refuses and logs every write. It
+took 782 s, made 17,603 `Get`, 325 `List` and 32 `Exists` calls at the store
+interface, logged no write attempt, and reported the same per-run results.
+
+Every count here is a call at the store interface, not a request to R2. A
+`List` of 14,833 keys takes at least 15 `ListObjectsV2` requests.
 
 Where the 815 s went:
 
-| Phase | Requests | Time |
+| Phase | Store calls | Time |
 |---|---|---|
 | Listing the dataset's keys | 44,917 keys listed | 30 s |
-| Loading every manifest, 128 ahead | 14,834 `GET` | about 30 s |
-| Listing manifest keys again for each later run | 31 `LIST` of 14,833 keys | 265 s |
+| Loading every manifest, 128 ahead | 14,834 `Get` | about 30 s |
+| Listing manifest keys again for each later run | 31 `List` of 14,833 keys | 265 s |
 | Reading tombstones | 685 | 103 s |
-| Loading manifests of the selected runs | 542 `GET` | 87 s |
+| Loading manifests of the selected runs | 542 `Get` | 87 s |
 | Reading the head pointer | 321 | 49 s |
-| Listing each run's partition manifests | 63 `LIST` | 11 s |
+| Listing each run's partition manifests | 63 `List` | 11 s |
 | Artifacts, sidecar files, partitions and run records | the remainder | about 167 s |
+| Outside store calls, not broken down | none | about 73 s |
 
 The per-run phase is serial. Its largest cost, the repeated listing of every
 manifest key, comes from how Lode discovers committed snapshots, and Quarry
-cannot remove it. A change that raises the wall time or the request counts
-of the same command on a dataset of this size is a regression.
+cannot remove it. A change that raises the wall time or the store calls of
+the same command on a dataset of this size is a regression.
 
 ## Dataset Compression Under `strict`
 
