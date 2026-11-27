@@ -161,7 +161,7 @@ Where the 815 s went:
 
 | Phase | Store calls | Time |
 |---|---|---|
-| Listing the dataset's keys | 44,917 keys listed | 30 s |
+| Listing the dataset's keys | 1 `List` of 44,917 keys | 30 s |
 | Loading every manifest, 128 ahead | 14,834 `Get` | about 30 s |
 | Listing manifest keys again for each later run | 31 `List` of 14,833 keys | 265 s |
 | Reading tombstones | 685 | 103 s |
