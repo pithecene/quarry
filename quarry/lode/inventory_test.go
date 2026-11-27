@@ -22,19 +22,7 @@ func TestInventory_ExtendsRatherThanRepeats(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	store := &getCountingStore{RangeStore: lode.NewMemory(), gets: map[string]int{}}
-	ds, err := qlode.OpenDataset(ctx, "quarry", store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write := func(seq int) lode.SnapshotID {
-		t.Helper()
-		rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": seq}
-		snap, err := ds.Write(ctx, []lode.D{rec}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return snap.ID
-	}
+	ds, write := openRun1(t, "quarry", store)
 	const prefix = "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
 	first, second := write(1), write(2)
 	inv := qlode.NewInventory("quarry", store, ds)
@@ -362,19 +350,7 @@ func TestInventory_FindsAPartitionOnlyCommitInADatasetNamedSegments(t *testing.T
 	t.Parallel()
 	ctx := t.Context()
 	store := lode.NewMemory()
-	ds, err := qlode.OpenDataset(ctx, "segments", store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write := func(seq int) lode.SnapshotID {
-		t.Helper()
-		rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": seq}
-		snap, err := ds.Write(ctx, []lode.D{rec}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return snap.ID
-	}
+	ds, write := openRun1(t, "segments", store)
 	first := write(1)
 	inv := qlode.NewInventory("segments", store, ds)
 	prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
@@ -395,5 +371,24 @@ func TestInventory_FindsAPartitionOnlyCommitInADatasetNamedSegments(t *testing.T
 	}
 	if want := slices.Sorted(slices.Values([]lode.SnapshotID{first, late})); !slices.Equal(got, want) {
 		t.Fatalf("read = %v, want %v", got, want)
+	}
+}
+
+// openRun1 opens dataset over store and returns it with a write of one record
+// of run r1, which returns the snapshot's ID.
+func openRun1(t *testing.T, dataset string, store lode.RangeStore) (*lode.Records[lode.D], func(seq int) lode.SnapshotID) {
+	t.Helper()
+	ds, err := qlode.OpenDataset(t.Context(), dataset, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ds, func(seq int) lode.SnapshotID {
+		t.Helper()
+		rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": seq}
+		snap, err := ds.Write(t.Context(), []lode.D{rec}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap.ID
 	}
 }
