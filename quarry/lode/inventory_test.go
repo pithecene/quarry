@@ -318,8 +318,10 @@ func residual(t *testing.T, store lode.RangeStore, ds *lode.Records[lode.D], id 
 				t.Fatal(err)
 			}
 			body, err = io.ReadAll(rc)
-			rc.Close()
 			if err != nil {
+				t.Fatal(err)
+			}
+			if err := rc.Close(); err != nil {
 				t.Fatal(err)
 			}
 			copyKey = k
