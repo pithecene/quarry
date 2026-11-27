@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20
-	github.com/pithecene/lode v0.18.6
+	github.com/pithecene/lode v0.18.7
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/vmihailenco/msgpack/v5 v5.4.1
