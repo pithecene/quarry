@@ -86,7 +86,8 @@ type snapshotLoader interface {
 // of the run's partition manifests, and loads only the snapshots that the
 // inventory does not hold, so it finds each snapshot that committed since,
 // a legacy one with partition manifests alone included, as a new unfiltered
-// listing would (CONTRACT_LODE.md §Order of Operations). A held snapshot of
+// listing would, within the mixed-run limit that partitionOnly states
+// (CONTRACT_LODE.md §Order of Operations). A held snapshot of
 // the run whose canonical manifest is no longer listed is a legacy snapshot
 // that only partition manifests record when no tombstone exists, and
 // otherwise Lode reads it by ID. An Inventory is not safe for concurrent use.
@@ -151,68 +152,63 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 // ingestion engine writes one run per snapshot (IngestionEngine.validateEnvelope),
 // so a partition manifest of such a snapshot lies under the run's prefix. A
 // legacy snapshot that mixes runs, which only a writer outside the engine can
-// produce, and that has no copy under this run's prefix is not found
-// (CONTRACT_LODE.md §Run Contents). Each candidate is read through Lode's
-// partition listing, which validates its manifest and leaves out an expired
-// snapshot, so no lookup scans the dataset.
+// produce, cannot be discovered by this run's read when it is new and has no
+// copy under this run's prefix
+// (CONTRACT_LODE.md §Run Contents). Each partition that holds a candidate is
+// read through Lode's partition listing, which validates its manifests and
+// leaves out an expired snapshot, so no lookup scans the dataset. That
+// listing also reloads the partition's held manifests, a cost bounded by one
+// run's partition and paid only when a partition-only commit is new.
 func (inv *Inventory) partitionOnly(ctx context.Context, prefix string, listed map[lode.SnapshotID]bool) error {
 	dir := inv.dir() + "partitions/" + prefix
 	keys, err := inv.store.List(ctx, dir)
 	if err != nil {
 		return WrapReadError(err, dir)
 	}
-	// ids holds every snapshot ID listed in each partition, sorted, so a
-	// candidate's predecessor positions the partition listing at it.
-	ids := map[string][]lode.SnapshotID{}
-	unseen := map[lode.SnapshotID]string{}
+	// partitions holds each partition that a copy of an unseen ID lies in.
+	unseen := map[lode.SnapshotID]bool{}
+	partitions := map[string]bool{}
 	for _, key := range keys {
 		partition, id, ok := partitionManifest(strings.TrimPrefix(key, dir))
 		if !ok {
 			continue
 		}
-		p := prefix + partition
-		ids[p] = append(ids[p], id)
 		if _, held := inv.held[id]; held || listed[id] || inv.gone[id] {
 			continue
 		}
-		unseen[id] = p
+		unseen[id] = true
+		partitions[prefix+partition] = true
 	}
-	for _, id := range slices.Sorted(maps.Keys(unseen)) {
-		if err := inv.loadPartitionCopy(ctx, unseen[id], id, ids[unseen[id]]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// loadPartitionCopy loads one candidate through Lode's listing of its
-// partition, which lists manifests in snapshot ID order: starting after the
-// candidate's predecessor with a limit of one loads that candidate alone. When
-// Lode skips it as expired or gone, it is remembered as gone, since neither
-// state reverses.
-func (inv *Inventory) loadPartitionCopy(ctx context.Context, partition string, id lode.SnapshotID, listed []lode.SnapshotID) error {
-	path, err := lode.ParsePartitionPath(partition)
-	if err != nil {
-		return WrapReadError(err, partition)
-	}
-	opts := lode.ManifestListOptions{Limit: 1}
-	slices.Sort(listed)
-	if i, _ := slices.BinarySearch(listed, id); i > 0 {
-		opts.StartAfter = lode.ManifestRef{ID: listed[i-1], Partition: path}
-	}
-	for loaded, err := range inv.ds.Manifests(ctx, path, opts) {
-		if errors.Is(err, lode.ErrNotFound) {
-			break
-		}
+	// Each partition is read whole, in path order, so a candidate takes the
+	// copy in its smallest partition, as Lode's unfiltered listing does, and
+	// no cursor can skip a snapshot whose ID sorts before one that committed
+	// earlier (Lode CONTRACT_READ_API §Cursors vs Commit Order).
+	for _, p := range slices.Sorted(maps.Keys(partitions)) {
+		path, err := lode.ParsePartitionPath(p)
 		if err != nil {
-			return WrapReadError(err, partition)
+			return WrapReadError(err, p)
 		}
-		if loaded.Ref.ID == id {
-			inv.held[id] = loaded.Manifest
-			return nil
+		for loaded, err := range inv.ds.Manifests(ctx, path, lode.ManifestListOptions{}) {
+			if errors.Is(err, lode.ErrNotFound) {
+				break
+			}
+			if err != nil {
+				return WrapReadError(err, p)
+			}
+			if id := loaded.Ref.ID; unseen[id] {
+				if _, held := inv.held[id]; !held {
+					inv.held[id] = loaded.Manifest
+				}
+			}
 		}
 	}
-	inv.gone[id] = true
+	// A candidate that no listing of its partitions returned is expired or
+	// gone, and neither state reverses.
+	for id := range unseen {
+		if _, held := inv.held[id]; !held {
+			inv.gone[id] = true
+		}
+	}
 	return nil
 }
 

@@ -195,9 +195,10 @@ Record Schema). The runtime writes no chunk record.
   A snapshot that a writer before canonical manifests commits with partition
   manifests alone counts when one of its partition manifests lies under the
   run's prefix. The ingestion engine writes one run per snapshot, so its
-  snapshots always do. A legacy snapshot that mixes runs, which only a writer
-  outside the engine produces, and that has no copy under the run is not
-  found by a later read.
+  snapshots always do. A new legacy snapshot that mixes runs, which only a
+  writer outside the engine produces, cannot be discovered by a later read of
+  a run under which it has no copy. One that an earlier read already found
+  still counts.
 - A read gives no frozen view of a run that is still writing.
 
 ### Commit Index

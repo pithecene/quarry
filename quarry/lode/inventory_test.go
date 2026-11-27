@@ -284,9 +284,11 @@ func TestInventory_FindsPartitionOnlyCommits(t *testing.T) {
 			if wide := store.wide(); len(wide) != 0 {
 				t.Fatalf("read listed %v, want no listing of the dataset", wide)
 			}
+			// The held snapshot's canonical manifest is never read again; its
+			// partition copy may be, with the partition of a late commit.
 			for key := range gets.gets {
-				if strings.HasSuffix(key, "/manifest.json") && strings.Contains(key, string(ids[0])) {
-					t.Errorf("read loaded the held manifest %s", key)
+				if key == "datasets/quarry/segments/"+string(ids[0])+"/manifest.json" {
+					t.Errorf("read loaded the held canonical manifest %s", key)
 				}
 			}
 		})
