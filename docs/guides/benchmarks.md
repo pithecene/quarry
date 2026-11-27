@@ -136,6 +136,43 @@ outcome, which the partition tree cannot: it shows only whether a
 terminal event was written. A page of records reads only the records of
 the runs it returns.
 
+## Prune Dry Run on a Large Dataset
+
+A regression baseline for prune, measured once on 2026-11-27 against a
+dataset on Cloudflare R2 with 44,917 keys, 14,834 snapshots and 119 runs.
+The command was `quarry prune --dry-run --failed-days 0`, which selected 32
+runs. No test reproduces it, because it needs a bucket of that size.
+
+| Quarry | Lode | Wall time | Peak memory | Result |
+|---|---|---|---|---|
+| v0.20.2 | v0.18.5 | no report after 13 h 50 min | not measured | none |
+| v0.20.3 | v0.18.6 | 989 s | not measured | 32 runs selected |
+| quarry#492 | the code of v0.18.7 | 815 s | 107 MiB | the same per-run results |
+
+The last row measured the merged code that v0.20.4 and Lode v0.18.7 release,
+before either tag. A second run of that code used a store that refuses and
+logs every write. It took 782 s, made 17,603 `GET`, 325 `LIST` and 32
+existence requests, logged no write attempt, and reported the same per-run
+results.
+
+Where the 815 s went:
+
+| Phase | Requests | Time |
+|---|---|---|
+| Listing the dataset's keys | 44,917 keys listed | 30 s |
+| Loading every manifest, 128 ahead | 14,834 `GET` | about 30 s |
+| Listing manifest keys again for each later run | 31 `LIST` of 14,833 keys | 265 s |
+| Reading tombstones | 685 | 103 s |
+| Loading manifests of the selected runs | 542 `GET` | 87 s |
+| Reading the head pointer | 321 | 49 s |
+| Listing each run's partition manifests | 63 `LIST` | 11 s |
+| Artifacts, sidecar files, partitions and run records | the remainder | about 167 s |
+
+The per-run phase is serial. Its largest cost, the repeated listing of every
+manifest key, comes from how Lode discovers committed snapshots, and Quarry
+cannot remove it. A change that raises the wall time or the request counts
+of the same command on a dataset of this size is a regression.
+
 ## Dataset Compression Under `strict`
 
 `BenchmarkLodeClient_WriteEvents_Compression` in `quarry/lode` measures one

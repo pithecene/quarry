@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Prune reads less during expiry**: Quarry now requires Lode v0.18.7. Its expiry no longer reads a snapshot's manifest twice to write a new tombstone, and a dry run reads the head pointer once. A live run keeps every check before it deletes. On a bucket of 14,834 snapshots, a prune dry run that selected 32 runs took 989 seconds on v0.20.3. With this change and the fix below, it took 815 seconds and reported the same result.
+
 ### Fixed
 
 - **Prune sees a late commit of an older writer**: a writer before canonical manifests commits a snapshot with partition manifests alone. When one committed to a run during a prune, after the run's first read, the prune's later reads missed it and could delete the run's records and sidecar files while that snapshot remained. Each later read now also lists the run's partition manifests, and the prune keeps the run. `CONTRACT_LODE.md` § Run Contents states the rule.
