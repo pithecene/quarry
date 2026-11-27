@@ -137,7 +137,7 @@ func TestInventory_KeepsAPartitionOnlySnapshotUntilItExpires(t *testing.T) {
 	}
 	// The legacy snapshot is kept without Lode's scan of the dataset.
 	if wide := store.wide(); len(wide) != 0 {
-		t.Fatalf("read listed %v, want only the canonical manifests", wide)
+		t.Fatalf("read listed %v, want only the canonical manifests and the run's partitions", wide)
 	}
 	if _, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.SnapshotID{ids[0]}}); err != nil {
 		t.Fatal(err)
@@ -207,13 +207,15 @@ func (s *listCountingStore) reset() {
 	s.mu.Unlock()
 }
 
-// wide returns the listings other than the canonical manifest directory.
+// wide returns the listings other than the canonical manifest directory and
+// the read run's own partition prefix: a listing of the dataset.
 func (s *listCountingStore) wide() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []string
+	run := "datasets/quarry/partitions/source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
 	for _, p := range s.lists {
-		if p != "datasets/quarry/segments/" {
+		if p != "datasets/quarry/segments/" && p != run {
 			out = append(out, p)
 		}
 	}
@@ -238,5 +240,30 @@ func TestInventory_ReportsARemovedDataset(t *testing.T) {
 	}
 	if got, err := read(); !errors.Is(err, lode.ErrRemoved) {
 		t.Fatalf("read after the removal fence = %v, %v; want lode.ErrRemoved", got, err)
+	}
+}
+
+// A snapshot that commits with partition manifests alone after the first
+// read, as a writer before canonical manifests commits, is found by the next
+// read of its run.
+func TestInventory_FindsAPartitionOnlyCommit(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store := lode.NewMemory()
+	ds, ids, read := inventoryFixture(t, store, 1)
+	if got, err := read(); err != nil || len(got) != 1 {
+		t.Fatalf("first read = %v, %v; want one snapshot", got, err)
+	}
+	rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": 9}
+	late, err := ds.Write(ctx, []lode.D{rec}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx, "datasets/quarry/segments/"+string(late.ID)+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	want := slices.Sorted(slices.Values([]lode.SnapshotID{ids[0], late.ID}))
+	if got, err := read(); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("read after the partition-only commit = %v, %v; want %v", got, err, want)
 	}
 }

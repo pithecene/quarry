@@ -866,3 +866,49 @@ func TestPrune_LoadsEachManifestOnce(t *testing.T) {
 		})
 	}
 }
+
+// A run that a writer before canonical manifests commits to after the
+// preview keeps that snapshot and its records: the snapshot has partition
+// manifests alone, which a refresh of canonical keys would not find.
+func TestPrune_KeepsAPartitionOnlyCommitAfterThePreview(t *testing.T) {
+	t.Parallel()
+	f, cfgs := seed(t)
+	cfg := cfgs["failed"]
+	canonical := func() []string {
+		t.Helper()
+		keys, err := f.store.List(t.Context(), "datasets/quarry/segments/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return keys
+	}
+	store := &commitDuring{RangeStore: f.store}
+	store.commit = func() {
+		before := canonical()
+		f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})
+		removed := 0
+		for _, k := range canonical() {
+			if !slices.Contains(before, k) && strings.HasSuffix(k, "/manifest.json") {
+				if err := f.store.Delete(t.Context(), k); err != nil {
+					t.Error(err)
+				}
+				removed++
+			}
+		}
+		if removed != 1 {
+			t.Errorf("removed %d canonical manifests, want the late commit's", removed)
+		}
+		f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
+	}
+	factory := func() (lode.RangeStore, error) { return store, nil }
+	report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now})
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if got := outcomes(report); got != "[r1:kept]" || report.Runs[0].Kept != keptCommitted {
+		t.Fatalf("runs = %s (%+v), want r1 kept as committed", got, report.Runs)
+	}
+	if _, err := f.store.Get(t.Context(), qlode.RunRecordDir(cfg)+qlode.StartRecordName); err != nil {
+		t.Fatalf("start record removed: %v", err)
+	}
+}

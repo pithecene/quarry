@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Prune sees a late commit of an older writer**: a writer before canonical manifests commits a snapshot with partition manifests alone. When one committed to a run during a prune, after the run's first read, the prune's later reads missed it and could delete the run's records and sidecar files while that snapshot remained. Each later read now also lists the run's partition manifests, and the run is kept. `CONTRACT_LODE.md` § Run Contents states the rule.
+
 ---
 
 ## [0.20.3] - 2026-11-26

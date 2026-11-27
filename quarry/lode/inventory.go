@@ -82,14 +82,14 @@ type snapshotLoader interface {
 // Inventory answers a prune's reads of each run's snapshots without loading
 // every manifest for each run. The first read takes Lode's unfiltered
 // listing, which loads and validates each manifest once. Each later read
-// checks Lode's removal fence, lists the keys of the canonical manifests, and
-// loads only the snapshots that the inventory does not hold, so it finds each
-// snapshot that committed since, as a new unfiltered listing would
-// (CONTRACT_LODE.md §Order of Operations). A held snapshot of the run whose
-// canonical manifest is no longer listed is a legacy snapshot that only
-// partition manifests record when no tombstone exists, and otherwise Lode
-// reads it by ID. An
-// Inventory is not safe for concurrent use.
+// checks Lode's removal fence, lists the keys of the canonical manifests and
+// of the run's partition manifests, and loads only the snapshots that the
+// inventory does not hold, so it finds each snapshot that committed since,
+// a legacy one with partition manifests alone included, as a new unfiltered
+// listing would (CONTRACT_LODE.md §Order of Operations). A held snapshot of
+// the run whose canonical manifest is no longer listed is a legacy snapshot
+// that only partition manifests record when no tombstone exists, and
+// otherwise Lode reads it by ID. An Inventory is not safe for concurrent use.
 type Inventory struct {
 	dataset string
 	store   lode.Store
@@ -116,6 +116,9 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 	if err != nil {
 		return nil, err
 	}
+	if err := inv.partitionOnly(ctx, prefix, listed); err != nil {
+		return nil, err
+	}
 	var out []*lode.Snapshot
 	for id, m := range inv.held {
 		if !holdsPrefix(m, prefix) {
@@ -135,6 +138,49 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 	}
 	slices.SortFunc(out, func(a, b *lode.Snapshot) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	return out, nil
+}
+
+// partitionOnly holds each snapshot that a partition manifest under the
+// run's prefix records and that neither the inventory nor the canonical
+// listing holds. A writer before canonical manifests commits a snapshot with
+// partition manifests alone (Lode CONTRACT_CORE §Head Pointer), so a refresh
+// of canonical keys cannot find one committed after the first read. Lode
+// loads it by ID, which finds it through its partition manifests, and
+// reports an expired one as absent.
+func (inv *Inventory) partitionOnly(ctx context.Context, prefix string, listed map[lode.SnapshotID]bool) error {
+	dir := inv.dir() + "partitions/" + prefix
+	keys, err := inv.store.List(ctx, dir)
+	if err != nil {
+		return WrapReadError(err, dir)
+	}
+	var unseen []lode.SnapshotID
+	for _, key := range keys {
+		rest, ok := strings.CutSuffix(key, "/manifest.json")
+		if !ok {
+			continue
+		}
+		_, idPart, ok := strings.Cut(rest, "/segments/")
+		if !ok || idPart == "" || strings.Contains(idPart, "/") {
+			continue
+		}
+		id := lode.SnapshotID(idPart)
+		if _, held := inv.held[id]; held || listed[id] || slices.Contains(unseen, id) {
+			continue
+		}
+		unseen = append(unseen, id)
+	}
+	slices.Sort(unseen)
+	for _, id := range unseen {
+		snap, err := inv.ds.Snapshot(ctx, id)
+		if errors.Is(err, lode.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return WrapReadError(err, dir)
+		}
+		inv.held[id] = snap.Manifest
+	}
+	return nil
 }
 
 // unlisted reports whether a held snapshot whose canonical manifest is no
