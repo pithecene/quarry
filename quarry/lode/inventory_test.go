@@ -1,15 +1,20 @@
 package lode_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"
 )
 
@@ -19,19 +24,7 @@ func TestInventory_ExtendsRatherThanRepeats(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	store := &getCountingStore{RangeStore: lode.NewMemory(), gets: map[string]int{}}
-	ds, err := qlode.OpenDataset(ctx, "quarry", store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write := func(seq int) lode.SnapshotID {
-		t.Helper()
-		rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": seq}
-		snap, err := ds.Write(ctx, []lode.D{rec}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return snap.ID
-	}
+	ds, write := openRun1(t, "quarry", store)
 	const prefix = "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
 	first, second := write(1), write(2)
 	inv := qlode.NewInventory("quarry", store, ds)
@@ -137,7 +130,7 @@ func TestInventory_KeepsAPartitionOnlySnapshotUntilItExpires(t *testing.T) {
 	}
 	// The legacy snapshot is kept without Lode's scan of the dataset.
 	if wide := store.wide(); len(wide) != 0 {
-		t.Fatalf("read listed %v, want only the canonical manifests", wide)
+		t.Fatalf("read listed %v, want only the canonical manifests and the run's partitions", wide)
 	}
 	if _, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.SnapshotID{ids[0]}}); err != nil {
 		t.Fatal(err)
@@ -207,13 +200,16 @@ func (s *listCountingStore) reset() {
 	s.mu.Unlock()
 }
 
-// wide returns the listings other than the canonical manifest directory.
+// wide returns the listings other than the canonical manifest directory, the
+// tombstones that Lode's partition listing filters by, and those under the
+// read run's own partition prefix: a listing of the dataset.
 func (s *listCountingStore) wide() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []string
+	run := "datasets/quarry/partitions/source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
 	for _, p := range s.lists {
-		if p != "datasets/quarry/segments/" {
+		if p != "datasets/quarry/segments/" && p != "datasets/quarry/expired/" && !strings.HasPrefix(p, run) {
 			out = append(out, p)
 		}
 	}
@@ -238,5 +234,318 @@ func TestInventory_ReportsARemovedDataset(t *testing.T) {
 	}
 	if got, err := read(); !errors.Is(err, lode.ErrRemoved) {
 		t.Fatalf("read after the removal fence = %v, %v; want lode.ErrRemoved", got, err)
+	}
+}
+
+// Snapshots that commit with partition manifests alone after the first read,
+// as a writer before canonical manifests commits them, are found by the next
+// read of their run without a listing of the dataset, and a partition copy
+// that an interrupted expiry left of a snapshot never held is left out.
+func TestInventory_FindsPartitionOnlyCommits(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		late    int
+		expired bool
+	}{
+		{"one late commit", 1, false},
+		{"two late commits", 2, false},
+		{"a residual copy of an expired snapshot", 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			gets := &getCountingStore{RangeStore: lode.NewMemory(), gets: map[string]int{}}
+			store := &listCountingStore{RangeStore: gets}
+			ds, ids, read := inventoryFixture(t, store, 1)
+			if got, err := read(); err != nil || len(got) != 1 {
+				t.Fatalf("first read = %v, %v; want one snapshot", got, err)
+			}
+			want := slices.Clone(ids)
+			for i := range tc.late {
+				rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": 10 + i}
+				late, err := ds.Write(ctx, []lode.D{rec}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tc.expired {
+					residual(t, store, ds, late.ID)
+					continue
+				}
+				if err := store.Delete(ctx, "datasets/quarry/segments/"+string(late.ID)+"/manifest.json"); err != nil {
+					t.Fatal(err)
+				}
+				want = append(want, late.ID)
+			}
+			store.reset()
+			gets.mu.Lock()
+			clear(gets.gets)
+			gets.mu.Unlock()
+			if got, err := read(); err != nil || !slices.Equal(got, slices.Sorted(slices.Values(want))) {
+				t.Fatalf("read after the late commits = %v, %v; want %v", got, err, slices.Sorted(slices.Values(want)))
+			}
+			if wide := store.wide(); len(wide) != 0 {
+				t.Fatalf("read listed %v, want no listing of the dataset", wide)
+			}
+			for key := range gets.gets {
+				if strings.HasSuffix(key, "/manifest.json") && strings.Contains(key, string(ids[0])) {
+					t.Errorf("read loaded the held manifest %s", key)
+				}
+			}
+		})
+	}
+}
+
+// residual expires a snapshot and puts back one of its partition copies, as
+// an expiry that stopped after its tombstone and canonical manifest leaves it.
+func residual(t *testing.T, store lode.RangeStore, ds *lode.Records[lode.D], id lode.SnapshotID) {
+	t.Helper()
+	ctx := t.Context()
+	// Another run takes the head, which expiry never removes.
+	other := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r2", "event_type": "item", "seq": 0}
+	if _, err := ds.Write(ctx, []lode.D{other}, nil); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := store.List(ctx, "datasets/quarry/partitions/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copyKey string
+	var body []byte
+	for _, k := range keys {
+		if strings.Contains(k, "/segments/"+string(id)+"/manifest.json") {
+			var err error
+			if body, err = readAll(ctx, store, k); err != nil {
+				t.Fatal(err)
+			}
+			copyKey = k
+		}
+	}
+	if copyKey == "" {
+		t.Fatal("no partition copy to leave behind")
+	}
+	if report, err := ds.Expire(ctx, lode.ExpireRequest{IDs: []lode.SnapshotID{id}}); err != nil || len(report.Expired) != 1 {
+		t.Fatalf("Expire = %+v, %v; want %s expired", report, err, id)
+	}
+	if left, err := store.Exists(ctx, copyKey); err != nil {
+		t.Fatal(err)
+	} else if !left {
+		if err := store.Put(ctx, copyKey, bytes.NewReader(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// readAll reads one object and closes it on every path.
+func readAll(ctx context.Context, store lode.RangeStore, key string) ([]byte, error) {
+	rc, err := store.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer iox.DiscardClose(rc)
+	return io.ReadAll(rc)
+}
+
+// A dataset named "segments" finds a late partition-only commit like any
+// other: the key parse cannot mistake the dataset's name for the snapshot
+// directory.
+func TestInventory_FindsAPartitionOnlyCommitInADatasetNamedSegments(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store := lode.NewMemory()
+	ds, write := openRun1(t, "segments", store)
+	first := write(1)
+	inv := qlode.NewInventory("segments", store, ds)
+	prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
+	if _, err := inv.RunSnapshots(ctx, prefix); err != nil {
+		t.Fatal(err)
+	}
+	late := write(2)
+	if err := store.Delete(ctx, "datasets/segments/segments/"+string(late)+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	snaps, err := inv.RunSnapshots(ctx, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]lode.SnapshotID, len(snaps))
+	for i, s := range snaps {
+		got[i] = s.ID
+	}
+	if want := slices.Sorted(slices.Values([]lode.SnapshotID{first, late})); !slices.Equal(got, want) {
+		t.Fatalf("read = %v, want %v", got, want)
+	}
+}
+
+// openRun1 opens dataset over store and returns it with a write of one record
+// of run r1, which returns the snapshot's ID.
+func openRun1(t *testing.T, dataset string, store lode.RangeStore) (*lode.Records[lode.D], func(seq int) lode.SnapshotID) {
+	t.Helper()
+	ds, err := qlode.OpenDataset(t.Context(), dataset, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ds, func(seq int) lode.SnapshotID {
+		t.Helper()
+		rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": seq}
+		snap, err := ds.Write(t.Context(), []lode.D{rec}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap.ID
+	}
+}
+
+// interleaveStore runs inject once, just before the first listing whose
+// prefix ends with suffix returns.
+type interleaveStore struct {
+	lode.RangeStore
+	suffix string
+	inject func()
+	done   bool
+}
+
+func (s *interleaveStore) List(ctx context.Context, prefix string) ([]string, error) {
+	if !s.done && strings.HasSuffix(prefix, s.suffix) {
+		s.done = true
+		s.inject()
+	}
+	return s.RangeStore.List(ctx, prefix)
+}
+
+// A snapshot whose ID sorts between a held snapshot and a late
+// partition-only candidate can commit after the read lists the run and
+// before it lists the candidate's partition, since an ID dates the start of
+// a write. The candidate, which committed before the read, is still found,
+// and the next read keeps it.
+func TestInventory_FindsACandidatePastALaterCommitWithALowerID(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	mem := lode.NewMemory()
+	store := &interleaveStore{RangeStore: mem, suffix: "/event_type=item/segments/"}
+	ds, write := openRun1(t, "quarry", store)
+	first := write(1)
+	inv := qlode.NewInventory("quarry", store, ds)
+	prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
+	if _, err := inv.RunSnapshots(ctx, prefix); err != nil {
+		t.Fatal(err)
+	}
+	// A pause keeps the two IDs at least one tick apart, so one fits between.
+	time.Sleep(time.Millisecond)
+	late := write(2)
+	if err := mem.Delete(ctx, "datasets/quarry/segments/"+string(late)+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	// The slower writer's snapshot takes an ID between the two.
+	ns, _, _ := strings.Cut(string(late), "-")
+	n, err := strconv.ParseInt(ns, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	between := lode.SnapshotID(strconv.FormatInt(n-1, 10) + "-0000000000000000")
+	if between <= first || between >= late {
+		t.Fatalf("no ID between %s and %s", first, late)
+	}
+	dir := "datasets/quarry/partitions/" + prefix + "event_type=item/segments/"
+	store.inject = func() {
+		body, err := readAll(ctx, mem, dir+string(late)+"/manifest.json")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		other := strings.ReplaceAll(string(body), string(late), string(between))
+		if err := mem.Put(ctx, dir+string(between)+"/manifest.json", strings.NewReader(other)); err != nil {
+			t.Error(err)
+		}
+	}
+	for range 2 {
+		snaps, err := inv.RunSnapshots(ctx, prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(snaps, func(s *lode.Snapshot) bool { return s.ID == late }) {
+			t.Fatalf("read = %d snapshots without %s, which committed before the read", len(snaps), late)
+		}
+	}
+	if !store.done {
+		t.Fatal("the interleaved commit never happened")
+	}
+}
+
+// A late partition-only snapshot takes its copy in the smallest partition that
+// still yields it, as Lode's own listing does: a malformed later copy is not
+// read, even beside another late snapshot in that later partition, and a
+// first copy that goes before the read leaves the later one.
+func TestInventory_ReadsAPartitionOnlySnapshotFromOneCopy(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		firstGoes  bool
+		secondLate bool
+	}{
+		{"a malformed later copy beside another late snapshot", false, true},
+		{"a first copy that goes before the read", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			mem := lode.NewMemory()
+			store := &interleaveStore{RangeStore: mem, suffix: "/event_type=item/segments/", inject: func() {}}
+			ds, write := openRun1(t, "quarry", store)
+			write(1)
+			inv := qlode.NewInventory("quarry", store, ds)
+			prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
+			if _, err := inv.RunSnapshots(ctx, prefix); err != nil {
+				t.Fatal(err)
+			}
+			store.done = false
+			partitionOnly := func(recs ...lode.D) lode.SnapshotID {
+				t.Helper()
+				snap, err := ds.Write(ctx, recs, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := mem.Delete(ctx, "datasets/quarry/segments/"+string(snap.ID)+"/manifest.json"); err != nil {
+					t.Fatal(err)
+				}
+				return snap.ID
+			}
+			rec := func(eventType string, seq int) lode.D {
+				return lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": eventType, "seq": seq}
+			}
+			late := partitionOnly(rec("item", 2), rec("run_complete", 3))
+			want := []lode.SnapshotID{late}
+			copyAt := func(eventType string) string {
+				return "datasets/quarry/partitions/" + prefix + "event_type=" + eventType + "/segments/" + string(late) + "/manifest.json"
+			}
+			if tc.secondLate {
+				if err := mem.Delete(ctx, copyAt("run_complete")); err != nil {
+					t.Fatal(err)
+				}
+				if err := mem.Put(ctx, copyAt("run_complete"), strings.NewReader("{")); err != nil {
+					t.Fatal(err)
+				}
+				want = append(want, partitionOnly(rec("run_complete", 4)))
+			}
+			if tc.firstGoes {
+				store.inject = func() {
+					if err := mem.Delete(ctx, copyAt("item")); err != nil {
+						t.Error(err)
+					}
+				}
+			}
+			snaps, err := inv.RunSnapshots(ctx, prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range want {
+				if !slices.ContainsFunc(snaps, func(s *lode.Snapshot) bool { return s.ID == id }) {
+					t.Errorf("read = %d snapshots without %s", len(snaps), id)
+				}
+			}
+			if tc.firstGoes {
+				if left, err := mem.Exists(ctx, copyAt("item")); err != nil || left {
+					t.Errorf("first copy still present = %t, %v; want it gone, so the read fell back", left, err)
+				}
+			}
+		})
 	}
 }

@@ -82,20 +82,24 @@ type snapshotLoader interface {
 // Inventory answers a prune's reads of each run's snapshots without loading
 // every manifest for each run. The first read takes Lode's unfiltered
 // listing, which loads and validates each manifest once. Each later read
-// checks Lode's removal fence, lists the keys of the canonical manifests, and
-// loads only the snapshots that the inventory does not hold, so it finds each
-// snapshot that committed since, as a new unfiltered listing would
-// (CONTRACT_LODE.md §Order of Operations). A held snapshot of the run whose
-// canonical manifest is no longer listed is a legacy snapshot that only
-// partition manifests record when no tombstone exists, and otherwise Lode
-// reads it by ID. An
-// Inventory is not safe for concurrent use.
+// checks Lode's removal fence, lists the keys of the canonical manifests and
+// of the run's partition manifests, and adds only the snapshots that the
+// inventory does not hold, so it finds each snapshot that committed since,
+// a legacy one with partition manifests alone included, as a new unfiltered
+// listing would, within the mixed-run limit that partitionOnly states
+// (CONTRACT_LODE.md §Order of Operations). A held snapshot of
+// the run whose canonical manifest is no longer listed is a legacy snapshot
+// that only partition manifests record when no tombstone exists, and
+// otherwise Lode reads it by ID. An Inventory is not safe for concurrent use.
 type Inventory struct {
 	dataset string
 	store   lode.Store
 	ds      snapshotLoader
 	// held is each committed snapshot read so far, nil before the first read.
 	held map[lode.SnapshotID]*lode.Manifest
+	// gone is each ID that a run's partition copy named and Lode skipped as
+	// expired or gone, which neither state reverses.
+	gone map[lode.SnapshotID]bool
 }
 
 // NewInventory returns an empty inventory of dataset, whose handle ds
@@ -114,6 +118,9 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 	}
 	listed, err := inv.refresh(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := inv.partitionOnly(ctx, prefix, listed); err != nil {
 		return nil, err
 	}
 	var out []*lode.Snapshot
@@ -135,6 +142,118 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 	}
 	slices.SortFunc(out, func(a, b *lode.Snapshot) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	return out, nil
+}
+
+// partitionOnly holds each snapshot that a partition manifest under the
+// run's prefix records and that neither the inventory nor the canonical
+// listing holds. A writer before canonical manifests commits a snapshot with
+// partition manifests alone (Lode CONTRACT_CORE §Head Pointer), so a refresh
+// of canonical keys cannot find one committed after the first read. The
+// ingestion engine writes one run per snapshot (IngestionEngine.validateEnvelope),
+// so a partition manifest of such a snapshot lies under the run's prefix. A
+// legacy snapshot that mixes runs, which only a writer outside the engine can
+// produce, cannot be discovered by this run's read when it is new and has no
+// copy under this run's prefix
+// (CONTRACT_LODE.md §Run Contents). Each candidate is read through Lode's
+// partition listing, which validates its manifest and leaves out an expired
+// snapshot, so no lookup scans the dataset and no held copy is loaded.
+func (inv *Inventory) partitionOnly(ctx context.Context, prefix string, listed map[lode.SnapshotID]bool) error {
+	dir := inv.dir() + "partitions/" + prefix
+	keys, err := inv.store.List(ctx, dir)
+	if err != nil {
+		return WrapReadError(err, dir)
+	}
+	// ids holds every ID listed in each partition, so a candidate's predecessor
+	// positions the read; copies holds each candidate's partitions.
+	ids := map[string][]lode.SnapshotID{}
+	copies := map[lode.SnapshotID][]string{}
+	for _, key := range keys {
+		partition, id, ok := partitionManifest(strings.TrimPrefix(key, dir))
+		if !ok {
+			continue
+		}
+		p := prefix + partition
+		ids[p] = append(ids[p], id)
+		if _, held := inv.held[id]; held || listed[id] || inv.gone[id] {
+			continue
+		}
+		copies[id] = append(copies[id], p)
+	}
+	// A candidate takes its copy in the smallest partition that still yields
+	// it, as Lode's unfiltered listing does. One that no copy yields is expired
+	// or gone, and neither state reverses.
+	for _, id := range slices.Sorted(maps.Keys(copies)) {
+		slices.Sort(copies[id])
+		found := false
+		for _, p := range copies[id] {
+			m, ok, err := inv.loadCopy(ctx, p, id, ids[p])
+			if err != nil {
+				return err
+			}
+			if ok {
+				inv.held[id] = m
+				found = true
+				break
+			}
+		}
+		if !found {
+			inv.gone[id] = true
+		}
+	}
+	return nil
+}
+
+// loadCopy reads candidate id from its partition through Lode's partition
+// listing, which lists in snapshot ID order. It starts after the
+// candidate's predecessor among the partition's listed IDs, so it loads no
+// copy that the inventory holds, and stops at the first ID past the
+// candidate. A snapshot that committed in between with a lower ID is passed
+// on the way, as an unfiltered listing would load it, and cannot hide the
+// candidate (Lode CONTRACT_READ_API §Cursors vs Commit Order). It is false
+// when Lode skips the candidate as expired or gone.
+func (inv *Inventory) loadCopy(ctx context.Context, partition string, id lode.SnapshotID, listed []lode.SnapshotID) (*lode.Manifest, bool, error) {
+	path, err := lode.ParsePartitionPath(partition)
+	if err != nil {
+		return nil, false, WrapReadError(err, partition)
+	}
+	var opts lode.ManifestListOptions
+	slices.Sort(listed)
+	if i, _ := slices.BinarySearch(listed, id); i > 0 {
+		opts.StartAfter = lode.ManifestRef{ID: listed[i-1], Partition: path}
+	}
+	for loaded, err := range inv.ds.Manifests(ctx, path, opts) {
+		if errors.Is(err, lode.ErrNotFound) {
+			break
+		}
+		if err != nil {
+			return nil, false, WrapReadError(err, partition)
+		}
+		switch {
+		case loaded.Ref.ID == id:
+			return loaded.Manifest, true, nil
+		case loaded.Ref.ID > id:
+			return nil, false, nil
+		}
+	}
+	return nil, false, nil
+}
+
+// partitionManifest parses a key below the run's partition prefix of the form
+// <partition>/segments/<snapshot>/manifest.json into its partition and ID.
+func partitionManifest(rel string) (partition string, id lode.SnapshotID, ok bool) {
+	rest, ok := strings.CutSuffix(rel, "/manifest.json")
+	if !ok {
+		return "", "", false
+	}
+	i := strings.LastIndex(rest, "/segments/")
+	if i <= 0 {
+		return "", "", false
+	}
+	idPart := rest[i+len("/segments/"):]
+	if idPart == "" || strings.Contains(idPart, "/") {
+		return "", "", false
+	}
+	return rest[:i], lode.SnapshotID(idPart), true
 }
 
 // unlisted reports whether a held snapshot whose canonical manifest is no
@@ -161,6 +280,7 @@ func (inv *Inventory) first(ctx context.Context, prefix string) ([]*lode.Snapsho
 		return nil, err
 	}
 	inv.held = make(map[lode.SnapshotID]*lode.Manifest, len(all))
+	inv.gone = map[lode.SnapshotID]bool{}
 	for _, s := range all {
 		inv.held[s.ID] = s.Manifest
 	}

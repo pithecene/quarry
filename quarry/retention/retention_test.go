@@ -741,38 +741,63 @@ func TestPrune_PartlyIncompleteIndex(t *testing.T) {
 	}
 }
 
-// A run that commits a snapshot without its index after the preview keeps that
-// snapshot and its records.
-func TestPrune_KeepsAnUnindexedCommitAfterThePreview(t *testing.T) {
+// A run that commits a snapshot after the preview keeps that snapshot and its
+// records, whether the snapshot lacks its index or, as a writer before
+// canonical manifests commits it, has partition manifests alone.
+func TestPrune_KeepsALateCommitWithoutSomeManifests(t *testing.T) {
 	t.Parallel()
-	f, cfgs := seed(t)
-	cfg := cfgs["failed"]
-	store := &commitDuring{RangeStore: f.store}
-	store.commit = func() {
-		indexed := f.keys(cfg)
-		f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})
-		for _, k := range f.keys(cfg) {
-			if strings.HasSuffix(k, "/manifest.json") && !slices.Contains(indexed, k) {
-				if err := f.store.Delete(t.Context(), k); err != nil {
-					t.Error(err)
+	for _, tc := range []struct {
+		name string
+		// dropped picks the late commit's manifests to delete.
+		dropped func(key string) bool
+	}{
+		{"without its index", func(k string) bool { return strings.Contains(k, "/partitions/") }},
+		{"with partition manifests alone", func(k string) bool { return !strings.Contains(k, "/partitions/") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, cfgs := seed(t)
+			cfg := cfgs["failed"]
+			manifests := func() []string {
+				t.Helper()
+				keys, err := f.store.List(t.Context(), "datasets/quarry/")
+				if err != nil {
+					t.Fatal(err)
 				}
+				return slices.DeleteFunc(keys, func(k string) bool { return !strings.HasSuffix(k, "/manifest.json") })
 			}
-		}
-		f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
-	}
-	factory := func() (lode.RangeStore, error) { return store, nil }
-	report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now})
-	if err != nil {
-		t.Fatalf("Prune: %v", err)
-	}
-	if got := outcomes(report); got != "[r1:kept]" || report.Runs[0].Kept != keptCommitted {
-		t.Fatalf("runs = %s (%+v), want r1 kept as committed", got, report.Runs)
-	}
-	if _, err := f.store.Get(t.Context(), qlode.RunRecordDir(cfg)+qlode.StartRecordName); err != nil {
-		t.Fatalf("start record removed: %v", err)
-	}
-	if _, err := f.store.Get(t.Context(), strings.ReplaceAll(qlode.SidecarFilesPrefix(cfg), "//", "/")+"page.html"); err != nil {
-		t.Fatalf("sidecar removed: %v", err)
+			store := &commitDuring{RangeStore: f.store}
+			store.commit = func() {
+				before := manifests()
+				f.write(runSpec{source: "src", runID: "r1", day: oldDay, again: true})
+				dropped := 0
+				for _, k := range manifests() {
+					if !slices.Contains(before, k) && tc.dropped(k) {
+						if err := f.store.Delete(t.Context(), k); err != nil {
+							t.Error(err)
+						}
+						dropped++
+					}
+				}
+				if dropped == 0 {
+					t.Error("the late commit lost no manifest")
+				}
+				f.write(runSpec{source: "src", runID: "r5", day: recentDay, outcome: types.OutcomeSuccess})
+			}
+			factory := func() (lode.RangeStore, error) { return store, nil }
+			report, err := Prune(t.Context(), "quarry", factory, Options{Policy: Policy{Failed: days(7)}, Now: now})
+			if err != nil {
+				t.Fatalf("Prune: %v", err)
+			}
+			if got := outcomes(report); got != "[r1:kept]" || report.Runs[0].Kept != keptCommitted {
+				t.Fatalf("runs = %s (%+v), want r1 kept as committed", got, report.Runs)
+			}
+			if _, err := f.store.Get(t.Context(), qlode.RunRecordDir(cfg)+qlode.StartRecordName); err != nil {
+				t.Fatalf("start record removed: %v", err)
+			}
+			if _, err := f.store.Get(t.Context(), strings.ReplaceAll(qlode.SidecarFilesPrefix(cfg), "//", "/")+"page.html"); err != nil {
+				t.Fatalf("sidecar removed: %v", err)
+			}
+		})
 	}
 }
 
