@@ -96,6 +96,9 @@ type Inventory struct {
 	ds      snapshotLoader
 	// held is each committed snapshot read so far, nil before the first read.
 	held map[lode.SnapshotID]*lode.Manifest
+	// gone is each ID that a run's partition copy named and Lode skipped as
+	// expired or gone, which neither state reverses.
+	gone map[lode.SnapshotID]bool
 }
 
 // NewInventory returns an empty inventory of dataset, whose handle ds
@@ -144,48 +147,72 @@ func (inv *Inventory) RunSnapshots(ctx context.Context, prefix string) ([]*lode.
 // run's prefix records and that neither the inventory nor the canonical
 // listing holds. A writer before canonical manifests commits a snapshot with
 // partition manifests alone (Lode CONTRACT_CORE §Head Pointer), so a refresh
-// of canonical keys cannot find one committed after the first read. A Quarry
-// write holds one run's records (LodeClient.WriteEvents builds each from its
-// run's config), so every partition manifest of such a snapshot lies under
-// the run's prefix. Each partition that names an unseen ID is read through
-// Lode's partition listing, which validates its manifests and leaves out an
-// expired snapshot, so no lookup scans the dataset.
+// of canonical keys cannot find one committed after the first read. The
+// ingestion engine writes one run per snapshot (IngestionEngine.validateEnvelope),
+// so a partition manifest of such a snapshot lies under the run's prefix. A
+// legacy snapshot that mixes runs, which only a writer outside the engine can
+// produce, and that has no copy under this run's prefix is not found
+// (CONTRACT_LODE.md §Run Contents). Each candidate is read through Lode's
+// partition listing, which validates its manifest and leaves out an expired
+// snapshot, so no lookup scans the dataset.
 func (inv *Inventory) partitionOnly(ctx context.Context, prefix string, listed map[lode.SnapshotID]bool) error {
 	dir := inv.dir() + "partitions/" + prefix
 	keys, err := inv.store.List(ctx, dir)
 	if err != nil {
 		return WrapReadError(err, dir)
 	}
-	unseen := map[lode.SnapshotID]bool{}
-	partitions := map[string]bool{}
+	// ids holds every snapshot ID listed in each partition, sorted, so a
+	// candidate's predecessor positions the partition listing at it.
+	ids := map[string][]lode.SnapshotID{}
+	unseen := map[lode.SnapshotID]string{}
 	for _, key := range keys {
 		partition, id, ok := partitionManifest(strings.TrimPrefix(key, dir))
 		if !ok {
 			continue
 		}
-		if _, held := inv.held[id]; held || listed[id] {
+		p := prefix + partition
+		ids[p] = append(ids[p], id)
+		if _, held := inv.held[id]; held || listed[id] || inv.gone[id] {
 			continue
 		}
-		unseen[id] = true
-		partitions[prefix+partition] = true
+		unseen[id] = p
 	}
-	for _, p := range slices.Sorted(maps.Keys(partitions)) {
-		path, err := lode.ParsePartitionPath(p)
+	for _, id := range slices.Sorted(maps.Keys(unseen)) {
+		if err := inv.loadPartitionCopy(ctx, unseen[id], id, ids[unseen[id]]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadPartitionCopy loads one candidate through Lode's listing of its
+// partition, which lists manifests in snapshot ID order: starting after the
+// candidate's predecessor with a limit of one loads that candidate alone. When
+// Lode skips it as expired or gone, it is remembered as gone, since neither
+// state reverses.
+func (inv *Inventory) loadPartitionCopy(ctx context.Context, partition string, id lode.SnapshotID, listed []lode.SnapshotID) error {
+	path, err := lode.ParsePartitionPath(partition)
+	if err != nil {
+		return WrapReadError(err, partition)
+	}
+	opts := lode.ManifestListOptions{Limit: 1}
+	slices.Sort(listed)
+	if i, _ := slices.BinarySearch(listed, id); i > 0 {
+		opts.StartAfter = lode.ManifestRef{ID: listed[i-1], Partition: path}
+	}
+	for loaded, err := range inv.ds.Manifests(ctx, path, opts) {
+		if errors.Is(err, lode.ErrNotFound) {
+			break
+		}
 		if err != nil {
-			return WrapReadError(err, dir)
+			return WrapReadError(err, partition)
 		}
-		for loaded, err := range inv.ds.Manifests(ctx, path, lode.ManifestListOptions{}) {
-			if errors.Is(err, lode.ErrNotFound) {
-				break
-			}
-			if err != nil {
-				return WrapReadError(err, p)
-			}
-			if unseen[loaded.Ref.ID] {
-				inv.held[loaded.Ref.ID] = loaded.Manifest
-			}
+		if loaded.Ref.ID == id {
+			inv.held[id] = loaded.Manifest
+			return nil
 		}
 	}
+	inv.gone[id] = true
 	return nil
 }
 
@@ -231,6 +258,7 @@ func (inv *Inventory) first(ctx context.Context, prefix string) ([]*lode.Snapsho
 		return nil, err
 	}
 	inv.held = make(map[lode.SnapshotID]*lode.Manifest, len(all))
+	inv.gone = map[lode.SnapshotID]bool{}
 	for _, s := range all {
 		inv.held[s.ID] = s.Manifest
 	}

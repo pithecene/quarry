@@ -12,6 +12,7 @@ import (
 
 	"github.com/pithecene/lode/lode"
 
+	"github.com/pithecene/quarry/iox"
 	qlode "github.com/pithecene/quarry/lode"
 )
 
@@ -263,7 +264,8 @@ func TestInventory_FindsPartitionOnlyCommits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := t.Context()
-			store := &listCountingStore{RangeStore: lode.NewMemory()}
+			gets := &getCountingStore{RangeStore: lode.NewMemory(), gets: map[string]int{}}
+			store := &listCountingStore{RangeStore: gets}
 			ds, ids, read := inventoryFixture(t, store, 1)
 			if got, err := read(); err != nil || len(got) != 1 {
 				t.Fatalf("first read = %v, %v; want one snapshot", got, err)
@@ -285,11 +287,19 @@ func TestInventory_FindsPartitionOnlyCommits(t *testing.T) {
 				want = append(want, late.ID)
 			}
 			store.reset()
+			gets.mu.Lock()
+			clear(gets.gets)
+			gets.mu.Unlock()
 			if got, err := read(); err != nil || !slices.Equal(got, slices.Sorted(slices.Values(want))) {
 				t.Fatalf("read after the late commits = %v, %v; want %v", got, err, slices.Sorted(slices.Values(want)))
 			}
 			if wide := store.wide(); len(wide) != 0 {
 				t.Fatalf("read listed %v, want no listing of the dataset", wide)
+			}
+			for key := range gets.gets {
+				if strings.HasSuffix(key, "/manifest.json") && strings.Contains(key, string(ids[0])) {
+					t.Errorf("read loaded the held manifest %s", key)
+				}
 			}
 		})
 	}
@@ -313,15 +323,8 @@ func residual(t *testing.T, store lode.RangeStore, ds *lode.Records[lode.D], id 
 	var body []byte
 	for _, k := range keys {
 		if strings.Contains(k, "/segments/"+string(id)+"/manifest.json") {
-			rc, err := store.Get(ctx, k)
-			if err != nil {
-				t.Fatal(err)
-			}
-			body, err = io.ReadAll(rc)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := rc.Close(); err != nil {
+			var err error
+			if body, err = readAll(ctx, store, k); err != nil {
 				t.Fatal(err)
 			}
 			copyKey = k
@@ -339,5 +342,58 @@ func residual(t *testing.T, store lode.RangeStore, ds *lode.Records[lode.D], id 
 		if err := store.Put(ctx, copyKey, bytes.NewReader(body)); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// readAll reads one object and closes it on every path.
+func readAll(ctx context.Context, store lode.RangeStore, key string) ([]byte, error) {
+	rc, err := store.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer iox.DiscardClose(rc)
+	return io.ReadAll(rc)
+}
+
+// A dataset named "segments" finds a late partition-only commit like any
+// other: the key parse cannot mistake the dataset's name for the snapshot
+// directory.
+func TestInventory_FindsAPartitionOnlyCommitInADatasetNamedSegments(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store := lode.NewMemory()
+	ds, err := qlode.OpenDataset(ctx, "segments", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(seq int) lode.SnapshotID {
+		t.Helper()
+		rec := lode.D{"source": "src", "category": "cat", "day": artifactTestDay, "run_id": "r1", "event_type": "item", "seq": seq}
+		snap, err := ds.Write(ctx, []lode.D{rec}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap.ID
+	}
+	first := write(1)
+	inv := qlode.NewInventory("segments", store, ds)
+	prefix := "source=src/category=cat/day=" + artifactTestDay + "/run_id=r1/"
+	if _, err := inv.RunSnapshots(ctx, prefix); err != nil {
+		t.Fatal(err)
+	}
+	late := write(2)
+	if err := store.Delete(ctx, "datasets/segments/segments/"+string(late)+"/manifest.json"); err != nil {
+		t.Fatal(err)
+	}
+	snaps, err := inv.RunSnapshots(ctx, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]lode.SnapshotID, len(snaps))
+	for i, s := range snaps {
+		got[i] = s.ID
+	}
+	if want := slices.Sorted(slices.Values([]lode.SnapshotID{first, late})); !slices.Equal(got, want) {
+		t.Fatalf("read = %v, want %v", got, want)
 	}
 }
