@@ -9,6 +9,10 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [0.20.4] - 2026-11-27
+
 ### Changed
 
 - **Prune reads less during expiry**: Quarry now requires Lode v0.18.7. Its expiry no longer reads a snapshot's manifest twice to write a new tombstone, and a dry run reads the head pointer once. A live run keeps every check before it deletes. On a bucket of 14,834 snapshots, a prune dry run that selected 32 runs took 989 seconds on v0.20.3. With this change and the fix below, it took 815 seconds and reported the same result.
@@ -926,7 +930,8 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 <!-- jscpd:ignore-start -->
 
-[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.3...HEAD
+[Unreleased]: https://github.com/pithecene/quarry/compare/v0.20.4...HEAD
+[0.20.4]: https://github.com/pithecene/quarry/compare/v0.20.3...v0.20.4
 [0.20.3]: https://github.com/pithecene/quarry/compare/v0.20.2...v0.20.3
 [0.20.2]: https://github.com/pithecene/quarry/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/pithecene/quarry/compare/v0.20.0...v0.20.1
