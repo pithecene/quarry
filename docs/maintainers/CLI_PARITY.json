@@ -465,7 +465,7 @@
       "description": "Show aggregated statistics (metrics)",
       "subcommands": {
         "metrics": {
-          "flagSets": ["storage-read", "output"],
+          "flagSets": ["storage-read", "read-timeout", "output"],
           "requires": ["storage-backend", "storage-path"],
           "flags": {
             "run-id": {

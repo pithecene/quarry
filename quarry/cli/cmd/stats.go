@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/urfave/cli/v2"
 
@@ -31,6 +29,7 @@ func statsMetricsCommand() *cli.Command {
 		Flags: append(append(ReadOnlyFlags(), storageReadFlags()...),
 			&cli.StringFlag{Name: "run-id", Usage: "Read metrics for specific run ID"},
 			&cli.StringFlag{Name: "source", Usage: "Filter by source partition"},
+			readTimeoutFlag(),
 		),
 		Action: statsMetricsAction,
 	}
@@ -47,7 +46,9 @@ func statsMetricsAction(c *cli.Context) error {
 		return fmt.Errorf("failed to initialize storage reader: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Without --run-id the read takes each end record that matches, so its
+	// length follows the dataset's size and the caller sets the bound.
+	ctx, cancel := readContext(c)
 	defer cancel()
 
 	record, err := lode.QueryLatestMetrics(ctx, factory, c.String("storage-dataset"), c.String("run-id"), c.String("source"))

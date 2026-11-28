@@ -563,6 +563,7 @@ Optional flags:
 - `--storage-attempt-timeout=<duration>`: the longest stall of an S3 request, default `60s`, with the same meaning as on `run`. Each read or write on the request's connection must make progress within it. Otherwise the attempt fails, and the SDK sends it again
 - `--run-id=<id>`: read metrics for a specific run
 - `--source=<source>`: filter by source partition
+- `--read-timeout=<duration>`, as on `list runs`
 
 Without both `--storage-backend` and `--storage-path`, the command exits 1
 with an error on stderr (see Data Sources in [CONTRACT_METRICS.md](CONTRACT_METRICS.md)).

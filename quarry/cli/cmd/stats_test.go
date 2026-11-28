@@ -42,3 +42,35 @@ func TestStatsMetrics_ReadsStorage(t *testing.T) {
 		t.Errorf("YAML = %s, %v, want the documented names without empty fields", out, err)
 	}
 }
+
+// stats metrics bounds its whole read by --read-timeout, as the listing
+// commands do: a dataset too large for the default needs a longer bound.
+func TestStatsMetrics_ReadTimeout(t *testing.T) {
+	testutil.Serial(t, "runCLI swaps the process-wide os.Stdout")
+	root := t.TempDir()
+	cfg := lode.Config{Dataset: "quarry", Source: "demo", Category: "default", Day: "2026-10-22", RunID: "run-a"}
+	snap := metrics.Snapshot{RunID: "run-a", RunsStarted: 1, Policy: "strict", Executor: "executor.mjs", StorageBackend: "fs"}
+	if err := legacydata.WriteMetrics(t.Context(), lodelib.FS(root), cfg, snap, time.Date(2026, 10, 22, 1, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("metrics: %v", err)
+	}
+	cases := []struct {
+		name    string
+		timeout string
+		wantErr string
+	}{
+		{name: "a bound the read fits in succeeds", timeout: "1m"},
+		{name: "an expired bound fails the read", timeout: "1ns", wantErr: "deadline exceeded"},
+		{name: "a value that is not a duration is refused", timeout: "soon", wantErr: "read-timeout"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := runCLI(t, "stats", "metrics", "--format", "json", "--storage-backend", "fs", "--storage-path", root, "--read-timeout", tc.timeout)
+			if tc.wantErr == "" && err != nil {
+				t.Fatalf("stats metrics: %v", err)
+			}
+			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("err = %v, want one that names %q", err, tc.wantErr)
+			}
+		})
+	}
+}
