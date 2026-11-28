@@ -11,7 +11,7 @@ and Quarry adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
-- **`stats metrics` takes `--read-timeout`**: the command bounded its whole read of storage at 30 seconds, and no flag changed that bound. Without `--run-id`, a dataset of 96,545 snapshots failed after 30 seconds on every attempt. The command now takes `--read-timeout` with the default of five minutes that `list runs` has. `CONTRACT_CLI.md` § `stats metrics` states the flag.
+- **`stats metrics` takes `--read-timeout`**: the command bounded its whole read of storage at 30 seconds, and no flag changed that bound. Without `--run-id`, a dataset of 96,545 snapshots failed after 30 seconds on every attempt. The command now takes `--read-timeout` with the five-minute default of `list runs`. `CONTRACT_CLI.md` § `stats metrics` states the flag.
 
 ---
 
